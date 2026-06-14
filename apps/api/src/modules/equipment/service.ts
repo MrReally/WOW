@@ -14,6 +14,7 @@ interface TypeRow {
 interface ModelRow {
   id: string;
   type_id: string;
+  tracking_mode: "serial" | "quantity";
   name: string;
   manufacturer: string | null;
   unit_cost_eur: string;
@@ -33,7 +34,9 @@ interface UnitRow {
 }
 interface JournalRow {
   id: string;
-  unit_id: string;
+  unit_id: string | null;
+  model_id: string | null;
+  qty: number | null;
   action: Equipment.JournalAction;
   from_status: Equipment.UnitStatus | null;
   to_status: Equipment.UnitStatus | null;
@@ -63,6 +66,7 @@ const typeDTO = (r: TypeRow): Equipment.EquipmentTypeDTO => ({
 const modelDTO = (r: ModelRow): Equipment.EquipmentModelDTO => ({
   id: r.id,
   typeId: r.type_id,
+  trackingMode: r.tracking_mode,
   name: r.name,
   manufacturer: r.manufacturer,
   unitCostEUR: Number(r.unit_cost_eur),
@@ -83,6 +87,8 @@ const unitDTO = (r: UnitRow): Equipment.EquipmentUnitDTO => ({
 const journalDTO = (r: JournalRow): Equipment.JournalEntryDTO => ({
   id: r.id,
   unitId: r.unit_id,
+  modelId: r.model_id,
+  qty: r.qty,
   action: r.action,
   fromStatus: r.from_status,
   toStatus: r.to_status,
@@ -112,7 +118,9 @@ export function createEquipmentService(
   async function appendJournal(
     client: Sql,
     entry: {
-      unitId: ID;
+      unitId?: ID | null;
+      modelId?: ID | null;
+      qty?: number | null;
       action: Equipment.JournalAction;
       fromStatus?: Equipment.UnitStatus | null;
       toStatus?: Equipment.UnitStatus | null;
@@ -124,10 +132,12 @@ export function createEquipmentService(
     await query(
       client,
       `INSERT INTO equipment.journal
-         (unit_id, action, from_status, to_status, project_id, actor_id, note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+         (unit_id, model_id, qty, action, from_status, to_status, project_id, actor_id, note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [
-        entry.unitId,
+        entry.unitId ?? null,
+        entry.modelId ?? null,
+        entry.qty ?? null,
         entry.action,
         entry.fromStatus ?? null,
         entry.toStatus ?? null,
@@ -137,6 +147,12 @@ export function createEquipmentService(
       ]
     );
   }
+
+  // Models always carry their type's tracking mode (same-schema join is fine).
+  const MODEL_SELECT = `
+    SELECT m.*, t.tracking_mode
+    FROM equipment.models m
+    JOIN equipment.types t ON t.id = m.type_id`;
 
   return {
     // ── Catalog: types ──
@@ -156,20 +172,20 @@ export function createEquipmentService(
     // ── Catalog: models ──
     async listModels(typeId) {
       const rows = typeId
-        ? await query<ModelRow>(db, `SELECT * FROM equipment.models WHERE type_id=$1 ORDER BY name`, [typeId])
-        : await query<ModelRow>(db, `SELECT * FROM equipment.models ORDER BY name`);
+        ? await query<ModelRow>(db, `${MODEL_SELECT} WHERE m.type_id=$1 ORDER BY m.name`, [typeId])
+        : await query<ModelRow>(db, `${MODEL_SELECT} ORDER BY m.name`);
       return rows.map(modelDTO);
     },
     async getModel(id) {
-      const row = await one<ModelRow>(db, `SELECT * FROM equipment.models WHERE id=$1`, [id]);
+      const row = await one<ModelRow>(db, `${MODEL_SELECT} WHERE m.id=$1`, [id]);
       return row ? modelDTO(row) : null;
     },
     async createModel(input) {
-      const row = await one<ModelRow>(
+      await query(
         db,
         `INSERT INTO equipment.models
            (type_id, name, manufacturer, unit_cost_eur, daily_price_eur, attrs, required_component_model_ids)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
         [
           input.typeId,
           input.name,
@@ -179,6 +195,11 @@ export function createEquipmentService(
           input.attrs ? JSON.stringify(input.attrs) : null,
           input.requiredComponentModelIds ?? [],
         ]
+      );
+      const row = await one<ModelRow>(
+        db,
+        `${MODEL_SELECT} WHERE m.type_id=$1 AND m.name=$2 ORDER BY m.created_at DESC LIMIT 1`,
+        [input.typeId, input.name]
       );
       return modelDTO(row!);
     },
@@ -237,6 +258,28 @@ export function createEquipmentService(
       return rows.map(journalDTO);
     },
     async modelStock(modelId) {
+      const model = await this.getModel(modelId);
+      if (!model) throw NotFound("model", modelId);
+
+      if (model.trackingMode === "quantity") {
+        const stock = await one<{ total_qty: number }>(
+          db,
+          `SELECT total_qty FROM equipment.model_stock WHERE model_id=$1`,
+          [modelId]
+        );
+        const total = stock?.total_qty ?? 0;
+        const moved = await one<{ out: string }>(
+          db,
+          `SELECT COALESCE(SUM(CASE WHEN action='issued' THEN qty
+                                    WHEN action IN ('returned','return_incomplete') THEN -qty
+                                    ELSE 0 END),0)::text AS out
+           FROM equipment.journal WHERE model_id=$1 AND qty IS NOT NULL`,
+          [modelId]
+        );
+        const onProjects = Math.max(0, Number(moved?.out ?? 0));
+        return { modelId, total, inStock: total - onProjects, onProjects, inRepair: 0 };
+      }
+
       const rows = await query<{ status: Equipment.UnitStatus; count: string }>(
         db,
         `SELECT status, count(*)::text AS count FROM equipment.units WHERE model_id=$1 GROUP BY status`,
@@ -251,6 +294,176 @@ export function createEquipmentService(
         onProjects: by("on_project"),
         inRepair: by("in_repair"),
       };
+    },
+
+    // ── Quantity (cable) stock + moves ──
+    async setModelStockTotal(modelId, total) {
+      const model = await this.getModel(modelId);
+      if (!model) throw NotFound("model", modelId);
+      if (model.trackingMode !== "quantity") throw BadRequest("model is not quantity-tracked");
+      await query(
+        db,
+        `INSERT INTO equipment.model_stock (model_id, total_qty) VALUES ($1,$2)
+         ON CONFLICT (model_id) DO UPDATE SET total_qty=$2`,
+        [modelId, Math.max(0, Math.trunc(total))]
+      );
+      return this.modelStock(modelId);
+    },
+
+    async issueQuantity(input) {
+      if (input.qty <= 0) throw BadRequest("qty must be positive");
+      const stock = await this.modelStock(input.modelId);
+      if (input.qty > stock.inStock) {
+        throw BadRequest(`only ${stock.inStock} available on stock`);
+      }
+      await tx(async (client) => {
+        await appendJournal(client, {
+          modelId: input.modelId,
+          qty: input.qty,
+          action: "issued",
+          projectId: input.projectId,
+          actorId: input.actorId,
+          note: input.note ?? null,
+        });
+      });
+      return this.modelStock(input.modelId);
+    },
+
+    async returnQuantity(input) {
+      if (input.qty <= 0) throw BadRequest("qty must be positive");
+      await tx(async (client) => {
+        await appendJournal(client, {
+          modelId: input.modelId,
+          qty: input.qty,
+          action: "returned",
+          projectId: input.projectId,
+          actorId: input.actorId,
+          note: input.note ?? null,
+        });
+      });
+      return this.modelStock(input.modelId);
+    },
+
+    // ── CSV import ──
+    async importCatalog(rows) {
+      const result: Equipment.ImportResult = {
+        typesCreated: 0,
+        modelsCreated: 0,
+        unitsCreated: 0,
+        stockUpdated: 0,
+        skipped: 0,
+        errors: [],
+      };
+      const typeCache = new Map<string, { id: string; trackingMode: "serial" | "quantity" }>();
+      const modelCache = new Map<string, string>(); // `${typeId}::${name}` -> modelId
+
+      const findOrCreateType = async (name: string, mode: "serial" | "quantity") => {
+        const key = name.toLowerCase();
+        const cached = typeCache.get(key);
+        if (cached) return cached;
+        let row = await one<TypeRow>(db, `SELECT * FROM equipment.types WHERE lower(name)=lower($1)`, [name]);
+        if (!row) {
+          row = await one<TypeRow>(
+            db,
+            `INSERT INTO equipment.types (name, tracking_mode) VALUES ($1,$2) RETURNING *`,
+            [name, mode]
+          );
+          result.typesCreated++;
+        }
+        const val = { id: row!.id, trackingMode: row!.tracking_mode };
+        typeCache.set(key, val);
+        return val;
+      };
+
+      const findOrCreateModel = async (row: Equipment.ImportRow, typeId: string) => {
+        const key = `${typeId}::${row.model.toLowerCase()}`;
+        const cached = modelCache.get(key);
+        if (cached) return cached;
+        let m = await one<ModelRow>(
+          db,
+          `${MODEL_SELECT} WHERE m.type_id=$1 AND lower(m.name)=lower($2) LIMIT 1`,
+          [typeId, row.model]
+        );
+        if (!m) {
+          const attrs =
+            row.cableType || row.lengthM != null || row.connectors
+              ? { cableType: row.cableType ?? "", lengthM: row.lengthM ?? 0, connectors: row.connectors ?? "" }
+              : null;
+          await query(
+            db,
+            `INSERT INTO equipment.models
+               (type_id, name, manufacturer, unit_cost_eur, daily_price_eur, attrs)
+             VALUES ($1,$2,$3,$4,$5,$6)`,
+            [typeId, row.model, row.manufacturer ?? null, row.unitCostEUR ?? 0, row.dailyPriceEUR ?? 0, attrs ? JSON.stringify(attrs) : null]
+          );
+          m = await one<ModelRow>(
+            db,
+            `${MODEL_SELECT} WHERE m.type_id=$1 AND m.name=$2 ORDER BY m.created_at DESC LIMIT 1`,
+            [typeId, row.model]
+          );
+          result.modelsCreated++;
+        }
+        modelCache.set(key, m!.id);
+        return m!.id;
+      };
+
+      for (const [i, row] of rows.entries()) {
+        try {
+          if (!row.type || !row.model) {
+            result.errors.push(`row ${i + 1}: type and model are required`);
+            continue;
+          }
+          const type = await findOrCreateType(row.type, row.trackingMode);
+          const modelId = await findOrCreateModel(row, type.id);
+
+          if (type.trackingMode === "quantity") {
+            const qty = row.qty ?? 0;
+            if (qty > 0) {
+              const cur = await one<{ total_qty: number }>(
+                db,
+                `SELECT total_qty FROM equipment.model_stock WHERE model_id=$1`,
+                [modelId]
+              );
+              await query(
+                db,
+                `INSERT INTO equipment.model_stock (model_id, total_qty) VALUES ($1,$2)
+                 ON CONFLICT (model_id) DO UPDATE SET total_qty = equipment.model_stock.total_qty + $2`,
+                [modelId, Math.trunc(qty)]
+              );
+              result.stockUpdated++;
+              void cur;
+            } else {
+              result.skipped++;
+            }
+          } else {
+            if (!row.assetTag) {
+              result.skipped++;
+              continue;
+            }
+            const exists = await one<{ id: string }>(
+              db,
+              `SELECT id FROM equipment.units WHERE asset_tag=$1`,
+              [row.assetTag]
+            );
+            if (exists) {
+              result.skipped++;
+              continue;
+            }
+            await tx(async (client) => {
+              const u = await one<UnitRow>(
+                client,
+                `INSERT INTO equipment.units (model_id, asset_tag, serial) VALUES ($1,$2,$3) RETURNING *`,
+                [modelId, row.assetTag, row.serial ?? null]
+              );
+              await appendJournal(client, { unitId: u!.id, action: "created", toStatus: "in_stock" });
+            });
+            result.unitsCreated++;
+          }
+        } catch (err) {
+          result.errors.push(`row ${i + 1}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      return result;
     },
 
     // ── Operations ──

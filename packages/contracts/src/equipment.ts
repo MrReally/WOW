@@ -34,6 +34,8 @@ export interface EquipmentTypeDTO {
 export interface EquipmentModelDTO {
   id: ID;
   typeId: ID;
+  /** Inherited from the model's type — serial units vs counted quantity. */
+  trackingMode: "serial" | "quantity";
   name: string;
   manufacturer: string | null;
   /** Purchase/replacement cost in EUR — basis for payback. */
@@ -91,7 +93,12 @@ export type JournalAction =
 
 export interface JournalEntryDTO {
   id: ID;
-  unitId: ID;
+  /** Set for serial units; null for quantity (cable) moves which are model-level. */
+  unitId: ID | null;
+  /** Set for quantity (cable) moves; null for serial-unit entries. */
+  modelId: ID | null;
+  /** Quantity moved, for quantity (cable) entries. */
+  qty: number | null;
   action: JournalAction;
   fromStatus: UnitStatus | null;
   toStatus: UnitStatus | null;
@@ -128,6 +135,45 @@ export interface ReturnResult {
   problemId: ID | null;
 }
 
+// ── Quantity (cable) operations — no serials, counted per model ──────────────
+
+export interface QuantityMoveInput {
+  projectId: ID;
+  modelId: ID;
+  qty: number;
+  actorId: ID;
+  note?: string;
+}
+
+// ── CSV import ───────────────────────────────────────────────────────────────
+
+export interface ImportRow {
+  type: string;
+  trackingMode: "serial" | "quantity";
+  model: string;
+  manufacturer?: string | null;
+  unitCostEUR?: number;
+  dailyPriceEUR?: number;
+  /** Serial rows: one unit per row. */
+  assetTag?: string | null;
+  serial?: string | null;
+  /** Quantity rows: stock count to set/add for the model. */
+  qty?: number | null;
+  /** Cable attributes (quantity rows). */
+  cableType?: string | null;
+  lengthM?: number | null;
+  connectors?: string | null;
+}
+
+export interface ImportResult {
+  typesCreated: number;
+  modelsCreated: number;
+  unitsCreated: number;
+  stockUpdated: number;
+  skipped: number;
+  errors: string[];
+}
+
 // ── Public service contract ──────────────────────────────────────────────────
 
 export interface EquipmentService {
@@ -144,6 +190,14 @@ export interface EquipmentService {
   createUnit(input: { modelId: ID; assetTag: string; serial?: string | null }): Promise<EquipmentUnitDTO>;
   getUnitJournal(unitId: ID): Promise<JournalEntryDTO[]>;
   modelStock(modelId: ID): Promise<ModelStockDTO>;
+
+  // Quantity (cable) stock — models whose type is tracked by quantity.
+  setModelStockTotal(modelId: ID, total: number): Promise<ModelStockDTO>;
+  issueQuantity(input: QuantityMoveInput): Promise<ModelStockDTO>;
+  returnQuantity(input: QuantityMoveInput): Promise<ModelStockDTO>;
+
+  // Bulk catalog import (CSV parsed upstream into rows).
+  importCatalog(rows: ImportRow[]): Promise<ImportResult>;
 
   // Operations (Tech phone flow + warehouse)
   issueUnits(input: IssueUnitsInput): Promise<EquipmentUnitDTO[]>;

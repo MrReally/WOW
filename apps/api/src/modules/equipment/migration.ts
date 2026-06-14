@@ -34,10 +34,13 @@ CREATE INDEX IF NOT EXISTS units_model_idx ON equipment.units(model_id);
 CREATE INDEX IF NOT EXISTS units_status_idx ON equipment.units(status);
 CREATE INDEX IF NOT EXISTS units_project_idx ON equipment.units(current_project_id);
 
--- Append-only journal. Never updated or deleted.
+-- Append-only journal. Never updated or deleted. Entries are either per serial
+-- unit (unit_id set) or per model for quantity/cable moves (model_id + qty).
 CREATE TABLE IF NOT EXISTS equipment.journal (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  unit_id     uuid NOT NULL REFERENCES equipment.units(id),
+  unit_id     uuid REFERENCES equipment.units(id),
+  model_id    uuid REFERENCES equipment.models(id),
+  qty         integer,
   action      text NOT NULL,
   from_status text,
   to_status   text,
@@ -47,6 +50,19 @@ CREATE TABLE IF NOT EXISTS equipment.journal (
   at          timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS journal_unit_idx ON equipment.journal(unit_id, at);
+CREATE INDEX IF NOT EXISTS journal_model_idx ON equipment.journal(model_id, at);
+
+-- Migrate older databases where unit_id was NOT NULL and the new columns absent.
+ALTER TABLE equipment.journal ALTER COLUMN unit_id DROP NOT NULL;
+ALTER TABLE equipment.journal ADD COLUMN IF NOT EXISTS model_id uuid REFERENCES equipment.models(id);
+ALTER TABLE equipment.journal ADD COLUMN IF NOT EXISTS qty integer;
+
+-- Quantity stock totals for models tracked by quantity (cables). Counts on
+-- projects are derived from the journal; this row holds the owned total.
+CREATE TABLE IF NOT EXISTS equipment.model_stock (
+  model_id  uuid PRIMARY KEY REFERENCES equipment.models(id),
+  total_qty integer NOT NULL DEFAULT 0
+);
 
 -- Problems surfaced to Apex (некомплект, lost). Actions are never blocked.
 CREATE TABLE IF NOT EXISTS equipment.problems (

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { Projects } from "@sever/contracts";
 import { PROJECT_STATUSES } from "@sever/contracts";
-import { Card, Button, SectionTitle, StatusBadge, Select, Field, Input, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
+import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
 import { projectStatusLabel, projectStatusTone, dateRange, dateTime } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
 import {
@@ -17,7 +17,10 @@ import {
   useCreateReservation,
   useAddTiming,
   useAddAssignment,
+  useIssueResolvedUnits,
+  useAllUnits,
 } from "./hooks.ts";
+import { ResolveReservationSheet } from "./components/ResolveReservationSheet.tsx";
 
 export function ProjectDetailPage() {
   const { id = "" } = useParams();
@@ -32,16 +35,19 @@ export function ProjectDetailPage() {
   const assignments = useAssignments(id);
   const people = usePeople();
   const models = useEquipmentModels();
+  const allUnits = useAllUnits();
 
   const setStatus = useSetProjectStatus();
   const addReservation = useCreateReservation();
   const addTiming = useAddTiming();
   const addAssignment = useAddAssignment();
+  const issueResolved = useIssueResolvedUnits();
 
   const [resModel, setResModel] = useState("");
   const [resQty, setResQty] = useState("1");
   const [timingTitle, setTimingTitle] = useState("");
   const [assignUser, setAssignUser] = useState("");
+  const [resolving, setResolving] = useState<Projects.ReservationDTO | null>(null);
 
   if (project.isLoading) return <Loading />;
   if (project.error) return <ErrorState error={project.error} onRetry={project.refetch} />;
@@ -82,17 +88,42 @@ export function ProjectDetailPage() {
         <EmptyState title="Броней нет" />
       ) : (
         <div className="stack">
-          {(reservations.data ?? []).map((r) => (
-            <Card key={r.id}>
-              <div className="row row--between">
-                <p className="card__title">{modelName(r.modelId)} × {r.qty}</p>
-                <StatusBadge tone={r.resolvedUnitIds.length ? "ok" : "info"}>
-                  {r.resolvedUnitIds.length ? "распределено" : "по модели"}
-                </StatusBadge>
-              </div>
-              <p className="card__subtitle">{dateRange(r.startsAt, r.endsAt)}</p>
-            </Card>
-          ))}
+          {(reservations.data ?? []).map((r) => {
+            const resolved = r.resolvedUnitIds.length > 0;
+            const unitTag = (uid: string) => (allUnits.data ?? []).find((u) => u.id === uid)?.assetTag ?? uid.slice(0, 6);
+            return (
+              <Card key={r.id}>
+                <div className="row row--between">
+                  <p className="card__title">{modelName(r.modelId)} × {r.qty}</p>
+                  <StatusBadge tone={resolved ? "ok" : "info"}>
+                    {resolved ? "распределено" : "по модели"}
+                  </StatusBadge>
+                </div>
+                <p className="card__subtitle">{dateRange(r.startsAt, r.endsAt)}</p>
+                {resolved && (
+                  <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                    {r.resolvedUnitIds.map((uid) => <Chip key={uid} label={unitTag(uid)} tone="neutral" />)}
+                  </div>
+                )}
+                {canEdit && (
+                  <div className="row" style={{ marginTop: 10 }}>
+                    <Button variant="secondary" block onClick={() => setResolving(r)}>
+                      {resolved ? "Изменить состав" : "Распределить"}
+                    </Button>
+                    {resolved && (
+                      <Button
+                        block
+                        disabled={issueResolved.isPending}
+                        onClick={() => issueResolved.mutate({ projectId: p.id, unitIds: r.resolvedUnitIds })}
+                      >
+                        Выдать
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
         </div>
       )}
       {canEdit && (models.data ?? []).length > 0 && (
@@ -193,6 +224,12 @@ export function ProjectDetailPage() {
           </div>
         </Card>
       )}
+
+      <ResolveReservationSheet
+        reservation={resolving}
+        modelName={resolving ? modelName(resolving.modelId) : ""}
+        onClose={() => setResolving(null)}
+      />
     </div>
   );
 }

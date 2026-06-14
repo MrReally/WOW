@@ -17,6 +17,8 @@ import { useSession } from "../../app/session.ts";
 import { useModels, useUnits, useTypes, useProjectsForOps } from "./hooks.ts";
 import { AddModelSheet } from "./components/AddModelSheet.tsx";
 import { OpsSheet } from "./components/OpsSheet.tsx";
+import { ImportSheet } from "./components/ImportSheet.tsx";
+import { CableMoveSheet, CableRow } from "./components/CableMoveSheet.tsx";
 
 function PrepStat({ tone, value, label }: { tone: Tone; value: number; label: string }) {
   return (
@@ -89,6 +91,8 @@ export function WarehousePage() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [cableModel, setCableModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [statusFilter, setStatusFilter] = useState<Equipment.UnitStatus | "all">("all");
 
   if (models.isLoading || units.isLoading) return <Loading />;
@@ -96,6 +100,8 @@ export function WarehousePage() {
 
   const allUnits = units.data ?? [];
   const allModels = models.data ?? [];
+  const serialModels = allModels.filter((m) => m.trackingMode === "serial");
+  const cableModels = allModels.filter((m) => m.trackingMode === "quantity");
   const filtered = statusFilter === "all" ? allUnits : allUnits.filter((u) => u.status === statusFilter);
   const statuses: (Equipment.UnitStatus | "all")[] = ["all", "in_stock", "on_project", "in_repair", "reserved", "lost"];
 
@@ -105,18 +111,33 @@ export function WarehousePage() {
 
       <SectionHead label="Каталог" meta={canEdit ? undefined : `${allModels.length} МОДЕЛЕЙ`} />
       {canEdit && (
-        <div style={{ marginBottom: 10 }}>
-          <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Тип · модель · единица</Button>
+        <div className="row" style={{ marginBottom: 10 }}>
+          <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Модель / единица</Button>
+          <Button block variant="secondary" onClick={() => setImportOpen(true)}>Импорт CSV</Button>
         </div>
       )}
       {allModels.length === 0 ? (
-        <EmptyState title="Каталог пуст" hint={canEdit ? "Добавьте тип, модель и единицы" : undefined} />
+        <EmptyState title="Каталог пуст" hint={canEdit ? "Добавьте модели или импортируйте CSV" : undefined} />
       ) : (
-        <div className="card" style={{ padding: "2px 16px" }}>
-          {allModels.map((m, i) => (
-            <ModelRow key={m.id} model={m} units={allUnits} last={i === allModels.length - 1} />
-          ))}
-        </div>
+        <>
+          {serialModels.length > 0 && (
+            <div className="card" style={{ padding: "2px 16px" }}>
+              {serialModels.map((m, i) => (
+                <ModelRow key={m.id} model={m} units={allUnits} last={i === serialModels.length - 1} />
+              ))}
+            </div>
+          )}
+          {cableModels.length > 0 && (
+            <>
+              <SectionHead label="Кабели (по количеству)" meta={`${cableModels.length}`} />
+              <div className="card" style={{ padding: "2px 16px" }}>
+                {cableModels.map((m, i) => (
+                  <CableRow key={m.id} model={m} onMove={() => setCableModel(m)} last={i === cableModels.length - 1} />
+                ))}
+              </div>
+            </>
+          )}
+        </>
       )}
 
       <SectionHead label="Единицы" meta={`${filtered.length}`} />
@@ -158,9 +179,13 @@ export function WarehousePage() {
       )}
 
       {canEdit && (
-        <AddModelSheet open={addOpen} onClose={() => setAddOpen(false)} types={types.data ?? []} models={allModels} />
+        <>
+          <AddModelSheet open={addOpen} onClose={() => setAddOpen(false)} types={types.data ?? []} models={allModels} />
+          <ImportSheet open={importOpen} onClose={() => setImportOpen(false)} />
+        </>
       )}
       <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} projects={projects.data ?? []} models={allModels} />
+      <CableMoveSheet model={cableModel} projects={projects.data ?? []} onClose={() => setCableModel(null)} />
     </div>
   );
 }

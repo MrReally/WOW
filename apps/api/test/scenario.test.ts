@@ -112,4 +112,74 @@ describe("Tech pickup/return → некомплект", () => {
     const again = (await finance.service.listTransactions()).find((t) => t.id === tx.id)!;
     expect(again.amountEUR).toBe(85);
   });
+
+  it("tracks cables by quantity (no serials) through issue/return", async () => {
+    const { equipment, projects } = wiring;
+    const type = await equipment.service.createType({ name: `Cables-${Date.now()}`, trackingMode: "quantity" });
+    const model = await equipment.service.createModel({
+      typeId: type.id,
+      name: "DMX 10m",
+      unitCostEUR: 20,
+      dailyPriceEUR: 2,
+      attrs: { cableType: "DMX", lengthM: 10, connectors: "XLR5" },
+    });
+    expect(model.trackingMode).toBe("quantity");
+
+    await equipment.service.setModelStockTotal(model.id, 50);
+    let stock = await equipment.service.modelStock(model.id);
+    expect(stock).toMatchObject({ total: 50, inStock: 50, onProjects: 0 });
+
+    const client = await projects.service.createClient({ name: "Cable Client" });
+    const project = await projects.service.createProject({
+      name: "Cable Project",
+      clientId: client.id,
+      startsAt: new Date().toISOString(),
+      endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+
+    stock = await equipment.service.issueQuantity({ projectId: project.id, modelId: model.id, qty: 30, actorId: "00000000-0000-0000-0000-000000000000" });
+    expect(stock).toMatchObject({ inStock: 20, onProjects: 30 });
+
+    // Cannot over-issue beyond available stock.
+    await expect(
+      equipment.service.issueQuantity({ projectId: project.id, modelId: model.id, qty: 25, actorId: "00000000-0000-0000-0000-000000000000" })
+    ).rejects.toThrow();
+
+    stock = await equipment.service.returnQuantity({ projectId: project.id, modelId: model.id, qty: 30, actorId: "00000000-0000-0000-0000-000000000000" });
+    expect(stock).toMatchObject({ inStock: 50, onProjects: 0 });
+  });
+
+  it("imports a catalog from CSV rows (serial units + cable stock)", async () => {
+    const { equipment } = wiring;
+    const tag = `CSV-${Date.now()}`;
+    const result = await equipment.service.importCatalog([
+      { type: `ImpFix-${Date.now()}`, trackingMode: "serial", model: "Imp Fixture", unitCostEUR: 100, dailyPriceEUR: 5, assetTag: `${tag}-1` },
+      { type: `ImpFix-${Date.now()}`, trackingMode: "serial", model: "Imp Fixture", unitCostEUR: 100, dailyPriceEUR: 5, assetTag: `${tag}-2` },
+      { type: `ImpCab-${Date.now()}`, trackingMode: "quantity", model: "Imp Cable", qty: 25, cableType: "DMX", lengthM: 3, connectors: "XLR3" },
+    ]);
+    expect(result.unitsCreated).toBe(2);
+    expect(result.stockUpdated).toBe(1);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("raises a Problem on overlapping reservations without blocking", async () => {
+    const { projects, equipment } = wiring;
+    const type = await equipment.service.createType({ name: `Res-${Date.now()}`, trackingMode: "serial" });
+    const model = await equipment.service.createModel({ typeId: type.id, name: "Res Model", unitCostEUR: 1, dailyPriceEUR: 1 });
+    const client = await projects.service.createClient({ name: "Res Client" });
+    const from = new Date().toISOString();
+    const to = new Date(Date.now() + 3_600_000).toISOString();
+
+    const p1 = await projects.service.createProject({ name: "P1", clientId: client.id, startsAt: from, endsAt: to });
+    const p2 = await projects.service.createProject({ name: "P2", clientId: client.id, startsAt: from, endsAt: to });
+
+    await projects.service.createReservation({ projectId: p1.id, modelId: model.id, qty: 1, startsAt: from, endsAt: to });
+    const before = (await projects.service.listProblems()).length;
+    // Overlapping reservation for the same model — must succeed AND create a Problem.
+    const r2 = await projects.service.createReservation({ projectId: p2.id, modelId: model.id, qty: 1, startsAt: from, endsAt: to });
+    expect(r2.id).toBeTruthy();
+    const after = await projects.service.listProblems();
+    expect(after.length).toBe(before + 1);
+    expect(after.some((p) => p.kind === "reservation_conflict")).toBe(true);
+  });
 });

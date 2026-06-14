@@ -104,3 +104,45 @@ export function useAddAssignment() {
     onSuccess: () => invalidateProjects(qc),
   });
 }
+
+// In-stock serial units of a model — used to resolve a model-level reservation
+// into concrete units at warehouse prep.
+export function useInStockUnits(modelId: string) {
+  return useQuery({
+    enabled: !!modelId,
+    queryKey: ["equipment", "units", { modelId, status: "in_stock" }],
+    queryFn: () => api.get<Equipment.EquipmentUnitDTO[]>(`/api/equipment/units?modelId=${modelId}&status=in_stock`),
+  });
+}
+
+// All units, for mapping resolved unit ids → asset tags in the reservation view.
+export function useAllUnits() {
+  return useQuery({
+    queryKey: ["equipment", "units", {}],
+    queryFn: () => api.get<Equipment.EquipmentUnitDTO[]>("/api/equipment/units"),
+  });
+}
+
+export function useResolveReservation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, unitIds }: { id: string; unitIds: string[] }) =>
+      api.post(`/api/reservations/${id}/resolve`, { unitIds }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["equipment"] });
+    },
+  });
+}
+
+export function useIssueResolvedUnits() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { projectId: string; unitIds: string[] }) => api.post("/api/equipment/issue", input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["equipment"] });
+      qc.invalidateQueries({ queryKey: ["apex"] });
+    },
+  });
+}

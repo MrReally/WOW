@@ -100,3 +100,38 @@ export function useReturnUnits() {
     onSuccess: () => invalidateEquipment(qc),
   });
 }
+
+export function useImportCsv() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (csv: string) => api.post<Equipment.ImportResult>("/api/equipment/import", { csv }),
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
+export function useSetModelStock() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ modelId, total }: { modelId: string; total: number }) =>
+      api.put<Equipment.ModelStockDTO>(`/api/equipment/models/${modelId}/stock`, { total }),
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
+export function useIssueQty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { projectId: string; modelId: string; qty: number; note?: string }) =>
+      api.post<Equipment.ModelStockDTO>("/api/equipment/issue-qty", input),
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
+export function useReturnQty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { projectId: string; modelId: string; qty: number; note?: string }) =>
+      api.post<Equipment.ModelStockDTO>("/api/equipment/return-qty", input),
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}

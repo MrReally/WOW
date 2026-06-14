@@ -4,6 +4,7 @@ import type { Equipment } from "@sever/contracts";
 import { UNIT_STATUSES } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
 import { requireRole } from "../../core/auth.js";
+import { parseCatalogCsv } from "./csv.js";
 
 const createTypeSchema = z.object({
   name: z.string().min(1),
@@ -44,6 +45,17 @@ const statusSchema = z.object({
   note: z.string().optional(),
 });
 
+const stockSchema = z.object({ total: z.number().int().nonnegative() });
+
+const qtyMoveSchema = z.object({
+  projectId: z.string().uuid(),
+  modelId: z.string().uuid(),
+  qty: z.number().int().positive(),
+  note: z.string().optional(),
+});
+
+const importSchema = z.object({ csv: z.string().min(1) });
+
 export function registerEquipmentRoutes(
   app: FastifyInstance,
   ctx: RouteContext,
@@ -77,6 +89,33 @@ export function registerEquipmentRoutes(
     const auth = await ctx.auth(req);
     requireRole(auth, "admin", "warehouse");
     return service.createModel(createModelSchema.parse(req.body) as Equipment.CreateModelInput);
+  });
+  app.put<{ Params: { id: string } }>("/api/equipment/models/:id/stock", async (req) => {
+    const auth = await ctx.auth(req);
+    requireRole(auth, "admin", "warehouse");
+    return service.setModelStockTotal(req.params.id, stockSchema.parse(req.body).total);
+  });
+
+  // ── Catalog import (CSV) ──
+  app.post("/api/equipment/import", async (req) => {
+    const auth = await ctx.auth(req);
+    requireRole(auth, "admin", "warehouse");
+    const rows = parseCatalogCsv(importSchema.parse(req.body).csv);
+    return service.importCatalog(rows);
+  });
+
+  // ── Quantity (cable) moves ──
+  app.post("/api/equipment/issue-qty", async (req) => {
+    const auth = await ctx.auth(req);
+    requireRole(auth, "admin", "warehouse", "tech");
+    const body = qtyMoveSchema.parse(req.body);
+    return service.issueQuantity({ ...body, actorId: auth.userId });
+  });
+  app.post("/api/equipment/return-qty", async (req) => {
+    const auth = await ctx.auth(req);
+    requireRole(auth, "admin", "warehouse", "tech");
+    const body = qtyMoveSchema.parse(req.body);
+    return service.returnQuantity({ ...body, actorId: auth.userId });
   });
 
   // ── Units ──

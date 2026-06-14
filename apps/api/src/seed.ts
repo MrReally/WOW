@@ -47,13 +47,15 @@ async function seed() {
     unitCostEUR: 6000,
     dailyPriceEUR: 120,
   });
-  await equipment.service.createModel({
+  const dmxCable = await equipment.service.createModel({
     typeId: cables.id,
     name: "DMX 5m XLR3",
     unitCostEUR: 12,
     dailyPriceEUR: 1,
     attrs: { cableType: "DMX", lengthM: 5, connectors: "XLR3 male/female" },
   });
+  // Cables are counted, not serialized: set an owned total.
+  await equipment.service.setModelStockTotal(dmxCable.id, 60);
 
   const units = [];
   for (let i = 1; i <= 4; i++) {
@@ -82,6 +84,24 @@ async function seed() {
     qty: 4,
     startsAt: isoIn(1, 9),
     endsAt: isoIn(2, 23),
+  });
+  // Issue 12 DMX cables to the project (quantity move, no serials).
+  await equipment.service.issueQuantity({ projectId: project.id, modelId: dmxCable.id, qty: 12, actorId: tech.id });
+
+  // A second project whose reservation overlaps the same heads → conflict Problem.
+  const project2 = await projects.service.createProject({
+    name: "Презентация Beta — клуб",
+    clientId: client.id,
+    startsAt: isoIn(1, 18),
+    endsAt: isoIn(2, 4),
+  });
+  await projects.service.setStatus(project2.id, "confirmed");
+  await projects.service.createReservation({
+    projectId: project2.id,
+    modelId: movingHead.id,
+    qty: 2,
+    startsAt: isoIn(1, 18),
+    endsAt: isoIn(2, 4),
   });
 
   // Finance: FX + account + billing/prepayment
