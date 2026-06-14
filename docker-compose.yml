@@ -1,0 +1,27 @@
+# SEVER App — local infrastructure.
+#
+# Today the API + web run as a single deployable each, and Postgres holds every
+# module's schema in one instance. The schema-per-module boundary (equipment.*,
+# projects.*, finance.*, people.*) means any module can later be split into its
+# own service + database without rewriting callers — see README "Splitting a
+# module into a service".
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sever
+      POSTGRES_PASSWORD: sever
+      POSTGRES_DB: sever
+    ports:
+      - "5432:5432"
+    volumes:
+      - sever_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sever -d sever"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  sever_pgdata:

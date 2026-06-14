@@ -1,0 +1,23 @@
+{
+  "name": "@sever/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./equipment": "./src/equipment.ts",
+    "./projects": "./src/projects.ts",
+    "./finance": "./src/finance.ts",
+    "./people": "./src/people.ts",
+    "./common": "./src/common.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

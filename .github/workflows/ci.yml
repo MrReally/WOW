@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sever
+          POSTGRES_PASSWORD: sever
+          POSTGRES_DB: sever
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sever -d sever"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://sever:sever@localhost:5432/sever
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm -r lint
+
+      - name: Module boundaries
+        run: pnpm boundaries
+
+      - name: Migrate
+        run: pnpm api:migrate
+
+      - name: Test
+        run: pnpm --filter @sever/api test
+
+      - name: Build
+        run: pnpm build

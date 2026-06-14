@@ -1,0 +1,26 @@
+{
+  "name": "sever-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "SEVER App — equipment-centric ERP/operations system (microservice-ready modular monolith)",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "boundaries": "pnpm --filter @sever/api boundaries",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "api:dev": "pnpm --filter @sever/api dev",
+    "api:migrate": "pnpm --filter @sever/api migrate",
+    "api:seed": "pnpm --filter @sever/api seed",
+    "web:dev": "pnpm --filter @sever/web dev"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}
