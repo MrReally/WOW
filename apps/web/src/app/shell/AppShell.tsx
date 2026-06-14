@@ -1,66 +1,47 @@
-import type { ReactNode } from "react";
-import { NavLink, useLocation } from "react-router-dom";
-import type { Role } from "@sever/contracts";
+import { useState, type ReactNode } from "react";
+import { useLocation } from "react-router-dom";
+import { WSChip, Avatar } from "../../ui-kit/index.ts";
 import { useSession } from "../session.ts";
+import { currentWorkspace, workspacesFor, initialsOf } from "../workspaces.ts";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher.tsx";
 import "./shell.css";
-
-interface NavEntry {
-  to: string;
-  label: string;
-  icon: string;
-  roles: Role[];
-}
-
-const NAV: NavEntry[] = [
-  { to: "/apex", label: "Apex", icon: "🛰", roles: ["admin", "warehouse"] },
-  { to: "/warehouse", label: "Склад", icon: "📦", roles: ["admin", "warehouse", "tech"] },
-  { to: "/projects", label: "Проекты", icon: "🎬", roles: ["admin", "warehouse", "tech"] },
-  { to: "/finance", label: "Финансы", icon: "💶", roles: ["admin"] },
-  { to: "/settings", label: "Настройки", icon: "⚙️", roles: ["admin"] },
-];
-
-const TITLES: Record<string, string> = {
-  apex: "Apex — диспетчер",
-  warehouse: "Склад",
-  projects: "Проекты",
-  finance: "Финансы",
-  settings: "Настройки",
-};
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, role } = useSession();
   const location = useLocation();
-  const section = location.pathname.split("/")[1] ?? "apex";
-  const items = NAV.filter((n) => (role ? n.roles.includes(role) : false));
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+
+  const ws = currentWorkspace(location.pathname);
+  const count = workspacesFor(role).length;
 
   return (
     <div className="app-shell">
-      <header className="app-header">
-        <div>
-          <h1 className="app-header__title">{TITLES[section] ?? "SEVER"}</h1>
-          {user && (
-            <div className="app-header__sub">
-              {user.displayName} ·{" "}
-              {role === "admin" ? "Админ" : role === "warehouse" ? "Склад" : "Монтажник"}
+      <header className="ws-bar">
+        <button className="ws-bar__id" onClick={() => setSwitcherOpen(true)}>
+          <WSChip glyph={ws.glyph} tone={ws.tone} size={40} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-start" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <span className="ws-bar__name">{ws.name}</span>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2.5 4.5L6 8L9.5 4.5" stroke="var(--text3)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </div>
-          )}
-        </div>
+            <span className="ws-bar__sub">{count} workspaces</span>
+          </div>
+        </button>
+        {user && <Avatar initials={initialsOf(user.displayName)} size={36} />}
       </header>
 
       <main className="app-content">{children}</main>
 
-      <nav className="bottom-nav">
-        {items.map((n) => (
-          <NavLink
-            key={n.to}
-            to={n.to}
-            className={({ isActive }) => `nav-item ${isActive ? "nav-item--active" : ""}`}
-          >
-            <span className="nav-item__icon">{n.icon}</span>
-            {n.label}
-          </NavLink>
-        ))}
-      </nav>
+      {user && (
+        <WorkspaceSwitcher
+          open={switcherOpen}
+          onClose={() => setSwitcherOpen(false)}
+          user={user}
+          current={ws}
+        />
+      )}
     </div>
   );
 }

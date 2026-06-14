@@ -12,8 +12,10 @@ interface ThemeCtx {
 const Ctx = createContext<ThemeCtx>({ theme: "dark", toggle: () => {} });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  // v2 design leads with the warm light theme as primary; dark is the night
+  // operation variant. Telegram's reported colorScheme wins if present.
   const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem(KEY) as Theme) ?? platform.colorScheme ?? "dark"
+    () => (localStorage.getItem(KEY) as Theme) ?? platform.colorScheme ?? "light"
   );
 
   useEffect(() => {

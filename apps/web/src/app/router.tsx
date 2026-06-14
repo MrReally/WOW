@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useSession } from "./session.ts";
+import { workspacesFor } from "./workspaces.ts";
 import { ApexPage } from "../features/apex/ApexPage.tsx";
 import { WarehousePage } from "../features/warehouse/WarehousePage.tsx";
 import { UnitDetailPage } from "../features/warehouse/UnitDetailPage.tsx";
@@ -10,8 +11,8 @@ import { SettingsPage } from "../features/settings/SettingsPage.tsx";
 
 export function AppRouter() {
   const { role } = useSession();
-  // Techs land on their projects; everyone else on Apex.
-  const home = role === "tech" ? "/projects" : "/apex";
+  // Land on the user's first accessible workspace (Operations for everyone).
+  const home = workspacesFor(role)[0]?.route ?? "/apex";
 
   return (
     <Routes>

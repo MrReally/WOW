@@ -1,26 +1,93 @@
 /*
- * Design tokens. A full redesign should only need to touch THIS file and the
- * component CSS — never hooks or backend. Dark is the default; light overrides
- * the same variable names.
+ * SEVER design tokens — "Workspaces v2".
+ * Light = warm paper (primary, Apple-Maps/Things-3 calm).
+ * Dark  = graphite night operation (DJI Fly at night).
+ * A full redesign should only need to touch THIS file + components.css.
+ *
+ * Variable names from the v2 design are first-class; the older generic names
+ * (--surface, --border, --text-dim, --danger…) are kept as aliases so every
+ * component keeps working.
  */
+
 :root,
+:root[data-theme="light"] {
+  --bg: #f2efe8;        /* warm off-white room */
+  --bg-dim: #e7e2d9;
+  --card: #ffffff;      /* the rare raised card */
+  --s1: #faf8f3;        /* gently raised surface */
+  --s2: #ede9e1;        /* inset / track */
+  --s3: #e3ded4;        /* deeper inset */
+
+  --bdr: rgba(48, 40, 30, 0.08);
+  --bdr-md: rgba(48, 40, 30, 0.14);
+  --bdr-hi: rgba(48, 40, 30, 0.24);
+
+  --text: #221e18;
+  --text2: #6c655a;
+  --text3: #a49c8f;
+
+  --ok: #1e9e5a;
+  --alert: #cf4a39;
+  --warn: #b9760f;
+  --info: #3b6fe0;
+  --purple: #6d5df6;
+
+  --accent: var(--purple);
+  --accent-text: #ffffff;
+
+  --shadow-card: 0 1px 2px rgba(48, 40, 30, 0.04), 0 10px 30px -8px rgba(48, 40, 30, 0.1);
+  --shadow-sheet: 0 -1px 1px rgba(48, 40, 30, 0.04), 0 -24px 60px -20px rgba(48, 40, 30, 0.22);
+  --shadow-fab: 0 8px 24px -6px rgba(109, 93, 246, 0.45);
+
+  /* tint of a workspace chip background in light theme = color + ~9% */
+  --chip-bg-alpha: 16;
+  --chip-bdr-alpha: 30;
+}
+
 :root[data-theme="dark"] {
-  --bg: #0b0d10;
-  --bg-elev: #14171c;
-  --bg-elev-2: #1b1f26;
-  --surface: #14171c;
-  --border: #262b33;
-  --text: #f2f4f7;
-  --text-dim: #9aa3af;
-  --text-faint: #6b7280;
+  --bg: #15171b;
+  --bg-dim: #0e0f12;
+  --card: #1e2127;
+  --s1: #1b1e23;
+  --s2: #23272e;
+  --s3: #2b3038;
 
-  --accent: #3b82f6;
-  --accent-contrast: #ffffff;
+  --bdr: rgba(255, 255, 255, 0.07);
+  --bdr-md: rgba(255, 255, 255, 0.12);
+  --bdr-hi: rgba(255, 255, 255, 0.22);
 
-  --ok: #22c55e;
-  --warn: #f59e0b;
-  --danger: #ef4444;
-  --info: #38bdf8;
+  --text: #eceef1;
+  --text2: #99a1ab;
+  --text3: #5c646e;
+
+  --ok: #34c77b;
+  --alert: #f0604d;
+  --warn: #e0a33a;
+  --info: #5b8def;
+  --purple: #7c6ff8;
+
+  --accent: var(--purple);
+  --accent-text: #ffffff;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 40px -16px rgba(0, 0, 0, 0.6);
+  --shadow-sheet: 0 -1px 1px rgba(0, 0, 0, 0.4), 0 -28px 70px -20px rgba(0, 0, 0, 0.7);
+  --shadow-fab: 0 10px 30px -6px rgba(124, 111, 248, 0.5);
+
+  --chip-bg-alpha: 24;
+  --chip-bdr-alpha: 44;
+}
+
+/* ── Back-compat aliases (old generic token names) ─────────────────── */
+:root {
+  --surface: var(--card);
+  --bg-elev: var(--s1);
+  --bg-elev-2: var(--s2);
+  --border: var(--bdr);
+  --text-dim: var(--text2);
+  --text-faint: var(--text3);
+  --danger: var(--alert);
+  --accent-contrast: var(--accent-text);
+  --shadow: var(--shadow-card);
 
   --radius-sm: 8px;
   --radius: 14px;
@@ -30,38 +97,25 @@
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --space-5: 24px;
+  --space-5: 20px;
   --space-6: 32px;
 
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
-  --fs-xs: 13px;
-  --fs-sm: 15px;
-  --fs-md: 17px;
-  --fs-lg: 22px;
-  --fs-xl: 28px;
+  --font: "Barlow", -apple-system, system-ui, sans-serif;
+  --font-cond: "Barlow Condensed", "Barlow", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  --shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
-  --nav-h: 64px;
-}
+  --fs-xs: 11px;
+  --fs-sm: 13px;
+  --fs-md: 15px;
+  --fs-lg: 21px;
+  --fs-xl: 32px;
 
-:root[data-theme="light"] {
-  --bg: #f5f6f8;
-  --bg-elev: #ffffff;
-  --bg-elev-2: #ffffff;
-  --surface: #ffffff;
-  --border: #e4e7ec;
-  --text: #11151b;
-  --text-dim: #5b6470;
-  --text-faint: #8b94a1;
-
-  --accent: #2563eb;
-  --accent-contrast: #ffffff;
-
-  --shadow: 0 6px 24px rgba(16, 24, 40, 0.08);
+  --nav-h: 0px;
 }
 
 * {
   box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
 }
 
 html,
@@ -76,8 +130,6 @@ body {
   color: var(--text);
   font-family: var(--font);
   font-size: var(--fs-md);
-  -webkit-font-smoothing: antialiased;
-  /* respect device notches (Telegram + PWA) */
   padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
 }
 

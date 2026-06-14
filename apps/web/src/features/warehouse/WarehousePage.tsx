@@ -1,30 +1,80 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Equipment } from "@sever/contracts";
-import { Card, Button, SectionTitle, StatusBadge, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
-import { eur, unitStatusLabel, unitStatusTone } from "../../lib/labels.ts";
+import {
+  Button,
+  SectionHead,
+  Chip,
+  Dot,
+  ProgressRing,
+  Loading,
+  ErrorState,
+  EmptyState,
+  type Tone,
+} from "../../ui-kit/index.ts";
+import { eur, unitStatusLabel } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
 import { useModels, useUnits, useTypes, useProjectsForOps } from "./hooks.ts";
 import { AddModelSheet } from "./components/AddModelSheet.tsx";
 import { OpsSheet } from "./components/OpsSheet.tsx";
 
-function ModelCard({ model, units }: { model: Equipment.EquipmentModelDTO; units: Equipment.EquipmentUnitDTO[] }) {
+function PrepStat({ tone, value, label }: { tone: Tone; value: number; label: string }) {
+  return (
+    <div className="row" style={{ gap: 11 }}>
+      <Dot tone={tone} size={9} />
+      <span className="t-cond" style={{ fontSize: 21, fontWeight: 800, color: "var(--text)", minWidth: 30 }}>{value}</span>
+      <span className="t-mono" style={{ fontSize: 12.5, color: "var(--text2)" }}>{label}</span>
+    </div>
+  );
+}
+
+function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps: () => void }) {
+  const total = units.length;
+  const inStock = units.filter((u) => u.status === "in_stock").length;
+  const onProject = units.filter((u) => u.status === "on_project").length;
+  const inRepair = units.filter((u) => u.status === "in_repair").length;
+  const pct = total ? (inStock / total) * 100 : 0;
+
+  return (
+    <div style={{ padding: "6px 4px 4px" }}>
+      <div className="row" style={{ gap: 8 }}>
+        <Dot tone="warn" glow />
+        <span className="t-label">СКЛАД · ГОТОВНОСТЬ</span>
+      </div>
+      <div className="t-cond" style={{ fontSize: 32, fontWeight: 800, color: "var(--text)", marginTop: 8 }}>Warehouse</div>
+
+      <div className="row" style={{ gap: 20, marginTop: 18, alignItems: "center" }}>
+        <ProgressRing pct={pct} tone="warn" size={128} stroke={11}>
+          <span className="t-cond" style={{ fontSize: 30, fontWeight: 800, color: "var(--text)", lineHeight: 0.9 }}>{inStock}</span>
+          <span className="t-mono" style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>of {total}</span>
+        </ProgressRing>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
+          <PrepStat tone="ok" value={inStock} label="на складе" />
+          <PrepStat tone="warn" value={onProject} label="на проектах" />
+          <PrepStat tone="alert" value={inRepair} label="в ремонте" />
+        </div>
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <Button block variant="primary" onClick={onOps}>Выдача / Возврат</Button>
+      </div>
+    </div>
+  );
+}
+
+function ModelRow({ model, units, last }: { model: Equipment.EquipmentModelDTO; units: Equipment.EquipmentUnitDTO[]; last?: boolean }) {
   const mine = units.filter((u) => u.modelId === model.id);
   const inStock = mine.filter((u) => u.status === "in_stock").length;
   const onProject = mine.filter((u) => u.status === "on_project").length;
   return (
-    <Card>
-      <div className="row row--between">
-        <div>
-          <p className="card__title">{model.name}</p>
-          <p className="card__subtitle">{model.manufacturer ?? "—"} · {eur(model.dailyPriceEUR)}/день</p>
-        </div>
-        <div className="row">
-          <StatusBadge tone="ok">{inStock} своб.</StatusBadge>
-          {onProject > 0 && <StatusBadge tone="warn">{onProject} в работе</StatusBadge>}
-        </div>
+    <div className="lrow" style={{ borderBottom: last ? "none" : undefined }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="lrow__title">{model.name}</div>
+        <div className="lrow__detail">{model.manufacturer ?? "—"} · {eur(model.dailyPriceEUR)}/день</div>
       </div>
-    </Card>
+      <span className="t-mono" style={{ fontSize: 12, color: "var(--text2)" }}>×{mine.length}</span>
+      {onProject > 0 ? <Chip label={`${onProject} в работе`} tone="warn" /> : <Chip label={`${inStock} своб.`} tone="ok" />}
+    </div>
   );
 }
 
@@ -45,65 +95,72 @@ export function WarehousePage() {
   if (models.error) return <ErrorState error={models.error} onRetry={models.refetch} />;
 
   const allUnits = units.data ?? [];
+  const allModels = models.data ?? [];
   const filtered = statusFilter === "all" ? allUnits : allUnits.filter((u) => u.status === statusFilter);
   const statuses: (Equipment.UnitStatus | "all")[] = ["all", "in_stock", "on_project", "in_repair", "reserved", "lost"];
 
   return (
-    <div className="stack">
-      <div className="row">
-        <Button block onClick={() => setOpsOpen(true)}>Выдача / Возврат</Button>
-        {canEdit && <Button variant="secondary" onClick={() => setAddOpen(true)}>+ Каталог</Button>}
-      </div>
+    <div>
+      <PrepHero units={allUnits} onOps={() => setOpsOpen(true)} />
 
-      <SectionTitle>Каталог</SectionTitle>
-      {(models.data ?? []).length === 0 ? (
+      <SectionHead label="Каталог" meta={canEdit ? undefined : `${allModels.length} МОДЕЛЕЙ`} />
+      {canEdit && (
+        <div style={{ marginBottom: 10 }}>
+          <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Тип · модель · единица</Button>
+        </div>
+      )}
+      {allModels.length === 0 ? (
         <EmptyState title="Каталог пуст" hint={canEdit ? "Добавьте тип, модель и единицы" : undefined} />
       ) : (
-        <div className="stack">
-          {(models.data ?? []).map((m) => (
-            <ModelCard key={m.id} model={m} units={allUnits} />
+        <div className="card" style={{ padding: "2px 16px" }}>
+          {allModels.map((m, i) => (
+            <ModelRow key={m.id} model={m} units={allUnits} last={i === allModels.length - 1} />
           ))}
         </div>
       )}
 
-      <SectionTitle>Единицы</SectionTitle>
-      <div className="row" style={{ flexWrap: "wrap", gap: "var(--space-2)" }}>
+      <SectionHead label="Единицы" meta={`${filtered.length}`} />
+      <div className="row" style={{ flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
         {statuses.map((s) => (
-          <Button key={s} variant={statusFilter === s ? "primary" : "ghost"} onClick={() => setStatusFilter(s)}>
+          <button
+            key={s}
+            className={`chip ${statusFilter === s ? "chip--accent chip--solid" : "chip--neutral"}`}
+            style={{ cursor: "pointer", border: "none" }}
+            onClick={() => setStatusFilter(s)}
+          >
             {s === "all" ? "Все" : unitStatusLabel[s]}
-          </Button>
+          </button>
         ))}
       </div>
       {filtered.length === 0 ? (
         <EmptyState title="Нет единиц" />
       ) : (
-        <div className="stack">
-          {filtered.map((u) => {
-            const model = (models.data ?? []).find((m) => m.id === u.modelId);
+        <div className="card" style={{ padding: "2px 16px" }}>
+          {filtered.map((u, i) => {
+            const model = allModels.find((m) => m.id === u.modelId);
+            const tone: Tone = u.status === "in_stock" ? "ok" : u.status === "on_project" ? "warn" : u.status === "lost" || u.status === "in_repair" ? "alert" : "info";
             return (
-              <Card key={u.id} onClick={() => navigate(`/warehouse/units/${u.id}`)}>
-                <div className="row row--between">
-                  <div>
-                    <p className="card__title">{u.assetTag}</p>
-                    <p className="card__subtitle">{model?.name ?? u.modelId}</p>
-                  </div>
-                  <StatusBadge tone={unitStatusTone[u.status]}>{unitStatusLabel[u.status]}</StatusBadge>
+              <div
+                key={u.id}
+                className="lrow card--tappable"
+                style={{ borderBottom: i === filtered.length - 1 ? "none" : undefined }}
+                onClick={() => navigate(`/warehouse/units/${u.id}`)}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="lrow__title">{u.assetTag}</div>
+                  <div className="lrow__detail">{model?.name ?? u.modelId}</div>
                 </div>
-              </Card>
+                <Chip label={unitStatusLabel[u.status]} tone={tone} />
+              </div>
             );
           })}
         </div>
       )}
 
       {canEdit && (
-        <AddModelSheet open={addOpen} onClose={() => setAddOpen(false)} types={types.data ?? []} models={models.data ?? []} />
+        <AddModelSheet open={addOpen} onClose={() => setAddOpen(false)} types={types.data ?? []} models={allModels} />
       )}
-      <OpsSheet
-        open={opsOpen}
-        onClose={() => setOpsOpen(false)}
-        projects={projects.data ?? []}
-        models={models.data ?? []}
-      />
+      <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} projects={projects.data ?? []} models={allModels} />
     </div>
   );
 }
