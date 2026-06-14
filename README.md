@@ -33,6 +33,15 @@ apps/web             frontend (ui-kit / features / app)
 
 Prerequisites: Node 20+, pnpm 10+, and PostgreSQL (local or Docker).
 
+**One command** (installs deps, brings up Postgres, migrates, seeds, runs both apps):
+
+```bash
+pnpm install && pnpm start
+# API → http://localhost:4000 · Web → http://localhost:5173
+```
+
+Then open http://localhost:5173. Or do it step by step:
+
 ```bash
 pnpm install
 cp .env.example .env

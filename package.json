@@ -10,6 +10,8 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "boundaries": "pnpm --filter @sever/api boundaries",
+    "bootstrap": "bash scripts/dev-setup.sh && pnpm api:seed",
+    "start": "pnpm bootstrap && pnpm dev",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
     "api:dev": "pnpm --filter @sever/api dev",
