@@ -1,10 +1,11 @@
-# SEVER App — local infrastructure.
+# SEVER App — full stack in one command.
 #
-# Today the API + web run as a single deployable each, and Postgres holds every
-# module's schema in one instance. The schema-per-module boundary (equipment.*,
-# projects.*, finance.*, people.*) means any module can later be split into its
-# own service + database without rewriting callers — see README "Splitting a
-# module into a service".
+#   docker compose up --build      → whole app at http://localhost:8080
+#   docker compose up -d db        → just Postgres (for `pnpm dev`)
+#
+# Schema-per-module keeps each module's tables isolated inside one Postgres now;
+# any module can later move to its own service + database without changing
+# callers (see README "Splitting a module into a service").
 services:
   db:
     image: postgres:16-alpine
@@ -22,6 +23,24 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://sever:sever@db:5432/sever
+      PORT: "4000"
+      # First boot loads demo data into the empty DB. Reset/clear from Settings.
+      SEED_ON_START: "true"
+      # Browser login bypass until a Telegram bot token is configured.
+      AUTH_DEV_BYPASS: "true"
+      # TELEGRAM_BOT_TOKEN: "<from BotFather>"
+      # AUTH_DEV_BYPASS: "false"
+    ports:
+      - "8080:4000"
 
 volumes:
   sever_pgdata:

@@ -35,3 +35,12 @@ export function useSetFxRate() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["finance"] }),
   });
 }
+
+export function useResetData() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (mode: "demo" | "empty") => api.post("/api/admin/reset", { mode }),
+    meta: { successMessage: "База пересоздана" },
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}

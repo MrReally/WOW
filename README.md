@@ -29,48 +29,44 @@ apps/web             frontend (ui-kit / features / app)
 
 ---
 
-## Quick start
+## Run it
 
-Prerequisites: Node 20+, pnpm 10+, and PostgreSQL (local or Docker).
+The app is **one URL**: the API serves the web bundle and the API from the same
+origin (no CORS, no way to run the frontend without a backend).
 
-**One command** (installs deps, brings up Postgres, migrates, seeds, runs both apps):
+### Option 1 — Docker (easiest, one command)
+
+Only Docker is required. Builds everything, runs Postgres + the app, loads demo
+data on first boot:
+
+```bash
+docker compose up --build
+# open http://localhost:8080
+```
+
+Stop with `Ctrl+C`; wipe everything with `docker compose down -v`.
+
+### Option 2 — Dev mode (hot reload)
+
+Prerequisites: Node 20+, pnpm 10+, Docker (for Postgres only).
 
 ```bash
 pnpm install && pnpm start
-# API → http://localhost:4000 · Web → http://localhost:5173
+# open http://localhost:5173   (Vite proxies /api to the API automatically)
 ```
 
-Then open http://localhost:5173. Or do it step by step:
+`pnpm start` brings up Postgres, migrates, loads demo data, and runs the API
+(`:4000`) + web (`:5173`) with hot reload.
 
-```bash
-pnpm install
-cp .env.example .env
+### Logging in
 
-# Start Postgres (Docker) — or point DATABASE_URL at any Postgres 16.
-pnpm db:up
+In a browser (no Telegram) the API runs with `AUTH_DEV_BYPASS=true` and you're
+the **admin**. Switch the simulated user (e.g. `tech-001`, `ware-001`) in
+**Settings → Разработка** to see the warehouse / tech experience. Reset or clear
+all data anytime in **Settings → Данные** (demo / empty).
 
-# Create schemas + demo data
-pnpm api:migrate
-pnpm api:seed
-
-# Run both apps
-pnpm api:dev      # http://localhost:4000
-pnpm web:dev      # http://localhost:5173
-```
-
-Open http://localhost:5173. In a browser (no Telegram), the API runs with
-`AUTH_DEV_BYPASS=true` and you're the **admin** (`dev-admin`). Switch the
-simulated user (e.g. `tech-001`) in **Settings → Разработка** to see the
-warehouse/tech experience.
-
-### Without Docker
-
-A local Postgres works too — set `DATABASE_URL` and run the migrate/seed steps:
-
-```bash
-export DATABASE_URL=postgres://sever:sever@localhost:5432/sever
-pnpm api:migrate && pnpm api:seed
-```
+A local Postgres also works without Docker — set `DATABASE_URL` and run
+`pnpm api:migrate && pnpm api:seed`.
 
 ---
 

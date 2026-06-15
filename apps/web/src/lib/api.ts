@@ -1,6 +1,10 @@
 import { platform } from "../app/platform/telegram.ts";
 
-const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+// Same-origin by default: in production the API serves this bundle, and in dev
+// Vite proxies /api → the API. An explicit VITE_API_URL still overrides (used by
+// tests and split deployments). This removes the "frontend can't reach backend"
+// class of failure entirely.
+const BASE = import.meta.env.VITE_API_URL ?? "";
 
 // Dev identity switcher. In a real Telegram session the auth header is the
 // verified initData; in the browser we send x-dev-user so the API's dev bypass

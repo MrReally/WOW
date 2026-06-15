@@ -28,5 +28,11 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    // Same-origin in dev: the app calls /api and Vite forwards to the API, so
+    // there's no CORS and no chance of running the frontend without a backend.
+    proxy: {
+      "/api": { target: "http://localhost:4000", changeOrigin: true },
+      "/health": { target: "http://localhost:4000", changeOrigin: true },
+    },
   },
 });

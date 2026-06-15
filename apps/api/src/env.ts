@@ -14,6 +14,10 @@ export const env = {
     devBypass: bool(process.env.AUTH_DEV_BYPASS, true),
     telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
   },
+  /** Optional explicit path to the built web bundle (apps/web/dist). */
+  webDist: process.env.WEB_DIST ?? "",
+  /** On boot, load demo data if the database is empty (first container run). */
+  seedOnStart: bool(process.env.SEED_ON_START, false),
   get isProd() {
     return this.nodeEnv === "production";
   },

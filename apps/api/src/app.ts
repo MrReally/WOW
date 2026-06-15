@@ -1,11 +1,31 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
+import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
 import type { AuthContext } from "@sever/contracts";
 import { AppError } from "./core/errors.js";
 import { resolveAuth } from "./core/auth.js";
 import { createModules, registerAllRoutes, type Wiring } from "./registry.js";
+import { registerAdminRoutes } from "./admin.js";
 import { env } from "./env.js";
+
+// Where the built web bundle lives (apps/web/dist). Works from src (tsx) and
+// dist (compiled), and honors WEB_DIST override for Docker.
+function resolveWebDist(): string | null {
+  if (env.webDist && existsSync(env.webDist)) return env.webDist;
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const candidate of [
+    join(here, "../../web/dist"),
+    join(here, "../../../web/dist"),
+    join(here, "../web/dist"),
+  ]) {
+    if (existsSync(join(candidate, "index.html"))) return candidate;
+  }
+  return null;
+}
 
 export interface BuiltApp {
   app: FastifyInstance;
@@ -37,6 +57,24 @@ export async function buildApp(): Promise<BuiltApp> {
   app.get("/health", async () => ({ ok: true, ts: new Date().toISOString() }));
 
   registerAllRoutes(app, wiring, ctx);
+  registerAdminRoutes(app, ctx, wiring);
+
+  // Serve the built web bundle from the same origin (single URL, no CORS, no
+  // "ran only the frontend" failure mode). Optional: only if a build exists.
+  const webDist = resolveWebDist();
+  if (webDist) {
+    await app.register(fastifyStatic, { root: webDist, wildcard: false });
+    // SPA fallback: any non-/api, non-/health GET returns index.html.
+    app.setNotFoundHandler((req, reply) => {
+      if (req.method === "GET" && !req.url.startsWith("/api") && !req.url.startsWith("/health")) {
+        return reply.sendFile("index.html");
+      }
+      return reply.status(404).send({ error: { code: "not_found", message: "not found" } });
+    });
+    app.log.info(`[web] serving bundle from ${webDist}`);
+  } else {
+    app.log.info("[web] no built bundle found — API only (run the web dev server separately)");
+  }
 
   // Uniform error envelope.
   app.setErrorHandler((err, _req, reply) => {

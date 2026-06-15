@@ -6,7 +6,7 @@ import { roleLabel, dateTime } from "../../lib/labels.ts";
 import { useTheme } from "../../app/theme.tsx";
 import { platform } from "../../app/platform/telegram.ts";
 import { getDevUser, setDevUser } from "../../lib/api.ts";
-import { usePeople, useFxRates, useCreateUser, useUpdateUser, useSetFxRate } from "./hooks.ts";
+import { usePeople, useFxRates, useCreateUser, useUpdateUser, useSetFxRate, useResetData } from "./hooks.ts";
 
 export function SettingsPage() {
   const { theme, toggle } = useTheme();
@@ -15,6 +15,7 @@ export function SettingsPage() {
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const setFx = useSetFxRate();
+  const resetData = useResetData();
 
   const [newTg, setNewTg] = useState("");
   const [newName, setNewName] = useState("");
@@ -112,6 +113,39 @@ export function SettingsPage() {
         >
           Добавить
         </Button>
+      </Card>
+
+      <SectionTitle>Данные</SectionTitle>
+      <Card>
+        <p className="card__subtitle" style={{ marginBottom: 12, color: "var(--text2)" }}>
+          Пересоздать базу демо-данными для знакомства, или очистить всё, чтобы начать заполнять свои.
+        </p>
+        <div className="row">
+          <Button
+            block
+            variant="secondary"
+            disabled={resetData.isPending}
+            onClick={() => {
+              if (confirm("Перезаписать ВСЕ данные демо-набором? Текущие данные будут удалены.")) {
+                resetData.mutate("demo");
+              }
+            }}
+          >
+            Загрузить демо
+          </Button>
+          <Button
+            block
+            variant="danger"
+            disabled={resetData.isPending}
+            onClick={() => {
+              if (confirm("Удалить ВСЕ данные и начать с чистого листа? Это необратимо.")) {
+                resetData.mutate("empty");
+              }
+            }}
+          >
+            Очистить всё
+          </Button>
+        </div>
       </Card>
     </div>
   );
