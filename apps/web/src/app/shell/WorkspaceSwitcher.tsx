@@ -1,7 +1,9 @@
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import type { People } from "@sever/contracts";
-import { Sheet, WSChip, Avatar, Chip, SectionHead } from "../../ui-kit/index.ts";
-import { roleLabel } from "../../lib/labels.ts";
+import { Sheet, WSChip, Avatar, Chip, SectionHead, Button } from "../../ui-kit/index.ts";
+import { api, clearToken } from "../../lib/api.ts";
+import { useSession } from "../session.ts";
 import { workspacesFor, initialsOf, type Workspace } from "../workspaces.ts";
 
 interface Props {
@@ -13,11 +15,24 @@ interface Props {
 
 export function WorkspaceSwitcher({ open, onClose, user, current }: Props) {
   const navigate = useNavigate();
-  const all = workspacesFor(user.role);
+  const qc = useQueryClient();
+  const { can } = useSession();
+  const all = workspacesFor(can);
   const others = all.filter((w) => w.id !== current.id);
 
   const go = (w: Workspace) => {
     navigate(w.route);
+    onClose();
+  };
+
+  const logout = async () => {
+    try {
+      await api.post("/api/auth/logout");
+    } catch {
+      /* ignore */
+    }
+    clearToken();
+    qc.invalidateQueries();
     onClose();
   };
 
@@ -29,9 +44,10 @@ export function WorkspaceSwitcher({ open, onClose, user, current }: Props) {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>{user.displayName}</div>
           <div className="t-label" style={{ marginTop: 2, letterSpacing: "0.06em" }}>
-            {roleLabel[user.role]} · {all.length} workspaces
+            {user.roleName} · {all.length} workspaces
           </div>
         </div>
+        <Button variant="ghost" onClick={logout}>Выйти</Button>
       </div>
 
       <SectionHead label="Текущий workspace" />

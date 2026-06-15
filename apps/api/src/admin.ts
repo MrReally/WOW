@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { RouteContext } from "./core/module.js";
-import { requireRole } from "./core/auth.js";
+import { requirePermission } from "./core/auth.js";
 import { resetSchemas } from "./core/reset.js";
 import { runMigrations } from "./core/migrate.js";
 import { seedDemo } from "./seedData.js";
@@ -14,7 +14,7 @@ const resetSchema = z.object({ mode: z.enum(["demo", "empty"]) });
 export function registerAdminRoutes(app: FastifyInstance, ctx: RouteContext, wiring: Wiring): void {
   app.post("/api/admin/reset", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin");
+    requirePermission(auth, "data.reset");
     const { mode } = resetSchema.parse(req.body);
 
     await resetSchemas();

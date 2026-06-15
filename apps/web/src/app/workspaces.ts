@@ -1,31 +1,31 @@
-import type { Role } from "@sever/contracts";
+import type { Permission } from "@sever/contracts";
 import type { Glyph, Tone } from "../ui-kit/index.ts";
 
-// The v2 design reframes navigation around "workspaces": role-gated areas the
-// user switches between, instead of fixed bottom-nav tabs. Each maps to an
-// existing feature route — purely presentation/navigation, no data changes.
+// Navigation is organized into role-gated "workspaces". Visibility is driven by
+// permissions, not fixed roles — so custom roles get exactly the areas they can use.
 
 export interface Workspace {
   id: string;
-  name: string; // product-style English name (as in the design)
+  name: string;
   glyph: Glyph;
   tone: Tone;
   route: string;
-  roles: Role[];
-  sub: string; // localized one-liner
+  requires: Permission[]; // any-of
+  sub: string;
 }
 
 export const WORKSPACES: Workspace[] = [
-  { id: "ops", name: "Operations", glyph: "radar", tone: "info", route: "/apex", roles: ["admin", "warehouse", "tech"], sub: "Текущие и предстоящие прокаты" },
-  { id: "wh", name: "Warehouse", glyph: "box", tone: "warn", route: "/warehouse", roles: ["admin", "warehouse", "tech"], sub: "Каталог · выдача · возврат" },
-  { id: "plan", name: "Planning", glyph: "rows", tone: "purple", route: "/projects", roles: ["admin", "warehouse", "tech"], sub: "Проекты · брони · команда" },
-  { id: "fin", name: "Finance", glyph: "coin", tone: "ok", route: "/finance", roles: ["admin"], sub: "Счета · долги · окупаемость" },
-  { id: "adm", name: "Admin", glyph: "shield", tone: "alert", route: "/settings", roles: ["admin"], sub: "Люди · роли · курсы валют" },
+  { id: "ops", name: "Operations", glyph: "radar", tone: "info", route: "/apex", requires: ["operations.view"], sub: "Текущие и предстоящие прокаты" },
+  { id: "wh", name: "Warehouse", glyph: "box", tone: "warn", route: "/warehouse", requires: ["warehouse.view"], sub: "Каталог · выдача · возврат" },
+  { id: "plan", name: "Planning", glyph: "rows", tone: "purple", route: "/projects", requires: ["projects.view"], sub: "Проекты · брони · команда" },
+  { id: "fin", name: "Finance", glyph: "coin", tone: "ok", route: "/finance", requires: ["finance.view"], sub: "Счета · долги · окупаемость" },
+  { id: "adm", name: "Admin", glyph: "shield", tone: "alert", route: "/settings", requires: ["people.view", "people.manage", "roles.manage"], sub: "Люди · роли · права · курсы" },
 ];
 
-export function workspacesFor(role: Role | null): Workspace[] {
-  if (!role) return [];
-  return WORKSPACES.filter((w) => w.roles.includes(role));
+type Can = (...perms: Permission[]) => boolean;
+
+export function workspacesFor(can: Can): Workspace[] {
+  return WORKSPACES.filter((w) => can(...w.requires));
 }
 
 export function currentWorkspace(pathname: string): Workspace {

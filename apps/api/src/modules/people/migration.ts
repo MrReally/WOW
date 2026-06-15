@@ -1,13 +1,49 @@
 export const peopleMigration = `
 CREATE SCHEMA IF NOT EXISTS people;
 
-CREATE TABLE IF NOT EXISTS people.users (
-  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  telegram_id     text NOT NULL UNIQUE,
-  display_name    text NOT NULL,
-  role            text NOT NULL CHECK (role IN ('admin','warehouse','tech')),
-  hourly_rate_eur numeric(12,2),
-  active          boolean NOT NULL DEFAULT true,
-  created_at      timestamptz NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS people.roles (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        text NOT NULL UNIQUE,
+  permissions text[] NOT NULL DEFAULT '{}',
+  is_system   boolean NOT NULL DEFAULT false,
+  is_owner    boolean NOT NULL DEFAULT false,
+  created_at  timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS people.users (
+  id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email                text UNIQUE,
+  telegram_id          text UNIQUE,
+  display_name         text NOT NULL,
+  role_id              uuid REFERENCES people.roles(id),
+  password_hash        text,
+  must_change_password boolean NOT NULL DEFAULT false,
+  hourly_rate_eur      numeric(12,2),
+  active               boolean NOT NULL DEFAULT true,
+  created_at           timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS people.sessions (
+  token      text PRIMARY KEY,
+  user_id    uuid NOT NULL REFERENCES people.users(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_user_idx ON people.sessions(user_id);
+
+-- Migrate a legacy users table (pre-roles) in place, if present.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='people' AND table_name='users' AND column_name='role'
+  ) THEN
+    ALTER TABLE people.users ADD COLUMN IF NOT EXISTS email text;
+    ALTER TABLE people.users ADD COLUMN IF NOT EXISTS role_id uuid;
+    ALTER TABLE people.users ADD COLUMN IF NOT EXISTS password_hash text;
+    ALTER TABLE people.users ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
+    BEGIN ALTER TABLE people.users ALTER COLUMN telegram_id DROP NOT NULL; EXCEPTION WHEN others THEN END;
+    BEGIN ALTER TABLE people.users ALTER COLUMN role DROP NOT NULL; EXCEPTION WHEN others THEN END;
+  END IF;
+END $$;
 `;

@@ -15,12 +15,69 @@ export type Role = "admin" | "warehouse" | "tech";
 
 export const ROLES: Role[] = ["admin", "warehouse", "tech"];
 
-/** Authenticated caller, resolved from Telegram initData (or dev bypass). */
+// ── Permissions (granular, Syrve-style) ──────────────────────────────────────
+// Custom roles are sets of these keys. The Owner role implicitly has all.
+
+export type Permission =
+  | "operations.view"
+  | "warehouse.view"
+  | "warehouse.catalog.manage"
+  | "warehouse.issue"
+  | "warehouse.unit.status"
+  | "warehouse.import"
+  | "projects.view"
+  | "projects.manage"
+  | "projects.reservation.manage"
+  | "projects.timing.manage"
+  | "projects.assignment.manage"
+  | "clients.manage"
+  | "finance.view"
+  | "finance.manage"
+  | "people.view"
+  | "people.manage"
+  | "roles.manage"
+  | "data.reset";
+
+export interface PermissionMeta {
+  key: Permission;
+  group: string;
+  label: string;
+}
+
+/** Catalog used to render the role editor, grouped by area. */
+export const PERMISSIONS: PermissionMeta[] = [
+  { key: "operations.view", group: "Operations", label: "Видеть Operations (диспетчер)" },
+  { key: "warehouse.view", group: "Склад", label: "Видеть склад и каталог" },
+  { key: "warehouse.catalog.manage", group: "Склад", label: "Управлять каталогом (типы/модели/единицы)" },
+  { key: "warehouse.import", group: "Склад", label: "Импорт каталога из CSV" },
+  { key: "warehouse.issue", group: "Склад", label: "Выдавать и принимать оборудование" },
+  { key: "warehouse.unit.status", group: "Склад", label: "Менять статус единиц (ремонт, утеря)" },
+  { key: "projects.view", group: "Планирование", label: "Видеть проекты" },
+  { key: "projects.manage", group: "Планирование", label: "Создавать/редактировать проекты" },
+  { key: "projects.reservation.manage", group: "Планирование", label: "Брони и распределение" },
+  { key: "projects.timing.manage", group: "Планирование", label: "Тайминги" },
+  { key: "projects.assignment.manage", group: "Планирование", label: "Назначать людей на проект" },
+  { key: "clients.manage", group: "Планирование", label: "Управлять клиентами" },
+  { key: "finance.view", group: "Финансы", label: "Видеть финансы" },
+  { key: "finance.manage", group: "Финансы", label: "Транзакции, счета, курсы" },
+  { key: "people.view", group: "Администрирование", label: "Видеть людей" },
+  { key: "people.manage", group: "Администрирование", label: "Создавать/редактировать людей" },
+  { key: "roles.manage", group: "Администрирование", label: "Управлять ролями и правами" },
+  { key: "data.reset", group: "Администрирование", label: "Сброс/очистка базы данных" },
+];
+
+export const ALL_PERMISSIONS: Permission[] = PERMISSIONS.map((p) => p.key);
+
+/** Authenticated caller — resolved from a session token, Telegram, or dev bypass. */
 export interface AuthContext {
   userId: ID;
-  telegramId: string;
-  role: Role;
+  telegramId: string | null;
+  email: string | null;
   displayName: string;
+  roleId: ID | null;
+  roleName: string;
+  isOwner: boolean;
+  permissions: Permission[];
 }
 
 export interface Paginated<T> {

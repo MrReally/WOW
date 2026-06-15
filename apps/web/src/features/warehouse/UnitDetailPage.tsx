@@ -21,8 +21,8 @@ const journalActionLabel: Record<Equipment.JournalAction, string> = {
 export function UnitDetailPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
-  const { role } = useSession();
-  const canEdit = role === "admin" || role === "warehouse";
+  const { can } = useSession();
+  const canEdit = can("warehouse.unit.status");
   const unit = useUnit(id);
   const journal = useUnitJournal(id);
   const changeStatus = useChangeStatus();

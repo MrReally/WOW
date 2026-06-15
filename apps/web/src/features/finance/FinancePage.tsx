@@ -3,6 +3,7 @@ import { Card, Button, SectionTitle, Metric, StatusBadge, Loading, ErrorState, E
 import { eur, money, dateTime } from "../../lib/labels.ts";
 import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreateAccount } from "./hooks.ts";
 import { AddTransactionSheet } from "./components/AddTransactionSheet.tsx";
+import { useSession } from "../../app/session.ts";
 
 const categoryLabel: Record<string, string> = {
   rental_revenue: "Выручка",
@@ -20,6 +21,8 @@ export function FinancePage() {
   const debts = useDebts();
   const projects = useProjectsForFinance();
   const createAccount = useCreateAccount();
+  const { can } = useSession();
+  const canManage = can("finance.manage");
   const [txOpen, setTxOpen] = useState(false);
 
   if (accounts.isLoading) return <Loading />;
@@ -30,20 +33,22 @@ export function FinancePage() {
 
   return (
     <div className="stack">
-      <div className="row">
-        <Button block onClick={() => setTxOpen(true)} disabled={(accounts.data ?? []).length === 0}>
-          + Транзакция
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => {
-            const name = prompt("Название счёта");
-            if (name) createAccount.mutate({ name, currency: "EUR" });
-          }}
-        >
-          + Счёт
-        </Button>
-      </div>
+      {canManage && (
+        <div className="row">
+          <Button block onClick={() => setTxOpen(true)} disabled={(accounts.data ?? []).length === 0}>
+            + Транзакция
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              const name = prompt("Название счёта");
+              if (name) createAccount.mutate({ name, currency: "EUR" });
+            }}
+          >
+            + Счёт
+          </Button>
+        </div>
+      )}
 
       <SectionTitle>Счета</SectionTitle>
       {(accounts.data ?? []).length === 0 ? (

@@ -20,14 +20,16 @@ interface CardProps {
   children: ReactNode;
   onClick?: () => void;
   className?: string;
+  style?: import("react").CSSProperties;
 }
 
-export function Card({ children, onClick, className = "" }: CardProps) {
+export function Card({ children, onClick, className = "", style }: CardProps) {
   return (
     <div
       className={`card ${onClick ? "card--tappable" : ""} ${className}`}
       onClick={onClick}
       role={onClick ? "button" : undefined}
+      style={style}
     >
       {children}
     </div>

@@ -7,12 +7,12 @@ import { WorkspaceSwitcher } from "./WorkspaceSwitcher.tsx";
 import "./shell.css";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user, role } = useSession();
+  const { user, can } = useSession();
   const location = useLocation();
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
   const ws = currentWorkspace(location.pathname);
-  const count = workspacesFor(role).length;
+  const count = workspacesFor(can).length;
 
   return (
     <div className="app-shell">

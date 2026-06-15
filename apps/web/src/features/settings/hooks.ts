@@ -5,7 +5,9 @@ import { api } from "../../lib/api.ts";
 export function usePeople() {
   return useQuery({ queryKey: ["people"], queryFn: () => api.get<People.UserDTO[]>("/api/people") });
 }
-
+export function useRoles() {
+  return useQuery({ queryKey: ["roles"], queryFn: () => api.get<People.RoleDTO[]>("/api/roles") });
+}
 export function useFxRates() {
   return useQuery({ queryKey: ["finance", "fx"], queryFn: () => api.get<Finance.FxRateDTO[]>("/api/finance/fx") });
 }
@@ -13,29 +15,57 @@ export function useFxRates() {
 export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: People.CreateUserInput) => api.post("/api/people", input),
+    mutationFn: (input: People.CreateUserInput) => api.post<People.CreatedUserDTO>("/api/people", input),
+    meta: { successMessage: "Пользователь создан" },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["people"] }),
   });
 }
-
 export function useUpdateUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: People.UpdateUserInput }) =>
-      api.patch(`/api/people/${id}`, input),
+    mutationFn: ({ id, input }: { id: string; input: People.UpdateUserInput }) => api.patch(`/api/people/${id}`, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["people"] }),
+  });
+}
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: (id: string) => api.post<{ temporaryPassword: string }>(`/api/people/${id}/reset-password`),
+    meta: { successMessage: "Пароль сброшен" },
+  });
+}
+
+export function useCreateRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: People.CreateRoleInput) => api.post<People.RoleDTO>("/api/roles", input),
+    meta: { successMessage: "Роль создана" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["roles"] }),
+  });
+}
+export function useUpdateRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: People.UpdateRoleInput }) => api.patch(`/api/roles/${id}`, input),
+    meta: { successMessage: "Роль сохранена" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["roles"] }),
+  });
+}
+export function useDeleteRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/roles/${id}`),
+    meta: { successMessage: "Роль удалена" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["roles"] }),
   });
 }
 
 export function useSetFxRate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { currency: Finance.FxRateDTO["currency"]; rateToEUR: number }) =>
-      api.put("/api/finance/fx", input),
+    mutationFn: (input: { currency: Finance.FxRateDTO["currency"]; rateToEUR: number }) => api.put("/api/finance/fx", input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["finance"] }),
   });
 }
-
 export function useResetData() {
   const qc = useQueryClient();
   return useMutation({

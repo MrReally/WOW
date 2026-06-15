@@ -1,16 +1,25 @@
 import { useQuery } from "@tanstack/react-query";
-import type { People } from "@sever/contracts";
+import type { People, Permission } from "@sever/contracts";
 import { api } from "../lib/api.ts";
 
-// Current authenticated user. Drives role-based navigation/visibility.
+interface MeResponse {
+  user: People.UserDTO | null;
+  permissions: Permission[];
+}
+
+// Current authenticated user + permissions. Drives navigation and what's shown.
 export function useSession() {
   const query = useQuery({
     queryKey: ["me"],
-    queryFn: () => api.get<People.UserDTO>("/api/people/me"),
+    queryFn: () => api.get<MeResponse>("/api/people/me"),
+    retry: false,
   });
+  const permissions = query.data?.permissions ?? [];
   return {
-    user: query.data ?? null,
-    role: query.data?.role ?? null,
+    user: query.data?.user ?? null,
+    permissions,
+    can: (...perms: Permission[]) => perms.some((p) => permissions.includes(p)),
+    mustChangePassword: query.data?.user?.mustChangePassword ?? false,
     isLoading: query.isLoading,
     error: query.error,
   };

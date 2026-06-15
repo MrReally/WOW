@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
-import { ZodError } from "zod";
 import type { AuthContext } from "@sever/contracts";
 import { AppError } from "./core/errors.js";
 import { resolveAuth } from "./core/auth.js";
@@ -39,6 +38,24 @@ export async function buildApp(): Promise<BuiltApp> {
       : { transport: { target: "pino-pretty", options: { translateTime: "HH:MM:ss", ignore: "pid,hostname" } } },
   });
   await app.register(cors, { origin: true });
+
+  // Uniform error envelope. Set before routes so it covers every handler.
+  app.setErrorHandler((err, _req, reply) => {
+    const anyErr = err as { name?: string; issues?: { path?: (string | number)[]; message?: string }[] };
+    if (anyErr?.name === "ZodError" || Array.isArray(anyErr?.issues)) {
+      const first = anyErr.issues?.[0];
+      const field = first?.path?.join(".");
+      const message = first ? `${field ? field + ": " : ""}${first.message}` : "проверьте введённые данные";
+      return reply.status(400).send({ error: { code: "validation_error", message } });
+    }
+    if (err instanceof AppError) {
+      return reply.status(err.status).send({
+        error: { code: err.code, message: err.message, details: err.details },
+      });
+    }
+    app.log.error(err);
+    return reply.status(500).send({ error: { code: "internal", message: "internal error" } });
+  });
 
   const wiring = createModules();
 
@@ -75,22 +92,6 @@ export async function buildApp(): Promise<BuiltApp> {
   } else {
     app.log.info("[web] no built bundle found — API only (run the web dev server separately)");
   }
-
-  // Uniform error envelope.
-  app.setErrorHandler((err, _req, reply) => {
-    if (err instanceof ZodError) {
-      return reply.status(400).send({
-        error: { code: "validation_error", message: "invalid request", details: err.flatten() },
-      });
-    }
-    if (err instanceof AppError) {
-      return reply.status(err.status).send({
-        error: { code: err.code, message: err.message, details: err.details },
-      });
-    }
-    app.log.error(err);
-    return reply.status(500).send({ error: { code: "internal", message: "internal error" } });
-  });
 
   return { app, wiring };
 }

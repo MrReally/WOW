@@ -10,6 +10,9 @@ async function main() {
 
   const { app, wiring } = await buildApp();
 
+  // Default roles (Owner/Warehouse/Tech) always exist.
+  await wiring.people.service.ensureDefaultRoles();
+
   // First-run convenience for containers: load demo data into an empty DB.
   if (env.seedOnStart) {
     const existing = await wiring.people.service.list();

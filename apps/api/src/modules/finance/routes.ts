@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Finance } from "@sever/contracts";
 import { CURRENCIES } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
-import { requireRole } from "../../core/auth.js";
+import { requirePermission } from "../../core/auth.js";
 
 const fxSchema = z.object({
   currency: z.enum(CURRENCIES as [string, ...string[]]),
@@ -44,7 +44,7 @@ export function registerFinanceRoutes(
   });
   app.put("/api/finance/fx", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin");
+    requirePermission(auth, "finance.manage");
     const body = fxSchema.parse(req.body);
     return service.setFxRate(body.currency as Finance.FxRateDTO["currency"], body.rateToEUR);
   });
@@ -52,12 +52,12 @@ export function registerFinanceRoutes(
   // ── Accounts ──
   app.get("/api/finance/accounts", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin");
+    requirePermission(auth, "finance.view");
     return service.listAccounts();
   });
   app.post("/api/finance/accounts", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin");
+    requirePermission(auth, "finance.manage");
     return service.createAccount(accountSchema.parse(req.body) as { name: string; currency: Finance.AccountDTO["currency"] });
   });
 
@@ -66,25 +66,25 @@ export function registerFinanceRoutes(
     "/api/finance/transactions",
     async (req) => {
       const auth = await ctx.auth(req);
-      requireRole(auth, "admin");
+      requirePermission(auth, "finance.view");
       return service.listTransactions({ projectId: req.query.projectId, unitId: req.query.unitId });
     }
   );
   app.post("/api/finance/transactions", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin");
+    requirePermission(auth, "finance.manage");
     return service.createTransaction(txSchema.parse(req.body) as Finance.CreateTransactionInput);
   });
 
   // ── Aggregates ──
   app.get<{ Params: { id: string } }>("/api/finance/projects/:id", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin");
+    requirePermission(auth, "finance.view");
     return service.projectFinance(req.params.id);
   });
   app.get("/api/finance/debts", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin");
+    requirePermission(auth, "finance.view");
     return service.outstandingDebts();
   });
 }

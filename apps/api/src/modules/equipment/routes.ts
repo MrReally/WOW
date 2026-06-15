@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Equipment } from "@sever/contracts";
 import { UNIT_STATUSES } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
-import { requireRole } from "../../core/auth.js";
+import { requirePermission } from "../../core/auth.js";
 import { parseCatalogCsv } from "./csv.js";
 
 const createTypeSchema = z.object({
@@ -68,7 +68,7 @@ export function registerEquipmentRoutes(
   });
   app.post("/api/equipment/types", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "warehouse.catalog.manage");
     return service.createType(createTypeSchema.parse(req.body));
   });
 
@@ -87,19 +87,19 @@ export function registerEquipmentRoutes(
   });
   app.post("/api/equipment/models", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "warehouse.catalog.manage");
     return service.createModel(createModelSchema.parse(req.body) as Equipment.CreateModelInput);
   });
   app.put<{ Params: { id: string } }>("/api/equipment/models/:id/stock", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "warehouse.catalog.manage");
     return service.setModelStockTotal(req.params.id, stockSchema.parse(req.body).total);
   });
 
   // ── Catalog import (CSV) ──
   app.post("/api/equipment/import", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "warehouse.import");
     const rows = parseCatalogCsv(importSchema.parse(req.body).csv);
     return service.importCatalog(rows);
   });
@@ -107,13 +107,13 @@ export function registerEquipmentRoutes(
   // ── Quantity (cable) moves ──
   app.post("/api/equipment/issue-qty", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse", "tech");
+    requirePermission(auth, "warehouse.issue");
     const body = qtyMoveSchema.parse(req.body);
     return service.issueQuantity({ ...body, actorId: auth.userId });
   });
   app.post("/api/equipment/return-qty", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse", "tech");
+    requirePermission(auth, "warehouse.issue");
     const body = qtyMoveSchema.parse(req.body);
     return service.returnQuantity({ ...body, actorId: auth.userId });
   });
@@ -140,12 +140,12 @@ export function registerEquipmentRoutes(
   });
   app.post("/api/equipment/units", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "warehouse.catalog.manage");
     return service.createUnit(createUnitSchema.parse(req.body));
   });
   app.patch<{ Params: { id: string } }>("/api/equipment/units/:id/status", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "warehouse.unit.status");
     const body = statusSchema.parse(req.body);
     return service.changeStatus(req.params.id, body.status as Equipment.UnitStatus, auth.userId, body.note);
   });
@@ -153,13 +153,13 @@ export function registerEquipmentRoutes(
   // ── Operations (warehouse prepares; tech confirms on phone) ──
   app.post("/api/equipment/issue", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse", "tech");
+    requirePermission(auth, "warehouse.issue");
     const body = issueSchema.parse(req.body);
     return service.issueUnits({ ...body, actorId: auth.userId });
   });
   app.post("/api/equipment/return", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse", "tech");
+    requirePermission(auth, "warehouse.issue");
     const body = returnSchema.parse(req.body);
     return service.returnUnits({ ...body, actorId: auth.userId });
   });
@@ -171,7 +171,7 @@ export function registerEquipmentRoutes(
   });
   app.post<{ Params: { id: string } }>("/api/equipment/problems/:id/resolve", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "warehouse.issue");
     await service.resolveProblem(req.params.id);
     return { ok: true };
   });

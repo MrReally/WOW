@@ -1,0 +1,104 @@
+import { useState } from "react";
+import type { People } from "@sever/contracts";
+import { Card, Button, SectionHead, Field, Input, Select, Chip, Loading } from "../../../ui-kit/index.ts";
+import { dateTime } from "../../../lib/labels.ts";
+import { usePeople, useRoles, useCreateUser, useUpdateUser, useResetPassword } from "../hooks.ts";
+
+export function PeopleManager() {
+  const people = usePeople();
+  const roles = useRoles();
+  const createUser = useCreateUser();
+  const updateUser = useUpdateUser();
+  const resetPw = useResetPassword();
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [telegram, setTelegram] = useState("");
+  const [roleId, setRoleId] = useState("");
+  const [revealed, setRevealed] = useState<{ who: string; pw: string } | null>(null);
+
+  if (people.isLoading || roles.isLoading) return <Loading />;
+  const roleOptions = (roles.data ?? []).map((r) => ({ value: r.id, label: r.name }));
+  const effRole = roleId || roleOptions[0]?.value || "";
+
+  return (
+    <div>
+      <SectionHead label="Люди" meta={`${(people.data ?? []).length}`} />
+
+      {revealed && (
+        <Card style={{ marginBottom: 12, borderColor: "var(--accent)" }}>
+          <p className="card__title">Временный пароль для {revealed.who}</p>
+          <p className="card__subtitle" style={{ marginTop: 4 }}>Передайте его человеку — при первом входе он сменит пароль.</p>
+          <div className="t-mono" style={{ fontSize: 22, fontWeight: 700, color: "var(--accent)", marginTop: 8, letterSpacing: "0.04em" }}>
+            {revealed.pw}
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <Button variant="secondary" onClick={() => setRevealed(null)}>Скрыть</Button>
+          </div>
+        </Card>
+      )}
+
+      <div className="stack">
+        {(people.data ?? []).map((u) => (
+          <Card key={u.id}>
+            <div className="row row--between">
+              <div style={{ minWidth: 0 }}>
+                <p className="card__title">{u.displayName} {!u.active && <Chip label="выкл" tone="neutral" />}</p>
+                <p className="card__subtitle">
+                  {u.email ?? "без email"}{u.telegramId ? ` · tg:${u.telegramId}` : ""} · с {dateTime(u.createdAt)}
+                  {u.mustChangePassword ? " · ждёт смены пароля" : ""}
+                </p>
+              </div>
+              <div style={{ width: 150 }}>
+                <Select
+                  value={u.roleId ?? ""}
+                  onChange={(e) => updateUser.mutate({ id: u.id, input: { roleId: e.target.value } })}
+                  options={roleOptions}
+                />
+              </div>
+            </div>
+            {u.email && (
+              <div style={{ marginTop: 8 }}>
+                <Button
+                  variant="ghost"
+                  disabled={resetPw.isPending}
+                  onClick={() => resetPw.mutate(u.id, { onSuccess: (r) => setRevealed({ who: u.displayName, pw: r.temporaryPassword }) })}
+                >
+                  Сбросить пароль
+                </Button>
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
+
+      <Card style={{ marginTop: 12 }}>
+        <SectionHead label="Добавить человека" />
+        <Field label="Имя"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Имя Фамилия" /></Field>
+        <Field label="Email (для входа по паролю)"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" /></Field>
+        <Field label="Telegram ID (если входит через Telegram)"><Input value={telegram} onChange={(e) => setTelegram(e.target.value)} placeholder="необязательно" /></Field>
+        <Field label="Роль"><Select value={effRole} onChange={(e) => setRoleId(e.target.value)} options={roleOptions} /></Field>
+        <Button
+          block
+          disabled={!name || (!email && !telegram) || !effRole || createUser.isPending}
+          onClick={() =>
+            createUser.mutate(
+              { displayName: name, roleId: effRole, email: email || null, telegramId: telegram || null } as People.CreateUserInput,
+              {
+                onSuccess: (res) => {
+                  setName(""); setEmail(""); setTelegram("");
+                  if (res.temporaryPassword) setRevealed({ who: res.user.displayName, pw: res.temporaryPassword });
+                },
+              }
+            )
+          }
+        >
+          Создать
+        </Button>
+        <p className="card__subtitle" style={{ marginTop: 8 }}>
+          С email — сгенерируется временный пароль. Только с Telegram ID — вход через Telegram, без пароля.
+        </p>
+      </Card>
+    </div>
+  );
+}

@@ -7,8 +7,8 @@ import { useProjects, useClients } from "./hooks.ts";
 import { CreateProjectSheet } from "./components/CreateProjectSheet.tsx";
 
 export function ProjectsPage() {
-  const { role } = useSession();
-  const canCreate = role === "admin" || role === "warehouse";
+  const { can } = useSession();
+  const canCreate = can("projects.manage");
   const navigate = useNavigate();
   const projects = useProjects();
   const clients = useClients();
@@ -25,7 +25,7 @@ export function ProjectsPage() {
       {canCreate && <Button block onClick={() => setCreateOpen(true)}>+ Новый проект</Button>}
 
       {list.length === 0 ? (
-        <EmptyState title="Нет проектов" hint={role === "tech" ? "Вам пока не назначены проекты" : undefined} />
+        <EmptyState title="Нет проектов" hint={!canCreate ? "Вам пока не назначены проекты" : undefined} />
       ) : (
         <div className="stack">
           {list.map((p) => (

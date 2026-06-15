@@ -1,40 +1,115 @@
-import type { ID, ISODateTime, Role } from "./common.js";
+import type { ID, ISODateTime, Permission } from "./common.js";
 
-// ── DTOs ────────────────────────────────────────────────────────────────────
+// ── Roles ────────────────────────────────────────────────────────────────────
+
+export interface RoleDTO {
+  id: ID;
+  name: string;
+  permissions: Permission[];
+  /** System roles (Owner) can't be deleted; Owner always has all permissions. */
+  isSystem: boolean;
+  isOwner: boolean;
+  createdAt: ISODateTime;
+}
+
+export interface CreateRoleInput {
+  name: string;
+  permissions: Permission[];
+}
+
+export interface UpdateRoleInput {
+  name?: string;
+  permissions?: Permission[];
+}
+
+// ── Users ────────────────────────────────────────────────────────────────────
 
 export interface UserDTO {
   id: ID;
-  telegramId: string;
+  email: string | null;
+  telegramId: string | null;
   displayName: string;
-  role: Role;
+  roleId: ID | null;
+  roleName: string;
   /** Hourly rate in EUR for assignment costing (techs). null if not set. */
   hourlyRateEUR: number | null;
   active: boolean;
+  mustChangePassword: boolean;
+  hasPassword: boolean;
   createdAt: ISODateTime;
 }
 
 export interface CreateUserInput {
-  telegramId: string;
   displayName: string;
-  role: Role;
+  roleId: ID;
+  email?: string | null;
+  telegramId?: string | null;
   hourlyRateEUR?: number | null;
 }
 
 export interface UpdateUserInput {
   displayName?: string;
-  role?: Role;
+  roleId?: ID;
+  email?: string | null;
+  telegramId?: string | null;
   hourlyRateEUR?: number | null;
   active?: boolean;
+}
+
+/** Returned when an admin creates a user — the one-time temporary password. */
+export interface CreatedUserDTO {
+  user: UserDTO;
+  temporaryPassword: string | null;
+}
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
+export interface AuthResult {
+  token: string;
+  user: UserDTO;
+  permissions: Permission[];
+  mustChangePassword: boolean;
+}
+
+export interface SessionUser {
+  user: UserDTO;
+  permissions: Permission[];
 }
 
 // ── Public service contract ──────────────────────────────────────────────────
 
 export interface PeopleService {
+  // Setup
+  ensureDefaultRoles(): Promise<void>;
+  getRoleByName(name: string): Promise<RoleDTO | null>;
+
+  // Bootstrap / auth
+  countUsers(): Promise<number>;
+  bootstrapOwner(input: { email: string; password: string; displayName: string }): Promise<AuthResult>;
+  loginWithPassword(email: string, password: string): Promise<AuthResult>;
+  resolveSession(token: string): Promise<SessionUser | null>;
+  logout(token: string): Promise<void>;
+  changePassword(userId: ID, newPassword: string, currentPassword?: string): Promise<void>;
+  /** Resolve (and auto-provision the owner if empty) a Telegram user. */
+  resolveTelegramUser(telegramId: string, displayName: string): Promise<SessionUser | null>;
+  /** Dev-only bypass identity (first owner). */
+  devIdentity(): Promise<SessionUser | null>;
+  issueToken(userId: ID): Promise<string>;
+
+  // Users
   list(): Promise<UserDTO[]>;
   getById(id: ID): Promise<UserDTO | null>;
-  getByTelegramId(telegramId: string): Promise<UserDTO | null>;
-  create(input: CreateUserInput): Promise<UserDTO>;
+  create(input: CreateUserInput): Promise<CreatedUserDTO>;
   update(id: ID, input: UpdateUserInput): Promise<UserDTO>;
+  resetPassword(id: ID): Promise<{ temporaryPassword: string }>;
+
+  // Roles
+  listRoles(): Promise<RoleDTO[]>;
+  getRole(id: ID): Promise<RoleDTO | null>;
+  createRole(input: CreateRoleInput): Promise<RoleDTO>;
+  updateRole(id: ID, input: UpdateRoleInput): Promise<RoleDTO>;
+  deleteRole(id: ID): Promise<void>;
+  permissionsForUser(userId: ID): Promise<Permission[]>;
 }
 
 // ── Domain events ────────────────────────────────────────────────────────────
@@ -42,7 +117,6 @@ export interface PeopleService {
 export interface UserCreatedEvent {
   type: "people.user.created";
   userId: ID;
-  role: Role;
   at: ISODateTime;
 }
 

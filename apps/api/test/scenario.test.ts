@@ -14,9 +14,22 @@ import { createModules } from "../src/registry.js";
 const bus = new EventBus();
 const events: DomainEvent[] = [];
 const wiring = createModules(bus);
+let techRoleId = "";
+
+/** Create a tech user with the default role (people API needs a roleId now). */
+async function makeTech(name: string) {
+  const created = await wiring.people.service.create({
+    displayName: name,
+    roleId: techRoleId,
+    telegramId: `tg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+  });
+  return created.user;
+}
 
 beforeAll(async () => {
   await runMigrations();
+  await wiring.people.service.ensureDefaultRoles();
+  techRoleId = (await wiring.people.service.getRoleByName("Монтажник"))!.id;
   bus.on("equipment.unit.issued", (e) => void events.push(e));
   bus.on("equipment.unit.returned", (e) => void events.push(e));
   bus.on("equipment.return.incomplete", (e) => void events.push(e));
@@ -28,13 +41,9 @@ afterAll(async () => {
 
 describe("Tech pickup/return → некомплект", () => {
   it("issues units, journals movement, raises a Problem on partial return", async () => {
-    const { people, equipment, projects } = wiring;
+    const { equipment, projects } = wiring;
 
-    const tech = await people.service.create({
-      telegramId: `tech-${Date.now()}`,
-      displayName: "Test Tech",
-      role: "tech",
-    });
+    const tech = await makeTech("Test Tech");
 
     const type = await equipment.service.createType({ name: `T-${Date.now()}`, trackingMode: "serial" });
     const model = await equipment.service.createModel({
@@ -163,7 +172,7 @@ describe("Tech pickup/return → некомплект", () => {
   });
 
   it("enforces date ranges, no duplicate assignments, idempotent issue, unique resolve", async () => {
-    const { projects, equipment, people } = wiring;
+    const { projects, equipment } = wiring;
     const client = await projects.service.createClient({ name: `V-${Date.now()}` });
     const now = Date.now();
     const start = new Date(now).toISOString();
@@ -183,7 +192,7 @@ describe("Tech pickup/return → некомплект", () => {
     expect(updated.endsAt).toBe(later);
 
     // duplicate assignment rejected
-    const tech = await people.service.create({ telegramId: `t-${Date.now()}`, displayName: "T", role: "tech" });
+    const tech = await makeTech("T");
     await projects.service.addAssignment({ projectId: project.id, userId: tech.id });
     await expect(projects.service.addAssignment({ projectId: project.id, userId: tech.id })).rejects.toThrow();
 

@@ -27,8 +27,12 @@ import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
 export function ProjectDetailPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
-  const { role } = useSession();
-  const canEdit = role === "admin" || role === "warehouse";
+  const { can } = useSession();
+  const canManage = can("projects.manage");
+  const canReserve = can("projects.reservation.manage");
+  const canIssue = can("warehouse.issue");
+  const canTiming = can("projects.timing.manage");
+  const canAssign = can("projects.assignment.manage");
 
   const project = useProject(id);
   const clients = useClients();
@@ -76,7 +80,7 @@ export function ProjectDetailPage() {
           <StatusBadge tone={projectStatusTone[p.status]}>{projectStatusLabel[p.status]}</StatusBadge>
         </div>
         <p className="card__subtitle" style={{ marginTop: "var(--space-2)" }}>{dateRange(p.startsAt, p.endsAt)}</p>
-        {canEdit && (
+        {canManage && (
           <div className="row" style={{ marginTop: "var(--space-3)" }}>
             <div style={{ flex: 1 }}>
               <Select
@@ -121,12 +125,14 @@ export function ProjectDetailPage() {
                     ))}
                   </div>
                 )}
-                {canEdit && (
+                {(canReserve || canIssue) && (
                   <div className="row" style={{ marginTop: 10 }}>
-                    <Button variant="secondary" block disabled={issued} onClick={() => setResolving(r)}>
-                      {resolved ? "Изменить состав" : "Распределить"}
-                    </Button>
-                    {resolved &&
+                    {canReserve && (
+                      <Button variant="secondary" block disabled={issued} onClick={() => setResolving(r)}>
+                        {resolved ? "Изменить состав" : "Распределить"}
+                      </Button>
+                    )}
+                    {resolved && canIssue &&
                       (issued ? (
                         <Button block variant="ghost" disabled>
                           ✓ Выдано
@@ -147,7 +153,7 @@ export function ProjectDetailPage() {
           })}
         </div>
       )}
-      {canEdit && (models.data ?? []).length > 0 && (
+      {canReserve && (models.data ?? []).length > 0 && (
         <Card>
           <div className="row">
             <div style={{ flex: 2 }}>
@@ -191,7 +197,7 @@ export function ProjectDetailPage() {
           ))}
         </div>
       )}
-      {canEdit && (() => {
+      {canTiming && (() => {
         const tStart = timingStart || toLocalInput(p.startsAt);
         const tEnd = timingEnd || toLocalInput(p.endsAt);
         const validRange = new Date(tEnd).getTime() > new Date(tStart).getTime();
@@ -241,7 +247,7 @@ export function ProjectDetailPage() {
           ))}
         </div>
       )}
-      {canEdit && (() => {
+      {canAssign && (() => {
         const assignedIds = new Set((assignments.data ?? []).map((a) => a.userId));
         const available = (people.data ?? []).filter((u) => !assignedIds.has(u.id));
         if (available.length === 0) {

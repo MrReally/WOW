@@ -21,13 +21,22 @@ function hoursFromNow(h: number): string {
 }
 
 export async function seedDemo(s: SeedServices): Promise<{ summary: Record<string, number> }> {
-  // ── People (all three roles, two techs) ──
-  const admin =
-    (await s.people.getByTelegramId("dev-admin")) ??
-    (await s.people.create({ telegramId: "dev-admin", displayName: "Иван Комаров", role: "admin" }));
-  const ware = await s.people.create({ telegramId: "ware-001", displayName: "Дмитрий Ларин", role: "warehouse", hourlyRateEUR: 18 });
-  const tech1 = await s.people.create({ telegramId: "tech-001", displayName: "Антон Волков", role: "tech", hourlyRateEUR: 15 });
-  const tech2 = await s.people.create({ telegramId: "tech-002", displayName: "Мария Котова", role: "tech", hourlyRateEUR: 15 });
+  // ── Roles + people (demo logins with known passwords) ──
+  await s.people.ensureDefaultRoles();
+  const whRole = (await s.people.getRoleByName("Склад"))!;
+  const techRole = (await s.people.getRoleByName("Монтажник"))!;
+
+  // Owner — log in as owner@sever.local / owner123
+  const admin = (await s.people.bootstrapOwner({ email: "owner@sever.local", password: "owner123", displayName: "Иван Комаров" })).user;
+
+  const mkUser = async (email: string, password: string, displayName: string, roleId: string, telegramId: string, rate: number) => {
+    const created = await s.people.create({ email, displayName, roleId, telegramId, hourlyRateEUR: rate });
+    await s.people.changePassword(created.user.id, password); // set a known demo password
+    return created.user;
+  };
+  const ware = await mkUser("warehouse@sever.local", "whse123", "Дмитрий Ларин", whRole.id, "ware-001", 18);
+  const tech1 = await mkUser("tech@sever.local", "tech123", "Антон Волков", techRole.id, "tech-001", 15);
+  const tech2 = await mkUser("tech2@sever.local", "tech123", "Мария Котова", techRole.id, "tech-002", 15);
 
   // ── Catalog: types ──
   const tLight = await s.equipment.createType({ name: "Световые приборы", trackingMode: "serial" });

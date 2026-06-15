@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Projects } from "@sever/contracts";
 import { PROJECT_STATUSES } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
-import { requireRole } from "../../core/auth.js";
+import { requirePermission } from "../../core/auth.js";
 
 const clientSchema = z.object({
   name: z.string().min(1),
@@ -56,7 +56,7 @@ export function registerProjectsRoutes(
   });
   app.post("/api/clients", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "clients.manage");
     return service.createClient(clientSchema.parse(req.body));
   });
 
@@ -65,8 +65,8 @@ export function registerProjectsRoutes(
     "/api/projects",
     async (req) => {
       const auth = await ctx.auth(req);
-      // Techs see only their assigned projects by default.
-      if (req.query.mine === "true" || auth.role === "tech") {
+      // People who can't manage projects (field techs) see only their own.
+      if (req.query.mine === "true" || !auth.permissions.includes("projects.manage")) {
         return service.listProjectsForUser(auth.userId);
       }
       return service.listProjects({ status: req.query.status });
@@ -78,18 +78,18 @@ export function registerProjectsRoutes(
   });
   app.post("/api/projects", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "projects.manage");
     return service.createProject(projectSchema.parse(req.body) as Projects.CreateProjectInput);
   });
   app.patch<{ Params: { id: string } }>("/api/projects/:id/status", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "projects.manage");
     const body = statusSchema.parse(req.body);
     return service.setStatus(req.params.id, body.status as Projects.ProjectStatus);
   });
   app.patch<{ Params: { id: string } }>("/api/projects/:id", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "projects.manage");
     return service.updateProject(req.params.id, updateProjectSchema.parse(req.body) as Projects.UpdateProjectInput);
   });
 
@@ -100,12 +100,12 @@ export function registerProjectsRoutes(
   });
   app.post("/api/reservations", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "projects.reservation.manage");
     return service.createReservation(reservationSchema.parse(req.body) as Projects.CreateReservationInput);
   });
   app.post<{ Params: { id: string } }>("/api/reservations/:id/resolve", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "projects.reservation.manage");
     return service.resolveReservation(req.params.id, resolveSchema.parse(req.body).unitIds);
   });
 
@@ -116,7 +116,7 @@ export function registerProjectsRoutes(
   });
   app.post("/api/timings", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse", "tech");
+    requirePermission(auth, "projects.timing.manage");
     return service.addTiming(timingSchema.parse(req.body));
   });
   app.get<{ Params: { id: string } }>("/api/projects/:id/assignments", async (req) => {
@@ -125,7 +125,7 @@ export function registerProjectsRoutes(
   });
   app.post("/api/assignments", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "projects.assignment.manage");
     return service.addAssignment(assignmentSchema.parse(req.body));
   });
 
@@ -136,7 +136,7 @@ export function registerProjectsRoutes(
   });
   app.post<{ Params: { id: string } }>("/api/projects-problems/:id/resolve", async (req) => {
     const auth = await ctx.auth(req);
-    requireRole(auth, "admin", "warehouse");
+    requirePermission(auth, "projects.reservation.manage");
     await service.resolveProblem(req.params.id);
     return { ok: true };
   });

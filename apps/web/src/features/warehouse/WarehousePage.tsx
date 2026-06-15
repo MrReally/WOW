@@ -80,8 +80,10 @@ function ModelRow({ model, units, last }: { model: Equipment.EquipmentModelDTO; 
 }
 
 export function WarehousePage() {
-  const { role } = useSession();
-  const canEdit = role === "admin" || role === "warehouse";
+  const { can } = useSession();
+  const canCatalog = can("warehouse.catalog.manage");
+  const canImport = can("warehouse.import");
+  const canEdit = canCatalog || canImport;
   const navigate = useNavigate();
   const models = useModels();
   const units = useUnits();
@@ -110,8 +112,8 @@ export function WarehousePage() {
       <SectionHead label="Каталог" meta={canEdit ? undefined : `${allModels.length} МОДЕЛЕЙ`} />
       {canEdit && (
         <div className="row" style={{ marginBottom: 10 }}>
-          <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Модель / единица</Button>
-          <Button block variant="secondary" onClick={() => setImportOpen(true)}>Импорт CSV</Button>
+          {canCatalog && <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Модель / единица</Button>}
+          {canImport && <Button block variant="secondary" onClick={() => setImportOpen(true)}>Импорт CSV</Button>}
         </div>
       )}
       {allModels.length === 0 ? (

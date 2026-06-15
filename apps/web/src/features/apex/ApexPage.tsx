@@ -18,6 +18,7 @@ import {
 import { eur, dateRange, projectStatusLabel, projectStatusTone, problemKindLabel } from "../../lib/labels.ts";
 import { useApexDashboard, useResolveProblem, useOpsProjects, useOpsModels } from "./hooks.ts";
 import { OpsSheet } from "../warehouse/components/OpsSheet.tsx";
+import { useSession } from "../../app/session.ts";
 
 /* Hero — current operation identity (v2 OperationHeader). */
 function OperationHero({ current, upcoming }: { current: ApexRentalRow[]; upcoming: ApexRentalRow[] }) {
@@ -103,6 +104,7 @@ export function ApexPage() {
   const resolve = useResolveProblem();
   const opsProjects = useOpsProjects();
   const opsModels = useOpsModels();
+  const { can } = useSession();
   const navigate = useNavigate();
   const [opsOpen, setOpsOpen] = useState(false);
 
@@ -117,9 +119,11 @@ export function ApexPage() {
       <OperationHero current={data.current} upcoming={data.upcoming} />
 
       {/* Pickup / return lives in Operations: warehouse prepares, techs confirm here. */}
-      <div style={{ marginBottom: 12 }}>
-        <Button block variant="primary" onClick={() => setOpsOpen(true)}>Выдача / Возврат оборудования</Button>
-      </div>
+      {can("warehouse.issue") && (
+        <div style={{ marginBottom: 12 }}>
+          <Button block variant="primary" onClick={() => setOpsOpen(true)}>Выдача / Возврат оборудования</Button>
+        </div>
+      )}
 
       <div className="card card--flat" style={{ padding: "14px 16px" }}>
         <div className="row" style={{ gap: 22, flexWrap: "wrap" }}>
