@@ -60,13 +60,24 @@ pnpm install && pnpm start
 
 ### Logging in
 
-In a browser (no Telegram) the API runs with `AUTH_DEV_BYPASS=true` and you're
-the **admin**. Switch the simulated user (e.g. `tech-001`, `ware-001`) in
-**Settings → Разработка** to see the warehouse / tech experience. Reset or clear
-all data anytime in **Settings → Данные** (demo / empty).
+The Docker demo shows the real login screen with these seeded accounts:
 
-A local Postgres also works without Docker — set `DATABASE_URL` and run
-`pnpm api:migrate && pnpm api:seed`.
+| Email | Password | Role |
+| ----- | -------- | ---- |
+| `owner@sever.local` | `owner123` | Владелец (all permissions) |
+| `warehouse@sever.local` | `whse123` | Склад |
+| `tech@sever.local` | `tech123` | Монтажник |
+
+Authentication: email/password with a real session, plus Telegram initData when
+running as a Mini App (set `TELEGRAM_BOT_TOKEN`). On a fresh (empty) install the
+**first email becomes the Owner** via a one-time bootstrap screen. Admins create
+people in **Settings** (with an email → a one-time temporary password the user
+changes on first login), and assign **custom roles** with granular permissions
+in the role editor. Reset/clear all data in **Settings → Данные**.
+
+For frictionless local `pnpm dev`, set `AUTH_DEV_BYPASS=true` to auto-login as
+the owner and skip the login screen. A local Postgres works without Docker — set
+`DATABASE_URL` and run `pnpm api:migrate && pnpm api:seed`.
 
 ---
 
