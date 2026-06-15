@@ -17,6 +17,7 @@ export {
   AvatarStack,
   SectionHead,
   VenueTrace,
+  ComingSoon,
   type Tone,
   type Glyph,
 } from "./components/v2.tsx";

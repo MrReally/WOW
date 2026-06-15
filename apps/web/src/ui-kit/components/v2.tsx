@@ -144,6 +144,23 @@ export function SectionHead({ label, meta }: { label: ReactNode; meta?: ReactNod
   );
 }
 
+/* A clearly-marked placeholder for features that are designed but not built yet,
+   so they don't read as broken buttons. Non-interactive by design. */
+export function ComingSoon({ title, hint }: { title: ReactNode; hint?: ReactNode }) {
+  return (
+    <div
+      className="card card--flat"
+      style={{ opacity: 0.75, cursor: "default", display: "flex", alignItems: "center", gap: 12 }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="card__title" style={{ color: "var(--text2)" }}>{title}</div>
+        {hint && <div className="card__subtitle">{hint}</div>}
+      </div>
+      <Chip label="скоро" tone="neutral" />
+    </div>
+  );
+}
+
 /* Faint architectural arena blueprint — "where this is happening" (decorative). */
 export function VenueTrace({ width = 200, height = 150, style }: { width?: number; height?: number; style?: React.CSSProperties }) {
   return (

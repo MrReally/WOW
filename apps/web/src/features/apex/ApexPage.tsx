@@ -1,19 +1,23 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ApexRentalRow, Problem } from "@sever/contracts";
 import {
   Card,
+  Button,
   Metric,
   SectionHead,
   Chip,
   Dot,
   ProgressBar,
   VenueTrace,
+  ComingSoon,
   Loading,
   ErrorState,
   EmptyState,
 } from "../../ui-kit/index.ts";
 import { eur, dateRange, projectStatusLabel, projectStatusTone, problemKindLabel } from "../../lib/labels.ts";
-import { useApexDashboard, useResolveProblem } from "./hooks.ts";
+import { useApexDashboard, useResolveProblem, useOpsProjects, useOpsModels } from "./hooks.ts";
+import { OpsSheet } from "../warehouse/components/OpsSheet.tsx";
 
 /* Hero — current operation identity (v2 OperationHeader). */
 function OperationHero({ current, upcoming }: { current: ApexRentalRow[]; upcoming: ApexRentalRow[] }) {
@@ -81,7 +85,10 @@ function RentalCard({ row, onOpen }: { row: ApexRentalRow; onOpen: () => void })
 export function ApexPage() {
   const { data, isLoading, error, refetch } = useApexDashboard();
   const resolve = useResolveProblem();
+  const opsProjects = useOpsProjects();
+  const opsModels = useOpsModels();
   const navigate = useNavigate();
+  const [opsOpen, setOpsOpen] = useState(false);
 
   if (isLoading) return <Loading />;
   if (error) return <ErrorState error={error} onRetry={refetch} />;
@@ -92,6 +99,11 @@ export function ApexPage() {
   return (
     <div>
       <OperationHero current={data.current} upcoming={data.upcoming} />
+
+      {/* Pickup / return lives in Operations: warehouse prepares, techs confirm here. */}
+      <div style={{ marginBottom: 12 }}>
+        <Button block variant="primary" onClick={() => setOpsOpen(true)}>Выдача / Возврат оборудования</Button>
+      </div>
 
       <div className="card card--flat" style={{ padding: "14px 16px" }}>
         <div className="row" style={{ gap: 22, flexWrap: "wrap" }}>
@@ -147,6 +159,20 @@ export function ApexPage() {
           ))}
         </div>
       )}
+
+      <SectionHead label="Скоро в Operations" />
+      <div className="stack">
+        <ComingSoon title="Сцена и план" hint="Stage-plan, слои DMX/Power, расстановка приборов" />
+        <ComingSoon title="Тайминг операции" hint="Фазы: загрузка → монтаж → программирование → шоу → демонтаж" />
+        <ComingSoon title="Задачи монтажника" hint="Чек-лист на смену, «next action» на телефоне" />
+      </div>
+
+      <OpsSheet
+        open={opsOpen}
+        onClose={() => setOpsOpen(false)}
+        projects={opsProjects.data ?? []}
+        models={opsModels.data ?? []}
+      />
     </div>
   );
 }

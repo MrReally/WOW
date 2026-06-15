@@ -18,12 +18,27 @@ export function ImportSheet({ open, onClose }: { open: boolean; onClose: () => v
     importCsv.mutate(csv, { onSuccess: setResult });
   };
 
+  const downloadTemplate = () => {
+    const blob = new Blob([SAMPLE], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sever-catalog-template.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <Sheet open={open} onClose={() => { setResult(null); onClose(); }} title="Импорт каталога (CSV)">
       <p className="card__subtitle" style={{ marginBottom: 12 }}>
         Колонки: type, trackingMode (serial/quantity), model, manufacturer, unitCostEUR, dailyPriceEUR,
         assetTag, serial, qty, cableType, lengthM, connectors. Серийные — строка на единицу; количественные — qty.
       </p>
+      <div style={{ marginBottom: 12 }}>
+        <Button variant="secondary" block onClick={downloadTemplate}>↓ Скачать шаблон (CSV)</Button>
+      </div>
       <textarea
         className="input"
         style={{ minHeight: 180, fontFamily: "var(--font-mono)", fontSize: 12, resize: "vertical" }}

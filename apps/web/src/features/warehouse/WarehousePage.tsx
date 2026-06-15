@@ -16,7 +16,6 @@ import { eur, unitStatusLabel } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
 import { useModels, useUnits, useTypes, useProjectsForOps } from "./hooks.ts";
 import { AddModelSheet } from "./components/AddModelSheet.tsx";
-import { OpsSheet } from "./components/OpsSheet.tsx";
 import { ImportSheet } from "./components/ImportSheet.tsx";
 import { CableMoveSheet, CableRow } from "./components/CableMoveSheet.tsx";
 
@@ -30,7 +29,7 @@ function PrepStat({ tone, value, label }: { tone: Tone; value: number; label: st
   );
 }
 
-function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps: () => void }) {
+function PrepHero({ units, onGoOperations }: { units: Equipment.EquipmentUnitDTO[]; onGoOperations: () => void }) {
   const total = units.length;
   const inStock = units.filter((u) => u.status === "in_stock").length;
   const onProject = units.filter((u) => u.status === "on_project").length;
@@ -58,7 +57,7 @@ function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps
       </div>
 
       <div style={{ marginTop: 20 }}>
-        <Button block variant="primary" onClick={onOps}>Выдача / Возврат</Button>
+        <Button block variant="secondary" onClick={onGoOperations}>Выдача / Возврат — в Operations →</Button>
       </div>
     </div>
   );
@@ -90,7 +89,6 @@ export function WarehousePage() {
   const projects = useProjectsForOps();
 
   const [addOpen, setAddOpen] = useState(false);
-  const [opsOpen, setOpsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [cableModel, setCableModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [statusFilter, setStatusFilter] = useState<Equipment.UnitStatus | "all">("all");
@@ -107,7 +105,7 @@ export function WarehousePage() {
 
   return (
     <div>
-      <PrepHero units={allUnits} onOps={() => setOpsOpen(true)} />
+      <PrepHero units={allUnits} onGoOperations={() => navigate("/apex")} />
 
       <SectionHead label="Каталог" meta={canEdit ? undefined : `${allModels.length} МОДЕЛЕЙ`} />
       {canEdit && (
@@ -184,7 +182,6 @@ export function WarehousePage() {
           <ImportSheet open={importOpen} onClose={() => setImportOpen(false)} />
         </>
       )}
-      <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} projects={projects.data ?? []} models={allModels} />
       <CableMoveSheet model={cableModel} projects={projects.data ?? []} onClose={() => setCableModel(null)} />
     </div>
   );
