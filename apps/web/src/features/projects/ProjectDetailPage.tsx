@@ -21,6 +21,8 @@ import {
   useAllUnits,
 } from "./hooks.ts";
 import { ResolveReservationSheet } from "./components/ResolveReservationSheet.tsx";
+import { EditProjectSheet } from "./components/EditProjectSheet.tsx";
+import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
 
 export function ProjectDetailPage() {
   const { id = "" } = useParams();
@@ -46,8 +48,11 @@ export function ProjectDetailPage() {
   const [resModel, setResModel] = useState("");
   const [resQty, setResQty] = useState("1");
   const [timingTitle, setTimingTitle] = useState("");
+  const [timingStart, setTimingStart] = useState("");
+  const [timingEnd, setTimingEnd] = useState("");
   const [assignUser, setAssignUser] = useState("");
   const [resolving, setResolving] = useState<Projects.ReservationDTO | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   if (project.isLoading) return <Loading />;
   if (project.error) return <ErrorState error={project.error} onRetry={project.refetch} />;
@@ -72,12 +77,15 @@ export function ProjectDetailPage() {
         </div>
         <p className="card__subtitle" style={{ marginTop: "var(--space-2)" }}>{dateRange(p.startsAt, p.endsAt)}</p>
         {canEdit && (
-          <div style={{ marginTop: "var(--space-3)" }}>
-            <Select
-              value={p.status}
-              onChange={(e) => setStatus.mutate({ id: p.id, status: e.target.value as Projects.ProjectStatus })}
-              options={PROJECT_STATUSES.map((s) => ({ value: s, label: projectStatusLabel[s] }))}
-            />
+          <div className="row" style={{ marginTop: "var(--space-3)" }}>
+            <div style={{ flex: 1 }}>
+              <Select
+                value={p.status}
+                onChange={(e) => setStatus.mutate({ id: p.id, status: e.target.value as Projects.ProjectStatus })}
+                options={PROJECT_STATUSES.map((s) => ({ value: s, label: projectStatusLabel[s] }))}
+              />
+            </div>
+            <Button variant="secondary" onClick={() => setEditOpen(true)}>Редактировать</Button>
           </div>
         )}
       </Card>
@@ -90,35 +98,48 @@ export function ProjectDetailPage() {
         <div className="stack">
           {(reservations.data ?? []).map((r) => {
             const resolved = r.resolvedUnitIds.length > 0;
-            const unitTag = (uid: string) => (allUnits.data ?? []).find((u) => u.id === uid)?.assetTag ?? uid.slice(0, 6);
+            const unit = (uid: string) => (allUnits.data ?? []).find((u) => u.id === uid);
+            const unitTag = (uid: string) => unit(uid)?.assetTag ?? uid.slice(0, 6);
+            const issued =
+              resolved && r.resolvedUnitIds.every((uid) => {
+                const u = unit(uid);
+                return u && u.status === "on_project" && u.currentProjectId === p.id;
+              });
             return (
               <Card key={r.id}>
                 <div className="row row--between">
                   <p className="card__title">{modelName(r.modelId)} × {r.qty}</p>
-                  <StatusBadge tone={resolved ? "ok" : "info"}>
-                    {resolved ? "распределено" : "по модели"}
+                  <StatusBadge tone={issued ? "warn" : resolved ? "ok" : "info"}>
+                    {issued ? "выдано" : resolved ? "распределено" : "по модели"}
                   </StatusBadge>
                 </div>
                 <p className="card__subtitle">{dateRange(r.startsAt, r.endsAt)}</p>
                 {resolved && (
                   <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                    {r.resolvedUnitIds.map((uid) => <Chip key={uid} label={unitTag(uid)} tone="neutral" />)}
+                    {r.resolvedUnitIds.map((uid) => (
+                      <Chip key={uid} label={unitTag(uid)} tone={issued ? "warn" : "neutral"} />
+                    ))}
                   </div>
                 )}
                 {canEdit && (
                   <div className="row" style={{ marginTop: 10 }}>
-                    <Button variant="secondary" block onClick={() => setResolving(r)}>
+                    <Button variant="secondary" block disabled={issued} onClick={() => setResolving(r)}>
                       {resolved ? "Изменить состав" : "Распределить"}
                     </Button>
-                    {resolved && (
-                      <Button
-                        block
-                        disabled={issueResolved.isPending}
-                        onClick={() => issueResolved.mutate({ projectId: p.id, unitIds: r.resolvedUnitIds })}
-                      >
-                        Выдать
-                      </Button>
-                    )}
+                    {resolved &&
+                      (issued ? (
+                        <Button block variant="ghost" disabled>
+                          ✓ Выдано
+                        </Button>
+                      ) : (
+                        <Button
+                          block
+                          disabled={issueResolved.isPending}
+                          onClick={() => issueResolved.mutate({ projectId: p.id, unitIds: r.resolvedUnitIds })}
+                        >
+                          Выдать
+                        </Button>
+                      ))}
                   </div>
                 )}
               </Card>
@@ -170,23 +191,39 @@ export function ProjectDetailPage() {
           ))}
         </div>
       )}
-      <Card>
-        <Field label="Новый тайминг">
-          <Input value={timingTitle} onChange={(e) => setTimingTitle(e.target.value)} placeholder="Монтаж" />
-        </Field>
-        <Button
-          block
-          disabled={!timingTitle}
-          onClick={() =>
-            addTiming.mutate(
-              { projectId: p.id, title: timingTitle, startsAt: p.startsAt, endsAt: p.endsAt },
-              { onSuccess: () => setTimingTitle("") }
-            )
-          }
-        >
-          Добавить тайминг
-        </Button>
-      </Card>
+      {canEdit && (() => {
+        const tStart = timingStart || toLocalInput(p.startsAt);
+        const tEnd = timingEnd || toLocalInput(p.endsAt);
+        const validRange = new Date(tEnd).getTime() > new Date(tStart).getTime();
+        return (
+          <Card>
+            <Field label="Название (доставка / монтаж / демонтаж…)">
+              <Input value={timingTitle} onChange={(e) => setTimingTitle(e.target.value)} placeholder="Монтаж" />
+            </Field>
+            <div className="row">
+              <Field label="Начало">
+                <Input type="datetime-local" value={tStart} onChange={(e) => setTimingStart(e.target.value)} />
+              </Field>
+              <Field label="Конец">
+                <Input type="datetime-local" value={tEnd} onChange={(e) => setTimingEnd(e.target.value)} />
+              </Field>
+            </div>
+            {!validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Конец должен быть позже начала</p>}
+            <Button
+              block
+              disabled={!timingTitle || !validRange || addTiming.isPending}
+              onClick={() =>
+                addTiming.mutate(
+                  { projectId: p.id, title: timingTitle, startsAt: isoFromLocal(tStart), endsAt: isoFromLocal(tEnd) },
+                  { onSuccess: () => { setTimingTitle(""); setTimingStart(""); setTimingEnd(""); } }
+                )
+              }
+            >
+              Добавить тайминг
+            </Button>
+          </Card>
+        );
+      })()}
 
       {/* Assignments */}
       <SectionTitle>Команда</SectionTitle>
@@ -204,32 +241,33 @@ export function ProjectDetailPage() {
           ))}
         </div>
       )}
-      {canEdit && (people.data ?? []).length > 0 && (
-        <Card>
-          <div className="row">
-            <div style={{ flex: 1 }}>
-              <Select
-                value={assignUser || (people.data ?? [])[0]?.id || ""}
-                onChange={(e) => setAssignUser(e.target.value)}
-                options={(people.data ?? []).map((u) => ({ value: u.id, label: u.displayName }))}
-              />
+      {canEdit && (() => {
+        const assignedIds = new Set((assignments.data ?? []).map((a) => a.userId));
+        const available = (people.data ?? []).filter((u) => !assignedIds.has(u.id));
+        if (available.length === 0) {
+          return <p className="card__subtitle" style={{ textAlign: "center", padding: 12 }}>Все доступные люди назначены</p>;
+        }
+        const sel = assignUser && available.some((u) => u.id === assignUser) ? assignUser : available[0]!.id;
+        return (
+          <Card>
+            <div className="row">
+              <div style={{ flex: 1 }}>
+                <Select value={sel} onChange={(e) => setAssignUser(e.target.value)} options={available.map((u) => ({ value: u.id, label: u.displayName }))} />
+              </div>
+              <Button disabled={addAssignment.isPending} onClick={() => addAssignment.mutate({ projectId: p.id, userId: sel }, { onSuccess: () => setAssignUser("") })}>
+                + В команду
+              </Button>
             </div>
-            <Button
-              onClick={() =>
-                addAssignment.mutate({ projectId: p.id, userId: assignUser || (people.data ?? [])[0]!.id })
-              }
-            >
-              + В команду
-            </Button>
-          </div>
-        </Card>
-      )}
+          </Card>
+        );
+      })()}
 
       <ResolveReservationSheet
         reservation={resolving}
         modelName={resolving ? modelName(resolving.modelId) : ""}
         onClose={() => setResolving(null)}
       />
+      <EditProjectSheet open={editOpen} project={p} clients={clients.data ?? []} onClose={() => setEditOpen(false)} />
     </div>
   );
 }

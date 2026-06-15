@@ -162,6 +162,50 @@ describe("Tech pickup/return → некомплект", () => {
     expect(result.errors).toEqual([]);
   });
 
+  it("enforces date ranges, no duplicate assignments, idempotent issue, unique resolve", async () => {
+    const { projects, equipment, people } = wiring;
+    const client = await projects.service.createClient({ name: `V-${Date.now()}` });
+    const now = Date.now();
+    const start = new Date(now).toISOString();
+    const end = new Date(now + 3_600_000).toISOString();
+
+    // end must be after start
+    await expect(
+      projects.service.createProject({ name: "bad", clientId: client.id, startsAt: end, endsAt: start })
+    ).rejects.toThrow();
+
+    const project = await projects.service.createProject({ name: "ok", clientId: client.id, startsAt: start, endsAt: end });
+
+    // updateProject changes the window
+    const later = new Date(now + 7_200_000).toISOString();
+    const updated = await projects.service.updateProject(project.id, { endsAt: later, name: "renamed" });
+    expect(updated.name).toBe("renamed");
+    expect(updated.endsAt).toBe(later);
+
+    // duplicate assignment rejected
+    const tech = await people.service.create({ telegramId: `t-${Date.now()}`, displayName: "T", role: "tech" });
+    await projects.service.addAssignment({ projectId: project.id, userId: tech.id });
+    await expect(projects.service.addAssignment({ projectId: project.id, userId: tech.id })).rejects.toThrow();
+
+    // issue idempotency + cross-project block
+    const type = await equipment.service.createType({ name: `IT-${Date.now()}`, trackingMode: "serial" });
+    const model = await equipment.service.createModel({ typeId: type.id, name: "M", unitCostEUR: 1, dailyPriceEUR: 1 });
+    const u = await equipment.service.createUnit({ modelId: model.id, assetTag: `IU-${Date.now()}` });
+    await equipment.service.issueUnits({ projectId: project.id, unitIds: [u.id], actorId: tech.id });
+    // issuing again to the same project is a no-op (no throw)
+    await equipment.service.issueUnits({ projectId: project.id, unitIds: [u.id], actorId: tech.id });
+    // issuing to a different project is blocked
+    const other = await projects.service.createProject({ name: "other", clientId: client.id, startsAt: start, endsAt: end });
+    await expect(equipment.service.issueUnits({ projectId: other.id, unitIds: [u.id], actorId: tech.id })).rejects.toThrow();
+
+    // resolve uniqueness: a unit already resolved on an overlapping reservation can't be reused
+    const u2 = await equipment.service.createUnit({ modelId: model.id, assetTag: `IU2-${Date.now()}` });
+    const r1 = await projects.service.createReservation({ projectId: project.id, modelId: model.id, qty: 1, startsAt: start, endsAt: end });
+    const r2 = await projects.service.createReservation({ projectId: other.id, modelId: model.id, qty: 1, startsAt: start, endsAt: end });
+    await projects.service.resolveReservation(r1.id, [u2.id]);
+    await expect(projects.service.resolveReservation(r2.id, [u2.id])).rejects.toThrow();
+  });
+
   it("raises a Problem on overlapping reservations without blocking", async () => {
     const { projects, equipment } = wiring;
     const type = await equipment.service.createType({ name: `Res-${Date.now()}`, trackingMode: "serial" });

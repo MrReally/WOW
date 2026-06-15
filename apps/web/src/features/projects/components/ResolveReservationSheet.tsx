@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Projects } from "@sever/contracts";
 import { Sheet, Button, Chip, Loading } from "../../../ui-kit/index.ts";
 import { useInStockUnits, useResolveReservation } from "../hooks.ts";
@@ -14,6 +14,11 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
   const units = useInStockUnits(reservation?.modelId ?? "");
   const resolve = useResolveReservation();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Pre-select the units already on this reservation when (re)opening it.
+  useEffect(() => {
+    setSelected(new Set(reservation?.resolvedUnitIds ?? []));
+  }, [reservation?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!reservation) return null;
 

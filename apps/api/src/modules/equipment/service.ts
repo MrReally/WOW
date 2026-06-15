@@ -478,6 +478,18 @@ export function createEquipmentService(
             [unitId]
           );
           if (!unit) throw NotFound("unit", unitId);
+          // Already on this project → idempotent no-op (don't double-journal).
+          if (unit.status === "on_project" && unit.current_project_id === input.projectId) {
+            results.push(unitDTO(unit));
+            continue;
+          }
+          // On a different project → block with a clear message, not silently.
+          if (unit.status === "on_project" && unit.current_project_id !== input.projectId) {
+            throw BadRequest(`${unit.asset_tag} уже выдан на другой проект`);
+          }
+          if (unit.status === "lost" || unit.status === "in_repair" || unit.status === "at_contractor") {
+            throw BadRequest(`${unit.asset_tag}: статус «${unit.status}», нельзя выдать`);
+          }
           const updated = await one<UnitRow>(
             client,
             `UPDATE equipment.units SET status='on_project', current_project_id=$2 WHERE id=$1 RETURNING *`,

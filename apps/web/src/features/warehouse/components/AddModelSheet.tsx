@@ -31,6 +31,11 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
   const [modelId, setModelId] = useState(models[0]?.id ?? "");
   const [assetTag, setAssetTag] = useState("");
 
+  // Fall back to the first available option so a freshly-created type/model is
+  // selectable immediately (the controlled <select> showed it but state was "").
+  const effTypeId = typeId || types[0]?.id || "";
+  const effModelId = modelId || models[0]?.id || "";
+
   return (
     <Sheet open={open} onClose={onClose} title="Добавить">
       <div className="row" style={{ marginBottom: "var(--space-4)" }}>
@@ -73,7 +78,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
       {tab === "model" && (
         <>
           <Field label="Тип">
-            <Select value={typeId} onChange={(e) => setTypeId(e.target.value)} options={types.map((t) => ({ value: t.id, label: t.name }))} />
+            <Select value={effTypeId} onChange={(e) => setTypeId(e.target.value)} options={types.map((t) => ({ value: t.id, label: t.name }))} />
           </Field>
           <Field label="Название модели">
             <Input value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder="Robe MegaPointe" />
@@ -88,10 +93,10 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
           </div>
           <Button
             block
-            disabled={!modelName || !typeId || createModel.isPending}
+            disabled={!modelName || !effTypeId || createModel.isPending}
             onClick={() =>
               createModel.mutate(
-                { typeId, name: modelName, unitCostEUR: Number(unitCost), dailyPriceEUR: Number(dailyPrice) },
+                { typeId: effTypeId, name: modelName, unitCostEUR: Number(unitCost), dailyPriceEUR: Number(dailyPrice) },
                 { onSuccess: () => setModelName("") }
               )
             }
@@ -104,15 +109,15 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
       {tab === "unit" && (
         <>
           <Field label="Модель">
-            <Select value={modelId} onChange={(e) => setModelId(e.target.value)} options={models.map((m) => ({ value: m.id, label: m.name }))} />
+            <Select value={effModelId} onChange={(e) => setModelId(e.target.value)} options={models.map((m) => ({ value: m.id, label: m.name }))} />
           </Field>
           <Field label="Инвентарный номер">
             <Input value={assetTag} onChange={(e) => setAssetTag(e.target.value)} placeholder="MP-001" />
           </Field>
           <Button
             block
-            disabled={!assetTag || !modelId || createUnit.isPending}
-            onClick={() => createUnit.mutate({ modelId, assetTag }, { onSuccess: () => setAssetTag("") })}
+            disabled={!assetTag || !effModelId || createUnit.isPending}
+            onClick={() => createUnit.mutate({ modelId: effModelId, assetTag }, { onSuccess: () => setAssetTag("") })}
           >
             Создать единицу
           </Button>

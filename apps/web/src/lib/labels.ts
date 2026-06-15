@@ -67,16 +67,25 @@ export function money(amount: number, currency: string): string {
   }
 }
 
-export function dateRange(startIso: string, endIso: string): string {
-  const f = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-  return `${f.format(new Date(startIso))} – ${f.format(new Date(endIso))}`;
+// Dates are always DD-MM-YYYY and time is always 24h (no AM/PM), in local time.
+const pad = (n: number) => String(n).padStart(2, "0");
+function fmtDate(d: Date): string {
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
+}
+function fmtTime(d: Date): string {
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export function dateTime(iso: string): string {
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(iso));
+  const d = new Date(iso);
+  return `${fmtDate(d)} ${fmtTime(d)}`;
+}
+
+export function dateRange(startIso: string, endIso: string): string {
+  const s = new Date(startIso);
+  const e = new Date(endIso);
+  const sameDay = fmtDate(s) === fmtDate(e);
+  return sameDay
+    ? `${fmtDate(s)} ${fmtTime(s)}–${fmtTime(e)}`
+    : `${fmtDate(s)} ${fmtTime(s)} → ${fmtDate(e)} ${fmtTime(e)}`;
 }

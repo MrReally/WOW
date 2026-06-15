@@ -1,6 +1,12 @@
 import type { Projects, Problem, ISODateTime } from "@sever/contracts";
 import { one, query, type Sql } from "../../core/db.js";
-import { NotFound } from "../../core/errors.js";
+import { NotFound, BadRequest, Conflict } from "../../core/errors.js";
+
+function assertRange(startsAt: string, endsAt: string) {
+  if (Date.parse(endsAt) <= Date.parse(startsAt)) {
+    throw BadRequest("конец должен быть позже начала");
+  }
+}
 import type { EventBus } from "../../core/eventBus.js";
 
 interface ClientRow {
@@ -135,6 +141,7 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       return row ? projectDTO(row) : null;
     },
     async createProject(input) {
+      assertRange(input.startsAt, input.endsAt);
       const client = await one<ClientRow>(db, `SELECT * FROM projects.clients WHERE id=$1`, [input.clientId]);
       if (!client) throw NotFound("client", input.clientId);
       const row = await one<ProjectRow>(
@@ -142,6 +149,29 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at)
          VALUES ($1,$2,$3,$4,$5) RETURNING *`,
         [input.name, input.clientId, input.venueId ?? null, input.startsAt, input.endsAt]
+      );
+      return projectDTO(row!);
+    },
+    async updateProject(id, input) {
+      const existing = await this.getProject(id);
+      if (!existing) throw NotFound("project", id);
+      const startsAt = input.startsAt ?? existing.startsAt;
+      const endsAt = input.endsAt ?? existing.endsAt;
+      assertRange(startsAt, endsAt);
+      if (input.clientId) {
+        const client = await one<ClientRow>(db, `SELECT id FROM projects.clients WHERE id=$1`, [input.clientId]);
+        if (!client) throw NotFound("client", input.clientId);
+      }
+      const row = await one<ProjectRow>(
+        db,
+        `UPDATE projects.projects SET
+           name      = COALESCE($2, name),
+           client_id = COALESCE($3, client_id),
+           venue_id  = $4,
+           starts_at = $5,
+           ends_at   = $6
+         WHERE id=$1 RETURNING *`,
+        [id, input.name ?? null, input.clientId ?? null, input.venueId === undefined ? existing.venueId : input.venueId, startsAt, endsAt]
       );
       return projectDTO(row!);
     },
@@ -178,6 +208,7 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       return rows.map(reservationDTO);
     },
     async createReservation(input) {
+      assertRange(input.startsAt, input.endsAt);
       const overlapping = await this.findOverlapping(input.modelId, input.startsAt, input.endsAt);
       const row = await one<ReservationRow>(
         db,
@@ -207,13 +238,29 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       return reservationDTO(row!);
     },
     async resolveReservation(id, unitIds) {
+      const res = await one<ReservationRow>(db, `SELECT * FROM projects.reservations WHERE id=$1`, [id]);
+      if (!res) throw NotFound("reservation", id);
+      // No duplicates within the selection.
+      if (new Set(unitIds).size !== unitIds.length) throw BadRequest("одна и та же единица выбрана дважды");
+      // A unit can't be assigned to another reservation whose time window overlaps.
+      if (unitIds.length > 0) {
+        const clash = await one<ReservationRow>(
+          db,
+          `SELECT * FROM projects.reservations
+           WHERE id <> $1 AND starts_at < $3 AND ends_at > $2 AND resolved_unit_ids && $4::uuid[]
+           LIMIT 1`,
+          [id, res.starts_at, res.ends_at, unitIds]
+        );
+        if (clash) {
+          throw Conflict("часть единиц уже распределена на пересекающуюся бронь");
+        }
+      }
       const row = await one<ReservationRow>(
         db,
         `UPDATE projects.reservations SET resolved_unit_ids=$2 WHERE id=$1 RETURNING *`,
         [id, unitIds]
       );
-      if (!row) throw NotFound("reservation", id);
-      return reservationDTO(row);
+      return reservationDTO(row!);
     },
 
     // ── Timings + assignments ──
@@ -226,6 +273,7 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       return rows.map(timingDTO);
     },
     async addTiming(input) {
+      assertRange(input.startsAt, input.endsAt);
       const row = await one<TimingRow>(
         db,
         `INSERT INTO projects.timings (project_id, title, starts_at, ends_at)
@@ -243,6 +291,12 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       return rows.map(assignmentDTO);
     },
     async addAssignment(input) {
+      const dup = await one<AssignmentRow>(
+        db,
+        `SELECT id FROM projects.assignments WHERE project_id=$1 AND user_id=$2`,
+        [input.projectId, input.userId]
+      );
+      if (dup) throw Conflict("этот человек уже назначен на проект");
       const row = await one<AssignmentRow>(
         db,
         `INSERT INTO projects.assignments (project_id, user_id, role_note)

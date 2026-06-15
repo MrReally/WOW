@@ -17,6 +17,13 @@ const projectSchema = z.object({
   venueId: z.string().uuid().nullable().optional(),
 });
 const statusSchema = z.object({ status: z.enum(PROJECT_STATUSES as [string, ...string[]]) });
+const updateProjectSchema = z.object({
+  name: z.string().min(1).optional(),
+  clientId: z.string().uuid().optional(),
+  startsAt: z.string().datetime().optional(),
+  endsAt: z.string().datetime().optional(),
+  venueId: z.string().uuid().nullable().optional(),
+});
 const reservationSchema = z.object({
   projectId: z.string().uuid(),
   modelId: z.string().uuid(),
@@ -79,6 +86,11 @@ export function registerProjectsRoutes(
     requireRole(auth, "admin", "warehouse");
     const body = statusSchema.parse(req.body);
     return service.setStatus(req.params.id, body.status as Projects.ProjectStatus);
+  });
+  app.patch<{ Params: { id: string } }>("/api/projects/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requireRole(auth, "admin", "warehouse");
+    return service.updateProject(req.params.id, updateProjectSchema.parse(req.body) as Projects.UpdateProjectInput);
   });
 
   // ── Reservations ──

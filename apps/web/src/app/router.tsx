@@ -1,4 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import type { ReactNode } from "react";
+import type { Role } from "@sever/contracts";
 import { useSession } from "./session.ts";
 import { workspacesFor } from "./workspaces.ts";
 import { ApexPage } from "../features/apex/ApexPage.tsx";
@@ -11,8 +13,14 @@ import { SettingsPage } from "../features/settings/SettingsPage.tsx";
 
 export function AppRouter() {
   const { role } = useSession();
-  // Land on the user's first accessible workspace (Operations for everyone).
   const home = workspacesFor(role)[0]?.route ?? "/apex";
+
+  // Client-side role gate: typing a URL must not reveal an off-limits screen.
+  // (The API also enforces this — this just prevents the empty/forbidden page.)
+  function Guard({ allow, children }: { allow: Role[]; children: ReactNode }) {
+    if (!role || !allow.includes(role)) return <Navigate to={home} replace />;
+    return <>{children}</>;
+  }
 
   return (
     <Routes>
@@ -22,8 +30,8 @@ export function AppRouter() {
       <Route path="/warehouse/units/:id" element={<UnitDetailPage />} />
       <Route path="/projects" element={<ProjectsPage />} />
       <Route path="/projects/:id" element={<ProjectDetailPage />} />
-      <Route path="/finance" element={<FinancePage />} />
-      <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/finance" element={<Guard allow={["admin"]}><FinancePage /></Guard>} />
+      <Route path="/settings" element={<Guard allow={["admin"]}><SettingsPage /></Guard>} />
       <Route path="*" element={<Navigate to={home} replace />} />
     </Routes>
   );

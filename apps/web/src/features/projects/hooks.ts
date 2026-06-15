@@ -70,6 +70,15 @@ export function useCreateProject() {
   });
 }
 
+export function useUpdateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Projects.UpdateProjectInput }) =>
+      api.patch<Projects.ProjectDTO>(`/api/projects/${id}`, input),
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
 export function useSetProjectStatus() {
   const qc = useQueryClient();
   return useMutation({

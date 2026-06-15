@@ -23,6 +23,8 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
     ...(clients.data ?? []).map((c) => ({ value: c.id, label: c.name })),
   ];
 
+  const validRange = new Date(ends).getTime() > new Date(starts).getTime();
+
   const submit = () => {
     createProject.mutate(
       {
@@ -85,7 +87,8 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
         </Field>
       </div>
 
-      <Button block disabled={!name || !clientId || createProject.isPending} onClick={submit}>
+      {!validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Конец должен быть позже начала</p>}
+      <Button block disabled={!name || !clientId || !validRange || createProject.isPending} onClick={submit}>
         Создать проект
       </Button>
     </Sheet>

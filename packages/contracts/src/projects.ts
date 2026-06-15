@@ -51,6 +51,14 @@ export interface CreateProjectInput {
   venueId?: ID | null;
 }
 
+export interface UpdateProjectInput {
+  name?: string;
+  clientId?: ID;
+  startsAt?: ISODateTime;
+  endsAt?: ISODateTime;
+  venueId?: ID | null;
+}
+
 // ── Hourly reservations ──────────────────────────────────────────────────────
 // Early reservations can be model-level (qty); resolved to specific units at
 // warehouse prep. Conflicts never block — they create a Problem.
@@ -106,6 +114,7 @@ export interface ProjectsService {
   listProjects(filter?: { status?: ProjectStatus }): Promise<ProjectDTO[]>;
   getProject(id: ID): Promise<ProjectDTO | null>;
   createProject(input: CreateProjectInput): Promise<ProjectDTO>;
+  updateProject(id: ID, input: UpdateProjectInput): Promise<ProjectDTO>;
   setStatus(id: ID, status: ProjectStatus): Promise<ProjectDTO>;
 
   // Reservations

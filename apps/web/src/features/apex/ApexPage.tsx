@@ -46,14 +46,30 @@ function OperationHero({ current, upcoming }: { current: ApexRentalRow[]; upcomi
   );
 }
 
-function NeedsRow({ problem, onResolve }: { problem: Problem; onResolve: () => void }) {
+function NeedsRow({
+  problem,
+  projectName,
+  onOpen,
+  onResolve,
+}: {
+  problem: Problem;
+  projectName: string | null;
+  onOpen: (() => void) | null;
+  onResolve: () => void;
+}) {
   const tone = problem.severity === "critical" ? "alert" : problem.severity === "warning" ? "warn" : "info";
   return (
     <div className="lrow">
       <Dot tone={tone} size={8} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="lrow__title">{problem.title}</div>
-        <div className="lrow__detail">{problemKindLabel[problem.kind] ?? problem.kind} · {problem.detail}</div>
+      <div
+        style={{ flex: 1, minWidth: 0, cursor: onOpen ? "pointer" : "default" }}
+        onClick={() => onOpen?.()}
+      >
+        <div className="row" style={{ gap: 8 }}>
+          <Chip label={problemKindLabel[problem.kind] ?? problem.kind} tone={tone} />
+          {projectName && <span className="lrow__title" style={{ fontSize: 13 }}>{projectName}</span>}
+        </div>
+        <div className="lrow__detail" style={{ marginTop: 4 }}>{problem.detail}</div>
       </div>
       <button className="btn btn--ghost" style={{ height: 36, padding: "0 10px" }} onClick={onResolve}>
         Решено
@@ -127,13 +143,19 @@ export function ApexPage() {
         <>
           <SectionHead label="Требуют внимания" meta={String(data.problems.length)} />
           <div className="card" style={{ padding: "2px 16px" }}>
-            {data.problems.map((p) => (
-              <NeedsRow
-                key={p.id}
-                problem={p}
-                onResolve={() => resolve.mutate({ id: p.id, scope: p.kind === "reservation_conflict" ? "projects" : "equipment" })}
-              />
-            ))}
+            {data.problems.map((p) => {
+              const pid = p.refs?.projectId;
+              const proj = pid ? (opsProjects.data ?? []).find((x) => x.id === pid) : null;
+              return (
+                <NeedsRow
+                  key={p.id}
+                  problem={p}
+                  projectName={proj?.name ?? null}
+                  onOpen={pid ? () => navigate(`/projects/${pid}`) : null}
+                  onResolve={() => resolve.mutate({ id: p.id, scope: p.kind === "reservation_conflict" ? "projects" : "equipment" })}
+                />
+              );
+            })}
           </div>
         </>
       )}
