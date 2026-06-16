@@ -19,6 +19,7 @@ import {
   useSetTimingAssignees,
   useDeleteTiming,
   useAddAssignment,
+  useRemoveAssignment,
   useIssueResolvedUnits,
   useAllUnits,
 } from "./hooks.ts";
@@ -60,6 +61,7 @@ export function ProjectDetailPage() {
   const setTimingAssignees = useSetTimingAssignees();
   const deleteTiming = useDeleteTiming();
   const addAssignment = useAddAssignment();
+  const removeAssignment = useRemoveAssignment();
   const issueResolved = useIssueResolvedUnits();
 
   const [resModel, setResModel] = useState("");
@@ -303,7 +305,14 @@ export function ProjectDetailPage() {
               <Card key={a.id}>
                 <div className="row row--between">
                   <p className="card__title">{userName(a.userId)}</p>
-                  <Chip label={st.label} tone={st.tone} />
+                  <div className="row" style={{ gap: 8 }}>
+                    <Chip label={st.label} tone={st.tone} />
+                    {canAssign && (
+                      <Button variant="ghost" disabled={removeAssignment.isPending} onClick={() => removeAssignment.mutate(a.id)}>
+                        Снять
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <p className="card__subtitle" style={{ marginTop: 2 }}>
                   {a.roleNote || "роль не указана"}

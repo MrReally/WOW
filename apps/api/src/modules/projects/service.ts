@@ -361,6 +361,21 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       }
       return assignmentDTO(row!);
     },
+    async removeAssignment(id) {
+      const row = await one<AssignmentRow>(db, `SELECT * FROM projects.assignments WHERE id=$1`, [id]);
+      if (!row) throw NotFound("assignment", id);
+      await tx(async (client) => {
+        // Drop them from this project's timing blocks too.
+        await query(
+          client,
+          `DELETE FROM projects.timing_assignees
+           WHERE user_id=$1 AND timing_id IN (SELECT id FROM projects.timings WHERE project_id=$2)`,
+          [row.user_id, row.project_id]
+        );
+        await query(client, `DELETE FROM projects.assignments WHERE id=$1`, [id]);
+      });
+      await bus.publish({ type: "project.unassigned", projectId: row.project_id, userId: row.user_id, at: new Date().toISOString() });
+    },
     async respondToInvite(assignmentId, accept, byUserId) {
       const row = await one<AssignmentRow>(db, `SELECT * FROM projects.assignments WHERE id=$1`, [assignmentId]);
       if (!row) throw NotFound("assignment", assignmentId);

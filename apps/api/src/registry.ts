@@ -56,6 +56,17 @@ export function createModules(bus: EventBus = new EventBus()) {
     });
   });
 
+  bus.on("project.unassigned", async (e) => {
+    const project = await projects.service.getProject(e.projectId);
+    if (!project) return;
+    await notify(e.userId, {
+      kind: "info",
+      title: "Вас сняли с проекта",
+      body: project.name,
+      link: `/projects/${e.projectId}`,
+    });
+  });
+
   // ── Invitations: deliver an accept/decline message to the invited person ──
   const fmtDateTime = (iso: string) =>
     new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });

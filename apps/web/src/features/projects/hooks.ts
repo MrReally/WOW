@@ -134,6 +134,15 @@ export function useAddAssignment() {
   });
 }
 
+export function useRemoveAssignment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/assignments/${id}`),
+    meta: { successMessage: "Человек снят с проекта" },
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
 // In-stock serial units of a model — used to resolve a model-level reservation
 // into concrete units at warehouse prep.
 export function useInStockUnits(modelId: string) {

@@ -167,6 +167,8 @@ export interface ProjectsService {
   listAssignments(projectId: ID): Promise<AssignmentDTO[]>;
   getAssignment(id: ID): Promise<AssignmentDTO | null>;
   addAssignment(input: AddAssignmentInput): Promise<AssignmentDTO>;
+  /** Remove a person from the project (also drops them from its timing blocks). */
+  removeAssignment(id: ID): Promise<void>;
   /** Accept or decline an invite (called from the Telegram bot). Verifies the
    *  assignment belongs to byUserId. */
   respondToInvite(assignmentId: ID, accept: boolean, byUserId: ID): Promise<AssignmentDTO>;
@@ -200,6 +202,14 @@ export interface ProjectAssignedEvent {
   at: ISODateTime;
 }
 
+/** A person was removed from a project — notify them. */
+export interface ProjectUnassignedEvent {
+  type: "project.unassigned";
+  projectId: ID;
+  userId: ID;
+  at: ISODateTime;
+}
+
 /** A person was invited (not yet accepted) — triggers a Telegram invite. */
 export interface ProjectInvitedEvent {
   type: "project.invited";
@@ -223,5 +233,6 @@ export type ProjectsEvent =
   | ProjectConfirmedEvent
   | ReservationConflictEvent
   | ProjectAssignedEvent
+  | ProjectUnassignedEvent
   | ProjectInvitedEvent
   | InviteRespondedEvent;

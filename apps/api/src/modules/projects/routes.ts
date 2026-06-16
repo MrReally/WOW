@@ -148,6 +148,12 @@ export function registerProjectsRoutes(
     const body = assignmentSchema.parse(req.body);
     return service.addAssignment({ ...body, invitedByUserId: auth.userId } as Projects.AddAssignmentInput);
   });
+  app.delete<{ Params: { id: string } }>("/api/assignments/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.assignment.manage");
+    await service.removeAssignment(req.params.id);
+    return { ok: true };
+  });
 
   // ── Problems ──
   app.get<{ Querystring: { includeResolved?: string } }>("/api/projects-problems", async (req) => {
