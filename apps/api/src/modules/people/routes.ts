@@ -3,7 +3,9 @@ import { z } from "zod";
 import type { People } from "@sever/contracts";
 import { ALL_PERMISSIONS } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
-import { requirePermission, bearerToken } from "../../core/auth.js";
+import { requirePermission, bearerToken, verifyTelegramInitData } from "../../core/auth.js";
+import { Unauthorized, Forbidden } from "../../core/errors.js";
+import { env } from "../../env.js";
 
 const permissionEnum = z.enum(ALL_PERMISSIONS as [string, ...string[]]);
 
@@ -45,6 +47,18 @@ export function registerPeopleRoutes(
   app.post("/api/auth/login", async (req) => {
     const body = loginSchema.parse(req.body);
     return service.loginWithPassword(body.email, body.password);
+  });
+  // Telegram Mini App: exchange verified initData for a session token.
+  app.post("/api/auth/telegram", async (req) => {
+    const { initData } = z.object({ initData: z.string().min(1) }).parse(req.body);
+    if (!env.auth.telegramBotToken) throw Forbidden("Telegram-вход не настроен");
+    const tg = verifyTelegramInitData(initData, env.auth.telegramBotToken);
+    if (!tg) throw Unauthorized("недействительные данные Telegram");
+    const name = [tg.first_name, tg.last_name].filter(Boolean).join(" ") || tg.username || String(tg.id);
+    const su = await service.resolveTelegramUser(String(tg.id), name);
+    if (!su) throw Forbidden("этот Telegram не привязан к аккаунту — попросите администратора");
+    const token = await service.issueToken(su.user.id);
+    return { token, user: su.user, permissions: su.permissions, mustChangePassword: su.user.mustChangePassword };
   });
   app.post("/api/auth/logout", async (req) => {
     const token = bearerToken(req);

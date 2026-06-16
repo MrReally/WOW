@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from "react";
-import { useLocation } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { WSChip, Avatar } from "../../ui-kit/index.ts";
 import { useSession } from "../session.ts";
 import { currentWorkspace, workspacesFor, initialsOf } from "../workspaces.ts";
+import { platform } from "../platform/telegram.ts";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher.tsx";
 import { NotificationsBell } from "../../features/notifications/NotificationsBell.tsx";
 import "./shell.css";
@@ -10,10 +11,16 @@ import "./shell.css";
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, can } = useSession();
   const location = useLocation();
+  const navigate = useNavigate();
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
   const ws = currentWorkspace(location.pathname);
   const count = workspacesFor(can).length;
+
+  // On a detail screen (a path deeper than a workspace root), show Telegram's
+  // native back button.
+  const isDetail = location.pathname !== ws.route;
+  useEffect(() => platform.backButton(isDetail, () => navigate(-1)), [isDetail, navigate]);
 
   return (
     <div className="app-shell">

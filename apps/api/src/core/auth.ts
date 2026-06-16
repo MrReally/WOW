@@ -15,7 +15,11 @@ interface TelegramUser {
   username?: string;
 }
 
-export function verifyTelegramInitData(initData: string, botToken: string): TelegramUser | null {
+export function verifyTelegramInitData(
+  initData: string,
+  botToken: string,
+  maxAgeSec = 86_400
+): TelegramUser | null {
   const params = new URLSearchParams(initData);
   const hash = params.get("hash");
   if (!hash) return null;
@@ -24,6 +28,9 @@ export function verifyTelegramInitData(initData: string, botToken: string): Tele
   const secretKey = crypto.createHmac("sha256", "WebAppData").update(botToken).digest();
   const computed = crypto.createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
   if (computed !== hash) return null;
+  // Reject stale initData (replay protection). auth_date is unix seconds.
+  const authDate = Number(params.get("auth_date"));
+  if (Number.isFinite(authDate) && Date.now() / 1000 - authDate > maxAgeSec) return null;
   const userJson = params.get("user");
   if (!userJson) return null;
   try {

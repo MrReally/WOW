@@ -1,5 +1,3 @@
-import { platform } from "../app/platform/telegram.ts";
-
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
 // Session token from email/password (or Telegram) login.
@@ -24,10 +22,6 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  // In a Telegram Mini App we also pass initData so the API can resolve/login.
-  if (platform.kind === "telegram" && platform.initData) {
-    headers["x-telegram-init-data"] = platform.initData;
-  }
 
   const res = await fetch(`${BASE}${path}`, {
     method,
