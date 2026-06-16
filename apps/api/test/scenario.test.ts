@@ -235,4 +235,43 @@ describe("Tech pickup/return → некомплект", () => {
     expect(after.length).toBe(before + 1);
     expect(after.some((p) => p.kind === "reservation_conflict")).toBe(true);
   });
+
+  it("technical plans: versioning clones elements and tracks the current version", async () => {
+    const { plans, projects } = wiring;
+    const client = await projects.service.createClient({ name: `Plan Client ${Date.now()}` });
+    const project = await projects.service.createProject({
+      name: "Plan Project",
+      clientId: client.id,
+      startsAt: new Date().toISOString(),
+      endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+
+    const plan = await plans.service.createPlan({ projectId: project.id, name: "Main stage" });
+    expect(plan.version).toBe(1);
+    expect(plan.isCurrent).toBe(true);
+
+    await plans.service.addElement({ planId: plan.id, layer: "fixtures", kind: "fixture", label: "MH1", x: 100, y: 80 });
+    await plans.service.addElement({ planId: plan.id, layer: "dmx", kind: "power", label: "U1", x: 50, y: 50 });
+
+    const v2 = await plans.service.newVersion(plan.id);
+    expect(v2.version).toBe(2);
+    expect(v2.isCurrent).toBe(true);
+    expect(v2.elements.length).toBe(2); // cloned
+
+    // The current plan for the project is v2.
+    const current = await plans.service.getCurrentPlan(project.id);
+    expect(current?.id).toBe(v2.id);
+
+    // Roll back to v1 → it becomes current, v2 not.
+    const v1 = await plans.service.setCurrent(plan.id);
+    expect(v1.isCurrent).toBe(true);
+    expect((await plans.service.getCurrentPlan(project.id))?.version).toBe(1);
+
+    // Move + delete element work.
+    await plans.service.moveElements(plan.id, [{ id: v1.elements[0]!.id, x: 200, y: 150, rotation: 45 }]);
+    const moved = await plans.service.getPlan(plan.id);
+    const el = moved!.elements.find((e) => e.id === v1.elements[0]!.id)!;
+    expect(el.x).toBe(200);
+    expect(el.rotation).toBe(45);
+  });
 });

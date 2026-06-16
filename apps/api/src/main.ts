@@ -23,6 +23,8 @@ async function main() {
         equipment: wiring.equipment.service,
         projects: wiring.projects.service,
         finance: wiring.finance.service,
+        venues: wiring.venues.service,
+        plans: wiring.plans.service,
       });
     }
   }

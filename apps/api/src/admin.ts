@@ -25,6 +25,8 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: RouteContext, wir
         equipment: wiring.equipment.service,
         projects: wiring.projects.service,
         finance: wiring.finance.service,
+        venues: wiring.venues.service,
+        plans: wiring.plans.service,
       });
     }
     return { ok: true, mode };

@@ -1,13 +1,15 @@
 // Rich, diverse demo dataset — used by `pnpm seed` and the admin "reset to demo"
 // action. Assumes empty module schemas (the caller drops + migrates first).
 
-import type { Equipment, Finance, People, Projects } from "@sever/contracts";
+import type { Equipment, Finance, People, Projects, Venues, Plans } from "@sever/contracts";
 
 export interface SeedServices {
   people: People.PeopleService;
   equipment: Equipment.EquipmentService;
   projects: Projects.ProjectsService;
   finance: Finance.FinanceService;
+  venues: Venues.VenuesService;
+  plans: Plans.PlansService;
 }
 
 function iso(daysFromNow: number, hour = 10): string {
@@ -150,6 +152,18 @@ export async function seedDemo(s: SeedServices): Promise<{ summary: Record<strin
     actorId: tech1.id,
     note: "Один прибор остался на сцене на завтра",
   });
+
+  // ── Venue + technical plan for the live operation ──
+  const venue = await s.venues.create({ name: "Ice Palace Arena", address: "Москва", widthM: 40, depthM: 30 });
+  const plan = await s.plans.createPlan({ projectId: pNordic.id, name: "Главная сцена", venueId: venue.id });
+  await s.plans.addElement({ planId: plan.id, layer: "rigging", kind: "truss", label: "MID truss", x: 200, y: 110, w: 240 });
+  await s.plans.addElement({ planId: plan.id, layer: "fixtures", kind: "fixture", label: "MH1", x: 110, y: 110, unitId: mp[0]!.id });
+  await s.plans.addElement({ planId: plan.id, layer: "fixtures", kind: "fixture", label: "MH2", x: 200, y: 110, unitId: mp[1]!.id });
+  await s.plans.addElement({ planId: plan.id, layer: "fixtures", kind: "fixture", label: "MH3", x: 290, y: 110, unitId: mp[2]!.id });
+  await s.plans.addElement({ planId: plan.id, layer: "power", kind: "power", label: "PWR A", x: 60, y: 230 });
+  await s.plans.addElement({ planId: plan.id, layer: "dmx", kind: "fixture", label: "U2", x: 200, y: 300 });
+  await s.plans.addElement({ planId: plan.id, layer: "audio", kind: "audio", label: "SPK L", x: 70, y: 470 });
+  await s.plans.addElement({ planId: plan.id, layer: "audio", kind: "audio", label: "SPK R", x: 330, y: 470 });
 
   // ── Some general expenses ──
   await s.finance.createTransaction({ accountId: accEUR.id, kind: "expense", category: "purchase", amount: 6000, currency: "EUR", note: "Закупка Robe MegaPointe" });

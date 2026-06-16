@@ -3,10 +3,13 @@ export * as Equipment from "./equipment.js";
 export * as Projects from "./projects.js";
 export * as Finance from "./finance.js";
 export * as People from "./people.js";
+export * as Venues from "./venues.js";
+export * as Plans from "./plans.js";
 
 // Runtime constants surfaced at top level for convenience (route validation).
 export { UNIT_STATUSES } from "./equipment.js";
 export { PROJECT_STATUSES } from "./projects.js";
+export { PLAN_LAYERS } from "./plans.js";
 
 // Apex is a read-only aggregator over other modules — its DTO lives here too.
 import type { Problem, ID, ISODateTime } from "./common.js";

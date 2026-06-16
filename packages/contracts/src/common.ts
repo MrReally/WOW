@@ -34,6 +34,9 @@ export type Permission =
   | "clients.manage"
   | "finance.view"
   | "finance.manage"
+  | "venues.manage"
+  | "plans.view"
+  | "plans.manage"
   | "people.view"
   | "people.manage"
   | "roles.manage"
@@ -62,6 +65,9 @@ export const PERMISSIONS: PermissionMeta[] = [
   { key: "clients.manage", group: "Планирование", label: "Управлять клиентами" },
   { key: "finance.view", group: "Финансы", label: "Видеть финансы" },
   { key: "finance.manage", group: "Финансы", label: "Транзакции, счета, курсы" },
+  { key: "venues.manage", group: "Площадки и планы", label: "Управлять площадками" },
+  { key: "plans.view", group: "Площадки и планы", label: "Видеть технические планы" },
+  { key: "plans.manage", group: "Площадки и планы", label: "Редактировать планы (сцена, слои, версии)" },
   { key: "people.view", group: "Администрирование", label: "Видеть людей" },
   { key: "people.manage", group: "Администрирование", label: "Создавать/редактировать людей" },
   { key: "roles.manage", group: "Администрирование", label: "Управлять ролями и правами" },

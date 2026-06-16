@@ -9,6 +9,7 @@ import { WarehousePage } from "../features/warehouse/WarehousePage.tsx";
 import { UnitDetailPage } from "../features/warehouse/UnitDetailPage.tsx";
 import { ProjectsPage } from "../features/projects/ProjectsPage.tsx";
 import { ProjectDetailPage } from "../features/projects/ProjectDetailPage.tsx";
+import { StagePlanPage } from "../features/plans/StagePlanPage.tsx";
 import { FinancePage } from "../features/finance/FinancePage.tsx";
 import { SettingsPage } from "../features/settings/SettingsPage.tsx";
 
@@ -32,6 +33,7 @@ export function AppRouter() {
       <Route path="/warehouse/units/:id" element={<Guard allow={["warehouse.view"]}><UnitDetailPage /></Guard>} />
       <Route path="/projects" element={<Guard allow={["projects.view"]}><ProjectsPage /></Guard>} />
       <Route path="/projects/:id" element={<Guard allow={["projects.view"]}><ProjectDetailPage /></Guard>} />
+      <Route path="/projects/:id/plan" element={<Guard allow={["plans.view"]}><StagePlanPage /></Guard>} />
       <Route path="/finance" element={<Guard allow={["finance.view"]}><FinancePage /></Guard>} />
       <Route
         path="/settings"

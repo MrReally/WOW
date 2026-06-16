@@ -10,12 +10,14 @@ import { seedDemo } from "./seedData.js";
 async function seed() {
   await resetSchemas();
   await runMigrations();
-  const { people, equipment, projects, finance } = createModules();
+  const { people, equipment, projects, finance, venues, plans } = createModules();
   const { summary } = await seedDemo({
     people: people.service,
     equipment: equipment.service,
     projects: projects.service,
     finance: finance.service,
+    venues: venues.service,
+    plans: plans.service,
   });
   // eslint-disable-next-line no-console
   console.log("[seed] demo data loaded:", summary);

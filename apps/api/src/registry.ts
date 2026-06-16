@@ -12,6 +12,8 @@ import { createPeopleModule } from "./modules/people/index.js";
 import { createEquipmentModule } from "./modules/equipment/index.js";
 import { createProjectsModule } from "./modules/projects/index.js";
 import { createFinanceModule } from "./modules/finance/index.js";
+import { createVenuesModule } from "./modules/venues/index.js";
+import { createPlansModule } from "./modules/plans/index.js";
 import { createApexService } from "./modules/apex/service.js";
 import { registerApexRoutes } from "./modules/apex/routes.js";
 
@@ -20,6 +22,8 @@ export function createModules(bus: EventBus = new EventBus()) {
   const equipment = createEquipmentModule(pool, bus);
   const projects = createProjectsModule(pool, bus);
   const finance = createFinanceModule(pool, bus);
+  const venues = createVenuesModule(pool);
+  const plans = createPlansModule(pool);
 
   const apex = createApexService({
     equipment: equipment.service,
@@ -32,9 +36,9 @@ export function createModules(bus: EventBus = new EventBus()) {
   // write-offs. Wiring lives here, not inside modules.
   // bus.on("equipment.unit.issued", async (e) => { ... });
 
-  const modules = [people, equipment, projects, finance];
+  const modules = [people, equipment, projects, finance, venues, plans];
 
-  return { bus, people, equipment, projects, finance, apex, modules };
+  return { bus, people, equipment, projects, finance, venues, plans, apex, modules };
 }
 
 export type Wiring = ReturnType<typeof createModules>;

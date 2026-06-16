@@ -33,6 +33,7 @@ export function ProjectDetailPage() {
   const canIssue = can("warehouse.issue");
   const canTiming = can("projects.timing.manage");
   const canAssign = can("projects.assignment.manage");
+  const canPlans = can("plans.view");
 
   const project = useProject(id);
   const clients = useClients();
@@ -93,6 +94,12 @@ export function ProjectDetailPage() {
           </div>
         )}
       </Card>
+
+      {canPlans && (
+        <Button variant="secondary" block onClick={() => navigate(`/projects/${p.id}/plan`)}>
+          🎛 Технический план сцены
+        </Button>
+      )}
 
       {/* Reservations */}
       <SectionTitle>Брони (по часам)</SectionTitle>
