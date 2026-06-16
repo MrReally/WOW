@@ -9,6 +9,7 @@ import { AppError } from "./core/errors.js";
 import { resolveAuth } from "./core/auth.js";
 import { createModules, registerAllRoutes, type Wiring } from "./registry.js";
 import { registerAdminRoutes } from "./admin.js";
+import { getBotUsername } from "./core/telegramBot.js";
 import { env } from "./env.js";
 
 // Where the built web bundle lives (apps/web/dist). Works from src (tsx) and
@@ -72,6 +73,12 @@ export async function buildApp(): Promise<BuiltApp> {
   };
 
   app.get("/health", async () => ({ ok: true, ts: new Date().toISOString() }));
+
+  // Telegram bot username (for building deep-links in the UI). Cached.
+  app.get("/api/telegram/bot-info", async (req) => {
+    await ctx.auth(req);
+    return { username: await getBotUsername() };
+  });
 
   registerAllRoutes(app, wiring, ctx);
   registerAdminRoutes(app, ctx, wiring);

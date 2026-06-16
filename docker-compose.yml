@@ -41,8 +41,11 @@ services:
       #   tech@sever.local / tech123           (Монтажник)
       # Set true only for frictionless local dev (auto-logs in as the owner).
       AUTH_DEV_BYPASS: "false"
-      # For a Telegram Mini App, add the bot token from @BotFather:
-      # TELEGRAM_BOT_TOKEN: "<token>"
+      # Telegram bot token (from @BotFather). Passed from the host env — never
+      # commit it. Run like: TELEGRAM_BOT_TOKEN=123:abc docker compose up --build
+      # With it set, notifications also deliver to Telegram and the bot links
+      # accounts (Settings → Люди → «Привязать Telegram»).
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
     ports:
       - "8080:4000"
 

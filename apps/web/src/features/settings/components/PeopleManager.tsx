@@ -2,11 +2,14 @@ import { useState } from "react";
 import type { People } from "@sever/contracts";
 import { Card, Button, SectionHead, Field, Input, Select, Chip, Loading } from "../../../ui-kit/index.ts";
 import { dateTime } from "../../../lib/labels.ts";
-import { usePeople, useRoles, useCreateUser, useUpdateUser, useResetPassword } from "../hooks.ts";
+import { usePeople, useRoles, useCreateUser, useUpdateUser, useResetPassword, useBotInfo } from "../hooks.ts";
+
+const isLinked = (telegramId: string | null) => !!telegramId && /^\d+$/.test(telegramId);
 
 export function PeopleManager() {
   const people = usePeople();
   const roles = useRoles();
+  const botInfo = useBotInfo();
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const resetPw = useResetPassword();
@@ -57,8 +60,8 @@ export function PeopleManager() {
                 />
               </div>
             </div>
-            {u.email && (
-              <div style={{ marginTop: 8 }}>
+            <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+              {u.email && (
                 <Button
                   variant="ghost"
                   disabled={resetPw.isPending}
@@ -66,8 +69,21 @@ export function PeopleManager() {
                 >
                   Сбросить пароль
                 </Button>
-              </div>
-            )}
+              )}
+              {isLinked(u.telegramId) ? (
+                <Chip label="Telegram ✓" tone="ok" />
+              ) : botInfo.data?.username ? (
+                <a
+                  className="btn btn--ghost"
+                  href={`https://t.me/${botInfo.data.username}?start=${u.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ height: 36, padding: "0 10px" }}
+                >
+                  Привязать Telegram
+                </a>
+              ) : null}
+            </div>
           </Card>
         ))}
       </div>

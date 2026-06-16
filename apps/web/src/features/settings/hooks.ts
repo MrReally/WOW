@@ -8,6 +8,9 @@ export function usePeople() {
 export function useRoles() {
   return useQuery({ queryKey: ["roles"], queryFn: () => api.get<People.RoleDTO[]>("/api/roles") });
 }
+export function useBotInfo() {
+  return useQuery({ queryKey: ["telegram", "bot-info"], queryFn: () => api.get<{ username: string | null }>("/api/telegram/bot-info") });
+}
 export function useFxRates() {
   return useQuery({ queryKey: ["finance", "fx"], queryFn: () => api.get<Finance.FxRateDTO[]>("/api/finance/fx") });
 }

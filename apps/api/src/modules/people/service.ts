@@ -86,22 +86,28 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
 
   const service: People.PeopleService = {
     async ensureDefaultRoles() {
+      // Owner: created once, permissions are implicit (all) so we never store them.
       await query(
         db,
         `INSERT INTO people.roles (name, permissions, is_system, is_owner)
          VALUES ('Владелец', '{}', true, true)
          ON CONFLICT (name) DO NOTHING`
       );
+      // Склад / Монтажник are code-managed defaults: keep their permissions in
+      // sync with the current build on every boot (so upgrades aren't stale —
+      // no database wipe needed). Custom roles are for customization.
       await query(
         db,
         `INSERT INTO people.roles (name, permissions, is_system, is_owner)
-         VALUES ('Склад', $1, true, false) ON CONFLICT (name) DO NOTHING`,
+         VALUES ('Склад', $1, true, false)
+         ON CONFLICT (name) DO UPDATE SET permissions = EXCLUDED.permissions, is_system = true`,
         [WAREHOUSE_PERMS]
       );
       await query(
         db,
         `INSERT INTO people.roles (name, permissions, is_system, is_owner)
-         VALUES ('Монтажник', $1, true, false) ON CONFLICT (name) DO NOTHING`,
+         VALUES ('Монтажник', $1, true, false)
+         ON CONFLICT (name) DO UPDATE SET permissions = EXCLUDED.permissions, is_system = true`,
         [TECH_PERMS]
       );
     },

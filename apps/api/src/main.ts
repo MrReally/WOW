@@ -2,6 +2,7 @@ import { buildApp } from "./app.js";
 import { runMigrations } from "./core/migrate.js";
 import { closePool } from "./core/db.js";
 import { seedDemo } from "./seedData.js";
+import { startTelegramBot } from "./core/telegramBot.js";
 import { env } from "./env.js";
 
 async function main() {
@@ -30,6 +31,9 @@ async function main() {
   }
 
   await app.listen({ port: env.port, host: "0.0.0.0" });
+
+  // Telegram notifications bot (long polling). No-op without a token.
+  startTelegramBot(wiring.people.service);
 
   const shutdown = async () => {
     await app.close();

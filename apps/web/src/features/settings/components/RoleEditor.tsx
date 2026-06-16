@@ -41,16 +41,16 @@ export function RoleEditor() {
       <SectionHead label="Роли и права" meta={`${(roles.data ?? []).length}`} />
       <div className="stack">
         {(roles.data ?? []).map((r) => (
-          <Card key={r.id} onClick={() => (r.isOwner ? undefined : select(r))}>
+          <Card key={r.id} onClick={() => (r.isSystem ? undefined : select(r))}>
             <div className="row row--between">
               <div>
                 <p className="card__title">{r.name}</p>
                 <p className="card__subtitle">
                   {r.isOwner ? "все права" : `${r.permissions.length} прав`}
-                  {r.isSystem ? " · системная" : ""}
+                  {r.isSystem ? " · системная (по умолчанию)" : ""}
                 </p>
               </div>
-              {r.isOwner ? <Chip label="OWNER" tone="accent" /> : selectedId === r.id ? <Chip label="редактируется" tone="info" /> : null}
+              {r.isOwner ? <Chip label="OWNER" tone="accent" /> : r.isSystem ? <Chip label="системная" tone="neutral" /> : selectedId === r.id ? <Chip label="редактируется" tone="info" /> : null}
             </div>
           </Card>
         ))}
@@ -71,8 +71,8 @@ export function RoleEditor() {
         </div>
       </Card>
 
-      {/* Permission editor for the selected (non-owner) role */}
-      {selected && !selected.isOwner && (
+      {/* Permission editor for the selected custom (non-system) role */}
+      {selected && !selected.isSystem && (
         <Card style={{ marginTop: 12 }}>
           <Field label="Название роли">
             <Input value={name} onChange={(e) => setName(e.target.value)} />
