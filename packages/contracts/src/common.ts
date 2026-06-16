@@ -19,6 +19,7 @@ export const ROLES: Role[] = ["admin", "warehouse", "tech"];
 // Custom roles are sets of these keys. The Owner role implicitly has all.
 
 export type Permission =
+  | "apex.view"
   | "operations.view"
   | "warehouse.view"
   | "warehouse.catalog.manage"
@@ -46,7 +47,8 @@ export interface PermissionMeta {
 
 /** Catalog used to render the role editor, grouped by area. */
 export const PERMISSIONS: PermissionMeta[] = [
-  { key: "operations.view", group: "Operations", label: "Видеть Operations (диспетчер)" },
+  { key: "apex.view", group: "Apex (управление)", label: "Видеть Apex — прокаты, проблемы, долги" },
+  { key: "operations.view", group: "Operations (бригада)", label: "Видеть Operations — рабочее окно бригады" },
   { key: "warehouse.view", group: "Склад", label: "Видеть склад и каталог" },
   { key: "warehouse.catalog.manage", group: "Склад", label: "Управлять каталогом (типы/модели/единицы)" },
   { key: "warehouse.import", group: "Склад", label: "Импорт каталога из CSV" },

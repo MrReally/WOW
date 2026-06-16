@@ -28,15 +28,16 @@ describe.skipIf(!apiUp)("UI smoke — employee walkthrough", () => {
   // BrowserRouter reads jsdom's shared history, so reset the URL between tests.
   beforeEach(() => window.history.pushState({}, "", "/"));
 
-  it("renders Operations and opens pickup/return", async () => {
+  it("owner lands on Apex, then Operations has pickup/return", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    // Operations (Apex) is the landing workspace.
-    expect(await screen.findByText("Выдача / Возврат оборудования", {}, { timeout: 10000 })).toBeTruthy();
+    // The owner lands on the Apex management dashboard.
+    expect(await screen.findByText(/предстоят/i, {}, { timeout: 10000 })).toBeTruthy();
 
-    await user.click(screen.getByText("Выдача / Возврат оборудования"));
-    // Sheet shows the issue/return toggle.
+    // Pickup/return now lives in the Operations workspace.
+    await openSwitcherAndGo(user, "Operations");
+    await user.click(await screen.findByText("Выдача / Возврат оборудования", {}, { timeout: 10000 }));
     expect(await screen.findByText("Выдача")).toBeTruthy();
     expect(screen.getByText("Возврат")).toBeTruthy();
   });
@@ -44,7 +45,7 @@ describe.skipIf(!apiUp)("UI smoke — employee walkthrough", () => {
   it("navigates every workspace without crashing and key buttons exist", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await screen.findByText("Выдача / Возврат оборудования", {}, { timeout: 10000 });
+    await screen.findByText(/предстоят/i, {}, { timeout: 10000 });
 
     // Warehouse → import + template button.
     await openSwitcherAndGo(user, "Warehouse");
@@ -69,7 +70,7 @@ describe.skipIf(!apiUp)("UI smoke — employee walkthrough", () => {
   it("creates a project end-to-end through the UI form", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await screen.findByText("Выдача / Возврат оборудования", {}, { timeout: 10000 });
+    await screen.findByText(/предстоят/i, {}, { timeout: 10000 });
 
     await openSwitcherAndGo(user, "Planning");
     await user.click(await screen.findByText(/Новый проект/i));

@@ -4,6 +4,7 @@ import type { Permission } from "@sever/contracts";
 import { useSession } from "./session.ts";
 import { workspacesFor } from "./workspaces.ts";
 import { ApexPage } from "../features/apex/ApexPage.tsx";
+import { OperationsPage } from "../features/operations/OperationsPage.tsx";
 import { WarehousePage } from "../features/warehouse/WarehousePage.tsx";
 import { UnitDetailPage } from "../features/warehouse/UnitDetailPage.tsx";
 import { ProjectsPage } from "../features/projects/ProjectsPage.tsx";
@@ -25,7 +26,8 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to={home} replace />} />
-      <Route path="/apex" element={<Guard allow={["operations.view"]}><ApexPage /></Guard>} />
+      <Route path="/apex" element={<Guard allow={["apex.view"]}><ApexPage /></Guard>} />
+      <Route path="/operations" element={<Guard allow={["operations.view"]}><OperationsPage /></Guard>} />
       <Route path="/warehouse" element={<Guard allow={["warehouse.view"]}><WarehousePage /></Guard>} />
       <Route path="/warehouse/units/:id" element={<Guard allow={["warehouse.view"]}><UnitDetailPage /></Guard>} />
       <Route path="/projects" element={<Guard allow={["projects.view"]}><ProjectsPage /></Guard>} />

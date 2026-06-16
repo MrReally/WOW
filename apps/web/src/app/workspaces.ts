@@ -15,8 +15,9 @@ export interface Workspace {
 }
 
 export const WORKSPACES: Workspace[] = [
-  { id: "ops", name: "Operations", glyph: "radar", tone: "info", route: "/apex", requires: ["operations.view"], sub: "Текущие и предстоящие прокаты" },
-  { id: "wh", name: "Warehouse", glyph: "box", tone: "warn", route: "/warehouse", requires: ["warehouse.view"], sub: "Каталог · выдача · возврат" },
+  { id: "apex", name: "Apex", glyph: "radar", tone: "info", route: "/apex", requires: ["apex.view"], sub: "Управление · прокаты · проблемы · долги" },
+  { id: "ops", name: "Operations", glyph: "pin", tone: "warn", route: "/operations", requires: ["operations.view"], sub: "Бригада · мои проекты · выдача/возврат" },
+  { id: "wh", name: "Warehouse", glyph: "box", tone: "warn", route: "/warehouse", requires: ["warehouse.view"], sub: "Каталог · склад · кабели" },
   { id: "plan", name: "Planning", glyph: "rows", tone: "purple", route: "/projects", requires: ["projects.view"], sub: "Проекты · брони · команда" },
   { id: "fin", name: "Finance", glyph: "coin", tone: "ok", route: "/finance", requires: ["finance.view"], sub: "Счета · долги · окупаемость" },
   { id: "adm", name: "Admin", glyph: "shield", tone: "alert", route: "/settings", requires: ["people.view", "people.manage", "roles.manage"], sub: "Люди · роли · права · курсы" },
