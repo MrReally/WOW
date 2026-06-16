@@ -4,6 +4,7 @@ import { Card, Button, SectionTitle, StatusBadge, Select, Loading, ErrorState } 
 import { unitStatusLabel, unitStatusTone, dateTime } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
 import { useUnit, useUnitJournal, useChangeStatus } from "./hooks.ts";
+import { RepairContractorPanel } from "./components/RepairContractor.tsx";
 
 const journalActionLabel: Record<Equipment.JournalAction, string> = {
   created: "Создано",
@@ -14,6 +15,7 @@ const journalActionLabel: Record<Equipment.JournalAction, string> = {
   sent_to_repair: "В ремонт",
   back_from_repair: "Из ремонта",
   sent_to_contractor: "Подрядчику",
+  back_from_contractor: "От подрядчика",
   marked_lost: "Утеряно",
   status_changed: "Смена статуса",
 };
@@ -48,9 +50,11 @@ export function UnitDetailPage() {
         </div>
       </Card>
 
+      {canEdit && <RepairContractorPanel unit={u} />}
+
       {canEdit && (
         <Card>
-          <SectionTitle>Сменить статус</SectionTitle>
+          <SectionTitle>Сменить статус вручную</SectionTitle>
           <Select
             value={u.status}
             onChange={(e) => changeStatus.mutate({ id: u.id, status: e.target.value as Equipment.UnitStatus })}

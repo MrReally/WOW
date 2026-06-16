@@ -83,10 +83,14 @@ export async function seedDemo(s: SeedServices): Promise<{ summary: Record<strin
   const spk = await mk(mSpeaker.id, "SP", 8);
   const haze = await mk(mHazer.id, "HZ", 3);
 
-  // Some units in non-stock states for variety.
-  await s.equipment.changeStatus(strobe[0]!.id, "in_repair", ware.id, "Не зажигается сегмент");
+  // Some units in non-stock states for variety, via the real workflows.
+  await s.equipment.openRepair({ unitId: strobe[0]!.id, problem: "Не зажигается сегмент", vendor: "СветоСервис", estCostEUR: 80, actorId: ware.id });
   await s.equipment.changeStatus(s4[9]!.id, "lost", ware.id, "Не вернулся с прошлого проекта");
-  await s.equipment.changeStatus(haze[2]!.id, "at_contractor", ware.id, "Отдан субподрядчику");
+  const subRent = await s.equipment.createContractor({ name: "SubRent LLC", contacts: "+381 64 111 2222" });
+  await s.equipment.sendToContractor({ unitId: haze[2]!.id, contractorId: subRent.id, reason: "субаренда на фестиваль", actorId: ware.id });
+  // A closed repair for history (with cost).
+  const pastRepair = await s.equipment.openRepair({ unitId: hex[0]!.id, problem: "Слетела прошивка", vendor: "СветоСервис", actorId: ware.id });
+  await s.equipment.closeRepair(pastRepair.id, { costEUR: 45, resolution: "Перепрошивка", outcome: "repaired", actorId: ware.id });
 
   // ── Clients ──
   const cAcme = await s.projects.createClient({ name: "Acme Events", contacts: "+381 60 000 0000" });

@@ -109,6 +109,69 @@ const problemDTO = (r: ProblemRow): Problem => ({
   resolvedAt: r.resolved_at ? r.resolved_at.toISOString() : null,
 });
 
+interface ContractorRow { id: string; name: string; contacts: string | null; created_at: Date }
+interface RepairRow {
+  id: string;
+  unit_id: string;
+  status: "open" | "closed";
+  problem: string;
+  vendor: string | null;
+  est_cost_eur: string | null;
+  cost_eur: string | null;
+  resolution: string | null;
+  outcome: Equipment.RepairOutcome | null;
+  opened_by: string | null;
+  opened_at: Date;
+  closed_by: string | null;
+  closed_at: Date | null;
+}
+interface HandoverRow {
+  id: string;
+  unit_id: string;
+  contractor_id: string;
+  contractor_name: string;
+  status: "out" | "returned";
+  reason: string | null;
+  note: string | null;
+  expected_return: Date | null;
+  sent_by: string | null;
+  sent_at: Date;
+  returned_by: string | null;
+  returned_at: Date | null;
+}
+const contractorDTO = (r: ContractorRow): Equipment.ContractorDTO => ({
+  id: r.id, name: r.name, contacts: r.contacts, createdAt: r.created_at.toISOString(),
+});
+const repairDTO = (r: RepairRow): Equipment.RepairDTO => ({
+  id: r.id,
+  unitId: r.unit_id,
+  status: r.status,
+  problem: r.problem,
+  vendor: r.vendor,
+  estCostEUR: r.est_cost_eur === null ? null : Number(r.est_cost_eur),
+  costEUR: r.cost_eur === null ? null : Number(r.cost_eur),
+  resolution: r.resolution,
+  outcome: r.outcome,
+  openedBy: r.opened_by,
+  openedAt: r.opened_at.toISOString(),
+  closedBy: r.closed_by,
+  closedAt: r.closed_at ? r.closed_at.toISOString() : null,
+});
+const handoverDTO = (r: HandoverRow): Equipment.HandoverDTO => ({
+  id: r.id,
+  unitId: r.unit_id,
+  contractorId: r.contractor_id,
+  contractorName: r.contractor_name,
+  status: r.status,
+  reason: r.reason,
+  note: r.note,
+  expectedReturn: r.expected_return ? r.expected_return.toISOString() : null,
+  sentBy: r.sent_by,
+  sentAt: r.sent_at.toISOString(),
+  returnedBy: r.returned_by,
+  returnedAt: r.returned_at ? r.returned_at.toISOString() : null,
+});
+
 // ── Service ──────────────────────────────────────────────────────────────────
 
 export function createEquipmentService(
@@ -663,6 +726,174 @@ export function createEquipmentService(
         `UPDATE equipment.problems SET resolved=true, resolved_at=now() WHERE id=$1`,
         [id]
       );
+    },
+
+    // ── Contractors ──
+    async listContractors() {
+      const rows = await query<ContractorRow>(db, `SELECT * FROM equipment.contractors ORDER BY name`);
+      return rows.map(contractorDTO);
+    },
+    async createContractor(input) {
+      const row = await one<ContractorRow>(
+        db,
+        `INSERT INTO equipment.contractors (name, contacts) VALUES ($1,$2) RETURNING *`,
+        [input.name, input.contacts ?? null]
+      );
+      return contractorDTO(row!);
+    },
+
+    // ── Repairs ──
+    async openRepair(input) {
+      return tx(async (client) => {
+        const unit = await one<UnitRow>(client, `SELECT * FROM equipment.units WHERE id=$1 FOR UPDATE`, [input.unitId]);
+        if (!unit) throw NotFound("unit", input.unitId);
+        await query(client, `UPDATE equipment.units SET status='in_repair' WHERE id=$1`, [input.unitId]);
+        const row = await one<RepairRow>(
+          client,
+          `INSERT INTO equipment.repairs (unit_id, problem, vendor, est_cost_eur, opened_by)
+           VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+          [input.unitId, input.problem, input.vendor ?? null, input.estCostEUR ?? null, input.actorId]
+        );
+        await appendJournal(client, {
+          unitId: input.unitId,
+          action: "sent_to_repair",
+          fromStatus: unit.status,
+          toStatus: "in_repair",
+          actorId: input.actorId,
+          note: input.problem,
+        });
+        return repairDTO(row!);
+      });
+    },
+    async closeRepair(id, input) {
+      return tx(async (client) => {
+        const repair = await one<RepairRow>(client, `SELECT * FROM equipment.repairs WHERE id=$1 FOR UPDATE`, [id]);
+        if (!repair) throw NotFound("repair", id);
+        if (repair.status === "closed") throw BadRequest("ремонт уже закрыт");
+        const toStatus: Equipment.UnitStatus = input.outcome === "written_off" ? "lost" : "in_stock";
+        const unit = await one<UnitRow>(client, `SELECT * FROM equipment.units WHERE id=$1 FOR UPDATE`, [repair.unit_id]);
+        await query(client, `UPDATE equipment.units SET status=$2 WHERE id=$1`, [repair.unit_id, toStatus]);
+        const row = await one<RepairRow>(
+          client,
+          `UPDATE equipment.repairs SET status='closed', cost_eur=$2, resolution=$3, outcome=$4, closed_by=$5, closed_at=now()
+           WHERE id=$1 RETURNING *`,
+          [id, input.costEUR ?? null, input.resolution ?? null, input.outcome, input.actorId]
+        );
+        await appendJournal(client, {
+          unitId: repair.unit_id,
+          action: input.outcome === "written_off" ? "marked_lost" : "back_from_repair",
+          fromStatus: unit?.status ?? "in_repair",
+          toStatus,
+          actorId: input.actorId,
+          note: input.resolution ?? (input.outcome === "written_off" ? "списано после ремонта" : "из ремонта"),
+        });
+        if (input.outcome === "written_off") {
+          await query(
+            client,
+            `INSERT INTO equipment.problems (kind, severity, title, detail, refs)
+             VALUES ('unit_lost','critical',$1,$2,$3)`,
+            ["Списание после ремонта", "Единица не подлежит восстановлению", JSON.stringify({ unitId: repair.unit_id })]
+          );
+        }
+        return repairDTO(row!);
+      });
+    },
+    async listRepairs(unitId) {
+      const rows = await query<RepairRow>(db, `SELECT * FROM equipment.repairs WHERE unit_id=$1 ORDER BY opened_at DESC`, [unitId]);
+      return rows.map(repairDTO);
+    },
+    async listOpenRepairs() {
+      const rows = await query<RepairRow>(db, `SELECT * FROM equipment.repairs WHERE status='open' ORDER BY opened_at DESC`);
+      return rows.map(repairDTO);
+    },
+    async unitRepairCostEUR(unitId) {
+      const row = await one<{ s: string }>(
+        db,
+        `SELECT COALESCE(SUM(cost_eur),0)::text AS s FROM equipment.repairs WHERE unit_id=$1 AND status='closed'`,
+        [unitId]
+      );
+      return Number(row?.s ?? 0);
+    },
+
+    // ── Contractor handovers ──
+    async sendToContractor(input) {
+      return tx(async (client) => {
+        const unit = await one<UnitRow>(client, `SELECT * FROM equipment.units WHERE id=$1 FOR UPDATE`, [input.unitId]);
+        if (!unit) throw NotFound("unit", input.unitId);
+        const contractor = await one<ContractorRow>(client, `SELECT * FROM equipment.contractors WHERE id=$1`, [input.contractorId]);
+        if (!contractor) throw NotFound("contractor", input.contractorId);
+        await query(client, `UPDATE equipment.units SET status='at_contractor' WHERE id=$1`, [input.unitId]);
+        await query(
+          client,
+          `INSERT INTO equipment.handovers (unit_id, contractor_id, reason, note, expected_return, sent_by)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [input.unitId, input.contractorId, input.reason ?? null, input.note ?? null, input.expectedReturn ?? null, input.actorId]
+        );
+        await appendJournal(client, {
+          unitId: input.unitId,
+          action: "sent_to_contractor",
+          fromStatus: unit.status,
+          toStatus: "at_contractor",
+          actorId: input.actorId,
+          note: input.reason ?? contractor.name,
+        });
+        const row = await one<HandoverRow>(
+          client,
+          `SELECT h.*, c.name AS contractor_name FROM equipment.handovers h
+           JOIN equipment.contractors c ON c.id=h.contractor_id
+           WHERE h.unit_id=$1 ORDER BY h.sent_at DESC LIMIT 1`,
+          [input.unitId]
+        );
+        return handoverDTO(row!);
+      });
+    },
+    async returnFromContractor(id, input) {
+      return tx(async (client) => {
+        const ho = await one<HandoverRow>(
+          client,
+          `SELECT h.*, c.name AS contractor_name FROM equipment.handovers h
+           JOIN equipment.contractors c ON c.id=h.contractor_id WHERE h.id=$1 FOR UPDATE OF h`,
+          [id]
+        );
+        if (!ho) throw NotFound("handover", id);
+        if (ho.status === "returned") throw BadRequest("уже возвращено");
+        const unit = await one<UnitRow>(client, `SELECT * FROM equipment.units WHERE id=$1 FOR UPDATE`, [ho.unit_id]);
+        await query(client, `UPDATE equipment.units SET status='in_stock' WHERE id=$1`, [ho.unit_id]);
+        const row = await one<HandoverRow>(
+          client,
+          `UPDATE equipment.handovers SET status='returned', returned_by=$2, returned_at=now(), note=COALESCE($3,note)
+           WHERE id=$1 RETURNING *, (SELECT name FROM equipment.contractors WHERE id=contractor_id) AS contractor_name`,
+          [id, input.actorId, input.note ?? null]
+        );
+        await appendJournal(client, {
+          unitId: ho.unit_id,
+          action: "back_from_contractor",
+          fromStatus: unit?.status ?? "at_contractor",
+          toStatus: "in_stock",
+          actorId: input.actorId,
+          note: input.note ?? "возврат от подрядчика",
+        });
+        return handoverDTO(row!);
+      });
+    },
+    async listHandovers(unitId) {
+      const rows = await query<HandoverRow>(
+        db,
+        `SELECT h.*, c.name AS contractor_name FROM equipment.handovers h
+         JOIN equipment.contractors c ON c.id=h.contractor_id
+         WHERE h.unit_id=$1 ORDER BY h.sent_at DESC`,
+        [unitId]
+      );
+      return rows.map(handoverDTO);
+    },
+    async listOpenHandovers() {
+      const rows = await query<HandoverRow>(
+        db,
+        `SELECT h.*, c.name AS contractor_name FROM equipment.handovers h
+         JOIN equipment.contractors c ON c.id=h.contractor_id
+         WHERE h.status='out' ORDER BY h.sent_at DESC`
+      );
+      return rows.map(handoverDTO);
     },
   };
 }

@@ -135,3 +135,63 @@ export function useReturnQty() {
     onSuccess: () => invalidateEquipment(qc),
   });
 }
+
+// ── Repairs & contractors ──
+export function useContractors() {
+  return useQuery({ queryKey: ["equipment", "contractors"], queryFn: () => api.get<Equipment.ContractorDTO[]>("/api/equipment/contractors") });
+}
+export function useOpenRepairs() {
+  return useQuery({ queryKey: ["equipment", "repairs", "open"], queryFn: () => api.get<Equipment.RepairDTO[]>("/api/equipment/repairs/open") });
+}
+export function useOpenHandovers() {
+  return useQuery({ queryKey: ["equipment", "handovers", "open"], queryFn: () => api.get<Equipment.HandoverDTO[]>("/api/equipment/handovers/open") });
+}
+export function useUnitRepairs(unitId: string) {
+  return useQuery({ queryKey: ["equipment", "repairs", unitId], queryFn: () => api.get<Equipment.RepairDTO[]>(`/api/equipment/units/${unitId}/repairs`) });
+}
+export function useUnitHandovers(unitId: string) {
+  return useQuery({ queryKey: ["equipment", "handovers", unitId], queryFn: () => api.get<Equipment.HandoverDTO[]>(`/api/equipment/units/${unitId}/handovers`) });
+}
+export function useCreateContractor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; contacts?: string | null }) => api.post("/api/equipment/contractors", input),
+    meta: { successMessage: "Подрядчик добавлен" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["equipment", "contractors"] }),
+  });
+}
+export function useOpenRepair() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ unitId, input }: { unitId: string; input: { problem: string; vendor?: string | null; estCostEUR?: number | null } }) =>
+      api.post(`/api/equipment/units/${unitId}/repair`, input),
+    meta: { successMessage: "Отправлено в ремонт" },
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+export function useCloseRepair() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: { costEUR?: number | null; resolution?: string | null; outcome: "repaired" | "written_off" } }) =>
+      api.post(`/api/equipment/repairs/${id}/close`, input),
+    meta: { successMessage: "Ремонт закрыт" },
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+export function useSendToContractor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ unitId, input }: { unitId: string; input: { contractorId: string; reason?: string | null; expectedReturn?: string | null } }) =>
+      api.post(`/api/equipment/units/${unitId}/to-contractor`, input),
+    meta: { successMessage: "Передано подрядчику" },
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+export function useReturnFromContractor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note?: string | null }) => api.post(`/api/equipment/handovers/${id}/return`, { note }),
+    meta: { successMessage: "Возвращено от подрядчика" },
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}

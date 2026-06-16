@@ -56,6 +56,25 @@ const qtyMoveSchema = z.object({
 
 const importSchema = z.object({ csv: z.string().min(1) });
 
+const contractorSchema = z.object({ name: z.string().min(1), contacts: z.string().nullable().optional() });
+const openRepairSchema = z.object({
+  problem: z.string().min(1),
+  vendor: z.string().nullable().optional(),
+  estCostEUR: z.number().nullable().optional(),
+});
+const closeRepairSchema = z.object({
+  costEUR: z.number().nullable().optional(),
+  resolution: z.string().nullable().optional(),
+  outcome: z.enum(["repaired", "written_off"]),
+});
+const toContractorSchema = z.object({
+  contractorId: z.string().uuid(),
+  reason: z.string().nullable().optional(),
+  note: z.string().nullable().optional(),
+  expectedReturn: z.string().datetime().nullable().optional(),
+});
+const returnHandoverSchema = z.object({ note: z.string().nullable().optional() });
+
 export function registerEquipmentRoutes(
   app: FastifyInstance,
   ctx: RouteContext,
@@ -174,5 +193,60 @@ export function registerEquipmentRoutes(
     requirePermission(auth, "warehouse.issue");
     await service.resolveProblem(req.params.id);
     return { ok: true };
+  });
+
+  // ── Contractors ──
+  app.get("/api/equipment/contractors", async (req) => {
+    await ctx.auth(req);
+    return service.listContractors();
+  });
+  app.post("/api/equipment/contractors", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.catalog.manage");
+    return service.createContractor(contractorSchema.parse(req.body));
+  });
+
+  // ── Repairs ──
+  app.get("/api/equipment/repairs/open", async (req) => {
+    await ctx.auth(req);
+    return service.listOpenRepairs();
+  });
+  app.get<{ Params: { id: string } }>("/api/equipment/units/:id/repairs", async (req) => {
+    await ctx.auth(req);
+    return service.listRepairs(req.params.id);
+  });
+  app.post<{ Params: { id: string } }>("/api/equipment/units/:id/repair", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.unit.status");
+    const body = openRepairSchema.parse(req.body);
+    return service.openRepair({ ...body, unitId: req.params.id, actorId: auth.userId });
+  });
+  app.post<{ Params: { id: string } }>("/api/equipment/repairs/:id/close", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.unit.status");
+    const body = closeRepairSchema.parse(req.body);
+    return service.closeRepair(req.params.id, { ...body, actorId: auth.userId });
+  });
+
+  // ── Contractor handovers ──
+  app.get("/api/equipment/handovers/open", async (req) => {
+    await ctx.auth(req);
+    return service.listOpenHandovers();
+  });
+  app.get<{ Params: { id: string } }>("/api/equipment/units/:id/handovers", async (req) => {
+    await ctx.auth(req);
+    return service.listHandovers(req.params.id);
+  });
+  app.post<{ Params: { id: string } }>("/api/equipment/units/:id/to-contractor", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.unit.status");
+    const body = toContractorSchema.parse(req.body);
+    return service.sendToContractor({ ...body, unitId: req.params.id, actorId: auth.userId });
+  });
+  app.post<{ Params: { id: string } }>("/api/equipment/handovers/:id/return", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.unit.status");
+    const body = returnHandoverSchema.parse(req.body);
+    return service.returnFromContractor(req.params.id, { ...body, actorId: auth.userId });
   });
 }

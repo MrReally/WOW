@@ -236,6 +236,39 @@ describe("Tech pickup/return → некомплект", () => {
     expect(after.some((p) => p.kind === "reservation_conflict")).toBe(true);
   });
 
+  it("repairs and contractor handovers: full cycle with status + history", async () => {
+    const { equipment } = wiring;
+    const tech = await makeTech("Repair Tech");
+    const type = await equipment.service.createType({ name: `RC-${Date.now()}`, trackingMode: "serial" });
+    const model = await equipment.service.createModel({ typeId: type.id, name: "RC Model", unitCostEUR: 100, dailyPriceEUR: 5 });
+    const unit = await equipment.service.createUnit({ modelId: model.id, assetTag: `RC-${Date.now()}` });
+
+    // Repair cycle
+    const repair = await equipment.service.openRepair({ unitId: unit.id, problem: "Не зажигается", vendor: "RepairCo", estCostEUR: 50, actorId: tech.id });
+    expect((await equipment.service.getUnit(unit.id))?.status).toBe("in_repair");
+    const closed = await equipment.service.closeRepair(repair.id, { costEUR: 60, resolution: "Заменён драйвер", outcome: "repaired", actorId: tech.id });
+    expect(closed.status).toBe("closed");
+    expect((await equipment.service.getUnit(unit.id))?.status).toBe("in_stock");
+    expect(await equipment.service.unitRepairCostEUR(unit.id)).toBe(60);
+    expect((await equipment.service.listRepairs(unit.id)).length).toBe(1);
+    // can't close twice
+    await expect(equipment.service.closeRepair(repair.id, { outcome: "repaired", actorId: tech.id })).rejects.toThrow();
+
+    // Contractor handover cycle
+    const contractor = await equipment.service.createContractor({ name: "SubRent LLC" });
+    const ho = await equipment.service.sendToContractor({ unitId: unit.id, contractorId: contractor.id, reason: "субаренда", actorId: tech.id });
+    expect(ho.contractorName).toBe("SubRent LLC");
+    expect((await equipment.service.getUnit(unit.id))?.status).toBe("at_contractor");
+    expect((await equipment.service.listOpenHandovers()).some((h) => h.id === ho.id)).toBe(true);
+    const back = await equipment.service.returnFromContractor(ho.id, { actorId: tech.id });
+    expect(back.status).toBe("returned");
+    expect((await equipment.service.getUnit(unit.id))?.status).toBe("in_stock");
+
+    // Journal recorded the whole cycle.
+    const journal = (await equipment.service.getUnitJournal(unit.id)).map((j) => j.action);
+    expect(journal).toEqual(expect.arrayContaining(["sent_to_repair", "back_from_repair", "sent_to_contractor", "back_from_contractor"]));
+  });
+
   it("technical plans: versioning clones elements and tracks the current version", async () => {
     const { plans, projects } = wiring;
     const client = await projects.service.createClient({ name: `Plan Client ${Date.now()}` });

@@ -64,6 +64,50 @@ CREATE TABLE IF NOT EXISTS equipment.model_stock (
   total_qty integer NOT NULL DEFAULT 0
 );
 
+-- Contractors (external parties equipment can be handed to).
+CREATE TABLE IF NOT EXISTS equipment.contractors (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       text NOT NULL,
+  contacts   text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Repair records (full cycle: open -> closed, with cost + outcome).
+CREATE TABLE IF NOT EXISTS equipment.repairs (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  unit_id      uuid NOT NULL REFERENCES equipment.units(id),
+  status       text NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+  problem      text NOT NULL,
+  vendor       text,
+  est_cost_eur numeric(12,2),
+  cost_eur     numeric(12,2),
+  resolution   text,
+  outcome      text CHECK (outcome IN ('repaired','written_off')),
+  opened_by    uuid,
+  opened_at    timestamptz NOT NULL DEFAULT now(),
+  closed_by    uuid,
+  closed_at    timestamptz
+);
+CREATE INDEX IF NOT EXISTS repairs_unit_idx ON equipment.repairs(unit_id);
+CREATE INDEX IF NOT EXISTS repairs_status_idx ON equipment.repairs(status);
+
+-- Contractor handovers (send a unit out -> take it back).
+CREATE TABLE IF NOT EXISTS equipment.handovers (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  unit_id         uuid NOT NULL REFERENCES equipment.units(id),
+  contractor_id   uuid NOT NULL REFERENCES equipment.contractors(id),
+  status          text NOT NULL DEFAULT 'out' CHECK (status IN ('out','returned')),
+  reason          text,
+  note            text,
+  expected_return timestamptz,
+  sent_by         uuid,
+  sent_at         timestamptz NOT NULL DEFAULT now(),
+  returned_by     uuid,
+  returned_at     timestamptz
+);
+CREATE INDEX IF NOT EXISTS handovers_unit_idx ON equipment.handovers(unit_id);
+CREATE INDEX IF NOT EXISTS handovers_status_idx ON equipment.handovers(status);
+
 -- Problems surfaced to Apex (некомплект, lost). Actions are never blocked.
 CREATE TABLE IF NOT EXISTS equipment.problems (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -88,6 +88,7 @@ export type JournalAction =
   | "sent_to_repair"
   | "back_from_repair"
   | "sent_to_contractor"
+  | "back_from_contractor"
   | "marked_lost"
   | "status_changed";
 
@@ -174,6 +175,72 @@ export interface ImportResult {
   errors: string[];
 }
 
+// ── Repairs & contractors (full cycle: send out → take back, with history) ───
+
+export interface ContractorDTO {
+  id: ID;
+  name: string;
+  contacts: string | null;
+  createdAt: ISODateTime;
+}
+
+export type RepairOutcome = "repaired" | "written_off";
+
+export interface RepairDTO {
+  id: ID;
+  unitId: ID;
+  status: "open" | "closed";
+  problem: string;
+  vendor: string | null;
+  estCostEUR: number | null;
+  costEUR: number | null;
+  resolution: string | null;
+  outcome: RepairOutcome | null;
+  openedBy: ID | null;
+  openedAt: ISODateTime;
+  closedBy: ID | null;
+  closedAt: ISODateTime | null;
+}
+
+export interface OpenRepairInput {
+  unitId: ID;
+  problem: string;
+  vendor?: string | null;
+  estCostEUR?: number | null;
+  actorId: ID;
+}
+
+export interface CloseRepairInput {
+  costEUR?: number | null;
+  resolution?: string | null;
+  outcome: RepairOutcome;
+  actorId: ID;
+}
+
+export interface HandoverDTO {
+  id: ID;
+  unitId: ID;
+  contractorId: ID;
+  contractorName: string;
+  status: "out" | "returned";
+  reason: string | null;
+  note: string | null;
+  expectedReturn: ISODateTime | null;
+  sentBy: ID | null;
+  sentAt: ISODateTime;
+  returnedBy: ID | null;
+  returnedAt: ISODateTime | null;
+}
+
+export interface SendToContractorInput {
+  unitId: ID;
+  contractorId: ID;
+  reason?: string | null;
+  note?: string | null;
+  expectedReturn?: ISODateTime | null;
+  actorId: ID;
+}
+
 // ── Public service contract ──────────────────────────────────────────────────
 
 export interface EquipmentService {
@@ -210,6 +277,24 @@ export interface EquipmentService {
   // Problems detected by this module (некомплект, lost units).
   listProblems(opts?: { includeResolved?: boolean }): Promise<Problem[]>;
   resolveProblem(id: ID): Promise<void>;
+
+  // Contractors directory
+  listContractors(): Promise<ContractorDTO[]>;
+  createContractor(input: { name: string; contacts?: string | null }): Promise<ContractorDTO>;
+
+  // Repairs
+  openRepair(input: OpenRepairInput): Promise<RepairDTO>;
+  closeRepair(id: ID, input: CloseRepairInput): Promise<RepairDTO>;
+  listRepairs(unitId: ID): Promise<RepairDTO[]>;
+  listOpenRepairs(): Promise<RepairDTO[]>;
+  /** Total spent on closed repairs of a unit (EUR). */
+  unitRepairCostEUR(unitId: ID): Promise<number>;
+
+  // Contractor handovers
+  sendToContractor(input: SendToContractorInput): Promise<HandoverDTO>;
+  returnFromContractor(id: ID, input: { note?: string | null; actorId: ID }): Promise<HandoverDTO>;
+  listHandovers(unitId: ID): Promise<HandoverDTO[]>;
+  listOpenHandovers(): Promise<HandoverDTO[]>;
 }
 
 export interface CreateModelInput {

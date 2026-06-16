@@ -14,7 +14,7 @@ import {
 } from "../../ui-kit/index.ts";
 import { eur, unitStatusLabel } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
-import { useModels, useUnits, useTypes, useProjectsForOps } from "./hooks.ts";
+import { useModels, useUnits, useTypes, useProjectsForOps, useOpenRepairs, useOpenHandovers } from "./hooks.ts";
 import { AddModelSheet } from "./components/AddModelSheet.tsx";
 import { ImportSheet } from "./components/ImportSheet.tsx";
 import { CableMoveSheet, CableRow } from "./components/CableMoveSheet.tsx";
@@ -89,6 +89,8 @@ export function WarehousePage() {
   const units = useUnits();
   const types = useTypes();
   const projects = useProjectsForOps();
+  const openRepairs = useOpenRepairs();
+  const openHandovers = useOpenHandovers();
 
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -105,9 +107,38 @@ export function WarehousePage() {
   const filtered = statusFilter === "all" ? allUnits : allUnits.filter((u) => u.status === statusFilter);
   const statuses: (Equipment.UnitStatus | "all")[] = ["all", "in_stock", "on_project", "in_repair", "reserved", "lost"];
 
+  const repairTone = (s: Equipment.UnitStatus) => (s === "in_repair" ? "alert" : "warn");
+  const tag = (uid: string) => allUnits.find((x) => x.id === uid)?.assetTag ?? uid.slice(0, 6);
+
   return (
     <div>
-      <PrepHero units={allUnits} onGoOperations={() => navigate("/apex")} />
+      <PrepHero units={allUnits} onGoOperations={() => navigate("/operations")} />
+
+      {((openRepairs.data ?? []).length > 0 || (openHandovers.data ?? []).length > 0) && (
+        <>
+          <SectionHead label="Ремонты и подрядчики" meta={`${(openRepairs.data ?? []).length + (openHandovers.data ?? []).length}`} />
+          <div className="card" style={{ padding: "2px 16px" }}>
+            {(openRepairs.data ?? []).map((r) => (
+              <div key={r.id} className="lrow card--tappable" onClick={() => navigate(`/warehouse/units/${r.unitId}`)}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="lrow__title">{tag(r.unitId)} · {r.problem}</div>
+                  <div className="lrow__detail">в ремонте{r.vendor ? ` · ${r.vendor}` : ""}</div>
+                </div>
+                <Chip label="ремонт" tone={repairTone("in_repair")} />
+              </div>
+            ))}
+            {(openHandovers.data ?? []).map((h) => (
+              <div key={h.id} className="lrow card--tappable" onClick={() => navigate(`/warehouse/units/${h.unitId}`)}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="lrow__title">{tag(h.unitId)} · {h.contractorName}</div>
+                  <div className="lrow__detail">у подрядчика{h.reason ? ` · ${h.reason}` : ""}</div>
+                </div>
+                <Chip label="подрядчик" tone="warn" />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       <SectionHead label="Каталог" meta={canEdit ? undefined : `${allModels.length} МОДЕЛЕЙ`} />
       {canEdit && (
