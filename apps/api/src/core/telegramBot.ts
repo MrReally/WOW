@@ -5,9 +5,16 @@ import type { People } from "@sever/contracts";
 // HTTPS endpoint, so it runs anywhere the container has internet. Only starts
 // when a bot token is configured.
 //
-// Linking: the app gives each person a deep link t.me/<bot>?start=<userId>.
-// When they press it, /start <userId> arrives here and we save their numeric
-// chat id onto that person, after which notifications deliver to them.
+// Linking — two ways, both end with the person's numeric chat id saved onto
+// their account (after which notifications deliver to them):
+//   1. Deep link  t.me/<bot>?start=<userId>  → /start <userId> (most robust).
+//   2. By @username: an admin types the person's @username on their card; the
+//      person just opens the bot and presses Start, and we match on from.username.
+// Until linked, the account's telegram_id holds the pending @username; pressing
+// Start replaces it with the numeric chat id.
+
+/** Normalize a Telegram handle for comparison: drop a leading @, lowercase. */
+const normHandle = (s: string | null | undefined): string => (s ?? "").trim().replace(/^@/, "").toLowerCase();
 
 const tg = (method: string, body: unknown) =>
   fetch(`https://api.telegram.org/bot${env.auth.telegramBotToken}/${method}`, {
@@ -38,17 +45,22 @@ export function startTelegramBot(people: People.PeopleService): void {
     while (true) {
       try {
         const res = await tg("getUpdates", { offset, timeout: 25 });
-        const updates = (res?.result as { update_id: number; message?: { text?: string; chat: { id: number } } }[] | undefined) ?? [];
+        const updates =
+          (res?.result as
+            | { update_id: number; message?: { text?: string; from?: { username?: string }; chat: { id: number } } }[]
+            | undefined) ?? [];
         for (const u of updates) {
           offset = u.update_id + 1;
           const msg = u.message;
           if (!msg?.text) continue;
           const chatId = String(msg.chat.id);
+          const username = msg.from?.username;
           const text = msg.text.trim();
-          const m = text.match(/^\/start\s+(\S+)/);
-          if (m) {
-            const userId = m[1]!;
-            try {
+          const codeMatch = text.match(/^\/start\s+(\S+)/);
+          try {
+            if (codeMatch) {
+              // Deep-link path: the link carries the exact account id.
+              const userId = codeMatch[1]!;
               const user = await people.getById(userId);
               if (user) {
                 await people.update(userId, { telegramId: chatId });
@@ -56,14 +68,32 @@ export function startTelegramBot(people: People.PeopleService): void {
               } else {
                 await send(chatId, `Не нашёл аккаунт по коду. Ваш chat_id: <code>${chatId}</code>`);
               }
-            } catch {
-              await send(chatId, `Ваш chat_id: <code>${chatId}</code>`);
+              continue;
             }
-          } else {
-            await send(
-              chatId,
-              `Это бот уведомлений <b>SEVER</b>.\nВаш chat_id: <code>${chatId}</code>\nЧтобы привязать аккаунт — в приложении: Настройки → Люди → «Привязать Telegram».`
-            );
+            // Otherwise match by @username, pre-filled by an admin on the card.
+            const users = await people.list();
+            const already = users.find((p) => p.telegramId === chatId);
+            if (already) {
+              await send(chatId, `Вы уже привязаны к аккаунту <b>${already.displayName}</b>.`);
+              continue;
+            }
+            const norm = normHandle(username);
+            const match = norm ? users.find((p) => normHandle(p.telegramId) === norm) : undefined;
+            if (match) {
+              await people.update(match.id, { telegramId: chatId });
+              await send(chatId, `✅ Telegram привязан к аккаунту <b>${match.displayName}</b>. Уведомления будут приходить сюда.`);
+            } else {
+              await send(
+                chatId,
+                `Это бот уведомлений <b>SEVER</b>.\nВаш chat_id: <code>${chatId}</code>\n` +
+                  (username
+                    ? `Ник <b>@${username}</b> пока не привязан ни к одному аккаунту. `
+                    : `У вас не задан username в Telegram. `) +
+                  `Попросите администратора вписать ваш @username в карточке: Настройки → Люди.`
+              );
+            }
+          } catch {
+            await send(chatId, `Ваш chat_id: <code>${chatId}</code>`);
           }
         }
       } catch {

@@ -48,7 +48,9 @@ export function PeopleManager() {
               <div style={{ minWidth: 0 }}>
                 <p className="card__title">{u.displayName} {!u.active && <Chip label="выкл" tone="neutral" />}</p>
                 <p className="card__subtitle">
-                  {u.email ?? "без email"}{u.telegramId ? ` · tg:${u.telegramId}` : ""} · с {dateTime(u.createdAt)}
+                  {u.email ?? "без email"}
+                  {!isLinked(u.telegramId) && u.telegramId ? ` · @${u.telegramId.replace(/^@/, "")} (ждёт «Старт»)` : ""}
+                  {" · с "}{dateTime(u.createdAt)}
                   {u.mustChangePassword ? " · ждёт смены пароля" : ""}
                 </p>
               </div>
@@ -92,7 +94,7 @@ export function PeopleManager() {
         <SectionHead label="Добавить человека" />
         <Field label="Имя"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Имя Фамилия" /></Field>
         <Field label="Email (для входа по паролю)"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" /></Field>
-        <Field label="Telegram ID (если входит через Telegram)"><Input value={telegram} onChange={(e) => setTelegram(e.target.value)} placeholder="необязательно" /></Field>
+        <Field label="Telegram @username (для привязки бота)"><Input value={telegram} onChange={(e) => setTelegram(e.target.value)} placeholder="@username (необязательно)" /></Field>
         <Field label="Роль"><Select value={effRole} onChange={(e) => setRoleId(e.target.value)} options={roleOptions} /></Field>
         <Button
           block
@@ -112,7 +114,8 @@ export function PeopleManager() {
           Создать
         </Button>
         <p className="card__subtitle" style={{ marginTop: 8 }}>
-          С email — сгенерируется временный пароль. Только с Telegram ID — вход через Telegram, без пароля.
+          С email — сгенерируется временный пароль. С @username — человек открывает бота и жмёт «Старт»,
+          и привязка происходит сама (вход через Telegram, без пароля).
         </p>
       </Card>
     </div>
