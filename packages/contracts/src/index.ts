@@ -5,6 +5,7 @@ export * as Finance from "./finance.js";
 export * as People from "./people.js";
 export * as Venues from "./venues.js";
 export * as Plans from "./plans.js";
+export * as Notifications from "./notifications.js";
 
 // Runtime constants surfaced at top level for convenience (route validation).
 export { UNIT_STATUSES } from "./equipment.js";

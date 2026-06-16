@@ -303,6 +303,7 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
          VALUES ($1,$2,$3) RETURNING *`,
         [input.projectId, input.userId, input.roleNote ?? null]
       );
+      await bus.publish({ type: "project.assigned", projectId: input.projectId, userId: input.userId, at: new Date().toISOString() });
       return assignmentDTO(row!);
     },
     async listProjectsForUser(userId) {

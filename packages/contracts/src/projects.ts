@@ -152,4 +152,11 @@ export interface ReservationConflictEvent {
   at: ISODateTime;
 }
 
-export type ProjectsEvent = ProjectConfirmedEvent | ReservationConflictEvent;
+export interface ProjectAssignedEvent {
+  type: "project.assigned";
+  projectId: ID;
+  userId: ID;
+  at: ISODateTime;
+}
+
+export type ProjectsEvent = ProjectConfirmedEvent | ReservationConflictEvent | ProjectAssignedEvent;

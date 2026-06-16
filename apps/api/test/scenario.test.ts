@@ -236,6 +236,37 @@ describe("Tech pickup/return → некомплект", () => {
     expect(after.some((p) => p.kind === "reservation_conflict")).toBe(true);
   });
 
+  it("notifications: assignment and issuance notify the assigned crew", async () => {
+    const { projects, equipment, notifications } = wiring;
+    const tech = await makeTech("Notify Tech");
+    const lead = await makeTech("Notify Lead");
+    const client = await projects.service.createClient({ name: `Notif ${Date.now()}` });
+    const project = await projects.service.createProject({
+      name: "Notif Project",
+      clientId: client.id,
+      startsAt: new Date().toISOString(),
+      endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+
+    await projects.service.addAssignment({ projectId: project.id, userId: tech.id });
+    let inbox = await notifications.service.listForUser(tech.id);
+    expect(inbox.some((n) => n.kind === "assigned" && n.link === `/projects/${project.id}`)).toBe(true);
+    expect(await notifications.service.unreadCount(tech.id)).toBeGreaterThan(0);
+
+    // Lead issues equipment → the assigned tech is notified (the actor isn't).
+    const type = await equipment.service.createType({ name: `N-${Date.now()}`, trackingMode: "serial" });
+    const model = await equipment.service.createModel({ typeId: type.id, name: "N Model", unitCostEUR: 1, dailyPriceEUR: 1 });
+    const u = await equipment.service.createUnit({ modelId: model.id, assetTag: `NU-${Date.now()}` });
+    await equipment.service.issueUnits({ projectId: project.id, unitIds: [u.id], actorId: lead.id });
+
+    inbox = await notifications.service.listForUser(tech.id);
+    expect(inbox.some((n) => n.kind === "issued")).toBe(true);
+
+    // Mark all read clears the count.
+    await notifications.service.markAllRead(tech.id);
+    expect(await notifications.service.unreadCount(tech.id)).toBe(0);
+  });
+
   it("repairs and contractor handovers: full cycle with status + history", async () => {
     const { equipment } = wiring;
     const tech = await makeTech("Repair Tech");

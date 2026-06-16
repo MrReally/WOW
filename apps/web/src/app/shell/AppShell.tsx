@@ -4,6 +4,7 @@ import { WSChip, Avatar } from "../../ui-kit/index.ts";
 import { useSession } from "../session.ts";
 import { currentWorkspace, workspacesFor, initialsOf } from "../workspaces.ts";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher.tsx";
+import { NotificationsBell } from "../../features/notifications/NotificationsBell.tsx";
 import "./shell.css";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -30,13 +31,16 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </button>
         {user && (
-          <button
-            onClick={() => setSwitcherOpen(true)}
-            style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
-            aria-label="Аккаунт"
-          >
-            <Avatar initials={initialsOf(user.displayName)} size={36} />
-          </button>
+          <div className="row" style={{ gap: 10 }}>
+            <NotificationsBell />
+            <button
+              onClick={() => setSwitcherOpen(true)}
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
+              aria-label="Аккаунт"
+            >
+              <Avatar initials={initialsOf(user.displayName)} size={36} />
+            </button>
+          </div>
         )}
       </header>
 

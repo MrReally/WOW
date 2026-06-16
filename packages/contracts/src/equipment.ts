@@ -333,4 +333,13 @@ export interface IncompleteReturnEvent {
   at: ISODateTime;
 }
 
-export type EquipmentEvent = UnitIssuedEvent | UnitReturnedEvent | IncompleteReturnEvent;
+/** One event per issue action (batch), to drive notifications without spam. */
+export interface UnitsIssuedBatchEvent {
+  type: "equipment.units.issued";
+  projectId: ID;
+  count: number;
+  actorId: ID;
+  at: ISODateTime;
+}
+
+export type EquipmentEvent = UnitIssuedEvent | UnitReturnedEvent | IncompleteReturnEvent | UnitsIssuedBatchEvent;

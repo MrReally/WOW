@@ -582,6 +582,17 @@ export function createEquipmentService(
           at: new Date().toISOString(),
         });
       }
+      // One batch event for notifications (avoids per-unit spam). Only count
+      // units that actually changed (idempotent re-issues stay quiet enough).
+      if (issued.length > 0) {
+        await bus.publish({
+          type: "equipment.units.issued",
+          projectId: input.projectId,
+          count: issued.length,
+          actorId: input.actorId,
+          at: new Date().toISOString(),
+        });
+      }
       return issued;
     },
 
