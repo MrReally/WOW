@@ -33,7 +33,7 @@ async function main() {
   await app.listen({ port: env.port, host: "0.0.0.0" });
 
   // Telegram notifications bot (long polling). No-op without a token.
-  startTelegramBot(wiring.people.service);
+  startTelegramBot({ people: wiring.people.service, onCallback: wiring.handleTelegramCallback });
 
   const shutdown = async () => {
     await app.close();

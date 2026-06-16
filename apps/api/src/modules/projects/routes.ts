@@ -37,11 +37,15 @@ const timingSchema = z.object({
   title: z.string().min(1),
   startsAt: z.string().datetime(),
   endsAt: z.string().datetime(),
+  assigneeIds: z.array(z.string().uuid()).optional(),
 });
+const timingAssigneesSchema = z.object({ userIds: z.array(z.string().uuid()) });
 const assignmentSchema = z.object({
   projectId: z.string().uuid(),
   userId: z.string().uuid(),
   roleNote: z.string().nullable().optional(),
+  rateEUR: z.number().nonnegative().nullable().optional(),
+  invite: z.boolean().optional(),
 });
 
 export function registerProjectsRoutes(
@@ -111,13 +115,28 @@ export function registerProjectsRoutes(
 
   // ── Timings + assignments ──
   app.get<{ Params: { id: string } }>("/api/projects/:id/timings", async (req) => {
-    await ctx.auth(req);
-    return service.listTimings(req.params.id);
+    const auth = await ctx.auth(req);
+    // Whoever can see the whole timing (or manage it) gets every block;
+    // everyone else sees only the blocks they're personally on.
+    const seesAll =
+      auth.permissions.includes("projects.timing.viewAll") || auth.permissions.includes("projects.timing.manage");
+    return service.listTimings(req.params.id, seesAll ? undefined : { forUserId: auth.userId });
   });
   app.post("/api/timings", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.timing.manage");
     return service.addTiming(timingSchema.parse(req.body));
+  });
+  app.put<{ Params: { id: string } }>("/api/timings/:id/assignees", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.timing.manage");
+    return service.setTimingAssignees(req.params.id, timingAssigneesSchema.parse(req.body).userIds);
+  });
+  app.delete<{ Params: { id: string } }>("/api/timings/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.timing.manage");
+    await service.deleteTiming(req.params.id);
+    return { ok: true };
   });
   app.get<{ Params: { id: string } }>("/api/projects/:id/assignments", async (req) => {
     await ctx.auth(req);
@@ -126,7 +145,8 @@ export function registerProjectsRoutes(
   app.post("/api/assignments", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.assignment.manage");
-    return service.addAssignment(assignmentSchema.parse(req.body));
+    const body = assignmentSchema.parse(req.body);
+    return service.addAssignment({ ...body, invitedByUserId: auth.userId } as Projects.AddAssignmentInput);
   });
 
   // ── Problems ──

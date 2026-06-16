@@ -1,5 +1,5 @@
 import type { Projects, Problem, ISODateTime } from "@sever/contracts";
-import { one, query, type Sql } from "../../core/db.js";
+import { one, query, tx, type Sql } from "../../core/db.js";
 import { NotFound, BadRequest, Conflict } from "../../core/errors.js";
 
 function assertRange(startsAt: string, endsAt: string) {
@@ -41,12 +41,17 @@ interface TimingRow {
   title: string;
   starts_at: Date;
   ends_at: Date;
+  assignee_ids?: string[];
 }
 interface AssignmentRow {
   id: string;
   project_id: string;
   user_id: string;
   role_note: string | null;
+  status: Projects.AssignmentStatus;
+  rate_eur: string | null;
+  invited_by: string | null;
+  responded_at: Date | null;
   created_at: Date;
 }
 interface ProblemRow {
@@ -93,12 +98,17 @@ const timingDTO = (r: TimingRow): Projects.TimingDTO => ({
   title: r.title,
   startsAt: r.starts_at.toISOString(),
   endsAt: r.ends_at.toISOString(),
+  assigneeIds: r.assignee_ids ?? [],
 });
 const assignmentDTO = (r: AssignmentRow): Projects.AssignmentDTO => ({
   id: r.id,
   projectId: r.project_id,
   userId: r.user_id,
   roleNote: r.role_note,
+  status: r.status,
+  rateEUR: r.rate_eur === null ? null : Number(r.rate_eur),
+  invitedByUserId: r.invited_by,
+  respondedAt: r.responded_at ? r.responded_at.toISOString() : null,
   createdAt: r.created_at.toISOString(),
 });
 const problemDTO = (r: ProblemRow): Problem => ({
@@ -264,11 +274,26 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
     },
 
     // ── Timings + assignments ──
-    async listTimings(projectId) {
+    async listTimings(projectId, opts) {
+      // Aggregate each block's responsible people in one round trip. When
+      // forUserId is set (caller can't see the whole timing), keep only blocks
+      // that person is on.
+      const params: unknown[] = [projectId];
+      let mineClause = "";
+      if (opts?.forUserId) {
+        params.push(opts.forUserId);
+        mineClause = `AND EXISTS (SELECT 1 FROM projects.timing_assignees x WHERE x.timing_id = t.id AND x.user_id = $2)`;
+      }
       const rows = await query<TimingRow>(
         db,
-        `SELECT * FROM projects.timings WHERE project_id=$1 ORDER BY starts_at`,
-        [projectId]
+        `SELECT t.*,
+                COALESCE(array_agg(ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}') AS assignee_ids
+         FROM projects.timings t
+         LEFT JOIN projects.timing_assignees ta ON ta.timing_id = t.id
+         WHERE t.project_id = $1 ${mineClause}
+         GROUP BY t.id
+         ORDER BY t.starts_at`,
+        params
       );
       return rows.map(timingDTO);
     },
@@ -280,7 +305,26 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
          VALUES ($1,$2,$3,$4) RETURNING *`,
         [input.projectId, input.title, input.startsAt, input.endsAt]
       );
-      return timingDTO(row!);
+      const assignees = input.assigneeIds ?? [];
+      for (const uid of assignees) {
+        await query(db, `INSERT INTO projects.timing_assignees (timing_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [row!.id, uid]);
+      }
+      return timingDTO({ ...row!, assignee_ids: assignees });
+    },
+    async setTimingAssignees(timingId, userIds) {
+      const timing = await one<TimingRow>(db, `SELECT * FROM projects.timings WHERE id=$1`, [timingId]);
+      if (!timing) throw NotFound("timing", timingId);
+      const unique = [...new Set(userIds)];
+      await tx(async (client) => {
+        await query(client, `DELETE FROM projects.timing_assignees WHERE timing_id=$1`, [timingId]);
+        for (const uid of unique) {
+          await query(client, `INSERT INTO projects.timing_assignees (timing_id, user_id) VALUES ($1,$2)`, [timingId, uid]);
+        }
+      });
+      return timingDTO({ ...timing, assignee_ids: unique });
+    },
+    async deleteTiming(id) {
+      await query(db, `DELETE FROM projects.timings WHERE id=$1`, [id]);
     },
     async listAssignments(projectId) {
       const rows = await query<AssignmentRow>(
@@ -290,6 +334,10 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       );
       return rows.map(assignmentDTO);
     },
+    async getAssignment(id) {
+      const row = await one<AssignmentRow>(db, `SELECT * FROM projects.assignments WHERE id=$1`, [id]);
+      return row ? assignmentDTO(row) : null;
+    },
     async addAssignment(input) {
       const dup = await one<AssignmentRow>(
         db,
@@ -297,21 +345,49 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         [input.projectId, input.userId]
       );
       if (dup) throw Conflict("этот человек уже назначен на проект");
+      const status: Projects.AssignmentStatus = input.invite ? "invited" : "added";
       const row = await one<AssignmentRow>(
         db,
-        `INSERT INTO projects.assignments (project_id, user_id, role_note)
-         VALUES ($1,$2,$3) RETURNING *`,
-        [input.projectId, input.userId, input.roleNote ?? null]
+        `INSERT INTO projects.assignments (project_id, user_id, role_note, status, rate_eur, invited_by)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [input.projectId, input.userId, input.roleNote ?? null, status, input.rateEUR ?? null, input.invitedByUserId ?? null]
       );
-      await bus.publish({ type: "project.assigned", projectId: input.projectId, userId: input.userId, at: new Date().toISOString() });
+      const at = new Date().toISOString();
+      if (input.invite) {
+        // Invited: a Telegram invite goes out; no "assigned" notice yet.
+        await bus.publish({ type: "project.invited", projectId: input.projectId, userId: input.userId, assignmentId: row!.id, at });
+      } else {
+        await bus.publish({ type: "project.assigned", projectId: input.projectId, userId: input.userId, at });
+      }
       return assignmentDTO(row!);
     },
+    async respondToInvite(assignmentId, accept, byUserId) {
+      const row = await one<AssignmentRow>(db, `SELECT * FROM projects.assignments WHERE id=$1`, [assignmentId]);
+      if (!row) throw NotFound("assignment", assignmentId);
+      if (row.user_id !== byUserId) throw BadRequest("это приглашение адресовано не вам");
+      const status: Projects.AssignmentStatus = accept ? "accepted" : "declined";
+      const updated = await one<AssignmentRow>(
+        db,
+        `UPDATE projects.assignments SET status=$2, responded_at=now() WHERE id=$1 RETURNING *`,
+        [assignmentId, status]
+      );
+      await bus.publish({
+        type: "project.invite.responded",
+        projectId: row.project_id,
+        userId: row.user_id,
+        assignmentId,
+        accepted: accept,
+        at: new Date().toISOString(),
+      });
+      return assignmentDTO(updated!);
+    },
     async listProjectsForUser(userId) {
+      // "My projects" = directly added or accepted invites (not pending/declined).
       const rows = await query<ProjectRow>(
         db,
         `SELECT p.* FROM projects.projects p
          JOIN projects.assignments a ON a.project_id = p.id
-         WHERE a.user_id = $1
+         WHERE a.user_id = $1 AND a.status IN ('added','accepted')
          ORDER BY p.starts_at`,
         [userId]
       );

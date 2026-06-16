@@ -56,6 +56,58 @@ export function createModules(bus: EventBus = new EventBus()) {
     });
   });
 
+  // ── Invitations: deliver an accept/decline message to the invited person ──
+  const fmtDateTime = (iso: string) =>
+    new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+  bus.on("project.invited", async (e) => {
+    const [project, user, assignment] = await Promise.all([
+      projects.service.getProject(e.projectId),
+      people.service.getById(e.userId),
+      projects.service.getAssignment(e.assignmentId),
+    ]);
+    if (!project || !assignment) return;
+    // In-app record so it shows in their inbox too.
+    await notifications.service.create({
+      userId: e.userId,
+      kind: "assigned",
+      title: "Приглашение на проект",
+      body: project.name,
+      link: `/projects/${e.projectId}`,
+    });
+    const rate = assignment.rateEUR != null ? `${assignment.rateEUR} €` : "по договорённости";
+    const lines = [
+      `<b>Приглашение на проект</b>`,
+      `«${project.name}»`,
+      `🗓 ${fmtDateTime(project.startsAt)} — ${fmtDateTime(project.endsAt)}`,
+      `🎚 Роль: ${assignment.roleNote ?? "—"}`,
+      `💶 Ставка: ${rate}`,
+    ];
+    await sendTelegramMessage(user?.telegramId ?? null, lines.join("\n"), {
+      inlineKeyboard: [
+        [
+          { text: "✅ Принять", callbackData: `inv:accept:${e.assignmentId}` },
+          { text: "❌ Отклонить", callbackData: `inv:decline:${e.assignmentId}` },
+        ],
+      ],
+    });
+  });
+
+  bus.on("project.invite.responded", async (e) => {
+    const assignment = await projects.service.getAssignment(e.assignmentId);
+    if (!assignment?.invitedByUserId) return;
+    const [project, who] = await Promise.all([
+      projects.service.getProject(e.projectId),
+      people.service.getById(e.userId),
+    ]);
+    await notify(assignment.invitedByUserId, {
+      kind: e.accepted ? "info" : "problem",
+      title: e.accepted ? "Приглашение принято" : "Приглашение отклонено",
+      body: `${who?.displayName ?? "Человек"} ${e.accepted ? "принял" : "отклонил"} участие в «${project?.name ?? ""}»`,
+      link: `/projects/${e.projectId}`,
+    });
+  });
+
   bus.on("equipment.units.issued", async (e) => {
     const [project, assignees] = await Promise.all([
       projects.service.getProject(e.projectId),
@@ -89,9 +141,30 @@ export function createModules(bus: EventBus = new EventBus()) {
     }
   });
 
+  // Telegram inline-button taps (invite accept/decline) route through here. The
+  // bot stays decoupled — it knows nothing about assignments, just calls this.
+  async function handleTelegramCallback(data: string, fromChatId: string): Promise<string | null> {
+    const m = data.match(/^inv:(accept|decline):(.+)$/);
+    if (!m) return null;
+    const accept = m[1] === "accept";
+    const assignmentId = m[2]!;
+    const assignment = await projects.service.getAssignment(assignmentId);
+    if (!assignment) return "Приглашение не найдено.";
+    const user = await people.service.getById(assignment.userId);
+    if (!user || user.telegramId !== fromChatId) return "Это приглашение адресовано не вам.";
+    if (assignment.status === "accepted" || assignment.status === "declined") {
+      return assignment.status === "accepted" ? "✅ Вы уже приняли это приглашение." : "❌ Вы уже отклонили это приглашение.";
+    }
+    await projects.service.respondToInvite(assignmentId, accept, assignment.userId);
+    const project = await projects.service.getProject(assignment.projectId);
+    return accept
+      ? `✅ Вы приняли участие в проекте «${project?.name ?? ""}». Детали — в приложении.`
+      : `❌ Вы отклонили участие в проекте «${project?.name ?? ""}».`;
+  }
+
   const modules = [people, equipment, projects, finance, venues, plans, notifications];
 
-  return { bus, people, equipment, projects, finance, venues, plans, notifications, apex, modules };
+  return { bus, people, equipment, projects, finance, venues, plans, notifications, apex, modules, handleTelegramCallback };
 }
 
 export type Wiring = ReturnType<typeof createModules>;

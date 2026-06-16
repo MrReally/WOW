@@ -43,6 +43,14 @@ CREATE TABLE IF NOT EXISTS projects.timings (
   ends_at    timestamptz NOT NULL
 );
 
+-- People responsible for a timing block (opaque people ids).
+CREATE TABLE IF NOT EXISTS projects.timing_assignees (
+  timing_id uuid NOT NULL REFERENCES projects.timings(id) ON DELETE CASCADE,
+  user_id   uuid NOT NULL,
+  PRIMARY KEY (timing_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS timing_assignees_user_idx ON projects.timing_assignees(user_id);
+
 CREATE TABLE IF NOT EXISTS projects.assignments (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL REFERENCES projects.projects(id),
@@ -51,6 +59,12 @@ CREATE TABLE IF NOT EXISTS projects.assignments (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS assignments_user_idx ON projects.assignments(user_id);
+
+-- Invitation flow: added directly, or invited → accepted / declined.
+ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS status       text NOT NULL DEFAULT 'added';
+ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS rate_eur     numeric(12,2);
+ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS invited_by   uuid;
+ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS responded_at timestamptz;
 
 CREATE TABLE IF NOT EXISTS projects.problems (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),

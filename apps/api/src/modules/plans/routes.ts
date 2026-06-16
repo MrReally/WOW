@@ -6,7 +6,7 @@ import type { RouteContext } from "../../core/module.js";
 import { requirePermission } from "../../core/auth.js";
 
 const layerEnum = z.enum(PLAN_LAYERS as [string, ...string[]]);
-const kindEnum = z.enum(["fixture", "truss", "power", "audio", "label"]);
+const kindEnum = z.enum(["fixture", "truss", "power", "audio", "label", "cable"]);
 
 const createPlanSchema = z.object({
   projectId: z.string().uuid(),
@@ -31,6 +31,8 @@ const addElementSchema = z.object({
   rotation: z.number().optional(),
   w: z.number().nullable().optional(),
   h: z.number().nullable().optional(),
+  fromId: z.string().uuid().nullable().optional(),
+  toId: z.string().uuid().nullable().optional(),
   modelId: z.string().uuid().nullable().optional(),
   unitId: z.string().uuid().nullable().optional(),
   attrs: z.record(z.unknown()).nullable().optional(),
@@ -43,6 +45,8 @@ const updateElementSchema = z.object({
   rotation: z.number().optional(),
   w: z.number().nullable().optional(),
   h: z.number().nullable().optional(),
+  fromId: z.string().uuid().nullable().optional(),
+  toId: z.string().uuid().nullable().optional(),
   modelId: z.string().uuid().nullable().optional(),
   unitId: z.string().uuid().nullable().optional(),
   attrs: z.record(z.unknown()).nullable().optional(),

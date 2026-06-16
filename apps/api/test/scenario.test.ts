@@ -338,4 +338,86 @@ describe("Tech pickup/return → некомплект", () => {
     expect(el.x).toBe(200);
     expect(el.rotation).toBe(45);
   });
+
+  it("plan cables: a new version remaps cable endpoints to the cloned elements", async () => {
+    const { plans, projects } = wiring;
+    const client = await projects.service.createClient({ name: `Cable Client ${Date.now()}` });
+    const project = await projects.service.createProject({
+      name: "Cable Project", clientId: client.id,
+      startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    const plan = await plans.service.createPlan({ projectId: project.id, name: "Cabled stage" });
+    const a = await plans.service.addElement({ planId: plan.id, layer: "fixtures", kind: "fixture", label: "MH1", x: 100, y: 80 });
+    const b = await plans.service.addElement({ planId: plan.id, layer: "fixtures", kind: "fixture", label: "MH2", x: 200, y: 80 });
+    await plans.service.addElement({ planId: plan.id, layer: "dmx", kind: "cable", label: "DMX1", x: 150, y: 80, fromId: a.id, toId: b.id });
+
+    const v2 = await plans.service.newVersion(plan.id);
+    const cable = v2.elements.find((e) => e.kind === "cable")!;
+    const ids = new Set(v2.elements.map((e) => e.id));
+    // Endpoints point at the cloned elements in v2, not the originals from v1.
+    expect(cable.fromId && ids.has(cable.fromId)).toBe(true);
+    expect(cable.toId && ids.has(cable.toId)).toBe(true);
+    expect(cable.fromId).not.toBe(a.id);
+    expect(cable.toId).not.toBe(b.id);
+  });
+
+  it("timing assignees: whole timing vs only-my-events filtering", async () => {
+    const { projects } = wiring;
+    const alice = await makeTech("Alice Timing");
+    const bob = await makeTech("Bob Timing");
+    const client = await projects.service.createClient({ name: `Timing ${Date.now()}` });
+    const project = await projects.service.createProject({
+      name: "Timing Project", clientId: client.id,
+      startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    const t1 = await projects.service.addTiming({
+      projectId: project.id, title: "Монтаж", startsAt: new Date().toISOString(),
+      endsAt: new Date(Date.now() + 3_600_000).toISOString(), assigneeIds: [alice.id],
+    });
+    await projects.service.addTiming({
+      projectId: project.id, title: "Саундчек", startsAt: new Date(Date.now() + 3_600_000).toISOString(),
+      endsAt: new Date(Date.now() + 7_200_000).toISOString(), assigneeIds: [bob.id],
+    });
+
+    const all = await projects.service.listTimings(project.id);
+    expect(all.length).toBe(2);
+    expect(all.find((t) => t.id === t1.id)?.assigneeIds).toEqual([alice.id]);
+
+    const onlyAlice = await projects.service.listTimings(project.id, { forUserId: alice.id });
+    expect(onlyAlice.map((t) => t.title)).toEqual(["Монтаж"]);
+
+    // Re-assigning both to a block makes it visible to both.
+    await projects.service.setTimingAssignees(t1.id, [alice.id, bob.id]);
+    const bobView = await projects.service.listTimings(project.id, { forUserId: bob.id });
+    expect(bobView.some((t) => t.id === t1.id)).toBe(true);
+  });
+
+  it("invitations: invite → accept/decline via the bot handler path", async () => {
+    const { projects } = wiring;
+    const inviter = await makeTech("Inviter");
+    const guest = await makeTech("Guest");
+    const stranger = await makeTech("Stranger");
+    const client = await projects.service.createClient({ name: `Invite ${Date.now()}` });
+    const project = await projects.service.createProject({
+      name: "Invite Project", clientId: client.id,
+      startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+
+    const invited = await projects.service.addAssignment({
+      projectId: project.id, userId: guest.id, roleNote: "Световик", rateEUR: 150, invite: true, invitedByUserId: inviter.id,
+    });
+    expect(invited.status).toBe("invited");
+    expect(invited.rateEUR).toBe(150);
+    // Pending invite isn't "my project" yet.
+    expect((await projects.service.listProjectsForUser(guest.id)).some((p) => p.id === project.id)).toBe(false);
+
+    // Someone else can't answer for the guest.
+    await expect(projects.service.respondToInvite(invited.id, true, stranger.id)).rejects.toThrow();
+
+    const accepted = await projects.service.respondToInvite(invited.id, true, guest.id);
+    expect(accepted.status).toBe("accepted");
+    expect(accepted.respondedAt).toBeTruthy();
+    // Now it shows up as the guest's project.
+    expect((await projects.service.listProjectsForUser(guest.id)).some((p) => p.id === project.id)).toBe(true);
+  });
 });

@@ -32,4 +32,8 @@ CREATE TABLE IF NOT EXISTS plans.elements (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS elements_plan_idx ON plans.elements(plan_id);
+
+-- Cable endpoints: a 'cable' element links two other elements on the same plan.
+ALTER TABLE plans.elements ADD COLUMN IF NOT EXISTS from_id uuid;
+ALTER TABLE plans.elements ADD COLUMN IF NOT EXISTS to_id   uuid;
 `;

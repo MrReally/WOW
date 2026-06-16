@@ -30,6 +30,7 @@ export type Permission =
   | "projects.manage"
   | "projects.reservation.manage"
   | "projects.timing.manage"
+  | "projects.timing.viewAll"
   | "projects.assignment.manage"
   | "clients.manage"
   | "finance.view"
@@ -60,8 +61,9 @@ export const PERMISSIONS: PermissionMeta[] = [
   { key: "projects.view", group: "Планирование", label: "Видеть проекты" },
   { key: "projects.manage", group: "Планирование", label: "Создавать/редактировать проекты" },
   { key: "projects.reservation.manage", group: "Планирование", label: "Брони и распределение" },
-  { key: "projects.timing.manage", group: "Планирование", label: "Тайминги" },
-  { key: "projects.assignment.manage", group: "Планирование", label: "Назначать людей на проект" },
+  { key: "projects.timing.manage", group: "Планирование", label: "Тайминги — создавать и редактировать" },
+  { key: "projects.timing.viewAll", group: "Планирование", label: "Видеть весь тайминг (параллельные процессы)" },
+  { key: "projects.assignment.manage", group: "Планирование", label: "Назначать и приглашать людей на проект" },
   { key: "clients.manage", group: "Планирование", label: "Управлять клиентами" },
   { key: "finance.view", group: "Финансы", label: "Видеть финансы" },
   { key: "finance.manage", group: "Финансы", label: "Транзакции, счета, курсы" },

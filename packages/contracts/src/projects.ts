@@ -91,16 +91,50 @@ export interface TimingDTO {
   title: string;
   startsAt: ISODateTime;
   endsAt: ISODateTime;
+  /** People (assignment user ids) responsible for this block. */
+  assigneeIds: ID[];
+}
+
+export interface AddTimingInput {
+  projectId: ID;
+  title: string;
+  startsAt: ISODateTime;
+  endsAt: ISODateTime;
+  assigneeIds?: ID[];
 }
 
 // ── Assignments (people on a project) ────────────────────────────────────────
+// A person is either added directly (status "added") or invited (status
+// "invited") — an invite is delivered to Telegram and the person accepts or
+// declines, moving it to "accepted" / "declined".
+
+export type AssignmentStatus = "added" | "invited" | "accepted" | "declined";
+
+export const ASSIGNMENT_STATUSES: AssignmentStatus[] = ["added", "invited", "accepted", "declined"];
 
 export interface AssignmentDTO {
   id: ID;
   projectId: ID;
   userId: ID; // people.userId, opaque
   roleNote: string | null;
+  status: AssignmentStatus;
+  /** Agreed rate in EUR for this engagement; null = unset / by agreement. */
+  rateEUR: number | null;
+  /** Who sent the invite (people id), null for a direct add. */
+  invitedByUserId: ID | null;
+  respondedAt: ISODateTime | null;
   createdAt: ISODateTime;
+}
+
+export interface AddAssignmentInput {
+  projectId: ID;
+  userId: ID;
+  roleNote?: string | null;
+  rateEUR?: number | null;
+  /** When true, send a Telegram invite the person accepts/declines. */
+  invite?: boolean;
+  /** People id of the inviter (set by the route from the auth context). */
+  invitedByUserId?: ID | null;
 }
 
 // ── Public service contract ──────────────────────────────────────────────────
@@ -125,10 +159,17 @@ export interface ProjectsService {
   findOverlapping(modelId: ID, from: ISODateTime, to: ISODateTime): Promise<ReservationDTO[]>;
 
   // Timings + assignments
-  listTimings(projectId: ID): Promise<TimingDTO[]>;
-  addTiming(input: { projectId: ID; title: string; startsAt: ISODateTime; endsAt: ISODateTime }): Promise<TimingDTO>;
+  /** When opts.forUserId is set, only timings that user is assigned to. */
+  listTimings(projectId: ID, opts?: { forUserId?: ID }): Promise<TimingDTO[]>;
+  addTiming(input: AddTimingInput): Promise<TimingDTO>;
+  setTimingAssignees(timingId: ID, userIds: ID[]): Promise<TimingDTO>;
+  deleteTiming(id: ID): Promise<void>;
   listAssignments(projectId: ID): Promise<AssignmentDTO[]>;
-  addAssignment(input: { projectId: ID; userId: ID; roleNote?: string | null }): Promise<AssignmentDTO>;
+  getAssignment(id: ID): Promise<AssignmentDTO | null>;
+  addAssignment(input: AddAssignmentInput): Promise<AssignmentDTO>;
+  /** Accept or decline an invite (called from the Telegram bot). Verifies the
+   *  assignment belongs to byUserId. */
+  respondToInvite(assignmentId: ID, accept: boolean, byUserId: ID): Promise<AssignmentDTO>;
   /** Projects a given user is assigned to (for the Tech "my projects" view). */
   listProjectsForUser(userId: ID): Promise<ProjectDTO[]>;
 
@@ -159,4 +200,28 @@ export interface ProjectAssignedEvent {
   at: ISODateTime;
 }
 
-export type ProjectsEvent = ProjectConfirmedEvent | ReservationConflictEvent | ProjectAssignedEvent;
+/** A person was invited (not yet accepted) — triggers a Telegram invite. */
+export interface ProjectInvitedEvent {
+  type: "project.invited";
+  projectId: ID;
+  userId: ID;
+  assignmentId: ID;
+  at: ISODateTime;
+}
+
+/** The invited person accepted or declined — notify the inviter. */
+export interface InviteRespondedEvent {
+  type: "project.invite.responded";
+  projectId: ID;
+  userId: ID;
+  assignmentId: ID;
+  accepted: boolean;
+  at: ISODateTime;
+}
+
+export type ProjectsEvent =
+  | ProjectConfirmedEvent
+  | ReservationConflictEvent
+  | ProjectAssignedEvent
+  | ProjectInvitedEvent
+  | InviteRespondedEvent;

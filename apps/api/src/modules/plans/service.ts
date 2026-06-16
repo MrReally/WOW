@@ -24,6 +24,8 @@ interface ElementRow {
   rotation: string;
   w: string | null;
   h: string | null;
+  from_id: string | null;
+  to_id: string | null;
   model_id: string | null;
   unit_id: string | null;
   attrs: Record<string, unknown> | null;
@@ -41,6 +43,8 @@ const elementDTO = (r: ElementRow): Plans.PlanElementDTO => ({
   rotation: Number(r.rotation),
   w: r.w === null ? null : Number(r.w),
   h: r.h === null ? null : Number(r.h),
+  fromId: r.from_id,
+  toId: r.to_id,
   modelId: r.model_id,
   unitId: r.unit_id,
   attrs: r.attrs,
@@ -130,14 +134,33 @@ export function createPlansService(db: Sql): Plans.PlansService {
            VALUES ($1,$2,$3,$4,true,$5,$6) RETURNING *`,
           [src.project_id, src.venue_id, src.name, version, src.stage_w, src.stage_h]
         );
-        // Clone elements into the new version.
-        await query(
-          client,
-          `INSERT INTO plans.elements (plan_id, layer, kind, label, x, y, rotation, w, h, model_id, unit_id, attrs)
-           SELECT $1, layer, kind, label, x, y, rotation, w, h, model_id, unit_id, attrs
-           FROM plans.elements WHERE plan_id=$2`,
-          [dst!.id, planId]
-        );
+        // Clone elements into the new version. Cables reference other elements
+        // by id, so we clone points first (building an old→new id map) and then
+        // clone cables with their endpoints remapped to the new element ids.
+        const src_els = await query<ElementRow>(client, `SELECT * FROM plans.elements WHERE plan_id=$1 ORDER BY created_at`, [planId]);
+        const idMap = new Map<string, string>();
+        for (const e of src_els.filter((e) => e.kind !== "cable")) {
+          const ins = await one<{ id: string }>(
+            client,
+            `INSERT INTO plans.elements (plan_id, layer, kind, label, x, y, rotation, w, h, model_id, unit_id, attrs)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+            [dst!.id, e.layer, e.kind, e.label, e.x, e.y, e.rotation, e.w, e.h, e.model_id, e.unit_id, e.attrs ? JSON.stringify(e.attrs) : null]
+          );
+          idMap.set(e.id, ins!.id);
+        }
+        for (const e of src_els.filter((e) => e.kind === "cable")) {
+          await query(
+            client,
+            `INSERT INTO plans.elements (plan_id, layer, kind, label, x, y, rotation, w, h, from_id, to_id, model_id, unit_id, attrs)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+            [
+              dst!.id, e.layer, e.kind, e.label, e.x, e.y, e.rotation, e.w, e.h,
+              e.from_id ? idMap.get(e.from_id) ?? null : null,
+              e.to_id ? idMap.get(e.to_id) ?? null : null,
+              e.model_id, e.unit_id, e.attrs ? JSON.stringify(e.attrs) : null,
+            ]
+          );
+        }
         return withElements(dst!, client);
       });
     },
@@ -175,8 +198,8 @@ export function createPlansService(db: Sql): Plans.PlansService {
     async addElement(input) {
       const row = await one<ElementRow>(
         db,
-        `INSERT INTO plans.elements (plan_id, layer, kind, label, x, y, rotation, w, h, model_id, unit_id, attrs)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        `INSERT INTO plans.elements (plan_id, layer, kind, label, x, y, rotation, w, h, from_id, to_id, model_id, unit_id, attrs)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
         [
           input.planId,
           input.layer,
@@ -187,6 +210,8 @@ export function createPlansService(db: Sql): Plans.PlansService {
           input.rotation ?? 0,
           input.w ?? null,
           input.h ?? null,
+          input.fromId ?? null,
+          input.toId ?? null,
           input.modelId ?? null,
           input.unitId ?? null,
           input.attrs ? JSON.stringify(input.attrs) : null,
@@ -203,7 +228,7 @@ export function createPlansService(db: Sql): Plans.PlansService {
         `UPDATE plans.elements SET
            layer=COALESCE($2,layer), label=COALESCE($3,label),
            x=COALESCE($4,x), y=COALESCE($5,y), rotation=COALESCE($6,rotation),
-           w=$7, h=$8, model_id=$9, unit_id=$10, attrs=$11
+           w=$7, h=$8, from_id=$9, to_id=$10, model_id=$11, unit_id=$12, attrs=$13
          WHERE id=$1 RETURNING *`,
         [
           id,
@@ -214,6 +239,8 @@ export function createPlansService(db: Sql): Plans.PlansService {
           input.rotation ?? null,
           input.w === undefined ? existing.w : input.w,
           input.h === undefined ? existing.h : input.h,
+          input.fromId === undefined ? existing.from_id : input.fromId,
+          input.toId === undefined ? existing.to_id : input.toId,
           input.modelId === undefined ? existing.model_id : input.modelId,
           input.unitId === undefined ? existing.unit_id : input.unitId,
           input.attrs === undefined ? existing.attrs : input.attrs ? JSON.stringify(input.attrs) : null,

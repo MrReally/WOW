@@ -16,13 +16,23 @@ import {
   useSetProjectStatus,
   useCreateReservation,
   useAddTiming,
+  useSetTimingAssignees,
+  useDeleteTiming,
   useAddAssignment,
   useIssueResolvedUnits,
   useAllUnits,
 } from "./hooks.ts";
 import { ResolveReservationSheet } from "./components/ResolveReservationSheet.tsx";
 import { EditProjectSheet } from "./components/EditProjectSheet.tsx";
+import { TimingTimeline } from "./components/TimingTimeline.tsx";
 import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
+
+const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "ok" | "info" | "warn" | "neutral" }> = {
+  added: { label: "в команде", tone: "ok" },
+  invited: { label: "приглашён", tone: "info" },
+  accepted: { label: "принял", tone: "ok" },
+  declined: { label: "отклонил", tone: "warn" },
+};
 
 export function ProjectDetailPage() {
   const { id = "" } = useParams();
@@ -47,6 +57,8 @@ export function ProjectDetailPage() {
   const setStatus = useSetProjectStatus();
   const addReservation = useCreateReservation();
   const addTiming = useAddTiming();
+  const setTimingAssignees = useSetTimingAssignees();
+  const deleteTiming = useDeleteTiming();
   const addAssignment = useAddAssignment();
   const issueResolved = useIssueResolvedUnits();
 
@@ -56,6 +68,8 @@ export function ProjectDetailPage() {
   const [timingStart, setTimingStart] = useState("");
   const [timingEnd, setTimingEnd] = useState("");
   const [assignUser, setAssignUser] = useState("");
+  const [assignRole, setAssignRole] = useState("");
+  const [assignRate, setAssignRate] = useState("");
   const [resolving, setResolving] = useState<Projects.ReservationDTO | null>(null);
   const [editOpen, setEditOpen] = useState(false);
 
@@ -190,20 +204,59 @@ export function ProjectDetailPage() {
         </Card>
       )}
 
-      {/* Timings */}
+      {/* Timings — parallel timeline (everyone sees the blocks they may see; the
+          whole picture needs the «весь тайминг» permission, enforced by the API) */}
       <SectionTitle>Тайминги</SectionTitle>
       {(timings.data ?? []).length === 0 ? (
-        <EmptyState title="Таймингов нет" />
+        <EmptyState title={canTiming ? "Таймингов нет" : "Вас пока нет ни в одном событии"} />
       ) : (
-        <div className="stack">
-          {(timings.data ?? []).map((t) => (
-            <Card key={t.id}>
-              <p className="card__title">{t.title}</p>
-              <p className="card__subtitle">{dateTime(t.startsAt)} – {dateTime(t.endsAt)}</p>
-            </Card>
-          ))}
-        </div>
+        <Card>
+          <TimingTimeline timings={timings.data ?? []} userName={userName} />
+        </Card>
       )}
+
+      {/* Per-block people editing (for those who manage timings) */}
+      {canTiming &&
+        (timings.data ?? []).map((t) => {
+          const onProject = (assignments.data ?? []).map((a) => a.userId);
+          const candidates = onProject.filter((uid) => !t.assigneeIds.includes(uid));
+          return (
+            <Card key={t.id}>
+              <div className="row row--between">
+                <div style={{ minWidth: 0 }}>
+                  <p className="card__title">{t.title}</p>
+                  <p className="card__subtitle">{dateTime(t.startsAt)} – {dateTime(t.endsAt)}</p>
+                </div>
+                <Button variant="ghost" onClick={() => deleteTiming.mutate(t.id)}>Удалить</Button>
+              </div>
+              <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                {t.assigneeIds.length === 0 && <span className="card__subtitle">Никого не назначено</span>}
+                {t.assigneeIds.map((uid) => (
+                  <button
+                    key={uid}
+                    className="chip"
+                    style={{ cursor: "pointer", border: "1px solid var(--bdr)" }}
+                    title="Убрать из события"
+                    onClick={() => setTimingAssignees.mutate({ timingId: t.id, userIds: t.assigneeIds.filter((x) => x !== uid) })}
+                  >
+                    {userName(uid)} ✕
+                  </button>
+                ))}
+              </div>
+              {candidates.length > 0 && (
+                <div className="row" style={{ marginTop: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <Select
+                      value=""
+                      onChange={(e) => e.target.value && setTimingAssignees.mutate({ timingId: t.id, userIds: [...t.assigneeIds, e.target.value] })}
+                      options={[{ value: "", label: "+ добавить человека в событие" }, ...candidates.map((uid) => ({ value: uid, label: userName(uid) }))]}
+                    />
+                  </div>
+                </div>
+              )}
+            </Card>
+          );
+        })}
       {canTiming && (() => {
         const tStart = timingStart || toLocalInput(p.startsAt);
         const tEnd = timingEnd || toLocalInput(p.endsAt);
@@ -244,14 +297,21 @@ export function ProjectDetailPage() {
         <EmptyState title="Никто не назначен" />
       ) : (
         <div className="stack">
-          {(assignments.data ?? []).map((a) => (
-            <Card key={a.id}>
-              <div className="row row--between">
-                <p className="card__title">{userName(a.userId)}</p>
-                {a.roleNote && <span className="card__subtitle">{a.roleNote}</span>}
-              </div>
-            </Card>
-          ))}
+          {(assignments.data ?? []).map((a) => {
+            const st = ASSIGN_STATUS[a.status];
+            return (
+              <Card key={a.id}>
+                <div className="row row--between">
+                  <p className="card__title">{userName(a.userId)}</p>
+                  <Chip label={st.label} tone={st.tone} />
+                </div>
+                <p className="card__subtitle" style={{ marginTop: 2 }}>
+                  {a.roleNote || "роль не указана"}
+                  {a.rateEUR != null ? ` · ${a.rateEUR} €` : ""}
+                </p>
+              </Card>
+            );
+          })}
         </div>
       )}
       {canAssign && (() => {
@@ -261,16 +321,36 @@ export function ProjectDetailPage() {
           return <p className="card__subtitle" style={{ textAlign: "center", padding: 12 }}>Все доступные люди назначены</p>;
         }
         const sel = assignUser && available.some((u) => u.id === assignUser) ? assignUser : available[0]!.id;
+        const rateNum = assignRate ? Number(assignRate) : null;
+        const submit = (invite: boolean) =>
+          addAssignment.mutate(
+            { projectId: p.id, userId: sel, roleNote: assignRole || null, rateEUR: rateNum, invite },
+            { onSuccess: () => { setAssignUser(""); setAssignRole(""); setAssignRate(""); } }
+          );
         return (
           <Card>
+            <Field label="Человек">
+              <Select value={sel} onChange={(e) => setAssignUser(e.target.value)} options={available.map((u) => ({ value: u.id, label: u.displayName }))} />
+            </Field>
             <div className="row">
-              <div style={{ flex: 1 }}>
-                <Select value={sel} onChange={(e) => setAssignUser(e.target.value)} options={available.map((u) => ({ value: u.id, label: u.displayName }))} />
-              </div>
-              <Button disabled={addAssignment.isPending} onClick={() => addAssignment.mutate({ projectId: p.id, userId: sel }, { onSuccess: () => setAssignUser("") })}>
-                + В команду
+              <Field label="Роль">
+                <Input value={assignRole} onChange={(e) => setAssignRole(e.target.value)} placeholder="Световик / шеф монтажа…" />
+              </Field>
+              <Field label="Ставка, €">
+                <Input type="number" value={assignRate} onChange={(e) => setAssignRate(e.target.value)} placeholder="напр. 150" />
+              </Field>
+            </div>
+            <div className="row" style={{ marginTop: 4 }}>
+              <Button variant="secondary" block disabled={addAssignment.isPending} onClick={() => submit(false)}>
+                Добавить
+              </Button>
+              <Button block disabled={addAssignment.isPending} onClick={() => submit(true)}>
+                Пригласить в Telegram
               </Button>
             </div>
+            <p className="card__subtitle" style={{ marginTop: 8 }}>
+              «Пригласить» отправит человеку в Telegram дату, роль и ставку — он примет или откажется прямо в чате.
+            </p>
           </Card>
         );
       })()}

@@ -35,22 +35,60 @@ export async function getBotUsername(): Promise<string | null> {
   return username;
 }
 
-export function startTelegramBot(people: People.PeopleService): void {
+/** Tapping an inline button (e.g. accept/decline an invite). The handler
+ *  returns the text to replace the original message with, or null to ignore. */
+export type CallbackHandler = (data: string, fromChatId: string) => Promise<string | null>;
+
+interface BotDeps {
+  people: People.PeopleService;
+  onCallback?: CallbackHandler;
+}
+
+interface Update {
+  update_id: number;
+  message?: { text?: string; from?: { username?: string }; chat: { id: number } };
+  callback_query?: { id: string; data?: string; from: { id: number }; message?: { chat: { id: number }; message_id: number } };
+}
+
+export function startTelegramBot(deps: BotDeps): void {
+  const { people, onCallback } = deps;
   if (!env.auth.telegramBotToken) return;
   const send = (chatId: string | number, text: string) => tg("sendMessage", { chat_id: chatId, text, parse_mode: "HTML" });
   let offset = 0;
+
+  async function handleCallback(cb: NonNullable<Update["callback_query"]>) {
+    const fromChatId = String(cb.from.id);
+    let text: string | null = null;
+    try {
+      text = onCallback ? await onCallback(cb.data ?? "", fromChatId) : null;
+    } catch {
+      text = "Не удалось обработать действие.";
+    }
+    // Stop the button's spinner.
+    await tg("answerCallbackQuery", { callback_query_id: cb.id, text: text ?? undefined });
+    // Replace the invite message (and drop its buttons) with the outcome.
+    if (text && cb.message) {
+      await tg("editMessageText", {
+        chat_id: cb.message.chat.id,
+        message_id: cb.message.message_id,
+        text,
+        parse_mode: "HTML",
+      });
+    }
+  }
 
   async function loop() {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
         const res = await tg("getUpdates", { offset, timeout: 25 });
-        const updates =
-          (res?.result as
-            | { update_id: number; message?: { text?: string; from?: { username?: string }; chat: { id: number } } }[]
-            | undefined) ?? [];
+        const updates = (res?.result as Update[] | undefined) ?? [];
         for (const u of updates) {
           offset = u.update_id + 1;
+          if (u.callback_query) {
+            await handleCallback(u.callback_query);
+            continue;
+          }
           const msg = u.message;
           if (!msg?.text) continue;
           const chatId = String(msg.chat.id);

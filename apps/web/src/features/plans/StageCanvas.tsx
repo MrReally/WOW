@@ -64,6 +64,10 @@ export function StageCanvas({ plan, elements, visible, editable, selectedId, onS
     return { x: Math.max(0, Math.min(plan.stageW, x)), y: Math.max(0, Math.min(plan.stageH, y)) };
   };
 
+  const byId = new Map(elements.map((e) => [e.id, e]));
+  const cables = elements.filter((e) => e.kind === "cable" && visible.has(e.layer));
+  const points = elements.filter((e) => e.kind !== "cable");
+
   return (
     <svg
       ref={svgRef}
@@ -97,7 +101,33 @@ export function StageCanvas({ plan, elements, visible, editable, selectedId, onS
       <rect x={6} y={6} width={plan.stageW - 12} height={plan.stageH - 12} rx={2} fill="none" stroke="var(--text3)" strokeWidth={1} strokeDasharray="5 4" />
       <text x={plan.stageW / 2} y={18} textAnchor="middle" fontSize={9} fill="var(--text3)" fontFamily="var(--font-mono)">СЦЕНА</text>
 
-      {elements
+      {/* Cables first, so the lines sit under the devices they connect. A cable
+          tracks its two endpoints live (positions include drag overrides). */}
+      {cables.map((el) => {
+        const a = byId.get(el.fromId ?? "");
+        const b = byId.get(el.toId ?? "");
+        if (!a || !b) return null;
+        const color = LAYER_COLOR[el.layer];
+        const sel = selectedId === el.id;
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        return (
+          <g key={el.id} style={{ cursor: "pointer" }} onPointerDown={() => onSelect(el.id)}>
+            {/* fat transparent hit-line */}
+            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={14} />
+            <line
+              x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+              stroke={color} strokeWidth={sel ? 3 : 1.8} strokeLinecap="round"
+              strokeDasharray={el.layer === "power" ? "6 3" : undefined} opacity={sel ? 1 : 0.85}
+            />
+            {el.label && (
+              <text x={mx} y={my - 4} textAnchor="middle" fontSize={8} fill={color} fontFamily="var(--font-mono)">{el.label}</text>
+            )}
+          </g>
+        );
+      })}
+
+      {points
         .filter((el) => visible.has(el.layer))
         .map((el) => (
           <g

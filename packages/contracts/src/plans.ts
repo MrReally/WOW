@@ -7,7 +7,9 @@ import type { ID, ISODateTime } from "./common.js";
 export type PlanLayer = "fixtures" | "dmx" | "power" | "audio" | "rigging";
 export const PLAN_LAYERS: PlanLayer[] = ["fixtures", "dmx", "power", "audio", "rigging"];
 
-export type PlanElementKind = "fixture" | "truss" | "power" | "audio" | "label";
+// `cable` is an edge, not a point: DMX / power / audio runs are drawn as lines
+// linking two devices (fromId → toId) rather than as standalone markers.
+export type PlanElementKind = "fixture" | "truss" | "power" | "audio" | "label" | "cable";
 
 export interface PlanElementDTO {
   id: ID;
@@ -15,12 +17,16 @@ export interface PlanElementDTO {
   layer: PlanLayer;
   kind: PlanElementKind;
   label: string;
-  /** Position on the stage canvas (0..stageW / 0..stageH). */
+  /** Position on the stage canvas (0..stageW / 0..stageH). For a cable this is
+   *  the midpoint where the label sits; the line follows fromId/toId. */
   x: number;
   y: number;
   rotation: number;
   w: number | null;
   h: number | null;
+  /** Cable endpoints — ids of other elements on this plan (null for points). */
+  fromId: ID | null;
+  toId: ID | null;
   /** Opaque equipment ids — what physical model/unit this represents. */
   modelId: ID | null;
   unitId: ID | null;
@@ -70,6 +76,8 @@ export interface AddElementInput {
   rotation?: number;
   w?: number | null;
   h?: number | null;
+  fromId?: ID | null;
+  toId?: ID | null;
   modelId?: ID | null;
   unitId?: ID | null;
   attrs?: Record<string, unknown> | null;
@@ -83,6 +91,8 @@ export interface UpdateElementInput {
   rotation?: number;
   w?: number | null;
   h?: number | null;
+  fromId?: ID | null;
+  toId?: ID | null;
   modelId?: ID | null;
   unitId?: ID | null;
   attrs?: Record<string, unknown> | null;

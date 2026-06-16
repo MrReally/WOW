@@ -99,8 +99,27 @@ export function useCreateReservation() {
 export function useAddTiming() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { projectId: string; title: string; startsAt: string; endsAt: string }) =>
+    mutationFn: (input: { projectId: string; title: string; startsAt: string; endsAt: string; assigneeIds?: string[] }) =>
       api.post("/api/timings", input),
+    meta: { successMessage: "Тайминг добавлен" },
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
+export function useSetTimingAssignees() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ timingId, userIds }: { timingId: string; userIds: string[] }) =>
+      api.put(`/api/timings/${timingId}/assignees`, { userIds }),
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
+export function useDeleteTiming() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/timings/${id}`),
+    meta: { successMessage: "Тайминг удалён" },
     onSuccess: () => invalidateProjects(qc),
   });
 }
@@ -108,8 +127,9 @@ export function useAddTiming() {
 export function useAddAssignment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { projectId: string; userId: string; roleNote?: string | null }) =>
+    mutationFn: (input: { projectId: string; userId: string; roleNote?: string | null; rateEUR?: number | null; invite?: boolean }) =>
       api.post("/api/assignments", input),
+    meta: { successMessage: "Готово" },
     onSuccess: () => invalidateProjects(qc),
   });
 }
