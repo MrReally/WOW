@@ -91,6 +91,8 @@ export interface ProjectFinanceDTO {
 
 export interface InvoiceLineDTO {
   refId: ID;
+  /** Grouping section for the document (equipment type, or "Команда"). */
+  section: string;
   label: string;
   detail: string;
   /** Structured breakdown so the line can be edited before billing. */

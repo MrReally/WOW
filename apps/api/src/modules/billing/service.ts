@@ -27,23 +27,26 @@ export function createBillingService(deps: BillingDeps): BillingService {
       const project = await deps.projects.getProject(projectId);
       if (!project) throw NotFound("project", projectId);
 
-      const [reservations, assignments, models, txs] = await Promise.all([
+      const [reservations, assignments, models, types, txs] = await Promise.all([
         deps.projects.listReservations(projectId),
         deps.projects.listAssignments(projectId),
         deps.equipment.listModels(),
+        deps.equipment.listTypes(),
         deps.finance.listTransactions({ projectId }),
       ]);
       const modelMap = new Map(models.map((m) => [m.id, m]));
+      const typeName = new Map(types.map((t) => [t.id, t.name]));
 
-      // Equipment rental — billed to the client.
+      // Equipment rental — billed to the client, grouped by equipment type.
       const rentalLines: Finance.InvoiceLineDTO[] = reservations.map((r) => {
         const m = modelMap.get(r.modelId);
         const price = m?.dailyPriceEUR ?? 0;
         const rdays = daysBetween(r.startsAt, r.endsAt);
         return {
           refId: r.id,
+          section: (m && typeName.get(m.typeId)) || "Оборудование",
           label: m?.name ?? r.modelId,
-          detail: `${r.qty} × ${price} €/сут × ${rdays} сут`,
+          detail: `${rdays} сут × ${price} €/сут`,
           qty: r.qty,
           unitEUR: price,
           periods: rdays,
@@ -57,6 +60,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
       const names = await Promise.all(crew.map((a) => deps.people.getById(a.userId)));
       const laborLines: Finance.InvoiceLineDTO[] = crew.map((a, i) => ({
         refId: a.id,
+        section: "Команда",
         label: names[i]?.displayName ?? "—",
         detail: [a.roleNote || "команда", a.status === "invited" ? "приглашён" : null].filter(Boolean).join(" · "),
         qty: 1,

@@ -12,6 +12,20 @@
   margin: 0 0 2px;
   color: #111;
 }
+.invoice-doc .inv-brand {
+  font-family: var(--font-cond, var(--font-sans, system-ui));
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #111;
+  line-height: 1;
+}
+.invoice-doc tr.inv-section td {
+  background: #f2f2f2;
+  font-weight: 700;
+  text-transform: capitalize;
+  border-bottom: 1px solid #d8d8d8;
+}
 .invoice-doc .muted {
   color: #555;
   font-size: 12px;

@@ -1,22 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Card, Button, SectionTitle, Field, Input, Textarea, Loading, ErrorState } from "../../ui-kit/index.ts";
-import { eur } from "../../lib/labels.ts";
 import { useProject, useClients, useProjectInvoice } from "../projects/hooks.ts";
 import "./invoice.css";
 
+// One quotation line, in the SEVER document format: Name · Count · Price · Comment,
+// grouped under a section (equipment type / "Команда" / custom).
 interface Line {
   id: string;
-  description: string;
-  qty: number;
-  unitEUR: number;
-  periods: number;
+  section: string;
+  name: string;
+  count: string;
+  price: number;
+  comment: string;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
-const amountOf = (l: Line) => round2(l.qty * l.unitEUR * l.periods);
 const num = (v: string) => (v === "" ? 0 : Number(v) || 0);
 const uid = () => Math.random().toString(36).slice(2, 9);
+const money = (n: number, cur: string) => `${new Intl.NumberFormat("ru-RU").format(round2(n))} ${cur}`;
 
 interface Company { name: string; requisites: string; }
 function loadCompany(): Company {
@@ -40,22 +42,23 @@ export function InvoicePage() {
   const [lines, setLines] = useState<Line[]>([]);
   const [seeded, setSeeded] = useState(false);
   const [company, setCompany] = useState<Company>(loadCompany);
+  const [currency, setCurrency] = useState("EUR");
   const [number, setNumber] = useState("");
   const [dateStr, setDateStr] = useState(() => new Date().toISOString().slice(0, 10));
   const [clientName, setClientName] = useState("");
   const [note, setNote] = useState("");
 
-  // Seed editable lines from the computed rental positions once, prices filled
-  // in but fully editable before the document is generated.
+  // Prices are pre-filled from the project but fully editable before the document.
   useEffect(() => {
     if (!seeded && invoice.data) {
       setLines(
         invoice.data.rentalLines.map((l) => ({
           id: l.refId,
-          description: l.label,
-          qty: l.qty,
-          unitEUR: l.unitEUR,
-          periods: l.periods,
+          section: l.section,
+          name: l.label,
+          count: String(l.qty),
+          price: l.amountEUR,
+          comment: l.detail,
         }))
       );
       setSeeded(true);
@@ -63,9 +66,7 @@ export function InvoicePage() {
   }, [invoice.data, seeded]);
 
   useEffect(() => {
-    if (project.data && !number) {
-      setNumber(`СЧ-${dateStr.replace(/-/g, "")}-${id.slice(0, 4).toUpperCase()}`);
-    }
+    if (project.data && !number) setNumber(`СЧ-${dateStr.replace(/-/g, "")}-${id.slice(0, 4).toUpperCase()}`);
     if (project.data && !clientName) {
       const c = (clients.data ?? []).find((x) => x.id === project.data!.clientId);
       if (c) setClientName(c.name);
@@ -76,7 +77,19 @@ export function InvoicePage() {
     localStorage.setItem("sever.invoice.company", JSON.stringify(company));
   }, [company]);
 
-  const total = useMemo(() => round2(lines.reduce((s, l) => s + amountOf(l), 0)), [lines]);
+  const total = useMemo(() => round2(lines.reduce((s, l) => s + l.price, 0)), [lines]);
+
+  // Group lines into sections, preserving first-appearance order.
+  const sections = useMemo(() => {
+    const order: string[] = [];
+    const map = new Map<string, Line[]>();
+    for (const l of lines) {
+      const key = l.section || "—";
+      if (!map.has(key)) { map.set(key, []); order.push(key); }
+      map.get(key)!.push(l);
+    }
+    return order.map((s) => ({ section: s, items: map.get(s)! }));
+  }, [lines]);
 
   if (project.isLoading || invoice.isLoading) return <Loading />;
   if (invoice.error) return <ErrorState error={invoice.error} onRetry={invoice.refetch} />;
@@ -84,13 +97,14 @@ export function InvoicePage() {
   const setLine = (lid: string, patch: Partial<Line>) =>
     setLines((prev) => prev.map((l) => (l.id === lid ? { ...l, ...patch } : l)));
   const removeLine = (lid: string) => setLines((prev) => prev.filter((l) => l.id !== lid));
-  const addLine = () => setLines((prev) => [...prev, { id: uid(), description: "", qty: 1, unitEUR: 0, periods: 1 }]);
+  const addLine = () =>
+    setLines((prev) => [...prev, { id: uid(), section: prev[prev.length - 1]?.section ?? "Оборудование", name: "", count: "1", price: 0, comment: "" }]);
   const addCrew = () =>
     setLines((prev) => {
       const have = new Set(prev.map((l) => l.id));
       const crew = (invoice.data?.laborLines ?? [])
         .filter((l) => !have.has(l.refId))
-        .map((l) => ({ id: l.refId, description: `${l.label}${l.detail ? ` — ${l.detail}` : ""}`, qty: l.qty, unitEUR: l.unitEUR, periods: l.periods }));
+        .map((l) => ({ id: l.refId, section: l.section, name: l.label, count: String(l.qty), price: l.amountEUR, comment: l.detail }));
       return [...prev, ...crew];
     });
 
@@ -102,47 +116,39 @@ export function InvoicePage() {
           <Button onClick={() => window.print()}>Печать / PDF</Button>
         </div>
         <div className="invoice-doc">
-          <div className="row row--between" style={{ alignItems: "flex-start" }}>
+          <div className="row row--between" style={{ alignItems: "flex-start", marginBottom: 6 }}>
             <div>
-              <h1>{company.name || "—"}</h1>
-              {company.requisites && <div className="muted" style={{ whiteSpace: "pre-wrap" }}>{company.requisites}</div>}
+              <div className="inv-brand">{company.name || "SEVER"}</div>
+              {company.requisites && <div className="muted" style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>{company.requisites}</div>}
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontWeight: 800, fontSize: 16, color: "#111" }}>Счёт {number}</div>
-              <div className="muted">от {dateStr}</div>
+              <div className="muted">{dateStr}</div>
+              <div style={{ fontWeight: 700, color: "#111", marginTop: 2 }}>{number}</div>
             </div>
           </div>
-          <div style={{ marginTop: 14, fontSize: 13, color: "#222" }}>
-            <div><b>Заказчик:</b> {clientName || "—"}</div>
-            <div><b>Проект:</b> {project.data?.name ?? "—"}</div>
+          <div style={{ fontSize: 12.5, color: "#222", marginBottom: 4 }}>
+            <span><b>Заказчик:</b> {clientName || "—"}</span>
+            <span style={{ marginLeft: 14 }}><b>Проект:</b> {project.data?.name ?? "—"}</span>
           </div>
+
           <table>
             <thead>
               <tr>
-                <th style={{ width: 24 }}>#</th>
-                <th>Наименование</th>
-                <th className="num">Кол-во</th>
-                <th className="num">Цена</th>
-                <th className="num">Период</th>
-                <th className="num">Сумма</th>
+                <th>Name</th>
+                <th className="num" style={{ width: 64 }}>Count</th>
+                <th className="num" style={{ width: 96 }}>Price</th>
+                <th style={{ width: "32%" }}>Comment</th>
               </tr>
             </thead>
             <tbody>
-              {lines.map((l, i) => (
-                <tr key={l.id}>
-                  <td>{i + 1}</td>
-                  <td>{l.description || "—"}</td>
-                  <td className="num">{l.qty}</td>
-                  <td className="num">{eur(l.unitEUR)}</td>
-                  <td className="num">{l.periods}</td>
-                  <td className="num">{eur(amountOf(l))}</td>
-                </tr>
+              {sections.map((sec) => (
+                <SectionBlock key={sec.section} section={sec.section} items={sec.items} currency={currency} />
               ))}
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={5}>Итого</td>
-                <td className="num">{eur(total)}</td>
+                <td colSpan={2}>TOTAL</td>
+                <td className="num" colSpan={2}>{money(total, currency)}</td>
               </tr>
             </tfoot>
           </table>
@@ -161,29 +167,36 @@ export function InvoicePage() {
         <div className="row">
           <Field label="Номер"><Input value={number} onChange={(e) => setNumber(e.target.value)} /></Field>
           <Field label="Дата"><Input type="date" value={dateStr} onChange={(e) => setDateStr(e.target.value)} /></Field>
+          <Field label="Валюта"><Input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} /></Field>
         </div>
         <Field label="Исполнитель"><Input value={company.name} onChange={(e) => setCompany({ ...company, name: e.target.value })} /></Field>
-        <Field label="Реквизиты исполнителя"><Textarea value={company.requisites} onChange={(e) => setCompany({ ...company, requisites: e.target.value })} placeholder="ИНН, счёт, контакты — подставится в документ" /></Field>
+        <Field label="Реквизиты / контакты (футер документа)"><Textarea value={company.requisites} onChange={(e) => setCompany({ ...company, requisites: e.target.value })} placeholder="Телефон, e-mail, ИНН, счёт — подставится в документ" /></Field>
         <Field label="Заказчик"><Input value={clientName} onChange={(e) => setClientName(e.target.value)} /></Field>
       </Card>
 
       <SectionTitle>Позиции</SectionTitle>
+      <p className="card__subtitle" style={{ marginTop: -6 }}>Раздел (Sound / Lighting / …), название, кол-во, цена и комментарий. Цены подставлены — правь как нужно.</p>
       <div className="stack">
         {lines.map((l) => (
           <Card key={l.id}>
-            <Input value={l.description} onChange={(e) => setLine(l.id, { description: e.target.value })} placeholder="Наименование позиции" />
-            <div className="inv-line-grid">
-              <input className="input" type="number" min="0" step="1" value={l.qty} onChange={(e) => setLine(l.id, { qty: num(e.target.value) })} aria-label="Кол-во" />
-              <input className="input" type="number" min="0" step="0.01" value={l.unitEUR} onChange={(e) => setLine(l.id, { unitEUR: num(e.target.value) })} aria-label="Цена €" />
-              <input className="input" type="number" min="1" step="1" value={l.periods} onChange={(e) => setLine(l.id, { periods: num(e.target.value) })} aria-label="Период" />
+            <div className="row" style={{ gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <Input value={l.section} onChange={(e) => setLine(l.id, { section: e.target.value })} placeholder="Раздел (Sound…)" />
+              </div>
               <Button variant="ghost" onClick={() => removeLine(l.id)} aria-label="Удалить">✕</Button>
             </div>
-            <p className="card__subtitle" style={{ marginTop: 6 }}>
-              {l.qty} × {eur(l.unitEUR)} × {l.periods} = <b style={{ color: "var(--text)" }}>{eur(amountOf(l))}</b>
-            </p>
+            <div style={{ marginTop: 6 }}>
+              <Input value={l.name} onChange={(e) => setLine(l.id, { name: e.target.value })} placeholder="Наименование" />
+            </div>
+            <div className="row" style={{ gap: 8, marginTop: 6 }}>
+              <Field label="Кол-во"><Input value={l.count} onChange={(e) => setLine(l.id, { count: e.target.value })} placeholder="1" /></Field>
+              <Field label={`Цена, ${currency}`}><Input type="number" step="0.01" value={l.price} onChange={(e) => setLine(l.id, { price: num(e.target.value) })} /></Field>
+            </div>
+            <div style={{ marginTop: 6 }}>
+              <Input value={l.comment} onChange={(e) => setLine(l.id, { comment: e.target.value })} placeholder="Комментарий" />
+            </div>
           </Card>
         ))}
-        <p className="card__subtitle" style={{ textAlign: "center" }}>колонки: кол-во · цена € · период (сутки)</p>
       </div>
 
       <div className="row">
@@ -193,8 +206,8 @@ export function InvoicePage() {
 
       <Card>
         <div className="row row--between">
-          <span className="card__title">Итого</span>
-          <span className="card__title">{eur(total)}</span>
+          <span className="card__title">TOTAL</span>
+          <span className="card__title">{money(total, currency)}</span>
         </div>
       </Card>
 
@@ -202,5 +215,23 @@ export function InvoicePage() {
 
       <Button block disabled={lines.length === 0} onClick={() => setMode("preview")}>Сформировать документ</Button>
     </div>
+  );
+}
+
+function SectionBlock({ section, items, currency }: { section: string; items: Line[]; currency: string }) {
+  return (
+    <>
+      <tr className="inv-section">
+        <td colSpan={4}>{section}</td>
+      </tr>
+      {items.map((l) => (
+        <tr key={l.id}>
+          <td>{l.name || "—"}</td>
+          <td className="num">{l.count}</td>
+          <td className="num">{money(l.price, currency)}</td>
+          <td className="muted">{l.comment}</td>
+        </tr>
+      ))}
+    </>
   );
 }
