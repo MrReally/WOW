@@ -24,8 +24,8 @@ export function useClients() {
   return useQuery({ queryKey: ["clients"], queryFn: () => api.get<Projects.ClientDTO[]>("/api/clients") });
 }
 
-export function usePeople() {
-  return useQuery({ queryKey: ["people"], queryFn: () => api.get<People.UserDTO[]>("/api/people") });
+export function usePeople(enabled = true) {
+  return useQuery({ enabled, queryKey: ["people"], queryFn: () => api.get<People.UserDTO[]>("/api/people") });
 }
 
 export function useReservations(projectId: string) {

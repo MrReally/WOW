@@ -44,6 +44,7 @@ export function ProjectDetailPage() {
   const canIssue = can("warehouse.issue");
   const canTiming = can("projects.timing.manage");
   const canAssign = can("projects.assignment.manage");
+  const canViewPeople = can("people.view");
   const canPlans = can("plans.view");
 
   const project = useProject(id);
@@ -51,7 +52,7 @@ export function ProjectDetailPage() {
   const reservations = useReservations(id);
   const timings = useTimings(id);
   const assignments = useAssignments(id);
-  const people = usePeople();
+  const people = usePeople(canViewPeople);
   const models = useEquipmentModels();
   const allUnits = useAllUnits();
 
@@ -82,7 +83,7 @@ export function ProjectDetailPage() {
 
   const clientName = (cid: string) => (clients.data ?? []).find((c) => c.id === cid)?.name ?? "—";
   const modelName = (mid: string) => (models.data ?? []).find((m) => m.id === mid)?.name ?? mid;
-  const userName = (uid: string) => (people.data ?? []).find((u) => u.id === uid)?.displayName ?? uid;
+  const userName = (uid: string) => (people.data ?? []).find((u) => u.id === uid)?.displayName ?? "";
 
   return (
     <div className="stack">
@@ -293,7 +294,10 @@ export function ProjectDetailPage() {
         );
       })()}
 
-      {/* Assignments */}
+      {/* Assignments — hidden unless you can see the people directory, so field
+          crew without people.view never get a section full of raw ids. */}
+      {canViewPeople && (
+        <>
       <SectionTitle>Команда</SectionTitle>
       {(assignments.data ?? []).length === 0 ? (
         <EmptyState title="Никто не назначен" />
@@ -363,6 +367,8 @@ export function ProjectDetailPage() {
           </Card>
         );
       })()}
+        </>
+      )}
 
       <ResolveReservationSheet
         reservation={resolving}

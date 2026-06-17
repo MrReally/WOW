@@ -61,7 +61,7 @@ const WAREHOUSE_PERMS: Permission[] = [
   "operations.view", "warehouse.view", "warehouse.catalog.manage", "warehouse.import",
   "warehouse.issue", "warehouse.unit.status", "projects.view", "projects.reservation.manage",
   "projects.timing.manage", "projects.timing.viewAll", "projects.assignment.manage", "clients.manage",
-  "venues.manage", "plans.view", "plans.manage",
+  "venues.manage", "plans.view", "plans.manage", "people.view",
 ];
 const TECH_PERMS: Permission[] = ["operations.view", "warehouse.view", "warehouse.issue", "projects.view", "plans.view"];
 
