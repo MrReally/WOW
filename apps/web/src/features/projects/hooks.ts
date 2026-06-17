@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Projects, People, Equipment } from "@sever/contracts";
+import type { Projects, People, Equipment, Finance } from "@sever/contracts";
 import { api } from "../../lib/api.ts";
+
+export function useProjectInvoice(projectId: string, enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: ["projects", "invoice", projectId],
+    queryFn: () => api.get<Finance.ProjectInvoiceDTO>(`/api/projects/${projectId}/invoice`),
+  });
+}
 
 // Read-only view of the equipment catalog via its public API, used to pick a
 // model when adding a reservation. We call the contract endpoint, not the

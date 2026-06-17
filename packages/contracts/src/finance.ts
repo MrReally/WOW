@@ -85,6 +85,43 @@ export interface ProjectFinanceDTO {
   debtEUR: number;
 }
 
+// ── Project invoice / cost estimate (composed from plan + recorded money) ─────
+// Not stored: computed on demand from reservations (× daily price × days),
+// crew rates, and the project's recorded transactions.
+
+export interface InvoiceLineDTO {
+  refId: ID;
+  label: string;
+  detail: string;
+  amountEUR: number;
+}
+
+export interface ProjectInvoiceDTO {
+  projectId: ID;
+  /** Project window length in whole days (billed days, min 1). */
+  days: number;
+  /** Equipment rental — what the client is billed. */
+  rentalLines: InvoiceLineDTO[];
+  rentalEUR: number;
+  /** Crew engagement costs (assignment rates). */
+  laborLines: InvoiceLineDTO[];
+  laborEUR: number;
+  /** Expenses recorded in finance for this project (repairs/purchases/other). */
+  recordedExpenseEUR: number;
+  /** Income already recorded against the project. */
+  recordedIncomeEUR: number;
+  /** Client payments received (prepayment + settlement). */
+  paidEUR: number;
+  /** Bill to the client = rentalEUR. */
+  invoiceEUR: number;
+  /** Project cost = labor + recorded expenses. */
+  costEUR: number;
+  /** invoiceEUR − costEUR. */
+  profitEUR: number;
+  /** invoiceEUR − paidEUR (still to collect). */
+  dueEUR: number;
+}
+
 // ── Public service contract ──────────────────────────────────────────────────
 
 export interface FinanceService {

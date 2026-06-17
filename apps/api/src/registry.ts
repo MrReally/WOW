@@ -17,6 +17,8 @@ import { createPlansModule } from "./modules/plans/index.js";
 import { createNotificationsModule } from "./modules/notifications/index.js";
 import { createApexService } from "./modules/apex/service.js";
 import { registerApexRoutes } from "./modules/apex/routes.js";
+import { createBillingService } from "./modules/billing/service.js";
+import { registerBillingRoutes } from "./modules/billing/routes.js";
 import { sendTelegramMessage } from "./core/telegram.js";
 import type { Notifications } from "@sever/contracts";
 
@@ -30,6 +32,13 @@ export function createModules(bus: EventBus = new EventBus()) {
   const notifications = createNotificationsModule(pool);
 
   const apex = createApexService({
+    equipment: equipment.service,
+    projects: projects.service,
+    finance: finance.service,
+    people: people.service,
+  });
+
+  const billing = createBillingService({
     equipment: equipment.service,
     projects: projects.service,
     finance: finance.service,
@@ -178,7 +187,7 @@ export function createModules(bus: EventBus = new EventBus()) {
 
   const modules = [people, equipment, projects, finance, venues, plans, notifications];
 
-  return { bus, people, equipment, projects, finance, venues, plans, notifications, apex, modules, handleTelegramCallback };
+  return { bus, people, equipment, projects, finance, venues, plans, notifications, apex, billing, modules, handleTelegramCallback };
 }
 
 export type Wiring = ReturnType<typeof createModules>;
@@ -190,6 +199,7 @@ export function registerAllRoutes(
 ): void {
   for (const m of wiring.modules) m.registerRoutes(app, ctx);
   registerApexRoutes(app, ctx, wiring.apex);
+  registerBillingRoutes(app, ctx, wiring.billing);
 }
 
 /** Used by the migration runner — collects each module's DDL. */

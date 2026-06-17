@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import type { Projects } from "@sever/contracts";
 import { PROJECT_STATUSES } from "@sever/contracts";
 import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
-import { projectStatusLabel, projectStatusTone, dateRange, dateTime } from "../../lib/labels.ts";
+import { projectStatusLabel, projectStatusTone, dateRange, dateTime, eur } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
 import {
   useProject,
@@ -22,6 +22,7 @@ import {
   useRemoveAssignment,
   useIssueResolvedUnits,
   useAllUnits,
+  useProjectInvoice,
 } from "./hooks.ts";
 import { ResolveReservationSheet } from "./components/ResolveReservationSheet.tsx";
 import { EditProjectSheet } from "./components/EditProjectSheet.tsx";
@@ -45,6 +46,7 @@ export function ProjectDetailPage() {
   const canTiming = can("projects.timing.manage");
   const canAssign = can("projects.assignment.manage");
   const canViewPeople = can("people.view");
+  const canFinance = can("finance.view");
   const canPlans = can("plans.view");
 
   const project = useProject(id);
@@ -55,6 +57,7 @@ export function ProjectDetailPage() {
   const people = usePeople(canViewPeople);
   const models = useEquipmentModels();
   const allUnits = useAllUnits();
+  const invoice = useProjectInvoice(id, canFinance);
 
   const setStatus = useSetProjectStatus();
   const addReservation = useCreateReservation();
@@ -369,6 +372,65 @@ export function ProjectDetailPage() {
       })()}
         </>
       )}
+
+      {canFinance && invoice.data && (() => {
+        const inv = invoice.data;
+        const Line = ({ l }: { l: { refId: string; label: string; detail: string; amountEUR: number } }) => (
+          <div className="row row--between" style={{ padding: "4px 0", gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: "var(--text)" }}>{l.label}</div>
+              <div className="card__subtitle">{l.detail}</div>
+            </div>
+            <span style={{ color: "var(--text)", whiteSpace: "nowrap" }}>{eur(l.amountEUR)}</span>
+          </div>
+        );
+        return (
+          <>
+            <SectionTitle>Смета и счёт</SectionTitle>
+            <Card>
+              <p className="card__title">Счёт за прокат · {inv.days} сут</p>
+              {inv.rentalLines.length === 0 ? (
+                <p className="card__subtitle" style={{ marginTop: 4 }}>Броней оборудования нет</p>
+              ) : (
+                <div style={{ marginTop: 6 }}>{inv.rentalLines.map((l) => <Line key={l.refId} l={l} />)}</div>
+              )}
+              <div className="row row--between" style={{ marginTop: 8, borderTop: "1px solid var(--bdr)", paddingTop: 8 }}>
+                <span className="card__title">К оплате клиентом</span>
+                <span className="card__title">{eur(inv.invoiceEUR)}</span>
+              </div>
+            </Card>
+
+            <Card>
+              <p className="card__title">Расходы по проекту</p>
+              <div style={{ marginTop: 6 }}>{inv.laborLines.map((l) => <Line key={l.refId} l={l} />)}</div>
+              <div className="row row--between" style={{ padding: "4px 0" }}>
+                <span className="card__subtitle">Команда, итого</span>
+                <span style={{ color: "var(--text)" }}>{eur(inv.laborEUR)}</span>
+              </div>
+              {inv.recordedExpenseEUR > 0 && (
+                <div className="row row--between" style={{ padding: "4px 0" }}>
+                  <span className="card__subtitle">Прочие расходы (ремонт/закупки)</span>
+                  <span style={{ color: "var(--text)" }}>{eur(inv.recordedExpenseEUR)}</span>
+                </div>
+              )}
+              <div className="row row--between" style={{ marginTop: 8, borderTop: "1px solid var(--bdr)", paddingTop: 8 }}>
+                <span className="card__title">Итого расходы</span>
+                <span className="card__title">{eur(inv.costEUR)}</span>
+              </div>
+            </Card>
+
+            <Card>
+              <div className="row row--between">
+                <span className="card__title">Прибыль (оценка)</span>
+                <span className="card__title" style={{ color: inv.profitEUR >= 0 ? "var(--ok)" : "var(--alert)" }}>{eur(inv.profitEUR)}</span>
+              </div>
+              <p className="card__subtitle" style={{ marginTop: 6 }}>
+                Оплачено клиентом: {eur(inv.paidEUR)} · осталось получить: {eur(inv.dueEUR)}
+              </p>
+            </Card>
+          </>
+        );
+      })()}
 
       <ResolveReservationSheet
         reservation={resolving}

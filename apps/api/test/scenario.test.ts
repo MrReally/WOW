@@ -447,4 +447,27 @@ describe("Tech pickup/return → некомплект", () => {
     // Now it shows up as the guest's project.
     expect((await projects.service.listProjectsForUser(guest.id)).some((p) => p.id === project.id)).toBe(true);
   });
+
+  it("project invoice: rental billed from reservations, costs from crew rates", async () => {
+    const { projects, equipment, billing } = wiring;
+    const guest = await makeTech("Invoice Crew");
+    const client = await projects.service.createClient({ name: `Invoice ${Date.now()}` });
+    const start = new Date().toISOString();
+    const end = new Date(Date.now() + 2 * 86_400_000).toISOString(); // 2 days
+    const project = await projects.service.createProject({ name: "Invoice Project", clientId: client.id, startsAt: start, endsAt: end });
+
+    const type = await equipment.service.createType({ name: `INV-${Date.now()}`, trackingMode: "serial" });
+    const model = await equipment.service.createModel({ typeId: type.id, name: "Inv Fixture", unitCostEUR: 500, dailyPriceEUR: 100 });
+    await projects.service.createReservation({ projectId: project.id, modelId: model.id, qty: 2, startsAt: start, endsAt: end });
+    await projects.service.addAssignment({ projectId: project.id, userId: guest.id, roleNote: "Свет", rateEUR: 150 });
+
+    const inv = await billing.projectInvoice(project.id);
+    expect(inv.days).toBe(2);
+    expect(inv.rentalEUR).toBe(400); // 100 €/сут × 2 шт × 2 сут
+    expect(inv.invoiceEUR).toBe(400);
+    expect(inv.laborEUR).toBe(150);
+    expect(inv.costEUR).toBe(150);
+    expect(inv.profitEUR).toBe(250);
+    expect(inv.dueEUR).toBe(400); // nothing paid yet
+  });
 });
