@@ -341,8 +341,8 @@ describe("Tech pickup/return → некомплект", () => {
     expect(plan.version).toBe(1);
     expect(plan.isCurrent).toBe(true);
 
-    await plans.service.addElement({ planId: plan.id, layer: "fixtures", kind: "fixture", label: "MH1", x: 100, y: 80 });
-    await plans.service.addElement({ planId: plan.id, layer: "dmx", kind: "power", label: "U1", x: 50, y: 50 });
+    await plans.service.addElement({ planId: plan.id, layer: "light", kind: "fixture", label: "MH1", x: 100, y: 80 });
+    await plans.service.addElement({ planId: plan.id, layer: "sound", kind: "fixture", label: "U1", x: 50, y: 50 });
 
     const v2 = await plans.service.newVersion(plan.id);
     expect(v2.version).toBe(2);
@@ -374,8 +374,8 @@ describe("Tech pickup/return → некомплект", () => {
       startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString(),
     });
     const plan = await plans.service.createPlan({ projectId: project.id, name: "Cabled stage" });
-    const a = await plans.service.addElement({ planId: plan.id, layer: "fixtures", kind: "fixture", label: "MH1", x: 100, y: 80 });
-    const b = await plans.service.addElement({ planId: plan.id, layer: "fixtures", kind: "fixture", label: "MH2", x: 200, y: 80 });
+    const a = await plans.service.addElement({ planId: plan.id, layer: "light", kind: "fixture", label: "MH1", x: 100, y: 80 });
+    const b = await plans.service.addElement({ planId: plan.id, layer: "light", kind: "fixture", label: "MH2", x: 200, y: 80 });
     await plans.service.addElement({ planId: plan.id, layer: "dmx", kind: "cable", label: "DMX1", x: 150, y: 80, fromId: a.id, toId: b.id });
 
     const v2 = await plans.service.newVersion(plan.id);

@@ -160,14 +160,18 @@ export async function seedDemo(s: SeedServices): Promise<{ summary: Record<strin
   // ── Venue + technical plan for the live operation ──
   const venue = await s.venues.create({ name: "Ice Palace Arena", address: "Москва", widthM: 40, depthM: 30 });
   const plan = await s.plans.createPlan({ projectId: pNordic.id, name: "Главная сцена", venueId: venue.id });
-  await s.plans.addElement({ planId: plan.id, layer: "rigging", kind: "truss", label: "MID truss", x: 200, y: 110, w: 240 });
-  await s.plans.addElement({ planId: plan.id, layer: "fixtures", kind: "fixture", label: "MH1", x: 110, y: 110, unitId: mp[0]!.id });
-  await s.plans.addElement({ planId: plan.id, layer: "fixtures", kind: "fixture", label: "MH2", x: 200, y: 110, unitId: mp[1]!.id });
-  await s.plans.addElement({ planId: plan.id, layer: "fixtures", kind: "fixture", label: "MH3", x: 290, y: 110, unitId: mp[2]!.id });
-  await s.plans.addElement({ planId: plan.id, layer: "power", kind: "power", label: "PWR A", x: 60, y: 230 });
-  await s.plans.addElement({ planId: plan.id, layer: "dmx", kind: "fixture", label: "U2", x: 200, y: 300 });
-  await s.plans.addElement({ planId: plan.id, layer: "audio", kind: "audio", label: "SPK L", x: 70, y: 470 });
-  await s.plans.addElement({ planId: plan.id, layer: "audio", kind: "audio", label: "SPK R", x: 330, y: 470 });
+  // Light devices.
+  const mh1 = await s.plans.addElement({ planId: plan.id, layer: "light", kind: "fixture", label: "MH1", x: 110, y: 110, unitId: mp[0]!.id });
+  const mh2 = await s.plans.addElement({ planId: plan.id, layer: "light", kind: "fixture", label: "MH2", x: 200, y: 110, unitId: mp[1]!.id });
+  const mh3 = await s.plans.addElement({ planId: plan.id, layer: "light", kind: "fixture", label: "MH3", x: 290, y: 110, unitId: mp[2]!.id });
+  // Sound devices.
+  const spkL = await s.plans.addElement({ planId: plan.id, layer: "sound", kind: "fixture", label: "SPK L", x: 70, y: 470 });
+  const spkR = await s.plans.addElement({ planId: plan.id, layer: "sound", kind: "fixture", label: "SPK R", x: 330, y: 470 });
+  // Cables connecting them.
+  await s.plans.addElement({ planId: plan.id, layer: "dmx", kind: "cable", label: "DMX", x: 155, y: 110, fromId: mh1.id, toId: mh2.id });
+  await s.plans.addElement({ planId: plan.id, layer: "dmx", kind: "cable", label: "DMX", x: 245, y: 110, fromId: mh2.id, toId: mh3.id });
+  await s.plans.addElement({ planId: plan.id, layer: "power", kind: "cable", label: "PWR", x: 90, y: 290, fromId: mh1.id, toId: spkL.id });
+  await s.plans.addElement({ planId: plan.id, layer: "audio", kind: "cable", label: "L/R", x: 200, y: 470, fromId: spkL.id, toId: spkR.id });
 
   // ── Some general expenses ──
   await s.finance.createTransaction({ accountId: accEUR.id, kind: "expense", category: "purchase", amount: 6000, currency: "EUR", note: "Закупка Robe MegaPointe" });

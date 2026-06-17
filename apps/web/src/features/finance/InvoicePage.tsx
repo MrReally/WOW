@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Card, Button, SectionTitle, Field, Input, Textarea, Loading, ErrorState } from "../../ui-kit/index.ts";
+import { Card, Button, SectionTitle, Field, Input, Textarea, Loading, ErrorState, SeverStar } from "../../ui-kit/index.ts";
 import { useProject, useClients, useProjectInvoice } from "../projects/hooks.ts";
 import "./invoice.css";
 
@@ -118,8 +118,11 @@ export function InvoicePage() {
         <div className="invoice-doc">
           <div className="row row--between" style={{ alignItems: "flex-start", marginBottom: 6 }}>
             <div>
-              <div className="inv-brand">{company.name || "SEVER"}</div>
-              {company.requisites && <div className="muted" style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>{company.requisites}</div>}
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <SeverStar size={44} color="#111" />
+                <div className="inv-brand">{company.name || "SEVER"}</div>
+              </div>
+              {company.requisites && <div className="muted" style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{company.requisites}</div>}
             </div>
             <div style={{ textAlign: "right" }}>
               <div className="muted">{dateStr}</div>

@@ -4,11 +4,11 @@ import type { Plans } from "@sever/contracts";
 type PlanLayer = Plans.PlanLayer;
 
 const LAYER_COLOR: Record<PlanLayer, string> = {
-  fixtures: "var(--accent)",
+  light: "var(--accent)",
+  sound: "var(--ok)",
   dmx: "var(--info)",
   power: "var(--alert)",
-  audio: "var(--ok)",
-  rigging: "var(--warn)",
+  audio: "var(--warn)",
 };
 
 interface Props {

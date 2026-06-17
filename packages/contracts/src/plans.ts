@@ -4,8 +4,10 @@ import type { ID, ISODateTime } from "./common.js";
 // into layers. The Lightkey module (later) imports fixtures into a plan and
 // links them to equipment units — this is the foundation it consumes.
 
-export type PlanLayer = "fixtures" | "dmx" | "power" | "audio" | "rigging";
-export const PLAN_LAYERS: PlanLayer[] = ["fixtures", "dmx", "power", "audio", "rigging"];
+// Devices live on the `light` / `sound` layers; dmx / power / audio are cable
+// runs that connect them.
+export type PlanLayer = "light" | "sound" | "dmx" | "power" | "audio";
+export const PLAN_LAYERS: PlanLayer[] = ["light", "sound", "dmx", "power", "audio"];
 
 // `cable` is an edge, not a point: DMX / power / audio runs are drawn as lines
 // linking two devices (fromId → toId) rather than as standalone markers.

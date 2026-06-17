@@ -14,14 +14,11 @@ import {
 } from "./hooks.ts";
 
 const LAYER_LABEL: Record<PlanLayer, string> = {
-  fixtures: "Приборы", dmx: "DMX", power: "Питание", audio: "Звук", rigging: "Риггинг",
+  light: "Свет", sound: "Звук", dmx: "DMX", power: "Питание", audio: "Аудио-линия",
 };
-// DMX / power / audio are runs of cable between devices, not standalone markers.
+// Devices sit on the light / sound layers; dmx / power / audio are cable runs.
+const DEVICE_LAYERS: PlanLayer[] = ["light", "sound"];
 const CABLE_LAYERS: PlanLayer[] = ["dmx", "power", "audio"];
-const isCableLayer = (l: PlanLayer) => CABLE_LAYERS.includes(l);
-const KIND_FOR_LAYER: Record<PlanLayer, Plans.PlanElementKind> = {
-  fixtures: "fixture", dmx: "cable", power: "cable", audio: "cable", rigging: "truss",
-};
 
 export function StagePlanPage() {
   const { id: projectId = "" } = useParams();
@@ -44,7 +41,9 @@ export function StagePlanPage() {
   const [visible, setVisible] = useState<Set<PlanLayer>>(new Set(PLAN_LAYERS));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drag, setDrag] = useState<Record<string, { x: number; y: number }>>({});
-  const [newLayer, setNewLayer] = useState<PlanLayer>("fixtures");
+  const [addMode, setAddMode] = useState<"device" | "cable">("device");
+  const [deviceLayer, setDeviceLayer] = useState<PlanLayer>("light");
+  const [cableLayer, setCableLayer] = useState<PlanLayer>("dmx");
   const [newLabel, setNewLabel] = useState("");
   const [fromEl, setFromEl] = useState("");
   const [toEl, setToEl] = useState("");
@@ -114,44 +113,41 @@ export function StagePlanPage() {
             </div>
           </Card>
 
-          {/* Layer toggles */}
-          <div className="row" style={{ flexWrap: "wrap", gap: 6, margin: "12px 0" }}>
+          {/* Canvas */}
+          <div style={{ marginTop: 12 }}>
+            <StageCanvas
+              plan={data}
+              elements={elements}
+              visible={visible}
+              editable={canManage}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onDrag={(id, x, y) => setDrag((d) => ({ ...d, [id]: { x, y } }))}
+              onDrop={(id) => {
+                const el = elements.find((e) => e.id === id);
+                if (el) {
+                  moveElements.mutate(
+                    { planId: data.id, items: [{ id, x: el.x, y: el.y, rotation: el.rotation }] },
+                    { onSuccess: () => setDrag((d) => { const n = { ...d }; delete n[id]; return n; }) }
+                  );
+                }
+              }}
+            />
+          </div>
+
+          {/* Layer legend — tap to show/hide a layer */}
+          <div className="row" style={{ flexWrap: "wrap", gap: 14, margin: "10px 2px 4px" }}>
             {PLAN_LAYERS.map((l) => (
               <button
                 key={l}
                 onClick={() => toggleLayer(l)}
-                className="chip"
-                style={{
-                  cursor: "pointer",
-                  border: `1px solid ${LAYER_COLOR[l]}`,
-                  color: visible.has(l) ? "#fff" : LAYER_COLOR[l],
-                  background: visible.has(l) ? LAYER_COLOR[l] : "transparent",
-                }}
+                style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: 0, cursor: "pointer", opacity: visible.has(l) ? 1 : 0.35 }}
               >
-                {LAYER_LABEL[l]}
+                <span style={{ width: 11, height: 11, borderRadius: 3, background: LAYER_COLOR[l], display: "inline-block" }} />
+                <span style={{ fontSize: 12.5, color: "var(--text2)" }}>{LAYER_LABEL[l]}</span>
               </button>
             ))}
           </div>
-
-          {/* Canvas */}
-          <StageCanvas
-            plan={data}
-            elements={elements}
-            visible={visible}
-            editable={canManage}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            onDrag={(id, x, y) => setDrag((d) => ({ ...d, [id]: { x, y } }))}
-            onDrop={(id) => {
-              const el = elements.find((e) => e.id === id);
-              if (el) {
-                moveElements.mutate(
-                  { planId: data.id, items: [{ id, x: el.x, y: el.y, rotation: el.rotation }] },
-                  { onSuccess: () => setDrag((d) => { const n = { ...d }; delete n[id]; return n; }) }
-                );
-              }
-            }}
-          />
 
           {/* Selected element panel */}
           {selected && canManage && (
@@ -199,74 +195,80 @@ export function StagePlanPage() {
             </Card>
           )}
 
-          {/* Add element */}
+          {/* Add: a device or a cable */}
           {canManage && (
             <Card style={{ marginTop: 12 }}>
-              <SectionHead label={isCableLayer(newLayer) ? "Протянуть кабель" : "Добавить прибор"} />
-              <div className="row" style={{ marginBottom: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <Select value={newLayer} onChange={(e) => setNewLayer(e.target.value as PlanLayer)} options={PLAN_LAYERS.map((l) => ({ value: l, label: LAYER_LABEL[l] }))} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <Input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder={isCableLayer(newLayer) ? "Подпись (необяз.)" : "Подпись (MH1, U2…)"} />
-                </div>
+              <SectionHead label="Добавить" />
+              <div className="row" style={{ marginBottom: 10 }}>
+                <Button block variant={addMode === "device" ? "primary" : "secondary"} onClick={() => setAddMode("device")}>Прибор</Button>
+                <Button block variant={addMode === "cable" ? "primary" : "secondary"} onClick={() => setAddMode("cable")}>Кабель</Button>
               </div>
 
-              {isCableLayer(newLayer) ? (
-                devices.length < 2 ? (
-                  <p className="card__subtitle">Сначала добавьте минимум два прибора (слои «Приборы» / «Риггинг») — кабель соединяет их.</p>
-                ) : (() => {
-                  const from = fromEl || devices[0]!.id;
-                  const to = toEl || devices[1]!.id;
-                  const a = devices.find((d) => d.id === from);
-                  const b = devices.find((d) => d.id === to);
-                  return (
-                    <>
-                      <div className="row">
-                        <div style={{ flex: 1 }}>
-                          <Select value={from} onChange={(e) => setFromEl(e.target.value)} options={devices.map((d) => ({ value: d.id, label: `от: ${deviceName(d.id)}` }))} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <Select value={to} onChange={(e) => setToEl(e.target.value)} options={devices.map((d) => ({ value: d.id, label: `к: ${deviceName(d.id)}` }))} />
-                        </div>
-                      </div>
-                      <Button
-                        block
-                        style={{ marginTop: 8 }}
-                        disabled={addElement.isPending || from === to || !a || !b}
-                        onClick={() =>
-                          addElement.mutate(
-                            {
-                              planId: data.id, layer: newLayer, kind: "cable", label: newLabel,
-                              x: (a!.x + b!.x) / 2, y: (a!.y + b!.y) / 2, fromId: from, toId: to,
-                            },
-                            { onSuccess: () => setNewLabel("") }
-                          )
-                        }
-                      >
-                        🔌 Соединить кабелем
-                      </Button>
-                      {from === to && <p className="card__subtitle" style={{ color: "var(--alert)", marginTop: 6 }}>Выберите два разных прибора</p>}
-                    </>
-                  );
-                })()
-              ) : (
+              {addMode === "device" ? (
                 <>
+                  <div className="row">
+                    <Field label="Тип">
+                      <Select value={deviceLayer} onChange={(e) => setDeviceLayer(e.target.value as PlanLayer)} options={DEVICE_LAYERS.map((l) => ({ value: l, label: LAYER_LABEL[l] }))} />
+                    </Field>
+                    <Field label="Подпись">
+                      <Input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="MH1, SUB…" />
+                    </Field>
+                  </div>
                   <Button
                     block
+                    style={{ marginTop: 8 }}
                     disabled={addElement.isPending}
                     onClick={() =>
                       addElement.mutate(
-                        { planId: data.id, layer: newLayer, kind: KIND_FOR_LAYER[newLayer], label: newLabel, x: data.stageW / 2, y: data.stageH / 2 },
+                        { planId: data.id, layer: deviceLayer, kind: "fixture", label: newLabel, x: data.stageW / 2, y: data.stageH / 2 },
                         { onSuccess: () => setNewLabel("") }
                       )
                     }
                   >
-                    + На сцену
+                    + Поставить на сцену
                   </Button>
-                  <p className="card__subtitle" style={{ marginTop: 8 }}>Перетаскивай приборы по сцене, чтобы расставить. DMX / Питание / Звук — это кабели между приборами.</p>
+                  <p className="card__subtitle" style={{ marginTop: 8 }}>Перетаскивай приборы по сцене, чтобы расставить их.</p>
                 </>
-              )}
+              ) : devices.length < 2 ? (
+                <p className="card__subtitle">Сначала добавьте минимум два прибора — кабель соединяет их.</p>
+              ) : (() => {
+                const from = fromEl || devices[0]!.id;
+                const to = toEl || devices[1]!.id;
+                const a = devices.find((d) => d.id === from);
+                const b = devices.find((d) => d.id === to);
+                return (
+                  <>
+                    <Field label="Тип кабеля">
+                      <Select value={cableLayer} onChange={(e) => setCableLayer(e.target.value as PlanLayer)} options={CABLE_LAYERS.map((l) => ({ value: l, label: LAYER_LABEL[l] }))} />
+                    </Field>
+                    <div className="row">
+                      <Field label="От прибора">
+                        <Select value={from} onChange={(e) => setFromEl(e.target.value)} options={devices.map((d) => ({ value: d.id, label: deviceName(d.id) }))} />
+                      </Field>
+                      <Field label="К прибору">
+                        <Select value={to} onChange={(e) => setToEl(e.target.value)} options={devices.map((d) => ({ value: d.id, label: deviceName(d.id) }))} />
+                      </Field>
+                    </div>
+                    <Field label="Подпись (необязательно)">
+                      <Input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="напр. линия 1" />
+                    </Field>
+                    <Button
+                      block
+                      style={{ marginTop: 8 }}
+                      disabled={addElement.isPending || from === to || !a || !b}
+                      onClick={() =>
+                        addElement.mutate(
+                          { planId: data.id, layer: cableLayer, kind: "cable", label: newLabel, x: (a!.x + b!.x) / 2, y: (a!.y + b!.y) / 2, fromId: from, toId: to },
+                          { onSuccess: () => setNewLabel("") }
+                        )
+                      }
+                    >
+                      🔌 Соединить кабелем
+                    </Button>
+                    {from === to && <p className="card__subtitle" style={{ color: "var(--alert)", marginTop: 6 }}>Выберите два разных прибора</p>}
+                  </>
+                );
+              })()}
             </Card>
           )}
         </>
