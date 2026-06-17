@@ -69,8 +69,10 @@ export function registerProjectsRoutes(
     "/api/projects",
     async (req) => {
       const auth = await ctx.auth(req);
-      // People who can't manage projects (field techs) see only their own.
-      if (req.query.mine === "true" || !auth.permissions.includes("projects.manage")) {
+      // Field techs see only their own projects; managers and warehouse staff
+      // (who issue/return gear and manage reservations) see all of them.
+      const seesAll = auth.permissions.includes("projects.manage") || auth.permissions.includes("projects.reservation.manage");
+      if (req.query.mine === "true" || !seesAll) {
         return service.listProjectsForUser(auth.userId);
       }
       return service.listProjects({ status: req.query.status });

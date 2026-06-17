@@ -18,6 +18,7 @@ import { useModels, useUnits, useTypes, useProjectsForOps, useOpenRepairs, useOp
 import { AddModelSheet } from "./components/AddModelSheet.tsx";
 import { ImportSheet } from "./components/ImportSheet.tsx";
 import { CableMoveSheet, CableRow } from "./components/CableMoveSheet.tsx";
+import { OpsSheet } from "./components/OpsSheet.tsx";
 
 function PrepStat({ tone, value, label }: { tone: Tone; value: number; label: string }) {
   return (
@@ -29,7 +30,7 @@ function PrepStat({ tone, value, label }: { tone: Tone; value: number; label: st
   );
 }
 
-function PrepHero({ units, onGoOperations }: { units: Equipment.EquipmentUnitDTO[]; onGoOperations: () => void }) {
+function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps: () => void }) {
   const total = units.length;
   const inStock = units.filter((u) => u.status === "in_stock").length;
   const onProject = units.filter((u) => u.status === "on_project").length;
@@ -57,7 +58,7 @@ function PrepHero({ units, onGoOperations }: { units: Equipment.EquipmentUnitDTO
       </div>
 
       <div style={{ marginTop: 20 }}>
-        <Button block variant="secondary" onClick={onGoOperations}>Выдача / Возврат — в Operations →</Button>
+        <Button block variant="primary" onClick={onOps}>Выдача / Возврат оборудования</Button>
       </div>
     </div>
   );
@@ -83,6 +84,7 @@ export function WarehousePage() {
   const { can } = useSession();
   const canCatalog = can("warehouse.catalog.manage");
   const canImport = can("warehouse.import");
+  const canIssue = can("warehouse.issue");
   const canEdit = canCatalog || canImport;
   const navigate = useNavigate();
   const models = useModels();
@@ -94,6 +96,7 @@ export function WarehousePage() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [opsOpen, setOpsOpen] = useState(false);
   const [cableModel, setCableModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [statusFilter, setStatusFilter] = useState<Equipment.UnitStatus | "all">("all");
 
@@ -112,7 +115,7 @@ export function WarehousePage() {
 
   return (
     <div>
-      <PrepHero units={allUnits} onGoOperations={() => navigate("/operations")} />
+      <PrepHero units={allUnits} onOps={canIssue ? () => setOpsOpen(true) : () => navigate("/operations")} />
 
       {((openRepairs.data ?? []).length > 0 || (openHandovers.data ?? []).length > 0) && (
         <>
@@ -214,6 +217,9 @@ export function WarehousePage() {
           <AddModelSheet open={addOpen} onClose={() => setAddOpen(false)} types={types.data ?? []} models={allModels} />
           <ImportSheet open={importOpen} onClose={() => setImportOpen(false)} />
         </>
+      )}
+      {canIssue && (
+        <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} projects={projects.data ?? []} models={allModels} />
       )}
       <CableMoveSheet model={cableModel} projects={projects.data ?? []} onClose={() => setCableModel(null)} />
     </div>
