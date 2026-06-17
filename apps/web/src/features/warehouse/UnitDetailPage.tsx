@@ -6,7 +6,7 @@ import { unitStatusLabel, unitStatusTone, dateTime } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
 import {
   useUnit, useUnitJournal, useChangeStatus, useUpdateUnit,
-  useModels, useTypes, useUnitRepairs, useProjectsForOps,
+  useModels, useTypes, useUnitRepairs, useProjectsForOps, usePeopleNames,
 } from "./hooks.ts";
 import { RepairContractorPanel } from "./components/RepairContractor.tsx";
 
@@ -47,6 +47,7 @@ export function UnitDetailPage() {
   const types = useTypes();
   const repairs = useUnitRepairs(id);
   const projects = useProjectsForOps();
+  const people = usePeopleNames(can("people.view"));
   const changeStatus = useChangeStatus();
   const updateUnit = useUpdateUnit();
 
@@ -175,20 +176,32 @@ export function UnitDetailPage() {
         </Card>
       )}
 
-      <SectionTitle>История (журнал)</SectionTitle>
+      <SectionTitle>История перемещений</SectionTitle>
+      <p className="card__subtitle" style={{ marginTop: -4 }}>Полный путь от поступления до текущего момента — кто, когда и куда.</p>
       {journal.isLoading ? (
         <Loading />
       ) : (
         <div className="stack">
-          {(journal.data ?? []).slice().reverse().map((e) => (
-            <Card key={e.id}>
-              <div className="row row--between">
-                <p className="card__title">{journalActionLabel[e.action] ?? e.action}</p>
-                <span className="card__subtitle">{dateTime(e.at)}</span>
-              </div>
-              {e.note && <p className="card__subtitle">{e.note}</p>}
-            </Card>
-          ))}
+          {(journal.data ?? []).slice().reverse().map((e) => {
+            const proj = e.projectId ? (projects.data ?? []).find((p) => p.id === e.projectId)?.name ?? null : null;
+            const actor = e.actorId ? (people.data ?? []).find((u) => u.id === e.actorId)?.displayName ?? null : null;
+            const transition =
+              e.fromStatus && e.toStatus && e.fromStatus !== e.toStatus
+                ? `${unitStatusLabel[e.fromStatus]} → ${unitStatusLabel[e.toStatus]}`
+                : null;
+            const where = proj ? `Проект: ${proj}` : transition;
+            const meta = [where, actor ? `Кто: ${actor}` : null].filter(Boolean).join(" · ");
+            return (
+              <Card key={e.id}>
+                <div className="row row--between">
+                  <p className="card__title">{journalActionLabel[e.action] ?? e.action}</p>
+                  <span className="card__subtitle">{dateTime(e.at)}</span>
+                </div>
+                {meta && <p className="card__subtitle">{meta}</p>}
+                {e.note && <p className="card__subtitle">{e.note}</p>}
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

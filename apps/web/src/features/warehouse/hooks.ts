@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Equipment, Projects } from "@sever/contracts";
+import type { Equipment, Projects, People } from "@sever/contracts";
 import { api } from "../../lib/api.ts";
+
+// People directory for resolving actor names in the journal — only fetched when
+// the viewer can see people (techs can't, so it stays disabled for them).
+export function usePeopleNames(enabled: boolean) {
+  return useQuery({ enabled, queryKey: ["people"], queryFn: () => api.get<People.UserDTO[]>("/api/people") });
+}
 
 // Data + commands for the warehouse domain. Components stay presentational.
 

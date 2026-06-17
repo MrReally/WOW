@@ -37,3 +37,20 @@ export function useMarkAllRead() {
     onSuccess: () => invalidate(qc),
   });
 }
+
+export function useNotifPrefs() {
+  return useQuery({
+    queryKey: ["notifications", "prefs"],
+    queryFn: () => api.get<Notifications.NotificationPrefs>("/api/notifications/preferences"),
+  });
+}
+
+export function useSetNotifPrefs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (prefs: Notifications.NotificationPrefs) =>
+      api.put<Notifications.NotificationPrefs>("/api/notifications/preferences", prefs),
+    meta: { successMessage: "Настройки уведомлений сохранены" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications", "prefs"] }),
+  });
+}

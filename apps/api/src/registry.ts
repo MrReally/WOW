@@ -40,6 +40,8 @@ export function createModules(bus: EventBus = new EventBus()) {
   // This is the canonical cross-module reaction, wired here (never inside a
   // module). In-app always; Telegram only when a bot token is configured.
   async function notify(userId: string, n: Omit<Notifications.CreateNotificationInput, "userId">) {
+    // Respect the recipient's per-kind preference (defaults to on).
+    if (!(await notifications.service.isEnabled(userId, n.kind))) return;
     await notifications.service.create({ userId, ...n });
     const user = await people.service.getById(userId);
     await sendTelegramMessage(user?.telegramId ?? null, `<b>${n.title}</b>\n${n.body}`);
@@ -78,6 +80,7 @@ export function createModules(bus: EventBus = new EventBus()) {
       projects.service.getAssignment(e.assignmentId),
     ]);
     if (!project || !assignment) return;
+    if (!(await notifications.service.isEnabled(e.userId, "assigned"))) return;
     // In-app record so it shows in their inbox too.
     await notifications.service.create({
       userId: e.userId,

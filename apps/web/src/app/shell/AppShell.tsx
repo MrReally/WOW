@@ -41,9 +41,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="row" style={{ gap: 10 }}>
             <NotificationsBell />
             <button
-              onClick={() => setSwitcherOpen(true)}
+              onClick={() => navigate("/me")}
               style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
-              aria-label="Аккаунт"
+              aria-label="Мои настройки"
             >
               <Avatar initials={initialsOf(user.displayName)} size={36} />
             </button>

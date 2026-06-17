@@ -2,6 +2,11 @@ import type { ID, ISODateTime } from "./common.js";
 
 export type NotificationKind = "issued" | "returned" | "assigned" | "problem" | "info";
 
+export const NOTIFICATION_KINDS: NotificationKind[] = ["assigned", "issued", "returned", "problem", "info"];
+
+/** Per-user opt-in map: kind → wants it. Missing/true means enabled. */
+export type NotificationPrefs = Record<NotificationKind, boolean>;
+
 export interface NotificationDTO {
   id: ID;
   userId: ID; // recipient (people id)
@@ -28,4 +33,10 @@ export interface NotificationsService {
   create(input: CreateNotificationInput): Promise<NotificationDTO>;
   markRead(id: ID, userId: ID): Promise<void>;
   markAllRead(userId: ID): Promise<void>;
+
+  // Per-user delivery preferences (apply to both in-app and Telegram).
+  getPrefs(userId: ID): Promise<NotificationPrefs>;
+  setPrefs(userId: ID, prefs: NotificationPrefs): Promise<NotificationPrefs>;
+  /** Whether the user wants a given kind (defaults to true if never set). */
+  isEnabled(userId: ID, kind: NotificationKind): Promise<boolean>;
 }

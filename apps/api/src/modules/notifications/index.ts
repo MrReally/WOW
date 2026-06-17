@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { Notifications } from "@sever/contracts";
+import { NOTIFICATION_KINDS } from "@sever/contracts";
 import { one, query, type Sql } from "../../core/db.js";
 import type { SeverModule } from "../../core/module.js";
 
@@ -16,6 +17,14 @@ CREATE TABLE IF NOT EXISTS notifications.notifications (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS notif_user_idx ON notifications.notifications(user_id, read, created_at DESC);
+
+-- Per-user delivery preferences. A row means an explicit choice; absence = on.
+CREATE TABLE IF NOT EXISTS notifications.prefs (
+  user_id uuid NOT NULL,
+  kind    text NOT NULL,
+  enabled boolean NOT NULL DEFAULT true,
+  PRIMARY KEY (user_id, kind)
+);
 `;
 
 interface Row {
@@ -70,6 +79,38 @@ function createService(db: Sql): Notifications.NotificationsService {
     async markAllRead(userId) {
       await query(db, `UPDATE notifications.notifications SET read=true WHERE user_id=$1 AND read=false`, [userId]);
     },
+
+    async getPrefs(userId) {
+      const rows = await query<{ kind: string; enabled: boolean }>(
+        db,
+        `SELECT kind, enabled FROM notifications.prefs WHERE user_id=$1`,
+        [userId]
+      );
+      const set = new Map(rows.map((r) => [r.kind, r.enabled]));
+      const out = {} as Notifications.NotificationPrefs;
+      for (const k of NOTIFICATION_KINDS) out[k] = set.get(k) ?? true; // default on
+      return out;
+    },
+    async setPrefs(userId, prefs) {
+      for (const k of NOTIFICATION_KINDS) {
+        const enabled = prefs[k] ?? true;
+        await query(
+          db,
+          `INSERT INTO notifications.prefs (user_id, kind, enabled) VALUES ($1,$2,$3)
+           ON CONFLICT (user_id, kind) DO UPDATE SET enabled=EXCLUDED.enabled`,
+          [userId, k, enabled]
+        );
+      }
+      return this.getPrefs(userId);
+    },
+    async isEnabled(userId, kind) {
+      const row = await one<{ enabled: boolean }>(
+        db,
+        `SELECT enabled FROM notifications.prefs WHERE user_id=$1 AND kind=$2`,
+        [userId, kind]
+      );
+      return row?.enabled ?? true; // default on
+    },
   };
 }
 
@@ -97,6 +138,14 @@ export function createNotificationsModule(db: Sql): SeverModule<Notifications.No
         const auth = await ctx.auth(req);
         await service.markAllRead(auth.userId);
         return { ok: true };
+      });
+      app.get("/api/notifications/preferences", async (req) => {
+        const auth = await ctx.auth(req);
+        return service.getPrefs(auth.userId);
+      });
+      app.put("/api/notifications/preferences", async (req) => {
+        const auth = await ctx.auth(req);
+        return service.setPrefs(auth.userId, (req.body ?? {}) as Notifications.NotificationPrefs);
       });
     },
   };

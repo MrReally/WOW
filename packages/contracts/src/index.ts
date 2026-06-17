@@ -11,6 +11,7 @@ export * as Notifications from "./notifications.js";
 export { UNIT_STATUSES } from "./equipment.js";
 export { PROJECT_STATUSES } from "./projects.js";
 export { PLAN_LAYERS } from "./plans.js";
+export { NOTIFICATION_KINDS } from "./notifications.js";
 
 // Apex is a read-only aggregator over other modules — its DTO lives here too.
 import type { Problem, ID, ISODateTime } from "./common.js";
