@@ -34,6 +34,9 @@ CREATE INDEX IF NOT EXISTS units_model_idx ON equipment.units(model_id);
 CREATE INDEX IF NOT EXISTS units_status_idx ON equipment.units(status);
 CREATE INDEX IF NOT EXISTS units_project_idx ON equipment.units(current_project_id);
 
+-- Per-unit free-form notes: unique defects, quirks, marks.
+ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS notes text;
+
 -- Append-only journal. Never updated or deleted. Entries are either per serial
 -- unit (unit_id set) or per model for quantity/cable moves (model_id + qty).
 CREATE TABLE IF NOT EXISTS equipment.journal (

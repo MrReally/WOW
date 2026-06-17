@@ -30,6 +30,7 @@ interface UnitRow {
   serial: string | null;
   status: Equipment.UnitStatus;
   current_project_id: string | null;
+  notes: string | null;
   created_at: Date;
 }
 interface JournalRow {
@@ -82,6 +83,7 @@ const unitDTO = (r: UnitRow): Equipment.EquipmentUnitDTO => ({
   serial: r.serial,
   status: r.status,
   currentProjectId: r.current_project_id,
+  notes: r.notes,
   createdAt: r.created_at.toISOString(),
 });
 const journalDTO = (r: JournalRow): Equipment.JournalEntryDTO => ({
@@ -301,8 +303,8 @@ export function createEquipmentService(
       return tx(async (client) => {
         const row = await one<UnitRow>(
           client,
-          `INSERT INTO equipment.units (model_id, asset_tag, serial) VALUES ($1,$2,$3) RETURNING *`,
-          [input.modelId, input.assetTag, input.serial ?? null]
+          `INSERT INTO equipment.units (model_id, asset_tag, serial, notes) VALUES ($1,$2,$3,$4) RETURNING *`,
+          [input.modelId, input.assetTag, input.serial ?? null, input.notes ?? null]
         );
         await appendJournal(client, {
           unitId: row!.id,
@@ -311,6 +313,23 @@ export function createEquipmentService(
         });
         return unitDTO(row!);
       });
+    },
+    async updateUnit(id, input) {
+      const existing = await one<UnitRow>(db, `SELECT * FROM equipment.units WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("unit", id);
+      const row = await one<UnitRow>(
+        db,
+        `UPDATE equipment.units SET
+           serial = $2,
+           notes  = $3
+         WHERE id=$1 RETURNING *`,
+        [
+          id,
+          input.serial === undefined ? existing.serial : input.serial,
+          input.notes === undefined ? existing.notes : input.notes,
+        ]
+      );
+      return unitDTO(row!);
     },
     async getUnitJournal(unitId) {
       const rows = await query<JournalRow>(

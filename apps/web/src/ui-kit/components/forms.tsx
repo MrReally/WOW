@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, SelectHTMLAttributes, ReactNode } from "react";
+import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes, ReactNode } from "react";
 
 interface FieldProps {
   label: ReactNode;
@@ -16,6 +16,10 @@ export function Field({ label, children }: FieldProps) {
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input className="input" {...props} />;
+}
+
+export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea className="input" rows={3} style={{ resize: "vertical", minHeight: 64 }} {...props} />;
 }
 
 interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {

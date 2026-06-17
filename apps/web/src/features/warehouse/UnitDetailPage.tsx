@@ -1,9 +1,13 @@
+import { useEffect, useState, type ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { Equipment } from "@sever/contracts";
-import { Card, Button, SectionTitle, StatusBadge, Select, Loading, ErrorState } from "../../ui-kit/index.ts";
+import { Card, Button, SectionTitle, StatusBadge, Select, Input, Textarea, Loading, ErrorState } from "../../ui-kit/index.ts";
 import { unitStatusLabel, unitStatusTone, dateTime } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
-import { useUnit, useUnitJournal, useChangeStatus } from "./hooks.ts";
+import {
+  useUnit, useUnitJournal, useChangeStatus, useUpdateUnit,
+  useModels, useTypes, useUnitRepairs, useProjectsForOps,
+} from "./hooks.ts";
 import { RepairContractorPanel } from "./components/RepairContractor.tsx";
 
 const journalActionLabel: Record<Equipment.JournalAction, string> = {
@@ -20,19 +24,54 @@ const journalActionLabel: Record<Equipment.JournalAction, string> = {
   status_changed: "Смена статуса",
 };
 
+const eur = (n: number) => `${n.toLocaleString("ru-RU")} €`;
+
+function InfoRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="row row--between" style={{ padding: "5px 0", gap: 12 }}>
+      <span className="card__subtitle" style={{ flexShrink: 0 }}>{label}</span>
+      <span style={{ textAlign: "right", color: "var(--text)", minWidth: 0, wordBreak: "break-word" }}>{value}</span>
+    </div>
+  );
+}
+
 export function UnitDetailPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const { can } = useSession();
   const canEdit = can("warehouse.unit.status");
+
   const unit = useUnit(id);
   const journal = useUnitJournal(id);
+  const models = useModels();
+  const types = useTypes();
+  const repairs = useUnitRepairs(id);
+  const projects = useProjectsForOps();
   const changeStatus = useChangeStatus();
+  const updateUnit = useUpdateUnit();
+
+  const [serialDraft, setSerialDraft] = useState("");
+  const [notesDraft, setNotesDraft] = useState("");
+  useEffect(() => {
+    if (unit.data) {
+      setSerialDraft(unit.data.serial ?? "");
+      setNotesDraft(unit.data.notes ?? "");
+    }
+  }, [unit.data?.id, unit.data?.serial, unit.data?.notes]);
 
   if (unit.isLoading) return <Loading />;
   if (unit.error) return <ErrorState error={unit.error} onRetry={unit.refetch} />;
   if (!unit.data) return null;
   const u = unit.data;
+
+  const model = (models.data ?? []).find((m) => m.id === u.modelId) ?? null;
+  const type = model ? (types.data ?? []).find((t) => t.id === model.typeId) ?? null : null;
+  const cable = model?.attrs && typeof model.attrs === "object" && "cableType" in model.attrs ? (model.attrs as Equipment.CableAttrs) : null;
+  const projectName = u.currentProjectId ? (projects.data ?? []).find((p) => p.id === u.currentProjectId)?.name ?? null : null;
+  const repairTotal = (repairs.data ?? []).filter((r) => r.status === "closed").reduce((s, r) => s + (r.costEUR ?? 0), 0);
+
+  const serialDirty = serialDraft !== (u.serial ?? "");
+  const notesDirty = notesDraft !== (u.notes ?? "");
 
   const statusOptions: Equipment.UnitStatus[] = ["in_stock", "in_repair", "at_contractor", "lost", "reserved"];
 
@@ -40,13 +79,86 @@ export function UnitDetailPage() {
     <div className="stack">
       <Button variant="ghost" onClick={() => navigate(-1)}>← Назад</Button>
 
+      {/* Identity */}
       <Card>
         <div className="row row--between">
-          <div>
+          <div style={{ minWidth: 0 }}>
             <p className="card__title" style={{ fontSize: "var(--fs-lg)" }}>{u.assetTag}</p>
-            {u.serial && <p className="card__subtitle">S/N: {u.serial}</p>}
+            <p className="card__subtitle">{model?.name ?? "—"}{model?.manufacturer ? ` · ${model.manufacturer}` : ""}</p>
           </div>
           <StatusBadge tone={unitStatusTone[u.status]}>{unitStatusLabel[u.status]}</StatusBadge>
+        </div>
+      </Card>
+
+      {/* Model-general info */}
+      <Card>
+        <SectionTitle>О модели</SectionTitle>
+        <InfoRow label="Модель" value={model?.name ?? "—"} />
+        <InfoRow label="Тип" value={type?.name ?? "—"} />
+        <InfoRow label="Производитель" value={model?.manufacturer || "—"} />
+        <InfoRow label="Стоимость (замена)" value={model ? eur(model.unitCostEUR) : "—"} />
+        <InfoRow label="Аренда / сутки" value={model ? eur(model.dailyPriceEUR) : "—"} />
+        {cable && (
+          <>
+            <InfoRow label="Кабель" value={cable.cableType} />
+            <InfoRow label="Длина" value={`${cable.lengthM} м`} />
+            <InfoRow label="Разъёмы" value={cable.connectors} />
+          </>
+        )}
+      </Card>
+
+      {/* Unit-specific particulars */}
+      <Card>
+        <SectionTitle>Эта единица</SectionTitle>
+        <InfoRow label="Инв. номер" value={u.assetTag} />
+        <InfoRow label="Статус" value={unitStatusLabel[u.status]} />
+        {projectName && <InfoRow label="Сейчас на проекте" value={projectName} />}
+        <InfoRow label="В системе с" value={dateTime(u.createdAt)} />
+        <InfoRow label="Потрачено на ремонт" value={repairTotal > 0 ? eur(repairTotal) : "—"} />
+
+        <div style={{ marginTop: 10 }}>
+          <span className="field__label">Серийный номер</span>
+          {canEdit ? (
+            <div className="row" style={{ marginTop: 4 }}>
+              <div style={{ flex: 1 }}>
+                <Input value={serialDraft} onChange={(e) => setSerialDraft(e.target.value)} placeholder="S/N" />
+              </div>
+              <Button
+                variant="secondary"
+                disabled={!serialDirty || updateUnit.isPending}
+                onClick={() => updateUnit.mutate({ id: u.id, input: { serial: serialDraft.trim() || null } })}
+              >
+                Сохранить
+              </Button>
+            </div>
+          ) : (
+            <p style={{ marginTop: 4 }}>{u.serial || "—"}</p>
+          )}
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <span className="field__label">Особенности и дефекты</span>
+          {canEdit ? (
+            <>
+              <div style={{ marginTop: 4 }}>
+                <Textarea
+                  value={notesDraft}
+                  onChange={(e) => setNotesDraft(e.target.value)}
+                  placeholder="Царапина на корпусе, не работает кнопка 3, идёт со своим кейсом…"
+                />
+              </div>
+              <Button
+                block
+                style={{ marginTop: 6 }}
+                disabled={!notesDirty || updateUnit.isPending}
+                onClick={() => updateUnit.mutate({ id: u.id, input: { notes: notesDraft.trim() || null } })}
+              >
+                Сохранить заметку
+              </Button>
+            </>
+          ) : (
+            <p style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{u.notes || "Особенностей не отмечено"}</p>
+          )}
         </div>
       </Card>
 

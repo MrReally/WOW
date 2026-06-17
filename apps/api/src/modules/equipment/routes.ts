@@ -25,6 +25,11 @@ const createUnitSchema = z.object({
   modelId: z.string().uuid(),
   assetTag: z.string().min(1),
   serial: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+});
+const updateUnitSchema = z.object({
+  serial: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
 });
 
 const issueSchema = z.object({
@@ -161,6 +166,11 @@ export function registerEquipmentRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.catalog.manage");
     return service.createUnit(createUnitSchema.parse(req.body));
+  });
+  app.patch<{ Params: { id: string } }>("/api/equipment/units/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.unit.status");
+    return service.updateUnit(req.params.id, updateUnitSchema.parse(req.body));
   });
   app.patch<{ Params: { id: string } }>("/api/equipment/units/:id/status", async (req) => {
     const auth = await ctx.auth(req);

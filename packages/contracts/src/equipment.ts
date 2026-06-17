@@ -64,7 +64,8 @@ export interface EquipmentUnitDTO {
   status: UnitStatus;
   /** Opaque id of the project the unit is currently on (or reserved for). */
   currentProjectId: ID | null;
-  /** Earned revenue in EUR attributed to this unit (kept by finance, mirrored). */
+  /** Free-form per-unit notes: unique defects, quirks, marks, accessories. */
+  notes: string | null;
   createdAt: ISODateTime;
 }
 
@@ -254,7 +255,9 @@ export interface EquipmentService {
   // Units
   listUnits(filter?: { modelId?: ID; status?: UnitStatus; projectId?: ID }): Promise<EquipmentUnitDTO[]>;
   getUnit(id: ID): Promise<EquipmentUnitDTO | null>;
-  createUnit(input: { modelId: ID; assetTag: string; serial?: string | null }): Promise<EquipmentUnitDTO>;
+  createUnit(input: { modelId: ID; assetTag: string; serial?: string | null; notes?: string | null }): Promise<EquipmentUnitDTO>;
+  /** Edit per-unit particulars (serial, defects/notes). */
+  updateUnit(id: ID, input: { serial?: string | null; notes?: string | null }): Promise<EquipmentUnitDTO>;
   getUnitJournal(unitId: ID): Promise<JournalEntryDTO[]>;
   modelStock(modelId: ID): Promise<ModelStockDTO>;
 

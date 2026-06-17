@@ -74,6 +74,16 @@ export function useCreateUnit() {
   });
 }
 
+export function useUpdateUnit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: { serial?: string | null; notes?: string | null } }) =>
+      api.patch<Equipment.EquipmentUnitDTO>(`/api/equipment/units/${id}`, input),
+    meta: { successMessage: "Сохранено" },
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
 export function useChangeStatus() {
   const qc = useQueryClient();
   return useMutation({
