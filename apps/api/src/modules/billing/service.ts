@@ -44,6 +44,9 @@ export function createBillingService(deps: BillingDeps): BillingService {
           refId: r.id,
           label: m?.name ?? r.modelId,
           detail: `${r.qty} × ${price} €/сут × ${rdays} сут`,
+          qty: r.qty,
+          unitEUR: price,
+          periods: rdays,
           amountEUR: round2(price * r.qty * rdays),
         };
       });
@@ -56,6 +59,9 @@ export function createBillingService(deps: BillingDeps): BillingService {
         refId: a.id,
         label: names[i]?.displayName ?? "—",
         detail: [a.roleNote || "команда", a.status === "invited" ? "приглашён" : null].filter(Boolean).join(" · "),
+        qty: 1,
+        unitEUR: round2(a.rateEUR ?? 0),
+        periods: 1,
         amountEUR: round2(a.rateEUR ?? 0),
       }));
       const laborEUR = round2(laborLines.reduce((s, l) => s + l.amountEUR, 0));

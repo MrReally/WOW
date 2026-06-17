@@ -93,6 +93,12 @@ export interface InvoiceLineDTO {
   refId: ID;
   label: string;
   detail: string;
+  /** Structured breakdown so the line can be edited before billing. */
+  qty: number;
+  /** Price per unit per period (e.g. €/day). */
+  unitEUR: number;
+  /** Number of periods (e.g. rental days; 1 for a flat line). */
+  periods: number;
   amountEUR: number;
 }
 

@@ -1,0 +1,71 @@
+/* The generated invoice document. Styled as white paper so it reads the same
+   in dark theme and on print. Only this element prints. */
+.invoice-doc {
+  background: #ffffff;
+  color: #111111;
+  border-radius: 12px;
+  padding: 28px;
+  border: 1px solid var(--bdr);
+}
+.invoice-doc h1 {
+  font-size: 20px;
+  margin: 0 0 2px;
+  color: #111;
+}
+.invoice-doc .muted {
+  color: #555;
+  font-size: 12px;
+}
+.invoice-doc table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 18px;
+  font-size: 13px;
+}
+.invoice-doc th,
+.invoice-doc td {
+  text-align: left;
+  padding: 7px 8px;
+  border-bottom: 1px solid #e6e6e6;
+}
+.invoice-doc th.num,
+.invoice-doc td.num {
+  text-align: right;
+  white-space: nowrap;
+}
+.invoice-doc tfoot td {
+  font-weight: 800;
+  font-size: 15px;
+  border-top: 2px solid #222;
+  border-bottom: none;
+}
+
+.inv-line-grid {
+  display: grid;
+  grid-template-columns: 56px 1fr 1fr 40px;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .invoice-doc,
+  .invoice-doc * {
+    visibility: visible !important;
+  }
+  .invoice-doc {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

@@ -428,6 +428,9 @@ export function ProjectDetailPage() {
                 Оплачено клиентом: {eur(inv.paidEUR)} · осталось получить: {eur(inv.dueEUR)}
               </p>
             </Card>
+            <Button block variant="secondary" onClick={() => navigate(`/projects/${p.id}/invoice`)}>
+              📄 Сформировать счёт (с правкой цен)
+            </Button>
           </>
         );
       })()}
