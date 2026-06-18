@@ -40,6 +40,15 @@ const timingSchema = z.object({
   assigneeIds: z.array(z.string().uuid()).optional(),
 });
 const timingAssigneesSchema = z.object({ userIds: z.array(z.string().uuid()) });
+const contractorItemSchema = z.object({
+  projectId: z.string().uuid(),
+  contractorId: z.string().uuid(),
+  name: z.string().min(1),
+  qty: z.number().int().positive(),
+  priceEUR: z.number().nonnegative(),
+  costEUR: z.number().nonnegative(),
+  note: z.string().nullable().optional(),
+});
 const assignmentSchema = z.object({
   projectId: z.string().uuid(),
   userId: z.string().uuid(),
@@ -155,6 +164,28 @@ export function registerProjectsRoutes(
     requirePermission(auth, "projects.assignment.manage");
     await service.removeAssignment(req.params.id);
     return { ok: true };
+  });
+
+  // ── Contractor equipment (subrent) ──
+  app.get<{ Params: { id: string } }>("/api/projects/:id/contractor-items", async (req) => {
+    await ctx.auth(req);
+    return service.listContractorItems(req.params.id);
+  });
+  app.post("/api/contractor-items", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.reservation.manage");
+    return service.addContractorItem(contractorItemSchema.parse(req.body) as Projects.AddContractorItemInput);
+  });
+  app.delete<{ Params: { id: string } }>("/api/contractor-items/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.reservation.manage");
+    await service.removeContractorItem(req.params.id);
+    return { ok: true };
+  });
+  app.get("/api/contractor-debts", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.view", "finance.manage");
+    return service.contractorDebts();
   });
 
   // ── Problems ──

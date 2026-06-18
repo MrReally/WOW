@@ -137,6 +137,42 @@ export interface AddAssignmentInput {
   invitedByUserId?: ID | null;
 }
 
+// ── Contractor equipment (subrent) — external gear used on a project ──────────
+// Not in our warehouse stock. Each item has a client price and our cost to the
+// contractor (source), so it feeds both the invoice and "we owe contractors".
+
+export interface ContractorItemDTO {
+  id: ID;
+  projectId: ID;
+  /** Opaque id of the contractor (equipment.contractors) — the source. */
+  contractorId: ID;
+  name: string;
+  qty: number;
+  /** Price charged to the client, per unit. */
+  priceEUR: number;
+  /** Our cost to the contractor, per unit. */
+  costEUR: number;
+  /** Free-form spec / note. */
+  note: string | null;
+  createdAt: ISODateTime;
+}
+
+export interface AddContractorItemInput {
+  projectId: ID;
+  contractorId: ID;
+  name: string;
+  qty: number;
+  priceEUR: number;
+  costEUR: number;
+  note?: string | null;
+}
+
+/** What we owe a contractor, summed across projects. */
+export interface ContractorDebtDTO {
+  contractorId: ID;
+  debtEUR: number;
+}
+
 // ── Public service contract ──────────────────────────────────────────────────
 
 export interface ProjectsService {
@@ -174,6 +210,13 @@ export interface ProjectsService {
   respondToInvite(assignmentId: ID, accept: boolean, byUserId: ID): Promise<AssignmentDTO>;
   /** Projects a given user is assigned to (for the Tech "my projects" view). */
   listProjectsForUser(userId: ID): Promise<ProjectDTO[]>;
+
+  // Contractor equipment (subrent)
+  listContractorItems(projectId: ID): Promise<ContractorItemDTO[]>;
+  addContractorItem(input: AddContractorItemInput): Promise<ContractorItemDTO>;
+  removeContractorItem(id: ID): Promise<void>;
+  /** Owed-to-contractor totals (cost × qty) grouped by contractor. */
+  contractorDebts(): Promise<ContractorDebtDTO[]>;
 
   // Problems detected by this module (reservation conflicts).
   listProblems(opts?: { includeResolved?: boolean }): Promise<Problem[]>;

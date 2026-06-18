@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Finance, Projects, People } from "@sever/contracts";
+import type { Finance, Projects, People, Equipment } from "@sever/contracts";
 import { api } from "../../lib/api.ts";
+
+export function useContractorDebts() {
+  return useQuery({ queryKey: ["projects", "contractor-debts"], queryFn: () => api.get<Projects.ContractorDebtDTO[]>("/api/contractor-debts") });
+}
+export function useContractorsList() {
+  return useQuery({ queryKey: ["equipment", "contractors"], queryFn: () => api.get<Equipment.ContractorDTO[]>("/api/equipment/contractors") });
+}
 
 export function useAccounts() {
   return useQuery({ queryKey: ["finance", "accounts"], queryFn: () => api.get<Finance.AccountDTO[]>("/api/finance/accounts") });

@@ -66,6 +66,21 @@ ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS rate_eur     numeric(1
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS invited_by   uuid;
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS responded_at timestamptz;
 
+-- Contractor (subrent) equipment used on a project. Not in our warehouse.
+CREATE TABLE IF NOT EXISTS projects.contractor_items (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id    uuid NOT NULL REFERENCES projects.projects(id),
+  contractor_id uuid NOT NULL,         -- opaque equipment.contractors id
+  name          text NOT NULL,
+  qty           integer NOT NULL DEFAULT 1 CHECK (qty > 0),
+  price_eur     numeric(12,2) NOT NULL DEFAULT 0,
+  cost_eur      numeric(12,2) NOT NULL DEFAULT 0,
+  note          text,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS contractor_items_project_idx ON projects.contractor_items(project_id);
+CREATE INDEX IF NOT EXISTS contractor_items_contractor_idx ON projects.contractor_items(contractor_id);
+
 CREATE TABLE IF NOT EXISTS projects.problems (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   kind        text NOT NULL,

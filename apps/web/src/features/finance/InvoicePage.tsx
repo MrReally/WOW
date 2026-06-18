@@ -60,7 +60,7 @@ export function InvoicePage() {
           name: l.label,
           count: String(l.qty),
           price: l.amountEUR,
-          cost: 0,
+          cost: l.costEUR,
           comment: l.detail,
         }))
       );
@@ -110,7 +110,7 @@ export function InvoicePage() {
       // Crew rates are our cost, so seed both price and cost from the rate.
       const crew = (invoice.data?.laborLines ?? [])
         .filter((l) => !have.has(l.refId))
-        .map((l) => ({ id: l.refId, section: l.section, name: l.label, count: String(l.qty), price: l.amountEUR, cost: l.amountEUR, comment: l.detail }));
+        .map((l) => ({ id: l.refId, section: l.section, name: l.label, count: String(l.qty), price: l.amountEUR, cost: l.costEUR, comment: l.detail }));
       return [...prev, ...crew];
     });
 

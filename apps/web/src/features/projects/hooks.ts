@@ -142,6 +142,40 @@ export function useAddAssignment() {
   });
 }
 
+// ── Contractor equipment (subrent) ──
+export function useContractorItems(projectId: string) {
+  return useQuery({
+    queryKey: ["projects", "contractor-items", projectId],
+    queryFn: () => api.get<Projects.ContractorItemDTO[]>(`/api/projects/${projectId}/contractor-items`),
+  });
+}
+export function useContractors() {
+  return useQuery({ queryKey: ["equipment", "contractors"], queryFn: () => api.get<Equipment.ContractorDTO[]>("/api/equipment/contractors") });
+}
+export function useAddContractorItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Projects.AddContractorItemInput) => api.post<Projects.ContractorItemDTO>("/api/contractor-items", input),
+    meta: { successMessage: "Позиция подрядчика добавлена" },
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+export function useRemoveContractorItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/contractor-items/${id}`),
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+export function useCreateContractor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; contacts?: string | null }) => api.post<Equipment.ContractorDTO>("/api/equipment/contractors", input),
+    meta: { successMessage: "Подрядчик добавлен" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["equipment", "contractors"] }),
+  });
+}
+
 export function useRemoveAssignment() {
   const qc = useQueryClient();
   return useMutation({

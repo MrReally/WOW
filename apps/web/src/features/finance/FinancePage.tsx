@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card, Button, SectionTitle, Metric, StatusBadge, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
 import { eur, money, dateTime } from "../../lib/labels.ts";
-import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreateAccount, usePeopleNames } from "./hooks.ts";
+import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreateAccount, usePeopleNames, useContractorDebts, useContractorsList } from "./hooks.ts";
 import { AddTransactionSheet } from "./components/AddTransactionSheet.tsx";
 import { useSession } from "../../app/session.ts";
 
@@ -19,6 +19,8 @@ export function FinancePage() {
   const accounts = useAccounts();
   const transactions = useTransactions();
   const debts = useDebts();
+  const contractorDebts = useContractorDebts();
+  const contractors = useContractorsList();
   const projects = useProjectsForFinance();
   const createAccount = useCreateAccount();
   const { can } = useSession();
@@ -31,7 +33,9 @@ export function FinancePage() {
   if (accounts.error) return <ErrorState error={accounts.error} onRetry={accounts.refetch} />;
 
   const totalDebt = (debts.data ?? []).reduce((a, d) => a + d.debtEUR, 0);
+  const totalOwed = (contractorDebts.data ?? []).reduce((a, d) => a + d.debtEUR, 0);
   const projectName = (id: string) => (projects.data ?? []).find((p) => p.id === id)?.name ?? "—";
+  const contractorName = (id: string) => (contractors.data ?? []).find((c) => c.id === id)?.name ?? "—";
 
   return (
     <div className="stack">
@@ -68,9 +72,9 @@ export function FinancePage() {
         </div>
       )}
 
-      <SectionTitle>Долги клиентов</SectionTitle>
+      <SectionTitle>Нам должны (клиенты)</SectionTitle>
       <Card>
-        <Metric value={eur(totalDebt)} label="итого долгов" tone={totalDebt ? "danger" : "ok"} />
+        <Metric value={eur(totalDebt)} label="клиенты должны нам" tone={totalDebt ? "danger" : "ok"} />
       </Card>
       {(debts.data ?? []).map((d) => (
         <Card key={d.projectId}>
@@ -79,6 +83,20 @@ export function FinancePage() {
             <StatusBadge tone="danger">{eur(d.debtEUR)}</StatusBadge>
           </div>
           <p className="card__subtitle">выручка {eur(d.revenueEUR)} · оплачено {eur(d.prepaidEUR)}</p>
+        </Card>
+      ))}
+
+      <SectionTitle>Мы должны (подрядчики)</SectionTitle>
+      <Card>
+        <Metric value={eur(totalOwed)} label="мы должны подрядчикам" tone={totalOwed ? "danger" : "ok"} />
+      </Card>
+      {(contractorDebts.data ?? []).map((d) => (
+        <Card key={d.contractorId}>
+          <div className="row row--between">
+            <p className="card__title">{contractorName(d.contractorId)}</p>
+            <StatusBadge tone="warn">{eur(d.debtEUR)}</StatusBadge>
+          </div>
+          <p className="card__subtitle">себестоимость субаренды по сметам</p>
         </Card>
       ))}
 

@@ -469,5 +469,16 @@ describe("Tech pickup/return → некомплект", () => {
     expect(inv.costEUR).toBe(150);
     expect(inv.profitEUR).toBe(250);
     expect(inv.dueEUR).toBe(400); // nothing paid yet
+
+    // Add contractor (subrent) gear: billed to the client, costs us money owed.
+    const contractor = await equipment.service.createContractor({ name: `Sub ${Date.now()}` });
+    await projects.service.addContractorItem({ projectId: project.id, contractorId: contractor.id, name: "Sub MH", qty: 2, priceEUR: 80, costEUR: 50 });
+    const inv2 = await billing.projectInvoice(project.id);
+    expect(inv2.rentalEUR).toBe(560); // 400 + 80×2 contractor
+    expect(inv2.contractorCostEUR).toBe(100); // 50×2
+    expect(inv2.costEUR).toBe(250); // 150 labor + 100 contractor
+    expect(inv2.profitEUR).toBe(310); // 560 − 250
+    const owed = await projects.service.contractorDebts();
+    expect(owed.find((d) => d.contractorId === contractor.id)?.debtEUR).toBe(100);
   });
 });

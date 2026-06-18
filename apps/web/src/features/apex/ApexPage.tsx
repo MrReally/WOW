@@ -92,7 +92,7 @@ function RentalCard({ row, onOpen }: { row: ApexRentalRow; onOpen: () => void })
       <div className="row" style={{ marginTop: 12, gap: 22 }}>
         <Metric value={row.unitsOnProject} label="ед. на проекте" />
         {row.finance && (
-          <Metric value={eur(row.finance.debtEUR)} label="долг" tone={row.finance.debtEUR > 0 ? "danger" : "ok"} />
+          <Metric value={eur(row.finance.debtEUR)} label="клиент должен" tone={row.finance.debtEUR > 0 ? "danger" : "ok"} />
         )}
       </div>
     </Card>
@@ -120,7 +120,7 @@ export function ApexPage() {
           <Metric value={data.current.length} label="идут сейчас" />
           <Metric value={data.upcoming.length} label="предстоят" />
           <Metric value={data.problems.length} label="проблемы" tone={data.problems.length ? "danger" : "ok"} />
-          <Metric value={eur(totalDebt)} label="долги" tone={totalDebt ? "danger" : "ok"} />
+          <Metric value={eur(totalDebt)} label="клиенты должны" tone={totalDebt ? "danger" : "ok"} />
         </div>
         {data.upcoming.length + data.current.length > 0 && (
           <div style={{ marginTop: 14 }}>

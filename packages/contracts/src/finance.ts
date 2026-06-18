@@ -105,6 +105,8 @@ export interface InvoiceLineDTO {
   /** Number of periods (e.g. rental days; 1 for a flat line). */
   periods: number;
   amountEUR: number;
+  /** Our internal cost for this line (себестоимость); 0 when unknown. */
+  costEUR: number;
 }
 
 export interface ProjectInvoiceDTO {
@@ -117,6 +119,8 @@ export interface ProjectInvoiceDTO {
   /** Crew engagement costs (assignment rates). */
   laborLines: InvoiceLineDTO[];
   laborEUR: number;
+  /** What we owe contractors for subrented gear on this project. */
+  contractorCostEUR: number;
   /** Expenses recorded in finance for this project (repairs/purchases/other). */
   recordedExpenseEUR: number;
   /** Income already recorded against the project. */

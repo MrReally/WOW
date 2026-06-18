@@ -27,6 +27,7 @@ import {
 import { ResolveReservationSheet } from "./components/ResolveReservationSheet.tsx";
 import { EditProjectSheet } from "./components/EditProjectSheet.tsx";
 import { TimingTimeline } from "./components/TimingTimeline.tsx";
+import { ContractorEquipment } from "./components/ContractorEquipment.tsx";
 import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
 
 const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "ok" | "info" | "warn" | "neutral" }> = {
@@ -373,6 +374,14 @@ export function ProjectDetailPage() {
         </>
       )}
 
+      {/* Contractor (subrent) equipment */}
+      {(canReserve || (invoice.data && (invoice.data.contractorCostEUR > 0))) && (
+        <>
+          <SectionTitle>Оборудование подрядчиков</SectionTitle>
+          <ContractorEquipment projectId={id} canManage={canReserve} />
+        </>
+      )}
+
       {canFinance && invoice.data && (() => {
         const inv = invoice.data;
         const Line = ({ l }: { l: { refId: string; label: string; detail: string; amountEUR: number } }) => (
@@ -407,6 +416,12 @@ export function ProjectDetailPage() {
                 <span className="card__subtitle">Команда, итого</span>
                 <span style={{ color: "var(--text)" }}>{eur(inv.laborEUR)}</span>
               </div>
+              {inv.contractorCostEUR > 0 && (
+                <div className="row row--between" style={{ padding: "4px 0" }}>
+                  <span className="card__subtitle">Подрядчики (себест.)</span>
+                  <span style={{ color: "var(--text)" }}>{eur(inv.contractorCostEUR)}</span>
+                </div>
+              )}
               {inv.recordedExpenseEUR > 0 && (
                 <div className="row row--between" style={{ padding: "4px 0" }}>
                   <span className="card__subtitle">Прочие расходы (ремонт/закупки)</span>

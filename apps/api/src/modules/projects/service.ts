@@ -54,6 +54,17 @@ interface AssignmentRow {
   responded_at: Date | null;
   created_at: Date;
 }
+interface ContractorItemRow {
+  id: string;
+  project_id: string;
+  contractor_id: string;
+  name: string;
+  qty: number;
+  price_eur: string;
+  cost_eur: string;
+  note: string | null;
+  created_at: Date;
+}
 interface ProblemRow {
   id: string;
   kind: Problem["kind"];
@@ -109,6 +120,17 @@ const assignmentDTO = (r: AssignmentRow): Projects.AssignmentDTO => ({
   rateEUR: r.rate_eur === null ? null : Number(r.rate_eur),
   invitedByUserId: r.invited_by,
   respondedAt: r.responded_at ? r.responded_at.toISOString() : null,
+  createdAt: r.created_at.toISOString(),
+});
+const contractorItemDTO = (r: ContractorItemRow): Projects.ContractorItemDTO => ({
+  id: r.id,
+  projectId: r.project_id,
+  contractorId: r.contractor_id,
+  name: r.name,
+  qty: r.qty,
+  priceEUR: Number(r.price_eur),
+  costEUR: Number(r.cost_eur),
+  note: r.note,
   createdAt: r.created_at.toISOString(),
 });
 const problemDTO = (r: ProblemRow): Problem => ({
@@ -407,6 +429,38 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         [userId]
       );
       return rows.map(projectDTO);
+    },
+
+    // ── Contractor equipment (subrent) ──
+    async listContractorItems(projectId) {
+      const rows = await query<ContractorItemRow>(
+        db,
+        `SELECT * FROM projects.contractor_items WHERE project_id=$1 ORDER BY created_at`,
+        [projectId]
+      );
+      return rows.map(contractorItemDTO);
+    },
+    async addContractorItem(input) {
+      const row = await one<ContractorItemRow>(
+        db,
+        `INSERT INTO projects.contractor_items (project_id, contractor_id, name, qty, price_eur, cost_eur, note)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [input.projectId, input.contractorId, input.name, input.qty, input.priceEUR, input.costEUR, input.note ?? null]
+      );
+      return contractorItemDTO(row!);
+    },
+    async removeContractorItem(id) {
+      await query(db, `DELETE FROM projects.contractor_items WHERE id=$1`, [id]);
+    },
+    async contractorDebts() {
+      const rows = await query<{ contractor_id: string; debt: string }>(
+        db,
+        `SELECT contractor_id, COALESCE(SUM(cost_eur * qty),0)::text AS debt
+         FROM projects.contractor_items GROUP BY contractor_id`
+      );
+      return rows
+        .map((r) => ({ contractorId: r.contractor_id, debtEUR: Math.round(Number(r.debt) * 100) / 100 }))
+        .filter((d) => d.debtEUR > 0);
     },
 
     // ── Problems ──
