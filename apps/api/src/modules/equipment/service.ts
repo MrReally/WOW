@@ -268,6 +268,30 @@ export function createEquipmentService(
       );
       return modelDTO(row!);
     },
+    async updateModel(id, input) {
+      const existing = await one<ModelRow>(db, `SELECT * FROM equipment.models WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("model", id);
+      await query(
+        db,
+        `UPDATE equipment.models SET
+           name             = COALESCE($2, name),
+           manufacturer     = $3,
+           unit_cost_eur    = COALESCE($4, unit_cost_eur),
+           daily_price_eur  = COALESCE($5, daily_price_eur),
+           attrs            = $6
+         WHERE id=$1`,
+        [
+          id,
+          input.name ?? null,
+          input.manufacturer === undefined ? existing.manufacturer : input.manufacturer,
+          input.unitCostEUR ?? null,
+          input.dailyPriceEUR ?? null,
+          input.attrs === undefined ? existing.attrs : input.attrs ? JSON.stringify(input.attrs) : null,
+        ]
+      );
+      const row = await one<ModelRow>(db, `${MODEL_SELECT} WHERE m.id=$1`, [id]);
+      return modelDTO(row!);
+    },
 
     // ── Units ──
     async listUnits(filter) {

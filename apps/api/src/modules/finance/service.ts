@@ -42,6 +42,7 @@ interface TxRow {
   fx_rate_to_eur: string;
   amount_eur: string;
   note: string | null;
+  created_by: string | null;
   created_at: Date;
 }
 
@@ -69,6 +70,7 @@ const txDTO = (r: TxRow): Finance.TransactionDTO => ({
   fxRateToEUR: Number(r.fx_rate_to_eur),
   amountEUR: Number(r.amount_eur),
   note: r.note,
+  createdByUserId: r.created_by,
   createdAt: r.created_at.toISOString(),
 });
 
@@ -145,8 +147,8 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
         const row = await one<TxRow>(
           client,
           `INSERT INTO finance.transactions
-             (account_id, project_id, unit_id, kind, category, amount, currency, fx_rate_to_eur, amount_eur, note)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+             (account_id, project_id, unit_id, kind, category, amount, currency, fx_rate_to_eur, amount_eur, note, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
            RETURNING *`,
           [
             input.accountId,
@@ -159,6 +161,7 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
             rate,
             amountEUR,
             input.note ?? null,
+            input.createdByUserId ?? null,
           ]
         );
         if (CASH_CATEGORIES.has(input.category)) {

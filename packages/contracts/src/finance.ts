@@ -44,6 +44,8 @@ export interface TransactionDTO {
   fxRateToEUR: number; // snapshot taken at creation
   amountEUR: number; // frozen: amount * fxRateToEUR
   note: string | null;
+  /** Who recorded it (people id), null for legacy/system entries. */
+  createdByUserId: ID | null;
   createdAt: ISODateTime;
 }
 
@@ -56,6 +58,7 @@ export interface CreateTransactionInput {
   amount: number;
   currency: Currency;
   note?: string | null;
+  createdByUserId?: ID | null;
 }
 
 // ── Payback per unit ─────────────────────────────────────────────────────────

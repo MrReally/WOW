@@ -1,9 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Finance, Projects } from "@sever/contracts";
+import type { Finance, Projects, People } from "@sever/contracts";
 import { api } from "../../lib/api.ts";
 
 export function useAccounts() {
   return useQuery({ queryKey: ["finance", "accounts"], queryFn: () => api.get<Finance.AccountDTO[]>("/api/finance/accounts") });
+}
+
+// People directory for resolving transaction authors — only when allowed.
+export function usePeopleNames(enabled: boolean) {
+  return useQuery({ enabled, queryKey: ["people"], queryFn: () => api.get<People.UserDTO[]>("/api/people") });
 }
 
 export function useFxRates() {

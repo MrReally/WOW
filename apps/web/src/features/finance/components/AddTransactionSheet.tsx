@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Finance, Projects } from "@sever/contracts";
 import { CURRENCIES } from "@sever/contracts";
-import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
+import { Sheet, Field, Input, Textarea, Select, Button } from "../../../ui-kit/index.ts";
 import { useCreateTransaction } from "../hooks.ts";
 
 interface Props {
@@ -28,6 +28,7 @@ export function AddTransactionSheet({ open, onClose, accounts, projects }: Props
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState<Finance.FxRateDTO["currency"]>("EUR");
   const [projectId, setProjectId] = useState("");
+  const [note, setNote] = useState("");
 
   const kind = CATEGORIES.find((c) => c.value === category)?.kind ?? "income";
 
@@ -40,8 +41,9 @@ export function AddTransactionSheet({ open, onClose, accounts, projects }: Props
         category,
         amount: Number(amount),
         currency,
+        note: note.trim() || null,
       },
-      { onSuccess: () => { setAmount(""); onClose(); } }
+      { onSuccess: () => { setAmount(""); setNote(""); onClose(); } }
     );
   };
 
@@ -67,6 +69,9 @@ export function AddTransactionSheet({ open, onClose, accounts, projects }: Props
           onChange={(e) => setProjectId(e.target.value)}
           options={[{ value: "", label: "— без проекта —" }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
         />
+      </Field>
+      <Field label="Назначение / комментарий">
+        <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Напр. «3 кабеля DMX 10 м» — что именно" />
       </Field>
       <Button block disabled={!accountId || !amount || create.isPending} onClick={submit}>
         Добавить · курс зафиксируется

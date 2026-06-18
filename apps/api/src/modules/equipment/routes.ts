@@ -20,6 +20,13 @@ const createModelSchema = z.object({
   attrs: z.record(z.unknown()).nullable().optional(),
   requiredComponentModelIds: z.array(z.string().uuid()).optional(),
 });
+const updateModelSchema = z.object({
+  name: z.string().min(1).optional(),
+  manufacturer: z.string().nullable().optional(),
+  unitCostEUR: z.number().nonnegative().optional(),
+  dailyPriceEUR: z.number().nonnegative().optional(),
+  attrs: z.record(z.unknown()).nullable().optional(),
+});
 
 const createUnitSchema = z.object({
   modelId: z.string().uuid(),
@@ -113,6 +120,11 @@ export function registerEquipmentRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.catalog.manage");
     return service.createModel(createModelSchema.parse(req.body) as Equipment.CreateModelInput);
+  });
+  app.patch<{ Params: { id: string } }>("/api/equipment/models/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.catalog.manage");
+    return service.updateModel(req.params.id, updateModelSchema.parse(req.body) as Equipment.UpdateModelInput);
   });
   app.put<{ Params: { id: string } }>("/api/equipment/models/:id/stock", async (req) => {
     const auth = await ctx.auth(req);

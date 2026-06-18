@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card, Button, SectionTitle, Metric, StatusBadge, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
 import { eur, money, dateTime } from "../../lib/labels.ts";
-import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreateAccount } from "./hooks.ts";
+import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreateAccount, usePeopleNames } from "./hooks.ts";
 import { AddTransactionSheet } from "./components/AddTransactionSheet.tsx";
 import { useSession } from "../../app/session.ts";
 
@@ -23,7 +23,9 @@ export function FinancePage() {
   const createAccount = useCreateAccount();
   const { can } = useSession();
   const canManage = can("finance.manage");
+  const people = usePeopleNames(can("people.view"));
   const [txOpen, setTxOpen] = useState(false);
+  const authorName = (uid: string | null) => (uid ? (people.data ?? []).find((u) => u.id === uid)?.displayName ?? null : null);
 
   if (accounts.isLoading) return <Loading />;
   if (accounts.error) return <ErrorState error={accounts.error} onRetry={accounts.refetch} />;
@@ -90,9 +92,12 @@ export function FinancePage() {
           {(transactions.data ?? []).slice(0, 30).map((t) => (
             <Card key={t.id}>
               <div className="row row--between">
-                <div>
-                  <p className="card__title">{categoryLabel[t.category] ?? t.category}</p>
-                  <p className="card__subtitle">{t.projectId ? projectName(t.projectId) : "—"} · {dateTime(t.createdAt)}</p>
+                <div style={{ minWidth: 0 }}>
+                  <p className="card__title">{categoryLabel[t.category] ?? t.category}{t.note ? ` · ${t.note}` : ""}</p>
+                  <p className="card__subtitle">
+                    {t.projectId ? projectName(t.projectId) : "без проекта"} · {dateTime(t.createdAt)}
+                    {authorName(t.createdByUserId) ? ` · ${authorName(t.createdByUserId)}` : ""}
+                  </p>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div className="metric__value" style={{ color: t.kind === "income" ? "var(--ok)" : "var(--danger)" }}>

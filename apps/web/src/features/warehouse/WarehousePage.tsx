@@ -16,6 +16,7 @@ import { eur, unitStatusLabel } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
 import { useModels, useUnits, useTypes, useProjectsForOps, useOpenRepairs, useOpenHandovers } from "./hooks.ts";
 import { AddModelSheet } from "./components/AddModelSheet.tsx";
+import { EditModelSheet } from "./components/EditModelSheet.tsx";
 import { ImportSheet } from "./components/ImportSheet.tsx";
 import { CableMoveSheet, CableRow } from "./components/CableMoveSheet.tsx";
 import { OpsSheet } from "./components/OpsSheet.tsx";
@@ -64,12 +65,12 @@ function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps
   );
 }
 
-function ModelRow({ model, units, last }: { model: Equipment.EquipmentModelDTO; units: Equipment.EquipmentUnitDTO[]; last?: boolean }) {
+function ModelRow({ model, units, last, onEdit }: { model: Equipment.EquipmentModelDTO; units: Equipment.EquipmentUnitDTO[]; last?: boolean; onEdit?: () => void }) {
   const mine = units.filter((u) => u.modelId === model.id);
   const inStock = mine.filter((u) => u.status === "in_stock").length;
   const onProject = mine.filter((u) => u.status === "on_project").length;
   return (
-    <div className="lrow" style={{ borderBottom: last ? "none" : undefined }}>
+    <div className={`lrow ${onEdit ? "card--tappable" : ""}`} style={{ borderBottom: last ? "none" : undefined }} onClick={onEdit}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="lrow__title">{model.name}</div>
         <div className="lrow__detail">{model.manufacturer ?? "—"} · {eur(model.dailyPriceEUR)}/день</div>
@@ -98,6 +99,7 @@ export function WarehousePage() {
   const [importOpen, setImportOpen] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
   const [cableModel, setCableModel] = useState<Equipment.EquipmentModelDTO | null>(null);
+  const [editModel, setEditModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [statusFilter, setStatusFilter] = useState<Equipment.UnitStatus | "all">("all");
 
   if (models.isLoading || units.isLoading) return <Loading />;
@@ -157,7 +159,7 @@ export function WarehousePage() {
           {serialModels.length > 0 && (
             <div className="card" style={{ padding: "2px 16px" }}>
               {serialModels.map((m, i) => (
-                <ModelRow key={m.id} model={m} units={allUnits} last={i === serialModels.length - 1} />
+                <ModelRow key={m.id} model={m} units={allUnits} last={i === serialModels.length - 1} onEdit={canCatalog ? () => setEditModel(m) : undefined} />
               ))}
             </div>
           )}
@@ -190,26 +192,41 @@ export function WarehousePage() {
       {filtered.length === 0 ? (
         <EmptyState title="Нет единиц" />
       ) : (
-        <div className="card" style={{ padding: "2px 16px" }}>
-          {filtered.map((u, i) => {
-            const model = allModels.find((m) => m.id === u.modelId);
-            const tone: Tone = u.status === "in_stock" ? "ok" : u.status === "on_project" ? "warn" : u.status === "lost" || u.status === "in_repair" ? "alert" : "info";
-            return (
-              <div
-                key={u.id}
-                className="lrow card--tappable"
-                style={{ borderBottom: i === filtered.length - 1 ? "none" : undefined }}
-                onClick={() => navigate(`/warehouse/units/${u.id}`)}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="lrow__title">{u.assetTag}</div>
-                  <div className="lrow__detail">{model?.name ?? u.modelId}</div>
-                </div>
-                <Chip label={unitStatusLabel[u.status]} tone={tone} />
+        (() => {
+          // Group the units by equipment type so the catalog is easy to scan.
+          const modelOf = (mid: string) => allModels.find((m) => m.id === mid);
+          const typeName = (tid: string | undefined) => (types.data ?? []).find((t) => t.id === tid)?.name ?? "Без типа";
+          const groups = new Map<string, Equipment.EquipmentUnitDTO[]>();
+          for (const u of filtered) {
+            const tid = modelOf(u.modelId)?.typeId ?? "—";
+            (groups.get(tid) ?? groups.set(tid, []).get(tid)!).push(u);
+          }
+          const ordered = [...groups.entries()].sort((a, b) => typeName(a[0]).localeCompare(typeName(b[0])));
+          return ordered.map(([tid, list]) => (
+            <div key={tid}>
+              <SectionHead label={typeName(tid)} meta={`${list.length}`} />
+              <div className="card" style={{ padding: "2px 16px" }}>
+                {list.map((u, i) => {
+                  const tone: Tone = u.status === "in_stock" ? "ok" : u.status === "on_project" ? "warn" : u.status === "lost" || u.status === "in_repair" ? "alert" : "info";
+                  return (
+                    <div
+                      key={u.id}
+                      className="lrow card--tappable"
+                      style={{ borderBottom: i === list.length - 1 ? "none" : undefined }}
+                      onClick={() => navigate(`/warehouse/units/${u.id}`)}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="lrow__title">{u.assetTag}</div>
+                        <div className="lrow__detail">{modelOf(u.modelId)?.name ?? u.modelId}</div>
+                      </div>
+                      <Chip label={unitStatusLabel[u.status]} tone={tone} />
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
+            </div>
+          ));
+        })()
       )}
 
       {canEdit && (
@@ -221,6 +238,7 @@ export function WarehousePage() {
       {canIssue && (
         <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} projects={projects.data ?? []} models={allModels} />
       )}
+      {canCatalog && <EditModelSheet model={editModel} onClose={() => setEditModel(null)} />}
       <CableMoveSheet model={cableModel} projects={projects.data ?? []} onClose={() => setCableModel(null)} />
     </div>
   );

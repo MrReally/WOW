@@ -12,6 +12,8 @@ interface Line {
   name: string;
   count: string;
   price: number;
+  /** Internal cost (себестоимость) — for our accounting, never printed. */
+  cost: number;
   comment: string;
 }
 
@@ -58,6 +60,7 @@ export function InvoicePage() {
           name: l.label,
           count: String(l.qty),
           price: l.amountEUR,
+          cost: 0,
           comment: l.detail,
         }))
       );
@@ -78,6 +81,8 @@ export function InvoicePage() {
   }, [company]);
 
   const total = useMemo(() => round2(lines.reduce((s, l) => s + l.price, 0)), [lines]);
+  const costTotal = useMemo(() => round2(lines.reduce((s, l) => s + l.cost, 0)), [lines]);
+  const margin = round2(total - costTotal);
 
   // Group lines into sections, preserving first-appearance order.
   const sections = useMemo(() => {
@@ -98,13 +103,14 @@ export function InvoicePage() {
     setLines((prev) => prev.map((l) => (l.id === lid ? { ...l, ...patch } : l)));
   const removeLine = (lid: string) => setLines((prev) => prev.filter((l) => l.id !== lid));
   const addLine = () =>
-    setLines((prev) => [...prev, { id: uid(), section: prev[prev.length - 1]?.section ?? "Оборудование", name: "", count: "1", price: 0, comment: "" }]);
+    setLines((prev) => [...prev, { id: uid(), section: prev[prev.length - 1]?.section ?? "Оборудование", name: "", count: "1", price: 0, cost: 0, comment: "" }]);
   const addCrew = () =>
     setLines((prev) => {
       const have = new Set(prev.map((l) => l.id));
+      // Crew rates are our cost, so seed both price and cost from the rate.
       const crew = (invoice.data?.laborLines ?? [])
         .filter((l) => !have.has(l.refId))
-        .map((l) => ({ id: l.refId, section: l.section, name: l.label, count: String(l.qty), price: l.amountEUR, comment: l.detail }));
+        .map((l) => ({ id: l.refId, section: l.section, name: l.label, count: String(l.qty), price: l.amountEUR, cost: l.amountEUR, comment: l.detail }));
       return [...prev, ...crew];
     });
 
@@ -130,8 +136,8 @@ export function InvoicePage() {
             </div>
           </div>
           <div style={{ fontSize: 12.5, color: "#222", marginBottom: 4 }}>
-            <span><b>Заказчик:</b> {clientName || "—"}</span>
-            <span style={{ marginLeft: 14 }}><b>Проект:</b> {project.data?.name ?? "—"}</span>
+            <span><b>Client:</b> {clientName || "—"}</span>
+            <span style={{ marginLeft: 14 }}><b>Project:</b> {project.data?.name ?? "—"}</span>
           </div>
 
           <table>
@@ -194,6 +200,7 @@ export function InvoicePage() {
             <div className="row" style={{ gap: 8, marginTop: 6 }}>
               <Field label="Кол-во"><Input value={l.count} onChange={(e) => setLine(l.id, { count: e.target.value })} placeholder="1" /></Field>
               <Field label={`Цена, ${currency}`}><Input type="number" step="0.01" value={l.price} onChange={(e) => setLine(l.id, { price: num(e.target.value) })} /></Field>
+              <Field label="Себест."><Input type="number" step="0.01" value={l.cost} onChange={(e) => setLine(l.id, { cost: num(e.target.value) })} /></Field>
             </div>
             <div style={{ marginTop: 6 }}>
               <Input value={l.comment} onChange={(e) => setLine(l.id, { comment: e.target.value })} placeholder="Комментарий" />
@@ -209,9 +216,18 @@ export function InvoicePage() {
 
       <Card>
         <div className="row row--between">
-          <span className="card__title">TOTAL</span>
+          <span className="card__title">Клиенту (TOTAL)</span>
           <span className="card__title">{money(total, currency)}</span>
         </div>
+        <div className="row row--between" style={{ marginTop: 6 }}>
+          <span className="card__subtitle">Себестоимость (внутр.)</span>
+          <span style={{ color: "var(--text)" }}>{money(costTotal, currency)}</span>
+        </div>
+        <div className="row row--between" style={{ marginTop: 2 }}>
+          <span className="card__subtitle">Маржа</span>
+          <span style={{ color: margin >= 0 ? "var(--ok)" : "var(--alert)" }}>{money(margin, currency)}</span>
+        </div>
+        <p className="card__subtitle" style={{ marginTop: 8 }}>Себестоимость — только для внутреннего учёта, в документ клиенту не попадает.</p>
       </Card>
 
       <Field label="Примечание / условия"><Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Сроки оплаты, условия аренды и т.п." /></Field>

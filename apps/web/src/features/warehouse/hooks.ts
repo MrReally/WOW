@@ -71,6 +71,16 @@ export function useCreateModel() {
   });
 }
 
+export function useUpdateModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Equipment.UpdateModelInput }) =>
+      api.patch<Equipment.EquipmentModelDTO>(`/api/equipment/models/${id}`, input),
+    meta: { successMessage: "Модель обновлена" },
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
 export function useCreateUnit() {
   const qc = useQueryClient();
   return useMutation({

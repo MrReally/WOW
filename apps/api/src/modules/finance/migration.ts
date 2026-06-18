@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS finance.transactions (
 CREATE INDEX IF NOT EXISTS tx_project_idx ON finance.transactions(project_id);
 CREATE INDEX IF NOT EXISTS tx_unit_idx ON finance.transactions(unit_id);
 
+-- Who recorded the transaction (opaque people id).
+ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS created_by uuid;
+
 -- Singleton config row (amortization formula, etc.).
 CREATE TABLE IF NOT EXISTS finance.settings (
   id                  integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),

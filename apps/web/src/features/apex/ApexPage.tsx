@@ -53,7 +53,8 @@ function NeedsRow({
   problem: Problem;
   projectName: string | null;
   onOpen: (() => void) | null;
-  onResolve: () => void;
+  /** Only resolvable ("hideable") problems get a button — e.g. утеря. */
+  onResolve: (() => void) | null;
 }) {
   const tone = problem.severity === "critical" ? "alert" : problem.severity === "warning" ? "warn" : "info";
   return (
@@ -69,9 +70,11 @@ function NeedsRow({
         </div>
         <div className="lrow__detail" style={{ marginTop: 4 }}>{problem.detail}</div>
       </div>
-      <button className="btn btn--ghost" style={{ height: 36, padding: "0 10px" }} onClick={onResolve}>
-        Решено
-      </button>
+      {onResolve && (
+        <button className="btn btn--ghost" style={{ height: 36, padding: "0 10px" }} onClick={onResolve}>
+          Скрыть
+        </button>
+      )}
     </div>
   );
 }
@@ -143,7 +146,7 @@ export function ApexPage() {
                   problem={p}
                   projectName={proj?.name ?? null}
                   onOpen={pid ? () => navigate(`/projects/${pid}`) : null}
-                  onResolve={() => resolve.mutate({ id: p.id, scope: p.kind === "reservation_conflict" ? "projects" : "equipment" })}
+                  onResolve={p.kind === "unit_lost" ? () => resolve.mutate({ id: p.id, scope: "equipment" }) : null}
                 />
               );
             })}

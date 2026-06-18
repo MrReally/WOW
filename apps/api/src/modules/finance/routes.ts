@@ -73,7 +73,8 @@ export function registerFinanceRoutes(
   app.post("/api/finance/transactions", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.manage");
-    return service.createTransaction(txSchema.parse(req.body) as Finance.CreateTransactionInput);
+    const body = txSchema.parse(req.body);
+    return service.createTransaction({ ...body, createdByUserId: auth.userId } as Finance.CreateTransactionInput);
   });
 
   // ── Aggregates ──

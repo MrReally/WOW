@@ -251,6 +251,7 @@ export interface EquipmentService {
   listModels(typeId?: ID): Promise<EquipmentModelDTO[]>;
   getModel(id: ID): Promise<EquipmentModelDTO | null>;
   createModel(input: CreateModelInput): Promise<EquipmentModelDTO>;
+  updateModel(id: ID, input: UpdateModelInput): Promise<EquipmentModelDTO>;
 
   // Units
   listUnits(filter?: { modelId?: ID; status?: UnitStatus; projectId?: ID }): Promise<EquipmentUnitDTO[]>;
@@ -308,6 +309,14 @@ export interface CreateModelInput {
   dailyPriceEUR: number;
   attrs?: CableAttrs | Record<string, unknown> | null;
   requiredComponentModelIds?: ID[];
+}
+
+export interface UpdateModelInput {
+  name?: string;
+  manufacturer?: string | null;
+  unitCostEUR?: number;
+  dailyPriceEUR?: number;
+  attrs?: CableAttrs | Record<string, unknown> | null;
 }
 
 // ── Domain events (in-process bus now, broker later) ─────────────────────────
