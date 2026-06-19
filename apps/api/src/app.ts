@@ -9,6 +9,7 @@ import { AppError } from "./core/errors.js";
 import { resolveAuth } from "./core/auth.js";
 import { createModules, registerAllRoutes, type Wiring } from "./registry.js";
 import { registerAdminRoutes } from "./admin.js";
+import { registerCalendarRoutes } from "./calendar.js";
 import { getBotUsername } from "./core/telegramBot.js";
 import { env } from "./env.js";
 
@@ -82,6 +83,7 @@ export async function buildApp(): Promise<BuiltApp> {
 
   registerAllRoutes(app, wiring, ctx);
   registerAdminRoutes(app, ctx, wiring);
+  registerCalendarRoutes(app, ctx, wiring);
 
   // Serve the built web bundle from the same origin (single URL, no CORS, no
   // "ran only the frontend" failure mode). Optional: only if a build exists.

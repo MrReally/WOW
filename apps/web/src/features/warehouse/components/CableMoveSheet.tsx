@@ -15,7 +15,7 @@ export function CableMoveSheet({ model, projects, onClose }: Props) {
   const [qty, setQty] = useState("1");
   const issue = useIssueQty();
   const ret = useReturnQty();
-  const stock = useModelStock(model?.id ?? "");
+  const stock = useModelStock(model?.id ?? "", !!model);
 
   if (!model) return null;
 

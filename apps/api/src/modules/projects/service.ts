@@ -63,6 +63,7 @@ interface ContractorItemRow {
   price_eur: string;
   cost_eur: string;
   note: string | null;
+  returned_at: Date | null;
   created_at: Date;
 }
 interface ProblemRow {
@@ -131,6 +132,7 @@ const contractorItemDTO = (r: ContractorItemRow): Projects.ContractorItemDTO => 
   priceEUR: Number(r.price_eur),
   costEUR: Number(r.cost_eur),
   note: r.note,
+  returnedAt: r.returned_at ? r.returned_at.toISOString() : null,
   createdAt: r.created_at.toISOString(),
 });
 const problemDTO = (r: ProblemRow): Problem => ({
@@ -294,6 +296,10 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       );
       return reservationDTO(row!);
     },
+    async deleteReservation(id) {
+      const row = await one<{ id: string }>(db, `DELETE FROM projects.reservations WHERE id=$1 RETURNING id`, [id]);
+      if (!row) throw NotFound("reservation", id);
+    },
 
     // ── Timings + assignments ──
     async listTimings(projectId, opts) {
@@ -440,6 +446,21 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       );
       return rows.map(contractorItemDTO);
     },
+    async listContractorItemsByContractor(contractorId) {
+      const rows = await query<ContractorItemRow>(
+        db,
+        `SELECT * FROM projects.contractor_items WHERE contractor_id=$1 ORDER BY created_at DESC LIMIT 50`,
+        [contractorId]
+      );
+      return rows.map(contractorItemDTO);
+    },
+    async listOpenContractorItems() {
+      const rows = await query<ContractorItemRow>(
+        db,
+        `SELECT * FROM projects.contractor_items WHERE returned_at IS NULL ORDER BY created_at DESC`
+      );
+      return rows.map(contractorItemDTO);
+    },
     async addContractorItem(input) {
       const row = await one<ContractorItemRow>(
         db,
@@ -448,6 +469,15 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         [input.projectId, input.contractorId, input.name, input.qty, input.priceEUR, input.costEUR, input.note ?? null]
       );
       return contractorItemDTO(row!);
+    },
+    async returnContractorItem(id) {
+      const row = await one<ContractorItemRow>(
+        db,
+        `UPDATE projects.contractor_items SET returned_at=COALESCE(returned_at, now()) WHERE id=$1 RETURNING *`,
+        [id]
+      );
+      if (!row) throw NotFound("contractor item", id);
+      return contractorItemDTO(row);
     },
     async removeContractorItem(id) {
       await query(db, `DELETE FROM projects.contractor_items WHERE id=$1`, [id]);

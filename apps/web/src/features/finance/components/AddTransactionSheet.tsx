@@ -9,6 +9,7 @@ interface Props {
   onClose: () => void;
   accounts: Finance.AccountDTO[];
   projects: Projects.ProjectDTO[];
+  currentUserId?: string | null;
 }
 
 const CATEGORIES: { value: Finance.TxCategory; label: string; kind: Finance.TxKind }[] = [
@@ -21,7 +22,7 @@ const CATEGORIES: { value: Finance.TxCategory; label: string; kind: Finance.TxKi
   { value: "other", label: "Прочее", kind: "expense" },
 ];
 
-export function AddTransactionSheet({ open, onClose, accounts, projects }: Props) {
+export function AddTransactionSheet({ open, onClose, accounts, projects, currentUserId }: Props) {
   const create = useCreateTransaction();
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [category, setCategory] = useState<Finance.TxCategory>("rental_revenue");
@@ -42,6 +43,7 @@ export function AddTransactionSheet({ open, onClose, accounts, projects }: Props
         amount: Number(amount),
         currency,
         note: note.trim() || null,
+        createdByUserId: currentUserId ?? null,
       },
       { onSuccess: () => { setAmount(""); setNote(""); onClose(); } }
     );

@@ -437,6 +437,19 @@ export function createEquipmentService(
 
     async returnQuantity(input) {
       if (input.qty <= 0) throw BadRequest("qty must be positive");
+      const issuedOnProject = await one<{ out: string }>(
+        db,
+        `SELECT COALESCE(SUM(CASE WHEN action='issued' THEN qty
+                                  WHEN action IN ('returned','return_incomplete') THEN -qty
+                                  ELSE 0 END),0)::text AS out
+         FROM equipment.journal
+         WHERE model_id=$1 AND project_id=$2 AND qty IS NOT NULL`,
+        [input.modelId, input.projectId]
+      );
+      const outstanding = Math.max(0, Number(issuedOnProject?.out ?? 0));
+      if (input.qty > outstanding) {
+        throw BadRequest(`only ${outstanding} issued to this project`);
+      }
       await tx(async (client) => {
         await appendJournal(client, {
           modelId: input.modelId,
@@ -775,6 +788,11 @@ export function createEquipmentService(
       return rows.map(problemDTO);
     },
     async resolveProblem(id) {
+      const problem = await one<ProblemRow>(db, `SELECT * FROM equipment.problems WHERE id=$1`, [id]);
+      if (!problem) throw NotFound("problem", id);
+      if (problem.kind !== "unit_lost") {
+        throw BadRequest("only loss problems can be hidden manually");
+      }
       await query(
         db,
         `UPDATE equipment.problems SET resolved=true, resolved_at=now() WHERE id=$1`,
@@ -794,6 +812,19 @@ export function createEquipmentService(
         [input.name, input.contacts ?? null]
       );
       return contractorDTO(row!);
+    },
+    async updateContractor(id, input) {
+      const row = await one<ContractorRow>(
+        db,
+        `UPDATE equipment.contractors
+         SET name=COALESCE($2, name),
+             contacts=CASE WHEN $3 THEN $4 ELSE contacts END
+         WHERE id=$1
+         RETURNING *`,
+        [id, input.name, Object.prototype.hasOwnProperty.call(input, "contacts"), input.contacts ?? null]
+      );
+      if (!row) throw NotFound("contractor", id);
+      return contractorDTO(row);
     },
 
     // ── Repairs ──

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider, MutationCache, QueryCache } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "./theme.tsx";
+import { I18nProvider } from "./i18n.tsx";
 import { Toasts } from "./Toasts.tsx";
 import { toast } from "../lib/toastBus.ts";
 import { ApiError } from "../lib/api.ts";
@@ -34,8 +35,10 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        {children}
-        <Toasts />
+        <I18nProvider>
+          {children}
+          <Toasts />
+        </I18nProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

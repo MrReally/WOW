@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Projects } from "@sever/contracts";
-import { Sheet, Button, Chip, Loading } from "../../../ui-kit/index.ts";
+import { Sheet, Button, Chip, Loading, Field, Input } from "../../../ui-kit/index.ts";
 import { useInStockUnits, useResolveReservation } from "../hooks.ts";
 
 interface Props {
@@ -11,9 +12,11 @@ interface Props {
 
 // Warehouse prep: turn a model-level reservation (qty) into concrete units.
 export function ResolveReservationSheet({ reservation, modelName, onClose }: Props) {
+  const navigate = useNavigate();
   const units = useInStockUnits(reservation?.modelId ?? "");
   const resolve = useResolveReservation();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
 
   // Pre-select the units already on this reservation when (re)opening it.
   useEffect(() => {
@@ -31,6 +34,7 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
 
   const close = () => {
     setSelected(new Set());
+    setSearch("");
     onClose();
   };
 
@@ -38,7 +42,10 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
     resolve.mutate({ id: reservation.id, unitIds: [...selected] }, { onSuccess: close });
   };
 
-  const list = units.data ?? [];
+  const q = search.trim().toLowerCase();
+  const list = (units.data ?? []).filter((u) =>
+    !q || [u.assetTag, u.serial ?? "", modelName].some((v) => v.toLowerCase().includes(q))
+  );
   const enough = selected.size === reservation.qty;
 
   return (
@@ -46,6 +53,9 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
       <p className="card__subtitle" style={{ marginBottom: 12 }}>
         Нужно {reservation.qty} ед. Выбери конкретные единицы со склада. Выбрано {selected.size}.
       </p>
+      <Field label="Поиск">
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, номер, серийник" />
+      </Field>
       {units.isLoading ? (
         <Loading />
       ) : list.length === 0 ? (
@@ -60,8 +70,29 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
               onClick={() => toggle(u.id)}
             >
               <div className="row row--between">
-                <span className="card__title">{u.assetTag}</span>
-                {selected.has(u.id) ? <Chip label="ВЫБРАНО" tone="accent" /> : <Chip label="СВОБОДНО" tone="ok" />}
+                <div style={{ minWidth: 0 }}>
+                  <p className="card__title">{u.assetTag}</p>
+                  {u.serial && <p className="card__subtitle">S/N {u.serial}</p>}
+                </div>
+                <div className="row">
+                  <Button
+                    variant="ghost"
+                    style={{ height: 34, padding: "0 8px" }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/warehouse/units/${u.id}`, {
+                        state: {
+                          backTo: window.location.pathname,
+                          reopenReservationId: reservation.id,
+                          selectedUnitIds: [...selected],
+                        },
+                      });
+                    }}
+                  >
+                    Открыть
+                  </Button>
+                  {selected.has(u.id) ? <Chip label="ВЫБРАНО" tone="accent" /> : <Chip label="СВОБОДНО" tone="ok" />}
+                </div>
               </div>
             </div>
           ))}

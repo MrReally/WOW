@@ -11,6 +11,9 @@ export function useRoles() {
 export function useBotInfo() {
   return useQuery({ queryKey: ["telegram", "bot-info"], queryFn: () => api.get<{ username: string | null }>("/api/telegram/bot-info") });
 }
+export function useCalendarFeed() {
+  return useQuery({ queryKey: ["me", "calendar-feed"], queryFn: () => api.get<People.CalendarFeedDTO>("/api/me/calendar-feed") });
+}
 export function useFxRates() {
   return useQuery({ queryKey: ["finance", "fx"], queryFn: () => api.get<Finance.FxRateDTO[]>("/api/finance/fx") });
 }
@@ -32,7 +35,7 @@ export function useUpdateUser() {
 }
 export function useResetPassword() {
   return useMutation({
-    mutationFn: (id: string) => api.post<{ temporaryPassword: string }>(`/api/people/${id}/reset-password`),
+    mutationFn: (id: string) => api.post<{ temporaryPassword: string }>(`/api/people/${id}/reset-password`, {}),
     meta: { successMessage: "Пароль сброшен" },
   });
 }

@@ -17,6 +17,7 @@ export { NOTIFICATION_KINDS } from "./notifications.js";
 import type { Problem, ID, ISODateTime } from "./common.js";
 import type { ProjectDTO } from "./projects.js";
 import type { ProjectFinanceDTO } from "./finance.js";
+import type { Currency } from "./common.js";
 
 export interface ApexRentalRow {
   project: ProjectDTO;
@@ -31,4 +32,15 @@ export interface ApexDashboardDTO {
   upcoming: ApexRentalRow[];
   problems: Problem[];
   debts: { projectId: ID; projectName: string; clientName: string; debtEUR: number }[];
+  financeSummary: ApexFinanceSummaryDTO;
+}
+
+export interface ApexFinanceSummaryDTO {
+  revenueEUR: number;
+  paidEUR: number;
+  clientDebtEUR: number;
+  recordedCostEUR: number;
+  contractorDebtEUR: number;
+  profitAfterRecordedCostEUR: number;
+  accountBalances: { currency: Currency; balance: number }[];
 }

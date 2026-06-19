@@ -12,6 +12,7 @@ import { ProjectDetailPage } from "../features/projects/ProjectDetailPage.tsx";
 import { StagePlanPage } from "../features/plans/StagePlanPage.tsx";
 import { FinancePage } from "../features/finance/FinancePage.tsx";
 import { InvoicePage } from "../features/finance/InvoicePage.tsx";
+import { ContractorsPage } from "../features/contractors/ContractorsPage.tsx";
 import { SettingsPage } from "../features/settings/SettingsPage.tsx";
 import { MySettingsPage } from "../features/settings/MySettingsPage.tsx";
 
@@ -37,6 +38,7 @@ export function AppRouter() {
       <Route path="/projects/:id" element={<Guard allow={["projects.view"]}><ProjectDetailPage /></Guard>} />
       <Route path="/projects/:id/plan" element={<Guard allow={["plans.view"]}><StagePlanPage /></Guard>} />
       <Route path="/projects/:id/invoice" element={<Guard allow={["finance.view"]}><InvoicePage /></Guard>} />
+      <Route path="/contractors" element={<Guard allow={["projects.reservation.manage", "finance.view"]}><ContractorsPage /></Guard>} />
       <Route path="/finance" element={<Guard allow={["finance.view"]}><FinancePage /></Guard>} />
       {/* Personal settings — every signed-in user, no permission gate. */}
       <Route path="/me" element={<MySettingsPage />} />

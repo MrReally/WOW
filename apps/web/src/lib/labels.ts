@@ -48,6 +48,7 @@ export const problemKindLabel: Record<string, string> = {
   incomplete_return: "Некомплект",
   reservation_conflict: "Конфликт броней",
   overdue_debt: "Просрочка долга",
+  contractor_return_due: "Вернуть подрядчику",
   unit_lost: "Утеря",
 };
 

@@ -6,6 +6,7 @@ import type {
   People,
   Projects,
   Problem,
+  Currency,
 } from "@sever/contracts";
 
 // Apex is the dispatcher view. It owns NO data — it composes the public
@@ -56,12 +57,32 @@ export function createApexService(deps: ApexDeps): ApexService {
       const current = await Promise.all(allProjects.filter(isCurrent).map(buildRow));
       const upcoming = await Promise.all(allProjects.filter(isUpcoming).map(buildRow));
 
-      const [equipProblems, projProblems, debts] = await Promise.all([
+      const [equipProblems, projProblems, debts, openContractorItems, contractorDebts, accounts] = await Promise.all([
         deps.equipment.listProblems(),
         deps.projects.listProblems(),
         deps.finance.outstandingDebts(),
+        deps.projects.listOpenContractorItems(),
+        deps.projects.contractorDebts(),
+        deps.finance.listAccounts(),
       ]);
-      const problems: Problem[] = [...equipProblems, ...projProblems].sort(
+      const contractorProblems: Problem[] = openContractorItems
+        .map((item): Problem | null => {
+          const p = allProjects.find((x) => x.id === item.projectId);
+          if (!p || Date.parse(p.endsAt) > now) return null;
+          return {
+            id: `contractor-return-${item.id}`,
+            kind: "contractor_return_due",
+            severity: "warning",
+            title: "Не возвращено подрядчику",
+            detail: `${item.name} × ${item.qty} нужно вернуть подрядчику после проекта`,
+            refs: { projectId: item.projectId, contractorId: item.contractorId, contractorItemId: item.id },
+            resolved: false,
+            createdAt: p.endsAt,
+            resolvedAt: null,
+          } satisfies Problem;
+        })
+        .filter((p): p is Problem => p !== null);
+      const problems: Problem[] = [...equipProblems, ...projProblems, ...contractorProblems].sort(
         (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
       );
 
@@ -74,6 +95,14 @@ export function createApexService(deps: ApexDeps): ApexService {
           debtEUR: d.debtEUR,
         };
       });
+      const projectFinances = [...current, ...upcoming].map((r) => r.finance).filter((f): f is Finance.ProjectFinanceDTO => f !== null);
+      const revenueEUR = round2(projectFinances.reduce((s, f) => s + f.revenueEUR, 0));
+      const paidEUR = round2(projectFinances.reduce((s, f) => s + f.prepaidEUR, 0));
+      const recordedCostEUR = round2(projectFinances.reduce((s, f) => s + f.costEUR, 0));
+      const clientDebtEUR = round2(debtRows.reduce((s, d) => s + d.debtEUR, 0));
+      const contractorDebtEUR = round2(contractorDebts.reduce((s, d) => s + d.debtEUR, 0));
+      const byCurrency = new Map<string, number>();
+      for (const a of accounts) byCurrency.set(a.currency, round2((byCurrency.get(a.currency) ?? 0) + a.balance));
 
       return {
         generatedAt: new Date().toISOString(),
@@ -81,7 +110,18 @@ export function createApexService(deps: ApexDeps): ApexService {
         upcoming,
         problems,
         debts: debtRows,
+        financeSummary: {
+          revenueEUR,
+          paidEUR,
+          clientDebtEUR,
+          recordedCostEUR,
+          contractorDebtEUR,
+          profitAfterRecordedCostEUR: round2(revenueEUR - recordedCostEUR - contractorDebtEUR),
+          accountBalances: [...byCurrency.entries()].map(([currency, balance]) => ({ currency: currency as Currency, balance })),
+        },
       };
     },
   };
 }
+
+const round2 = (n: number) => Math.round(n * 100) / 100;

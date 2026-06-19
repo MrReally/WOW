@@ -62,6 +62,10 @@ export interface CreatedUserDTO {
   temporaryPassword: string | null;
 }
 
+export interface CalendarFeedDTO {
+  url: string;
+}
+
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 export interface AuthResult {
@@ -95,6 +99,8 @@ export interface PeopleService {
   /** Dev-only bypass identity (first owner). */
   devIdentity(): Promise<SessionUser | null>;
   issueToken(userId: ID): Promise<string>;
+  ensureCalendarToken(userId: ID): Promise<string>;
+  getByCalendarToken(token: string): Promise<UserDTO | null>;
 
   // Users
   list(): Promise<UserDTO[]>;

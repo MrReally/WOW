@@ -1,10 +1,11 @@
-import { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useParams, useNavigate } from "react-router-dom";
 import type { Projects } from "@sever/contracts";
 import { PROJECT_STATUSES } from "@sever/contracts";
 import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
 import { projectStatusLabel, projectStatusTone, dateRange, dateTime, eur } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
+import { useI18n } from "../../app/i18n.tsx";
 import {
   useProject,
   useClients,
@@ -15,6 +16,7 @@ import {
   useEquipmentModels,
   useSetProjectStatus,
   useCreateReservation,
+  useDeleteReservation,
   useAddTiming,
   useSetTimingAssignees,
   useDeleteTiming,
@@ -39,8 +41,10 @@ const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "o
 
 export function ProjectDetailPage() {
   const { id = "" } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { can } = useSession();
+  const { t } = useI18n();
   const canManage = can("projects.manage");
   const canReserve = can("projects.reservation.manage");
   const canIssue = can("warehouse.issue");
@@ -62,6 +66,7 @@ export function ProjectDetailPage() {
 
   const setStatus = useSetProjectStatus();
   const addReservation = useCreateReservation();
+  const deleteReservation = useDeleteReservation();
   const addTiming = useAddTiming();
   const setTimingAssignees = useSetTimingAssignees();
   const deleteTiming = useDeleteTiming();
@@ -79,6 +84,16 @@ export function ProjectDetailPage() {
   const [assignRate, setAssignRate] = useState("");
   const [resolving, setResolving] = useState<Projects.ReservationDTO | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+
+  const reopen = location.state as { reopenReservationId?: string; selectedUnitIds?: string[] } | null;
+  useEffect(() => {
+    if (!reopen?.reopenReservationId || resolving || !reservations.data) return;
+    const found = reservations.data.find((r) => r.id === reopen.reopenReservationId);
+    if (found) {
+      setResolving(reopen.selectedUnitIds ? { ...found, resolvedUnitIds: reopen.selectedUnitIds } : found);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, navigate, reopen?.reopenReservationId, reopen?.selectedUnitIds, reservations.data, resolving]);
 
   if (project.isLoading) return <Loading />;
   if (project.error) return <ErrorState error={project.error} onRetry={project.refetch} />;
@@ -132,11 +147,10 @@ export function ProjectDetailPage() {
             const resolved = r.resolvedUnitIds.length > 0;
             const unit = (uid: string) => (allUnits.data ?? []).find((u) => u.id === uid);
             const unitTag = (uid: string) => unit(uid)?.assetTag ?? uid.slice(0, 6);
-            const issued =
-              resolved && r.resolvedUnitIds.every((uid) => {
-                const u = unit(uid);
-                return u && u.status === "on_project" && u.currentProjectId === p.id;
-              });
+            const issuedUnits = (allUnits.data ?? []).filter((u) => u.modelId === r.modelId && u.status === "on_project" && u.currentProjectId === p.id);
+            const issuedCount = issuedUnits.length;
+            const issued = issuedCount >= r.qty;
+            const shownIds = [...new Set([...r.resolvedUnitIds, ...issuedUnits.map((u) => u.id)])];
             return (
               <Card key={r.id}>
                 <div className="row row--between">
@@ -145,11 +159,14 @@ export function ProjectDetailPage() {
                     {issued ? "выдано" : resolved ? "распределено" : "по модели"}
                   </StatusBadge>
                 </div>
-                <p className="card__subtitle">{dateRange(r.startsAt, r.endsAt)}</p>
-                {resolved && (
+                <p className="card__subtitle">
+                  {dateRange(r.startsAt, r.endsAt)}
+                  {issuedCount > 0 ? ` · выдано ${Math.min(issuedCount, r.qty)}/${r.qty}` : ""}
+                </p>
+                {shownIds.length > 0 && (
                   <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                    {r.resolvedUnitIds.map((uid) => (
-                      <Chip key={uid} label={unitTag(uid)} tone={issued ? "warn" : "neutral"} />
+                    {shownIds.map((uid) => (
+                      <Chip key={uid} label={unitTag(uid)} tone={unit(uid)?.status === "on_project" ? "warn" : "neutral"} />
                     ))}
                   </div>
                 )}
@@ -174,7 +191,21 @@ export function ProjectDetailPage() {
                           Выдать
                         </Button>
                       ))}
+                    {canReserve && (
+                      <Button
+                        variant="ghost"
+                        disabled={deleteReservation.isPending || issuedCount > 0}
+                        onClick={() => confirm("Удалить эту бронь?") && deleteReservation.mutate(r.id)}
+                      >
+                        Удалить
+                      </Button>
+                    )}
                   </div>
+                )}
+                {issuedCount > 0 && canReserve && (
+                  <p className="card__subtitle" style={{ marginTop: 6 }}>
+                    Бронь нельзя удалить, пока по этой модели есть выданное на проект оборудование.
+                  </p>
                 )}
               </Card>
             );
@@ -377,7 +408,7 @@ export function ProjectDetailPage() {
       {/* Contractor (subrent) equipment */}
       {(canReserve || (invoice.data && (invoice.data.contractorCostEUR > 0))) && (
         <>
-          <SectionTitle>Оборудование подрядчиков</SectionTitle>
+          <SectionTitle>{t("contractors.title")}</SectionTitle>
           <ContractorEquipment projectId={id} canManage={canReserve} />
         </>
       )}
@@ -396,6 +427,28 @@ export function ProjectDetailPage() {
         return (
           <>
             <SectionTitle>Смета и счёт</SectionTitle>
+            <Card>
+              <p className="card__title">Деньги по проекту</p>
+              <div className="row" style={{ gap: 8, marginTop: 10 }}>
+                <FinanceTile
+                  label={inv.dueEUR >= 0 ? t("finance.clientDebt") : "Переплата"}
+                  value={eur(Math.abs(inv.dueEUR))}
+                  tone={inv.dueEUR > 0 ? "var(--danger)" : "var(--ok)"}
+                />
+                <FinanceTile
+                  label={t("finance.payables")}
+                  value={eur(inv.contractorCostEUR)}
+                  tone={inv.contractorCostEUR > 0 ? "var(--warn)" : "var(--ok)"}
+                />
+              </div>
+              <div className="row" style={{ gap: 8, marginTop: 8 }}>
+                <FinanceTile label={t("finance.revenue")} value={eur(inv.invoiceEUR)} />
+                <FinanceTile label={t("finance.net")} value={eur(inv.profitEUR)} tone={inv.profitEUR >= 0 ? "var(--ok)" : "var(--alert)"} />
+              </div>
+              <p className="card__subtitle" style={{ marginTop: 8 }}>
+                {t("finance.clientDebt")} — по смете и оплатам. {t("finance.payables")} — по себестоимости субаренды.
+              </p>
+            </Card>
             <Card>
               <p className="card__title">Счёт за прокат · {inv.days} сут</p>
               {inv.rentalLines.length === 0 ? (
@@ -418,7 +471,7 @@ export function ProjectDetailPage() {
               </div>
               {inv.contractorCostEUR > 0 && (
                 <div className="row row--between" style={{ padding: "4px 0" }}>
-                  <span className="card__subtitle">Подрядчики (себест.)</span>
+                <span className="card__subtitle">{t("finance.subrentCost")}</span>
                   <span style={{ color: "var(--text)" }}>{eur(inv.contractorCostEUR)}</span>
                 </div>
               )}
@@ -434,15 +487,6 @@ export function ProjectDetailPage() {
               </div>
             </Card>
 
-            <Card>
-              <div className="row row--between">
-                <span className="card__title">Прибыль (оценка)</span>
-                <span className="card__title" style={{ color: inv.profitEUR >= 0 ? "var(--ok)" : "var(--alert)" }}>{eur(inv.profitEUR)}</span>
-              </div>
-              <p className="card__subtitle" style={{ marginTop: 6 }}>
-                Оплачено клиентом: {eur(inv.paidEUR)} · осталось получить: {eur(inv.dueEUR)}
-              </p>
-            </Card>
             <Button block variant="secondary" onClick={() => navigate(`/projects/${p.id}/invoice`)}>
               📄 Сформировать счёт (с правкой цен)
             </Button>
@@ -456,6 +500,15 @@ export function ProjectDetailPage() {
         onClose={() => setResolving(null)}
       />
       <EditProjectSheet open={editOpen} project={p} clients={clients.data ?? []} onClose={() => setEditOpen(false)} />
+    </div>
+  );
+}
+
+function FinanceTile({ label, value, tone = "var(--text)" }: { label: string; value: string; tone?: string }) {
+  return (
+    <div style={{ flex: 1, minWidth: 0, border: "1px solid var(--bdr)", borderRadius: 8, padding: 10 }}>
+      <div className="card__subtitle">{label}</div>
+      <div className="card__title" style={{ color: tone, marginTop: 2 }}>{value}</div>
     </div>
   );
 }

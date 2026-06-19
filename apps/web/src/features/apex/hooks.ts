@@ -29,7 +29,8 @@ export function useResolveProblem() {
       api.post(
         scope === "equipment"
           ? `/api/equipment/problems/${id}/resolve`
-          : `/api/projects-problems/${id}/resolve`
+          : `/api/projects-problems/${id}/resolve`,
+        {}
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["apex"] }),
   });
