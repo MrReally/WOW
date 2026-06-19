@@ -90,9 +90,13 @@ export async function buildApp(): Promise<BuiltApp> {
   const webDist = resolveWebDist();
   if (webDist) {
     await app.register(fastifyStatic, { root: webDist, wildcard: false });
-    // SPA fallback: any non-/api, non-/health GET returns index.html.
+    // SPA fallback: client-side routes such as /apex must load the app shell,
+    // while API and health requests keep their normal JSON/HTTP responses.
     app.setNotFoundHandler((req, reply) => {
-      if (req.method === "GET" && !req.url.startsWith("/api") && !req.url.startsWith("/health")) {
+      const pathname = req.url.split("?", 1)[0] ?? req.url;
+      const isApiRequest = pathname === "/api" || pathname.startsWith("/api/");
+      const isHealthRequest = pathname === "/health";
+      if (req.method === "GET" && !isApiRequest && !isHealthRequest) {
         return reply.sendFile("index.html");
       }
       return reply.status(404).send({ error: { code: "not_found", message: "not found" } });
