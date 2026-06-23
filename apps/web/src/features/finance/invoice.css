@@ -1,57 +1,174 @@
-/* The generated invoice document. Styled as white paper so it reads the same
-   in dark theme and on print. Only this element prints. */
+/* Printable estimate, intentionally close to the legacy Google Sheets template. */
 .invoice-doc {
   background: #ffffff;
   color: #111111;
-  border-radius: 12px;
-  padding: 28px;
+  width: 816px;
+  min-height: 1056px;
+  margin: 0 auto;
+  border-radius: 0;
+  padding: 92px 78px 48px;
   border: 1px solid var(--bdr);
+  font-family: Arial, Helvetica, sans-serif;
 }
 .invoice-doc h1 {
   font-size: 20px;
   margin: 0 0 2px;
   color: #111;
 }
-.invoice-doc .inv-brand {
-  font-family: var(--font-cond, var(--font-sans, system-ui));
+.invoice-doc .muted {
+  color: #111;
+}
+
+.estimate-head {
+  display: grid;
+  grid-template-columns: 355px 1fr;
+  align-items: stretch;
+}
+.estimate-info {
+  border: 2px solid #000;
+  border-right: none;
+}
+.estimate-title {
+  height: 98px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  color: #fff;
+  font-family: "Arial Narrow", Arial, Helvetica, sans-serif;
   font-size: 30px;
   font-weight: 800;
-  letter-spacing: 0.14em;
-  color: #111;
-  line-height: 1;
 }
-.invoice-doc tr.inv-section td {
-  background: #f2f2f2;
-  font-weight: 700;
-  text-transform: capitalize;
-  border-bottom: 1px solid #d8d8d8;
+.estimate-field {
+  display: grid;
+  grid-template-columns: 1fr 118px;
+  min-height: 92px;
+  border-top: 2px solid #000;
+  font-family: "Arial Narrow", Arial, Helvetica, sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  text-align: center;
 }
-.invoice-doc .muted {
-  color: #555;
-  font-size: 12px;
+.estimate-field--tall {
+  min-height: 132px;
 }
-.invoice-doc table {
+.estimate-field > div,
+.estimate-field > strong {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.estimate-field > strong {
+  border-left: 2px solid #000;
+  font-size: 18px;
+}
+.estimate-logo {
+  min-height: 322px;
+  border: 1px solid #d2d2d2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.estimate-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 18px;
-  font-size: 13px;
+  margin-top: 26px;
+  font-size: 19px;
+  line-height: 1.14;
 }
-.invoice-doc th,
-.invoice-doc td {
-  text-align: left;
-  padding: 7px 8px;
-  border-bottom: 1px solid #e6e6e6;
+.estimate-table th,
+.estimate-table td {
+  border: 1px solid #000;
+  padding: 5px 9px;
+  text-align: center;
+  vertical-align: middle;
 }
-.invoice-doc th.num,
-.invoice-doc td.num {
-  text-align: right;
+.estimate-table th {
+  font-size: 20px;
+  font-weight: 800;
+}
+.estimate-table th:first-child,
+.estimate-table td:first-child {
+  width: 39%;
+}
+.estimate-table th:nth-child(2),
+.estimate-table td:nth-child(2) {
+  width: 14%;
+}
+.estimate-table th:nth-child(3),
+.estimate-table td:nth-child(3) {
+  width: 19%;
+}
+.estimate-table th:nth-child(4),
+.estimate-table td:nth-child(4) {
+  width: 28%;
+}
+.estimate-table .num {
+  text-align: center;
   white-space: nowrap;
 }
-.invoice-doc tfoot td {
+.estimate-table tr.inv-section td {
+  padding: 4px 8px;
+  font-size: 20px;
   font-weight: 800;
-  font-size: 15px;
-  border-top: 2px solid #222;
-  border-bottom: none;
+  text-transform: none;
+}
+.inv-section--sound td { background: #dcebd6; }
+.inv-section--lighting td { background: #fff2cc; }
+.inv-section--other td { background: #fce5cd; }
+.inv-section--staff td { background: #f4cccc; }
+.inv-section--delivery td { background: #d9e9ec; }
+.inv-section--default td { background: #eeeeee; }
+
+.estimate-table tfoot td {
+  border-color: #000;
+  height: 30px;
+}
+.estimate-table .total-label,
+.estimate-table .total-amount,
+.estimate-table .total-currency {
+  background: #000;
+  color: #fff;
+  font-weight: 800;
+}
+.estimate-table .total-label {
+  text-align: left;
+  padding-left: 18px;
+}
+.estimate-table .total-currency {
+  font-weight: 500;
+  text-align: left;
+}
+.estimate-note {
+  margin-top: 14px;
+  white-space: pre-wrap;
+  font-size: 14px;
+}
+.contacts-table {
+  width: 61%;
+  margin: 30px 0 0 auto;
+  border-collapse: collapse;
+  font-family: "Arial Narrow", Arial, Helvetica, sans-serif;
+  font-size: 18px;
+}
+.contacts-table th,
+.contacts-table td {
+  border: 1px solid #000;
+  padding: 8px 12px;
+  text-align: center;
+}
+.contacts-table th {
+  font-weight: 800;
+}
+.contacts-table td:first-child {
+  width: 28%;
+  font-weight: 800;
+}
+.contacts-table .contact-link {
+  color: #1155cc;
+  text-decoration: underline;
+  font-weight: 800;
 }
 
 .inv-line-grid {
@@ -75,9 +192,10 @@
     left: 0;
     top: 0;
     width: 100%;
+    min-height: auto;
     border: none;
     border-radius: 0;
-    padding: 0;
+    padding: 72px 72px 36px;
   }
   .no-print {
     display: none !important;

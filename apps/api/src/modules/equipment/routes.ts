@@ -69,6 +69,10 @@ const qtyMoveSchema = z.object({
 const importSchema = z.object({ csv: z.string().min(1) });
 
 const contractorSchema = z.object({ name: z.string().min(1), contacts: z.string().nullable().optional() });
+const updateContractorSchema = z.object({
+  name: z.string().min(1).optional(),
+  contacts: z.string().nullable().optional(),
+});
 const openRepairSchema = z.object({
   problem: z.string().min(1),
   vendor: z.string().nullable().optional(),
@@ -226,6 +230,11 @@ export function registerEquipmentRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.catalog.manage");
     return service.createContractor(contractorSchema.parse(req.body));
+  });
+  app.patch<{ Params: { id: string } }>("/api/equipment/contractors/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.catalog.manage");
+    return service.updateContractor(req.params.id, updateContractorSchema.parse(req.body));
   });
 
   // ── Repairs ──

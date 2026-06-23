@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import type { Equipment } from "@sever/contracts";
 import {
   Button,
+  Field,
+  Input,
   SectionHead,
   Chip,
   Dot,
@@ -101,19 +103,36 @@ export function WarehousePage() {
   const [cableModel, setCableModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [editModel, setEditModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [statusFilter, setStatusFilter] = useState<Equipment.UnitStatus | "all">("all");
+  const [search, setSearch] = useState("");
+  const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
 
   if (models.isLoading || units.isLoading) return <Loading />;
   if (models.error) return <ErrorState error={models.error} onRetry={models.refetch} />;
 
   const allUnits = units.data ?? [];
   const allModels = models.data ?? [];
-  const serialModels = allModels.filter((m) => m.trackingMode === "serial");
-  const cableModels = allModels.filter((m) => m.trackingMode === "quantity");
-  const filtered = statusFilter === "all" ? allUnits : allUnits.filter((u) => u.status === statusFilter);
+  const getTypeName = (tid: string | undefined) => (types.data ?? []).find((t) => t.id === tid)?.name ?? "Без типа";
+  const query = search.trim().toLowerCase();
+  const modelMatches = (m: Equipment.EquipmentModelDTO) =>
+    !query || [m.name, m.manufacturer ?? "", getTypeName(m.typeId)].some((v) => v.toLowerCase().includes(query));
+  const unitMatches = (u: Equipment.EquipmentUnitDTO) => {
+    const m = allModels.find((x) => x.id === u.modelId);
+    return !query || [u.assetTag, u.serial ?? "", m?.name ?? "", m?.manufacturer ?? "", getTypeName(m?.typeId)].some((v) => v.toLowerCase().includes(query));
+  };
+  const serialModels = allModels.filter((m) => m.trackingMode === "serial" && modelMatches(m));
+  const cableModels = allModels.filter((m) => m.trackingMode === "quantity" && modelMatches(m));
+  const filteredByStatus = statusFilter === "all" ? allUnits : allUnits.filter((u) => u.status === statusFilter);
+  const filtered = filteredByStatus.filter(unitMatches);
   const statuses: (Equipment.UnitStatus | "all")[] = ["all", "in_stock", "on_project", "in_repair", "reserved", "lost"];
 
   const repairTone = (s: Equipment.UnitStatus) => (s === "in_repair" ? "alert" : "warn");
   const tag = (uid: string) => allUnits.find((x) => x.id === uid)?.assetTag ?? uid.slice(0, 6);
+  const toggleType = (tid: string) =>
+    setCollapsedTypes((prev) => {
+      const next = new Set(prev);
+      next.has(tid) ? next.delete(tid) : next.add(tid);
+      return next;
+    });
 
   return (
     <div>
@@ -121,7 +140,7 @@ export function WarehousePage() {
 
       {((openRepairs.data ?? []).length > 0 || (openHandovers.data ?? []).length > 0) && (
         <>
-          <SectionHead label="Ремонты и подрядчики" meta={`${(openRepairs.data ?? []).length + (openHandovers.data ?? []).length}`} />
+          <SectionHead label="Ремонты и сервисные выдачи" meta={`${(openRepairs.data ?? []).length + (openHandovers.data ?? []).length}`} />
           <div className="card" style={{ padding: "2px 16px" }}>
             {(openRepairs.data ?? []).map((r) => (
               <div key={r.id} className="lrow card--tappable" onClick={() => navigate(`/warehouse/units/${r.unitId}`)}>
@@ -136,9 +155,9 @@ export function WarehousePage() {
               <div key={h.id} className="lrow card--tappable" onClick={() => navigate(`/warehouse/units/${h.unitId}`)}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="lrow__title">{tag(h.unitId)} · {h.contractorName}</div>
-                  <div className="lrow__detail">у подрядчика{h.reason ? ` · ${h.reason}` : ""}</div>
+                  <div className="lrow__detail">на внешнем сервисе{h.reason ? ` · ${h.reason}` : ""}</div>
                 </div>
-                <Chip label="подрядчик" tone="warn" />
+                <Chip label="сервис" tone="warn" />
               </div>
             ))}
           </div>
@@ -146,6 +165,9 @@ export function WarehousePage() {
       )}
 
       <SectionHead label="Каталог" meta={canEdit ? undefined : `${allModels.length} МОДЕЛЕЙ`} />
+      <Field label="Поиск по складу">
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, тип, номер, серийник" />
+      </Field>
       {canEdit && (
         <div className="row" style={{ marginBottom: 10 }}>
           {canCatalog && <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Модель / единица</Button>}
@@ -195,35 +217,41 @@ export function WarehousePage() {
         (() => {
           // Group the units by equipment type so the catalog is easy to scan.
           const modelOf = (mid: string) => allModels.find((m) => m.id === mid);
-          const typeName = (tid: string | undefined) => (types.data ?? []).find((t) => t.id === tid)?.name ?? "Без типа";
           const groups = new Map<string, Equipment.EquipmentUnitDTO[]>();
           for (const u of filtered) {
             const tid = modelOf(u.modelId)?.typeId ?? "—";
             (groups.get(tid) ?? groups.set(tid, []).get(tid)!).push(u);
           }
-          const ordered = [...groups.entries()].sort((a, b) => typeName(a[0]).localeCompare(typeName(b[0])));
+          const ordered = [...groups.entries()].sort((a, b) => getTypeName(a[0]).localeCompare(getTypeName(b[0])));
           return ordered.map(([tid, list]) => (
             <div key={tid}>
-              <SectionHead label={typeName(tid)} meta={`${list.length}`} />
-              <div className="card" style={{ padding: "2px 16px" }}>
-                {list.map((u, i) => {
-                  const tone: Tone = u.status === "in_stock" ? "ok" : u.status === "on_project" ? "warn" : u.status === "lost" || u.status === "in_repair" ? "alert" : "info";
-                  return (
-                    <div
-                      key={u.id}
-                      className="lrow card--tappable"
-                      style={{ borderBottom: i === list.length - 1 ? "none" : undefined }}
-                      onClick={() => navigate(`/warehouse/units/${u.id}`)}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="lrow__title">{u.assetTag}</div>
-                        <div className="lrow__detail">{modelOf(u.modelId)?.name ?? u.modelId}</div>
-                      </div>
-                      <Chip label={unitStatusLabel[u.status]} tone={tone} />
-                    </div>
-                  );
-                })}
+              <div className="row row--between" style={{ alignItems: "center" }}>
+                <SectionHead label={getTypeName(tid)} meta={`${list.length}`} />
+                <Button variant="ghost" onClick={() => toggleType(tid)}>
+                  {collapsedTypes.has(tid) ? "Развернуть" : "Свернуть"}
+                </Button>
               </div>
+              {!collapsedTypes.has(tid) && (
+                <div className="card" style={{ padding: "2px 16px" }}>
+                  {list.map((u, i) => {
+                    const tone: Tone = u.status === "in_stock" ? "ok" : u.status === "on_project" ? "warn" : u.status === "lost" || u.status === "in_repair" ? "alert" : "info";
+                    return (
+                      <div
+                        key={u.id}
+                        className="lrow card--tappable"
+                        style={{ borderBottom: i === list.length - 1 ? "none" : undefined }}
+                        onClick={() => navigate(`/warehouse/units/${u.id}`)}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="lrow__title">{u.assetTag}</div>
+                          <div className="lrow__detail">{modelOf(u.modelId)?.name ?? u.modelId}</div>
+                        </div>
+                        <Chip label={unitStatusLabel[u.status]} tone={tone} />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ));
         })()

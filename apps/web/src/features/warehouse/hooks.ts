@@ -18,8 +18,9 @@ export function useModels() {
   return useQuery({ queryKey: ["equipment", "models"], queryFn: () => api.get<Equipment.EquipmentModelDTO[]>("/api/equipment/models") });
 }
 
-export function useModelStock(modelId: string) {
+export function useModelStock(modelId: string, enabled = true) {
   return useQuery({
+    enabled: enabled && !!modelId,
     queryKey: ["equipment", "stock", modelId],
     queryFn: () => api.get<Equipment.ModelStockDTO>(`/api/equipment/models/${modelId}/stock`),
   });
@@ -49,8 +50,17 @@ export function useProjectsForOps() {
   return useQuery({ queryKey: ["projects", "all"], queryFn: () => api.get<Projects.ProjectDTO[]>("/api/projects") });
 }
 
+export function useProjectReservations(projectId: string) {
+  return useQuery({
+    enabled: !!projectId,
+    queryKey: ["projects", "reservations", projectId],
+    queryFn: () => api.get<Projects.ReservationDTO[]>(`/api/projects/${projectId}/reservations`),
+  });
+}
+
 function invalidateEquipment(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["equipment"] });
+  qc.invalidateQueries({ queryKey: ["projects"] });
   qc.invalidateQueries({ queryKey: ["apex"] });
 }
 

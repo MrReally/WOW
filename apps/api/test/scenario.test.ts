@@ -154,8 +154,16 @@ describe("Tech pickup/return → некомплект", () => {
       equipment.service.issueQuantity({ projectId: project.id, modelId: model.id, qty: 25, actorId: "00000000-0000-0000-0000-000000000000" })
     ).rejects.toThrow();
 
+    await expect(
+      equipment.service.returnQuantity({ projectId: project.id, modelId: model.id, qty: 31, actorId: "00000000-0000-0000-0000-000000000000" })
+    ).rejects.toThrow(/only 30 issued/);
+
     stock = await equipment.service.returnQuantity({ projectId: project.id, modelId: model.id, qty: 30, actorId: "00000000-0000-0000-0000-000000000000" });
     expect(stock).toMatchObject({ inStock: 50, onProjects: 0 });
+
+    await expect(
+      equipment.service.returnQuantity({ projectId: project.id, modelId: model.id, qty: 1, actorId: "00000000-0000-0000-0000-000000000000" })
+    ).rejects.toThrow(/only 0 issued/);
   });
 
   it("imports a catalog from CSV rows (serial units + cable stock)", async () => {
@@ -234,6 +242,38 @@ describe("Tech pickup/return → некомплект", () => {
     const after = await projects.service.listProblems();
     expect(after.length).toBe(before + 1);
     expect(after.some((p) => p.kind === "reservation_conflict")).toBe(true);
+  });
+
+  it("only loss problems can be manually hidden from Apex", async () => {
+    const { equipment } = wiring;
+    const tech = await makeTech("Loss Tech");
+    const type = await equipment.service.createType({ name: `Loss-${Date.now()}`, trackingMode: "serial" });
+    const model = await equipment.service.createModel({ typeId: type.id, name: "Loss Model", unitCostEUR: 1, dailyPriceEUR: 1 });
+    const unit = await equipment.service.createUnit({ modelId: model.id, assetTag: `LOST-${Date.now()}` });
+
+    await equipment.service.changeStatus(unit.id, "lost", tech.id, "missing after event");
+    const loss = (await equipment.service.listProblems()).find((p) => p.kind === "unit_lost" && p.refs.unitId === unit.id);
+    expect(loss).toBeTruthy();
+    await equipment.service.resolveProblem(loss!.id);
+    expect((await equipment.service.listProblems()).some((p) => p.id === loss!.id)).toBe(false);
+
+    const client = await wiring.projects.service.createClient({ name: `Hide ${Date.now()}` });
+    const project = await wiring.projects.service.createProject({
+      name: "Hide Project",
+      clientId: client.id,
+      startsAt: new Date().toISOString(),
+      endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    const u1 = await equipment.service.createUnit({ modelId: model.id, assetTag: `HIDE-${Date.now()}-1` });
+    const u2 = await equipment.service.createUnit({ modelId: model.id, assetTag: `HIDE-${Date.now()}-2` });
+    await equipment.service.issueUnits({ projectId: project.id, unitIds: [u1.id, u2.id], actorId: tech.id });
+    const ret = await equipment.service.returnUnits({
+      projectId: project.id,
+      returnedUnitIds: [u1.id],
+      expectedUnitIds: [u1.id, u2.id],
+      actorId: tech.id,
+    });
+    await expect(equipment.service.resolveProblem(ret.problemId!)).rejects.toThrow(/only loss/);
   });
 
   it("notifications: assignment and issuance notify the assigned crew", async () => {

@@ -123,6 +123,12 @@ export function registerProjectsRoutes(
     requirePermission(auth, "projects.reservation.manage");
     return service.resolveReservation(req.params.id, resolveSchema.parse(req.body).unitIds);
   });
+  app.delete<{ Params: { id: string } }>("/api/reservations/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.reservation.manage");
+    await service.deleteReservation(req.params.id);
+    return { ok: true };
+  });
 
   // ── Timings + assignments ──
   app.get<{ Params: { id: string } }>("/api/projects/:id/timings", async (req) => {
@@ -171,6 +177,16 @@ export function registerProjectsRoutes(
     await ctx.auth(req);
     return service.listContractorItems(req.params.id);
   });
+  app.get<{ Params: { id: string } }>("/api/contractors/:id/items", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.reservation.manage", "finance.view");
+    return service.listContractorItemsByContractor(req.params.id);
+  });
+  app.get("/api/contractor-items/open", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.reservation.manage", "finance.view", "apex.view");
+    return service.listOpenContractorItems();
+  });
   app.post("/api/contractor-items", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.reservation.manage");
@@ -181,6 +197,11 @@ export function registerProjectsRoutes(
     requirePermission(auth, "projects.reservation.manage");
     await service.removeContractorItem(req.params.id);
     return { ok: true };
+  });
+  app.post<{ Params: { id: string } }>("/api/contractor-items/:id/return", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.reservation.manage");
+    return service.returnContractorItem(req.params.id);
   });
   app.get("/api/contractor-debts", async (req) => {
     const auth = await ctx.auth(req);
