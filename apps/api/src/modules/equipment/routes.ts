@@ -27,6 +27,7 @@ const updateModelSchema = z.object({
   dailyPriceEUR: z.number().nonnegative().optional(),
   attrs: z.record(z.unknown()).nullable().optional(),
 });
+const modelIdParamsSchema = z.object({ id: z.string().uuid() });
 
 const createUnitSchema = z.object({
   modelId: z.string().uuid(),
@@ -113,12 +114,14 @@ export function registerEquipmentRoutes(
     return service.listModels(req.query.typeId);
   });
   app.get<{ Params: { id: string } }>("/api/equipment/models/:id", async (req) => {
+    const { id } = modelIdParamsSchema.parse(req.params);
     await ctx.auth(req);
-    return service.getModel(req.params.id);
+    return service.getModel(id);
   });
   app.get<{ Params: { id: string } }>("/api/equipment/models/:id/stock", async (req) => {
+    const { id } = modelIdParamsSchema.parse(req.params);
     await ctx.auth(req);
-    return service.modelStock(req.params.id);
+    return service.modelStock(id);
   });
   app.post("/api/equipment/models", async (req) => {
     const auth = await ctx.auth(req);
@@ -126,14 +129,16 @@ export function registerEquipmentRoutes(
     return service.createModel(createModelSchema.parse(req.body) as Equipment.CreateModelInput);
   });
   app.patch<{ Params: { id: string } }>("/api/equipment/models/:id", async (req) => {
+    const { id } = modelIdParamsSchema.parse(req.params);
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.catalog.manage");
-    return service.updateModel(req.params.id, updateModelSchema.parse(req.body) as Equipment.UpdateModelInput);
+    return service.updateModel(id, updateModelSchema.parse(req.body) as Equipment.UpdateModelInput);
   });
   app.put<{ Params: { id: string } }>("/api/equipment/models/:id/stock", async (req) => {
+    const { id } = modelIdParamsSchema.parse(req.params);
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.catalog.manage");
-    return service.setModelStockTotal(req.params.id, stockSchema.parse(req.body).total);
+    return service.setModelStockTotal(id, stockSchema.parse(req.body).total);
   });
 
   // ── Catalog import (CSV) ──
