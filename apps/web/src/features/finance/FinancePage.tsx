@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Card, Button, SectionTitle, Metric, StatusBadge, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
-import { eur, money, dateTime } from "../../lib/labels.ts";
+import { useI18n } from "../../app/i18n.tsx";
 import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreateAccount, usePeopleNames, useContractorDebts, useContractorsList } from "./hooks.ts";
 import { AddTransactionSheet } from "./components/AddTransactionSheet.tsx";
 import { useSession } from "../../app/session.ts";
@@ -23,11 +23,15 @@ export function FinancePage() {
   const contractors = useContractorsList();
   const projects = useProjectsForFinance();
   const createAccount = useCreateAccount();
-  const { can } = useSession();
+  const { can, user } = useSession();
+  const { t, eur, money, dateTime } = useI18n();
   const canManage = can("finance.manage");
   const people = usePeopleNames(can("people.view"));
   const [txOpen, setTxOpen] = useState(false);
-  const authorName = (uid: string | null) => (uid ? (people.data ?? []).find((u) => u.id === uid)?.displayName ?? null : null);
+  const authorName = (uid: string | null) => {
+    if (!uid) return `${t("finance.addedBy")}: ${t("common.system")}`;
+    return `${t("finance.addedBy")}: ${(people.data ?? []).find((u) => u.id === uid)?.displayName ?? uid.slice(0, 8)}`;
+  };
 
   if (accounts.isLoading) return <Loading />;
   if (accounts.error) return <ErrorState error={accounts.error} onRetry={accounts.refetch} />;
@@ -56,9 +60,9 @@ export function FinancePage() {
         </div>
       )}
 
-      <SectionTitle>Счета</SectionTitle>
+      <SectionTitle>{t("finance.accounts")}</SectionTitle>
       {(accounts.data ?? []).length === 0 ? (
-        <EmptyState title="Нет счетов" hint="Создайте первый счёт" />
+        <EmptyState title={t("finance.noAccounts")} />
       ) : (
         <div className="stack">
           {(accounts.data ?? []).map((a) => (
@@ -72,9 +76,9 @@ export function FinancePage() {
         </div>
       )}
 
-      <SectionTitle>Нам должны (клиенты)</SectionTitle>
+      <SectionTitle>{t("finance.clientDebt")}</SectionTitle>
       <Card>
-        <Metric value={eur(totalDebt)} label="клиенты должны нам" tone={totalDebt ? "danger" : "ok"} />
+        <Metric value={eur(totalDebt)} label={t("finance.clientDebt")} tone={totalDebt ? "danger" : "ok"} />
       </Card>
       {(debts.data ?? []).map((d) => (
         <Card key={d.projectId}>
@@ -82,13 +86,14 @@ export function FinancePage() {
             <p className="card__title">{projectName(d.projectId)}</p>
             <StatusBadge tone="danger">{eur(d.debtEUR)}</StatusBadge>
           </div>
-          <p className="card__subtitle">выручка {eur(d.revenueEUR)} · оплачено {eur(d.prepaidEUR)}</p>
+          <p className="card__subtitle">{t("finance.revenue")} {eur(d.revenueEUR)} · {t("finance.paid")} {eur(d.prepaidEUR)}</p>
         </Card>
       ))}
+      {(debts.data ?? []).length === 0 && <EmptyState title={t("finance.noClientDebt")} />}
 
-      <SectionTitle>Мы должны (подрядчики)</SectionTitle>
+      <SectionTitle>{t("finance.payables")}</SectionTitle>
       <Card>
-        <Metric value={eur(totalOwed)} label="мы должны подрядчикам" tone={totalOwed ? "danger" : "ok"} />
+        <Metric value={eur(totalOwed)} label={t("finance.payables")} tone={totalOwed ? "danger" : "ok"} />
       </Card>
       {(contractorDebts.data ?? []).map((d) => (
         <Card key={d.contractorId}>
@@ -96,15 +101,16 @@ export function FinancePage() {
             <p className="card__title">{contractorName(d.contractorId)}</p>
             <StatusBadge tone="warn">{eur(d.debtEUR)}</StatusBadge>
           </div>
-          <p className="card__subtitle">себестоимость субаренды по сметам</p>
+          <p className="card__subtitle">{t("finance.subrentCost")}</p>
         </Card>
       ))}
+      {(contractorDebts.data ?? []).length === 0 && <EmptyState title={t("finance.noPayables")} />}
 
-      <SectionTitle>Транзакции</SectionTitle>
+      <SectionTitle>{t("finance.transactions")}</SectionTitle>
       {transactions.isLoading ? (
         <Loading />
       ) : (transactions.data ?? []).length === 0 ? (
-        <EmptyState title="Транзакций нет" />
+        <EmptyState title={t("finance.noTransactions")} />
       ) : (
         <div className="stack">
           {(transactions.data ?? []).slice(0, 30).map((t) => (
@@ -114,7 +120,7 @@ export function FinancePage() {
                   <p className="card__title">{categoryLabel[t.category] ?? t.category}{t.note ? ` · ${t.note}` : ""}</p>
                   <p className="card__subtitle">
                     {t.projectId ? projectName(t.projectId) : "без проекта"} · {dateTime(t.createdAt)}
-                    {authorName(t.createdByUserId) ? ` · ${authorName(t.createdByUserId)}` : ""}
+                    {" · "}{authorName(t.createdByUserId)}
                   </p>
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -134,6 +140,7 @@ export function FinancePage() {
         onClose={() => setTxOpen(false)}
         accounts={accounts.data ?? []}
         projects={projects.data ?? []}
+        currentUserId={user?.id ?? null}
       />
     </div>
   );

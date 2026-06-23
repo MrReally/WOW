@@ -25,7 +25,7 @@ function invalidate(qc: ReturnType<typeof useQueryClient>) {
 export function useMarkRead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.post(`/api/notifications/${id}/read`),
+    mutationFn: (id: string) => api.post(`/api/notifications/${id}/read`, {}),
     onSuccess: () => invalidate(qc),
   });
 }
@@ -33,7 +33,7 @@ export function useMarkRead() {
 export function useMarkAllRead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.post("/api/notifications/read-all"),
+    mutationFn: () => api.post("/api/notifications/read-all", {}),
     onSuccess: () => invalidate(qc),
   });
 }

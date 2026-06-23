@@ -25,6 +25,7 @@ interface UserRow {
   password_hash: string | null;
   must_change_password: boolean;
   hourly_rate_eur: string | null;
+  calendar_token: string | null;
   active: boolean;
   created_at: Date;
 }
@@ -214,6 +215,18 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
 
     async issueToken(userId) {
       return issueTokenFor(userId);
+    },
+    async ensureCalendarToken(userId) {
+      const existing = await one<{ calendar_token: string | null }>(db, `SELECT calendar_token FROM people.users WHERE id=$1`, [userId]);
+      if (!existing) throw NotFound("user", userId);
+      if (existing.calendar_token) return existing.calendar_token;
+      const token = randomToken();
+      await query(db, `UPDATE people.users SET calendar_token=$2 WHERE id=$1`, [userId, token]);
+      return token;
+    },
+    async getByCalendarToken(token) {
+      const row = await one<UserRow>(db, `${USER_SELECT} WHERE u.calendar_token=$1`, [token]);
+      return row && row.active ? userDTO(row) : null;
     },
 
     // ── Users ──

@@ -48,9 +48,9 @@ export function createBillingService(deps: BillingDeps): BillingService {
         const rdays = daysBetween(r.startsAt, r.endsAt);
         return {
           refId: r.id,
-          section: (m && typeName.get(m.typeId)) || "Оборудование",
+          section: (m && typeName.get(m.typeId)) || "Equipment",
           label: m?.name ?? r.modelId,
-          detail: `${rdays} сут × ${price} €/сут`,
+          detail: `${rdays} day${rdays === 1 ? "" : "s"} × ${price} €/day`,
           qty: r.qty,
           unitEUR: price,
           periods: rdays,
@@ -61,9 +61,9 @@ export function createBillingService(deps: BillingDeps): BillingService {
       // Contractor (subrent) gear — billed at client price, with our cost.
       const contractorLines: Finance.InvoiceLineDTO[] = contractorItems.map((it) => ({
         refId: it.id,
-        section: `Подрядчик: ${contractorName.get(it.contractorId) ?? "—"}`,
+        section: `Vendor: ${contractorName.get(it.contractorId) ?? "—"}`,
         label: it.name,
-        detail: it.note || "субаренда",
+        detail: it.note || "subrent",
         qty: it.qty,
         unitEUR: it.priceEUR,
         periods: 1,
@@ -79,9 +79,9 @@ export function createBillingService(deps: BillingDeps): BillingService {
       const names = await Promise.all(crew.map((a) => deps.people.getById(a.userId)));
       const laborLines: Finance.InvoiceLineDTO[] = crew.map((a, i) => ({
         refId: a.id,
-        section: "Команда",
+        section: "Crew",
         label: names[i]?.displayName ?? "—",
-        detail: [a.roleNote || "команда", a.status === "invited" ? "приглашён" : null].filter(Boolean).join(" · "),
+        detail: [a.roleNote || "crew", a.status === "invited" ? "invited" : null].filter(Boolean).join(" · "),
         qty: 1,
         unitEUR: round2(a.rateEUR ?? 0),
         periods: 1,

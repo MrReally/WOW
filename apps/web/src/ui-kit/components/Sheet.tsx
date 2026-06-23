@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface SheetProps {
   open: boolean;
@@ -17,13 +18,14 @@ export function Sheet({ open, title, onClose, children }: SheetProps) {
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  return createPortal(
     <div className="sheet__backdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet__handle" />
         {title && <h2 className="sheet__title">{title}</h2>}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -51,7 +51,7 @@ export function useNewVersion(projectId: string) {
 export function useSetCurrentPlan(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (planId: string) => api.post(`/api/plans/${planId}/set-current`),
+    mutationFn: (planId: string) => api.post(`/api/plans/${planId}/set-current`, {}),
     meta: { successMessage: "Версия сделана текущей" },
     onSuccess: () => invalidate(qc, projectId),
   });

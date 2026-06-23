@@ -113,6 +113,7 @@ export type ProblemKind =
   | "incomplete_return" // некомплект
   | "reservation_conflict"
   | "overdue_debt"
+  | "contractor_return_due"
   | "unit_lost";
 
 export type ProblemSeverity = "info" | "warning" | "critical";

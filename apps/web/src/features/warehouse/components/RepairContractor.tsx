@@ -24,7 +24,7 @@ export function RepairContractorPanel({ unit }: { unit: Equipment.EquipmentUnitD
 
   return (
     <>
-      <SectionTitle>Ремонт и подрядчики</SectionTitle>
+      <SectionTitle>Ремонт и внешний сервис</SectionTitle>
       <Card>
         {unit.status === "in_repair" && openRepair ? (
           <>
@@ -36,18 +36,18 @@ export function RepairContractorPanel({ unit }: { unit: Equipment.EquipmentUnitD
           </>
         ) : unit.status === "at_contractor" && openHandover ? (
           <>
-            <p className="card__title">У подрядчика: {openHandover.contractorName}</p>
+            <p className="card__title">На внешнем сервисе: {openHandover.contractorName}</p>
             <p className="card__subtitle">{openHandover.reason ?? "—"} · с {dateTime(openHandover.sentAt)}</p>
             <div style={{ marginTop: 10 }}>
               <Button block disabled={returnHo.isPending} onClick={() => returnHo.mutate({ id: openHandover.id })}>
-                Вернуть от подрядчика
+                Вернуть с сервиса
               </Button>
             </div>
           </>
         ) : (
           <div className="row">
             <Button block variant="secondary" onClick={() => setOpenRepairSheet(true)}>В ремонт</Button>
-            <Button block variant="secondary" onClick={() => setContractorSheet(true)}>Отдать подрядчику</Button>
+            <Button block variant="secondary" onClick={() => setContractorSheet(true)}>Передать в сервис</Button>
           </div>
         )}
         {totalRepair > 0 && (
@@ -78,13 +78,13 @@ export function RepairContractorPanel({ unit }: { unit: Equipment.EquipmentUnitD
       )}
       {(handovers.data ?? []).length > 0 && (
         <>
-          <SectionTitle>Передачи подрядчикам</SectionTitle>
+          <SectionTitle>Передачи во внешний сервис</SectionTitle>
           <div className="stack">
             {(handovers.data ?? []).map((h) => (
               <Card key={h.id}>
                 <div className="row row--between">
                   <p className="card__title">{h.contractorName}</p>
-                  <Chip label={h.status === "out" ? "у подрядчика" : "возвращено"} tone={h.status === "out" ? "warn" : "ok"} />
+                  <Chip label={h.status === "out" ? "на сервисе" : "возвращено"} tone={h.status === "out" ? "warn" : "ok"} />
                 </div>
                 <p className="card__subtitle">
                   {h.reason ?? "—"} · {dateTime(h.sentAt)}{h.returnedAt ? ` → ${dateTime(h.returnedAt)}` : ""}
@@ -149,26 +149,26 @@ function SendContractorSheet({ open, unitId, onClose }: { open: boolean; unitId:
   const eff = contractorId || list[0]?.id || "";
 
   return (
-    <Sheet open={open} onClose={onClose} title="Отдать подрядчику">
+    <Sheet open={open} onClose={onClose} title="Передать в сервис">
       {list.length > 0 ? (
-        <Field label="Подрядчик">
+        <Field label="Сервис / мастерская">
           <Select value={eff} onChange={(e) => setContractorId(e.target.value)} options={list.map((c) => ({ value: c.id, label: c.name }))} />
         </Field>
       ) : (
-        <p className="card__subtitle" style={{ marginBottom: 10 }}>Подрядчиков пока нет — добавьте.</p>
+        <p className="card__subtitle" style={{ marginBottom: 10 }}>Сервисов пока нет — добавьте.</p>
       )}
       <div className="row" style={{ alignItems: "flex-end" }}>
         <div style={{ flex: 1 }}>
-          <Field label="Новый подрядчик"><Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Название" /></Field>
+          <Field label="Новый сервис"><Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Название" /></Field>
         </div>
         <Button variant="secondary" disabled={!newName || createContractor.isPending} style={{ marginBottom: 16 }}
           onClick={() => createContractor.mutate({ name: newName }, { onSuccess: () => setNewName("") })}>
           + Добавить
         </Button>
       </div>
-      <Field label="Причина (субаренда, диагностика…)"><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+      <Field label="Причина (диагностика, ремонт, проверка…)"><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
       <Button block disabled={!eff || send.isPending} onClick={() => send.mutate({ unitId, input: { contractorId: eff, reason: reason || null } }, { onSuccess: onClose })}>
-        Передать подрядчику
+        Передать в сервис
       </Button>
     </Sheet>
   );

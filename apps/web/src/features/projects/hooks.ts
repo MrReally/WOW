@@ -104,6 +104,15 @@ export function useCreateReservation() {
   });
 }
 
+export function useDeleteReservation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/reservations/${id}`),
+    meta: { successMessage: "Бронь удалена" },
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
 export function useAddTiming() {
   const qc = useQueryClient();
   return useMutation({
@@ -149,6 +158,13 @@ export function useContractorItems(projectId: string) {
     queryFn: () => api.get<Projects.ContractorItemDTO[]>(`/api/projects/${projectId}/contractor-items`),
   });
 }
+export function useContractorItemHistory(contractorId: string) {
+  return useQuery({
+    enabled: !!contractorId,
+    queryKey: ["projects", "contractor-items", "history", contractorId],
+    queryFn: () => api.get<Projects.ContractorItemDTO[]>(`/api/contractors/${contractorId}/items`),
+  });
+}
 export function useContractors() {
   return useQuery({ queryKey: ["equipment", "contractors"], queryFn: () => api.get<Equipment.ContractorDTO[]>("/api/equipment/contractors") });
 }
@@ -157,7 +173,10 @@ export function useAddContractorItem() {
   return useMutation({
     mutationFn: (input: Projects.AddContractorItemInput) => api.post<Projects.ContractorItemDTO>("/api/contractor-items", input),
     meta: { successMessage: "Позиция подрядчика добавлена" },
-    onSuccess: () => invalidateProjects(qc),
+    onSuccess: () => {
+      invalidateProjects(qc);
+      qc.invalidateQueries({ queryKey: ["projects", "contractor-items"] });
+    },
   });
 }
 export function useRemoveContractorItem() {
@@ -165,6 +184,17 @@ export function useRemoveContractorItem() {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/api/contractor-items/${id}`),
     onSuccess: () => invalidateProjects(qc),
+  });
+}
+export function useReturnContractorItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<Projects.ContractorItemDTO>(`/api/contractor-items/${id}/return`, {}),
+    meta: { successMessage: "Подрядное оборудование возвращено" },
+    onSuccess: () => {
+      invalidateProjects(qc);
+      qc.invalidateQueries({ queryKey: ["projects", "contractor-items"] });
+    },
   });
 }
 export function useCreateContractor() {

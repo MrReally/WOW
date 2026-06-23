@@ -154,6 +154,8 @@ export interface ContractorItemDTO {
   costEUR: number;
   /** Free-form spec / note. */
   note: string | null;
+  /** Null means we still need to return this rented contractor gear. */
+  returnedAt: ISODateTime | null;
   createdAt: ISODateTime;
 }
 
@@ -191,6 +193,7 @@ export interface ProjectsService {
   listReservations(projectId: ID): Promise<ReservationDTO[]>;
   createReservation(input: CreateReservationInput): Promise<ReservationDTO>;
   resolveReservation(id: ID, unitIds: ID[]): Promise<ReservationDTO>;
+  deleteReservation(id: ID): Promise<void>;
   /** Reservations overlapping [from,to] for a model — used for conflict checks. */
   findOverlapping(modelId: ID, from: ISODateTime, to: ISODateTime): Promise<ReservationDTO[]>;
 
@@ -213,7 +216,10 @@ export interface ProjectsService {
 
   // Contractor equipment (subrent)
   listContractorItems(projectId: ID): Promise<ContractorItemDTO[]>;
+  listContractorItemsByContractor(contractorId: ID): Promise<ContractorItemDTO[]>;
+  listOpenContractorItems(): Promise<ContractorItemDTO[]>;
   addContractorItem(input: AddContractorItemInput): Promise<ContractorItemDTO>;
+  returnContractorItem(id: ID): Promise<ContractorItemDTO>;
   removeContractorItem(id: ID): Promise<void>;
   /** Owed-to-contractor totals (cost × qty) grouped by contractor. */
   contractorDebts(): Promise<ContractorDebtDTO[]>;

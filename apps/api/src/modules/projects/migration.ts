@@ -76,8 +76,10 @@ CREATE TABLE IF NOT EXISTS projects.contractor_items (
   price_eur     numeric(12,2) NOT NULL DEFAULT 0,
   cost_eur      numeric(12,2) NOT NULL DEFAULT 0,
   note          text,
+  returned_at   timestamptz,
   created_at    timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS returned_at timestamptz;
 CREATE INDEX IF NOT EXISTS contractor_items_project_idx ON projects.contractor_items(project_id);
 CREATE INDEX IF NOT EXISTS contractor_items_contractor_idx ON projects.contractor_items(contractor_id);
 

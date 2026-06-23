@@ -285,6 +285,7 @@ export interface EquipmentService {
   // Contractors directory
   listContractors(): Promise<ContractorDTO[]>;
   createContractor(input: { name: string; contacts?: string | null }): Promise<ContractorDTO>;
+  updateContractor(id: ID, input: { name?: string; contacts?: string | null }): Promise<ContractorDTO>;
 
   // Repairs
   openRepair(input: OpenRepairInput): Promise<RepairDTO>;

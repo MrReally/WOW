@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useLocation, useParams, useNavigate } from "react-router-dom";
 import type { Equipment } from "@sever/contracts";
 import { Card, Button, SectionTitle, StatusBadge, Select, Input, Textarea, Loading, ErrorState } from "../../ui-kit/index.ts";
 import { unitStatusLabel, unitStatusTone, dateTime } from "../../lib/labels.ts";
@@ -38,6 +38,7 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
 export function UnitDetailPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { can } = useSession();
   const canEdit = can("warehouse.unit.status");
 
@@ -76,9 +77,23 @@ export function UnitDetailPage() {
 
   const statusOptions: Equipment.UnitStatus[] = ["in_stock", "in_repair", "at_contractor", "lost", "reserved"];
 
+  const navState = location.state as { backTo?: string; reopenReservationId?: string; selectedUnitIds?: string[] } | null;
+  const goBack = () => {
+    if (navState?.backTo) {
+      navigate(navState.backTo, {
+        state: {
+          reopenReservationId: navState.reopenReservationId,
+          selectedUnitIds: navState.selectedUnitIds,
+        },
+      });
+      return;
+    }
+    navigate(-1);
+  };
+
   return (
     <div className="stack">
-      <Button variant="ghost" onClick={() => navigate(-1)}>← Назад</Button>
+      <Button variant="ghost" onClick={goBack}>← Назад</Button>
 
       {/* Identity */}
       <Card>
