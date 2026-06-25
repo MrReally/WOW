@@ -79,6 +79,23 @@ For frictionless local `pnpm dev`, set `AUTH_DEV_BYPASS=true` to auto-login as
 the owner and skip the login screen. A local Postgres works without Docker — set
 `DATABASE_URL` and run `pnpm api:migrate && pnpm api:seed`.
 
+### Production safety
+
+Production should run with `NODE_ENV=production`, `AUTH_DEV_BYPASS=false`, and
+`SEED_ON_START=false` against the real database. Destructive data reset is
+disabled in production by default; `/api/admin/reset` only works when
+`ALLOW_DATA_RESET=true` is set explicitly, and the Settings reset block is hidden
+when reset is unavailable.
+
+After deploy, run:
+
+```bash
+pnpm smoke:prod
+```
+
+See `docs/production-readiness.md` for routing, environment, backup, and smoke
+check details before filling the live system with real data.
+
 ---
 
 ## Architecture rules (non-negotiable)

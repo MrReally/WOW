@@ -17,6 +17,13 @@ export function useCalendarFeed() {
 export function useFxRates() {
   return useQuery({ queryKey: ["finance", "fx"], queryFn: () => api.get<Finance.FxRateDTO[]>("/api/finance/fx") });
 }
+export function useResetStatus(enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: ["admin", "reset-status"],
+    queryFn: () => api.get<{ available: boolean; reason: string | null }>("/api/admin/reset-status"),
+  });
+}
 
 export function useCreateUser() {
   const qc = useQueryClient();

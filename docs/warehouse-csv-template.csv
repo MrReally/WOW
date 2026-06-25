@@ -1,0 +1,5 @@
+type,trackingMode,model,manufacturer,unitCostEUR,dailyPriceEUR,assetTag,serial,qty,cableType,lengthM,connectors
+Lighting,serial,Robe MegaPointe,Robe,6000,120,MP-010,RB-9001,,,,
+Lighting,serial,Robe MegaPointe,Robe,6000,120,MP-011,RB-9002,,,,
+Cables,quantity,DMX 5m XLR3,,12,1,,,40,DMX,5,XLR3 male/female
+Cables,quantity,PowerCON 20m,,35,2,,,20,PowerCON,20,TRUE1 in/out

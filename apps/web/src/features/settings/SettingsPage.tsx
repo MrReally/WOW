@@ -4,7 +4,7 @@ import { CURRENCIES } from "@sever/contracts";
 import { Card, Button, SectionTitle, Input, Select, Loading } from "../../ui-kit/index.ts";
 import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
-import { useFxRates, useSetFxRate, useResetData } from "./hooks.ts";
+import { useFxRates, useSetFxRate, useResetData, useResetStatus } from "./hooks.ts";
 import { PeopleManager } from "./components/PeopleManager.tsx";
 import { RoleEditor } from "./components/RoleEditor.tsx";
 
@@ -14,6 +14,8 @@ export function SettingsPage() {
   const fx = useFxRates();
   const setFx = useSetFxRate();
   const resetData = useResetData();
+  const resetStatus = useResetStatus(can("data.reset"));
+  const canResetData = can("data.reset") && resetStatus.data?.available === true;
 
   return (
     <div className="stack">
@@ -54,7 +56,7 @@ export function SettingsPage() {
         </>
       )}
 
-      {can("data.reset") && (
+      {canResetData && (
         <>
           <SectionTitle>Данные</SectionTitle>
           <Card>

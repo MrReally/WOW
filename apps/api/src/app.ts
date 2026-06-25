@@ -96,7 +96,8 @@ export async function buildApp(): Promise<BuiltApp> {
       const pathname = req.url.split("?", 1)[0] ?? req.url;
       const isApiRequest = pathname === "/api" || pathname.startsWith("/api/");
       const isHealthRequest = pathname === "/health";
-      if (req.method === "GET" && !isApiRequest && !isHealthRequest) {
+      const isCalendarRequest = pathname === "/calendar" || pathname.startsWith("/calendar/");
+      if (req.method === "GET" && !isApiRequest && !isHealthRequest && !isCalendarRequest) {
         return reply.sendFile("index.html");
       }
       return reply.status(404).send({ error: { code: "not_found", message: "not found" } });

@@ -17,7 +17,9 @@
     "api:dev": "pnpm --filter @sever/api dev",
     "api:migrate": "pnpm --filter @sever/api migrate",
     "api:seed": "pnpm --filter @sever/api seed",
-    "web:dev": "pnpm --filter @sever/web dev"
+    "web:dev": "pnpm --filter @sever/web dev",
+    "smoke": "bash scripts/smoke-check.sh",
+    "smoke:prod": "bash scripts/smoke-check.sh https://my.chvzh52.xyz"
   },
   "engines": {
     "node": ">=20"

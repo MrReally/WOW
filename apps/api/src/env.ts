@@ -18,6 +18,8 @@ export const env = {
   webDist: process.env.WEB_DIST ?? "",
   /** On boot, load demo data if the database is empty (first container run). */
   seedOnStart: bool(process.env.SEED_ON_START, false),
+  /** Destructive database reset is disabled in production unless explicitly enabled. */
+  allowDataReset: bool(process.env.ALLOW_DATA_RESET, false),
   get isProd() {
     return this.nodeEnv === "production";
   },
