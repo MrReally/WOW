@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
@@ -16,7 +16,10 @@ import { env } from "./env.js";
 // Where the built web bundle lives (apps/web/dist). Works from src (tsx) and
 // dist (compiled), and honors WEB_DIST override for Docker.
 function resolveWebDist(): string | null {
-  if (env.webDist && existsSync(env.webDist)) return env.webDist;
+  if (env.webDist) {
+    const explicit = resolve(env.webDist);
+    if (existsSync(join(explicit, "index.html"))) return explicit;
+  }
   const here = dirname(fileURLToPath(import.meta.url));
   for (const candidate of [
     join(here, "../../web/dist"),
@@ -92,14 +95,17 @@ export async function buildApp(): Promise<BuiltApp> {
     await app.register(fastifyStatic, { root: webDist, wildcard: false });
     // SPA fallback: client-side routes such as /apex must load the app shell,
     // while API and health requests keep their normal JSON/HTTP responses.
-    app.setNotFoundHandler((req, reply) => {
+    app.get("/*", (req, reply) => {
       const pathname = req.url.split("?", 1)[0] ?? req.url;
       const isApiRequest = pathname === "/api" || pathname.startsWith("/api/");
       const isHealthRequest = pathname === "/health";
       const isCalendarRequest = pathname === "/calendar" || pathname.startsWith("/calendar/");
-      if (req.method === "GET" && !isApiRequest && !isHealthRequest && !isCalendarRequest) {
+      if (!isApiRequest && !isHealthRequest && !isCalendarRequest) {
         return reply.sendFile("index.html");
       }
+      return reply.status(404).send({ error: { code: "not_found", message: "not found" } });
+    });
+    app.setNotFoundHandler((_req, reply) => {
       return reply.status(404).send({ error: { code: "not_found", message: "not found" } });
     });
     app.log.info(`[web] serving bundle from ${webDist}`);

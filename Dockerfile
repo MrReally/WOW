@@ -19,6 +19,7 @@ RUN pnpm --filter @sever/web build
 
 ENV NODE_ENV=production
 ENV PORT=4000
+ENV WEB_DIST=/app/apps/web/dist
 # The API serves apps/web/dist from the same origin.
 EXPOSE 4000
 

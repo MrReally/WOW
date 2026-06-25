@@ -33,6 +33,7 @@ services:
     environment:
       DATABASE_URL: postgres://sever:sever@db:5432/sever
       PORT: "4000"
+      WEB_DIST: /app/apps/web/dist
       # First boot loads demo data (incl. owner@sever.local / owner123).
       SEED_ON_START: "true"
       # Show the real login screen. Demo logins:
