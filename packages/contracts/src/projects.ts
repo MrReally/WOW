@@ -137,15 +137,18 @@ export interface AddAssignmentInput {
   invitedByUserId?: ID | null;
 }
 
-// ── Contractor equipment (subrent) — external gear used on a project ──────────
-// Not in our warehouse stock. Each item has a client price and our cost to the
-// contractor (source), so it feeds both the invoice and "we owe contractors".
+// ── Contractor costs — external gear/services used on a project ───────────────
+// Equipment is returnable subrent gear. Delivery/setup are service costs and do
+// not appear in contractor return tracking.
+
+export type ContractorItemKind = "equipment" | "delivery" | "setup";
 
 export interface ContractorItemDTO {
   id: ID;
   projectId: ID;
   /** Opaque id of the contractor (equipment.contractors) — the source. */
   contractorId: ID;
+  kind: ContractorItemKind;
   name: string;
   qty: number;
   /** Price charged to the client, per unit. */
@@ -162,6 +165,7 @@ export interface ContractorItemDTO {
 export interface AddContractorItemInput {
   projectId: ID;
   contractorId: ID;
+  kind?: ContractorItemKind;
   name: string;
   qty: number;
   priceEUR: number;

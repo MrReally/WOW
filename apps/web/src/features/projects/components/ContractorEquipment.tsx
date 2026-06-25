@@ -3,6 +3,8 @@ import { Card, Button, Field, Input, Select, EmptyState } from "../../../ui-kit/
 import { useI18n } from "../../../app/i18n.tsx";
 import { useContractorItems, useContractors, useContractorItemHistory, useAddContractorItem, useRemoveContractorItem, useReturnContractorItem, useCreateContractor } from "../hooks.ts";
 
+const ITEM_KINDS: ("equipment" | "delivery" | "setup")[] = ["equipment", "delivery", "setup"];
+
 // Subrent gear on a project: external equipment that isn't in our warehouse.
 // Each item has a client price and our cost to the contractor (source).
 export function ContractorEquipment({ projectId, canManage }: { projectId: string; canManage: boolean }) {
@@ -15,6 +17,7 @@ export function ContractorEquipment({ projectId, canManage }: { projectId: strin
   const createContractor = useCreateContractor();
 
   const [contractorId, setContractorId] = useState("");
+  const [kind, setKind] = useState<"equipment" | "delivery" | "setup">("equipment");
   const [name, setName] = useState("");
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("");
@@ -33,19 +36,23 @@ export function ContractorEquipment({ projectId, canManage }: { projectId: strin
   const clientTotal = priceNum * qtyNum;
   const costTotal = costNum * qtyNum;
   const marginTotal = clientTotal - costTotal;
+  const kindName = (value: typeof kind) =>
+    value === "delivery" ? t("contractors.kindDelivery") : value === "setup" ? t("contractors.kindSetup") : t("contractors.kindEquipment");
+  const itemName = name.trim() || (kind === "delivery" || kind === "setup" ? kindName(kind) : "");
 
   const submit = () =>
     add.mutate(
       {
         projectId,
         contractorId: sel,
-        name,
+        kind,
+        name: itemName,
         qty: Number(qty) || 1,
         priceEUR: priceNum,
         costEUR: costNum,
         note: note.trim() || null,
       },
-      { onSuccess: () => { setName(""); setPrice(""); setCost(""); setNote(""); } }
+      { onSuccess: () => { setKind("equipment"); setName(""); setQty("1"); setPrice(""); setCost(""); setNote(""); } }
     );
   const submitContractor = () =>
     createContractor.mutate(
@@ -70,18 +77,18 @@ export function ContractorEquipment({ projectId, canManage }: { projectId: strin
               <p className="card__title">{it.name} × {it.qty}</p>
               {canManage && (
                 <div className="row" style={{ gap: 6 }}>
-                  {!it.returnedAt && <Button variant="secondary" onClick={() => markReturned.mutate(it.id)}>{t("contractors.return")}</Button>}
+                  {it.kind === "equipment" && !it.returnedAt && <Button variant="secondary" onClick={() => markReturned.mutate(it.id)}>{t("contractors.return")}</Button>}
                   <Button variant="ghost" onClick={() => remove.mutate(it.id)}>{t("common.close")}</Button>
                 </div>
               )}
             </div>
             <p className="card__subtitle" style={{ marginTop: 2 }}>
-              {contractorName(it.contractorId)} · {t("contractors.clientPrice")} {eur(it.priceEUR * it.qty)} · {t("common.cost")} {eur(it.costEUR * it.qty)}
+              {kindName(it.kind)} · {contractorName(it.contractorId)} · {t("contractors.clientPrice")} {eur(it.priceEUR * it.qty)} · {t("common.cost")} {eur(it.costEUR * it.qty)}
               {" · "}{t("common.margin")} {eur((it.priceEUR - it.costEUR) * it.qty)}
               {it.note ? ` · ${it.note}` : ""}
             </p>
             <p className="card__subtitle" style={{ marginTop: 2 }}>
-              {it.returnedAt ? `${t("common.returned")} ${dateTime(it.returnedAt)}` : t("contractors.returnDue")}
+              {it.kind !== "equipment" ? t("contractors.noReturnNeeded") : it.returnedAt ? `${t("common.returned")} ${dateTime(it.returnedAt)}` : t("contractors.returnDue")}
             </p>
             <p className="card__subtitle" style={{ marginTop: 2 }}>
               {t("contractors.clientPrice")} / unit {eur(it.priceEUR)} · {t("common.cost")} / unit {eur(it.costEUR)}
@@ -113,9 +120,20 @@ export function ContractorEquipment({ projectId, canManage }: { projectId: strin
           >
             {t("contractors.add")}
           </Button>
-          <Field label={t("common.name")}><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Moving head X" /></Field>
+          <Field label={t("common.type")}>
+            <Select
+              value={kind}
+              onChange={(e) => {
+                const next = e.target.value as "equipment" | "delivery" | "setup";
+                setKind(next);
+                if (next !== "equipment") setQty("1");
+              }}
+              options={ITEM_KINDS.map((value) => ({ value, label: kindName(value) }))}
+            />
+          </Field>
+          <Field label={t("common.name")}><Input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "equipment" ? "Moving head X" : kindName(kind)} /></Field>
           <div className="row">
-            <Field label="Кол-во"><Input type="number" value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
+            <Field label="Кол-во"><Input type="number" value={qty} onChange={(e) => setQty(e.target.value)} disabled={kind !== "equipment"} /></Field>
             <Field label={`${t("contractors.clientPrice")}, €`}><Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} /></Field>
             <Field label={`${t("common.cost")}, €`}><Input type="number" value={cost} onChange={(e) => setCost(e.target.value)} /></Field>
           </div>
@@ -123,7 +141,7 @@ export function ContractorEquipment({ projectId, canManage }: { projectId: strin
           <p className="card__subtitle" style={{ margin: "4px 0 8px" }}>
             {t("common.total")}: {t("contractors.clientPrice")} {eur(clientTotal)} · {t("contractors.vendorCost")} {eur(costTotal)} · {t("common.margin")} {eur(marginTotal)}
           </p>
-          <Button block disabled={!sel || !name || add.isPending} onClick={submit}>{t("common.add")}</Button>
+          <Button block disabled={!sel || !itemName || add.isPending} onClick={submit}>{t("common.add")}</Button>
           {(history.data ?? []).length > 0 && (
             <div style={{ marginTop: 12 }}>
               <p className="card__title">{t("contractors.prices")}</p>
@@ -132,7 +150,7 @@ export function ContractorEquipment({ projectId, canManage }: { projectId: strin
                   <div key={h.id} className="lrow" style={{ paddingLeft: 0, paddingRight: 0 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="lrow__title">{h.name} × {h.qty}</div>
-                      <div className="lrow__detail">{h.note || t("common.noNote")}</div>
+                      <div className="lrow__detail">{kindName(h.kind)} · {h.note || t("common.noNote")}</div>
                     </div>
                     <span className="card__subtitle" style={{ textAlign: "right" }}>
                       {t("contractors.clientPrice")} {eur(h.priceEUR * h.qty)}<br />

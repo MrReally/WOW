@@ -58,12 +58,14 @@ export function createBillingService(deps: BillingDeps): BillingService {
           costEUR: 0,
         };
       });
-      // Contractor (subrent) gear — billed at client price, with our cost.
+      const contractorKindDetail = (it: { kind: string; note: string | null }) =>
+        [it.kind === "delivery" ? "delivery" : it.kind === "setup" ? "setup" : "subrent", it.note].filter(Boolean).join(" · ");
+      // Contractor gear/services — billed at client price, with our cost.
       const contractorLines: Finance.InvoiceLineDTO[] = contractorItems.map((it) => ({
         refId: it.id,
         section: `Vendor: ${contractorName.get(it.contractorId) ?? "—"}`,
         label: it.name,
-        detail: it.note || "subrent",
+        detail: contractorKindDetail(it),
         qty: it.qty,
         unitEUR: it.priceEUR,
         periods: 1,

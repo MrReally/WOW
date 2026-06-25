@@ -222,14 +222,20 @@ export function ContractorsPage() {
 function ContractorItemCard({ item, projectName, action }: { item: Projects.ContractorItemDTO; projectName: string; action?: ReactNode }) {
   const { t, eur, dateTime } = useI18n();
   const margin = totalClient(item) - totalCost(item);
+  const kindLabel =
+    item.kind === "delivery" ? t("contractors.kindDelivery") : item.kind === "setup" ? t("contractors.kindSetup") : t("contractors.kindEquipment");
   return (
     <Card>
       <div className="row row--between">
         <div style={{ minWidth: 0 }}>
           <p className="card__title">{item.name} × {item.qty}</p>
-          <p className="card__subtitle">{projectName} · {item.note || t("common.noNote")}</p>
+          <p className="card__subtitle">{kindLabel} · {projectName} · {item.note || t("common.noNote")}</p>
         </div>
-        {action ?? <StatusBadge tone={item.returnedAt ? "ok" : "warn"}>{item.returnedAt ? t("common.returned") : t("contractors.atUs")}</StatusBadge>}
+        {action ?? (
+          item.kind === "equipment"
+            ? <StatusBadge tone={item.returnedAt ? "ok" : "warn"}>{item.returnedAt ? t("common.returned") : t("contractors.atUs")}</StatusBadge>
+            : <StatusBadge tone="ok">{t("contractors.service")}</StatusBadge>
+        )}
       </div>
       <p className="card__subtitle" style={{ marginTop: 8 }}>
         {t("contractors.clientPrice")} {eur(totalClient(item))} · {t("contractors.vendorCost")} {eur(totalCost(item))} · {t("common.margin")} {eur(margin)}

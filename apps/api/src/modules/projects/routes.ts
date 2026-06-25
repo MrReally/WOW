@@ -43,6 +43,7 @@ const timingAssigneesSchema = z.object({ userIds: z.array(z.string().uuid()) });
 const contractorItemSchema = z.object({
   projectId: z.string().uuid(),
   contractorId: z.string().uuid(),
+  kind: z.enum(["equipment", "delivery", "setup"]).optional(),
   name: z.string().min(1),
   qty: z.number().int().positive(),
   priceEUR: z.number().nonnegative(),

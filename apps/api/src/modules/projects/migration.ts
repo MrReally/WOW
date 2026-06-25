@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS projects.contractor_items (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id    uuid NOT NULL REFERENCES projects.projects(id),
   contractor_id uuid NOT NULL,         -- opaque equipment.contractors id
+  kind          text NOT NULL DEFAULT 'equipment' CHECK (kind IN ('equipment','delivery','setup')),
   name          text NOT NULL,
   qty           integer NOT NULL DEFAULT 1 CHECK (qty > 0),
   price_eur     numeric(12,2) NOT NULL DEFAULT 0,
@@ -80,6 +81,9 @@ CREATE TABLE IF NOT EXISTS projects.contractor_items (
   created_at    timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS returned_at timestamptz;
+ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'equipment';
+ALTER TABLE projects.contractor_items DROP CONSTRAINT IF EXISTS contractor_items_kind_check;
+ALTER TABLE projects.contractor_items ADD CONSTRAINT contractor_items_kind_check CHECK (kind IN ('equipment','delivery','setup'));
 CREATE INDEX IF NOT EXISTS contractor_items_project_idx ON projects.contractor_items(project_id);
 CREATE INDEX IF NOT EXISTS contractor_items_contractor_idx ON projects.contractor_items(contractor_id);
 

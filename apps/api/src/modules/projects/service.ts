@@ -58,6 +58,7 @@ interface ContractorItemRow {
   id: string;
   project_id: string;
   contractor_id: string;
+  kind: Projects.ContractorItemKind;
   name: string;
   qty: number;
   price_eur: string;
@@ -127,6 +128,7 @@ const contractorItemDTO = (r: ContractorItemRow): Projects.ContractorItemDTO => 
   id: r.id,
   projectId: r.project_id,
   contractorId: r.contractor_id,
+  kind: r.kind,
   name: r.name,
   qty: r.qty,
   priceEUR: Number(r.price_eur),
@@ -457,16 +459,26 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
     async listOpenContractorItems() {
       const rows = await query<ContractorItemRow>(
         db,
-        `SELECT * FROM projects.contractor_items WHERE returned_at IS NULL ORDER BY created_at DESC`
+        `SELECT * FROM projects.contractor_items WHERE kind='equipment' AND returned_at IS NULL ORDER BY created_at DESC`
       );
       return rows.map(contractorItemDTO);
     },
     async addContractorItem(input) {
       const row = await one<ContractorItemRow>(
         db,
-        `INSERT INTO projects.contractor_items (project_id, contractor_id, name, qty, price_eur, cost_eur, note)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [input.projectId, input.contractorId, input.name, input.qty, input.priceEUR, input.costEUR, input.note ?? null]
+        `INSERT INTO projects.contractor_items (project_id, contractor_id, kind, name, qty, price_eur, cost_eur, note, returned_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [
+          input.projectId,
+          input.contractorId,
+          input.kind ?? "equipment",
+          input.name,
+          input.qty,
+          input.priceEUR,
+          input.costEUR,
+          input.note ?? null,
+          null,
+        ]
       );
       return contractorItemDTO(row!);
     },

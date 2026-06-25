@@ -176,6 +176,7 @@ export function useAddContractorItem() {
     onSuccess: () => {
       invalidateProjects(qc);
       qc.invalidateQueries({ queryKey: ["projects", "contractor-items"] });
+      qc.invalidateQueries({ queryKey: ["projects", "contractor-debts"] });
     },
   });
 }
@@ -183,7 +184,11 @@ export function useRemoveContractorItem() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete(`/api/contractor-items/${id}`),
-    onSuccess: () => invalidateProjects(qc),
+    onSuccess: () => {
+      invalidateProjects(qc);
+      qc.invalidateQueries({ queryKey: ["projects", "contractor-items"] });
+      qc.invalidateQueries({ queryKey: ["projects", "contractor-debts"] });
+    },
   });
 }
 export function useReturnContractorItem() {
