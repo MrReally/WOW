@@ -7,6 +7,7 @@ import type { Glyph, Tone } from "../ui-kit/index.ts";
 export interface Workspace {
   id: string;
   name: string;
+  shortcut: string;
   glyph: Glyph;
   tone: Tone;
   route: string;
@@ -15,13 +16,13 @@ export interface Workspace {
 }
 
 export const WORKSPACES: Workspace[] = [
-  { id: "apex", name: "Apex", glyph: "radar", tone: "info", route: "/apex", requires: ["apex.view"], sub: "Управление · прокаты · проблемы · долги" },
-  { id: "ops", name: "Operations", glyph: "pin", tone: "warn", route: "/operations", requires: ["operations.view"], sub: "Бригада · мои проекты · выдача/возврат" },
-  { id: "wh", name: "Warehouse", glyph: "box", tone: "warn", route: "/warehouse", requires: ["warehouse.view"], sub: "Каталог · склад · кабели" },
-  { id: "plan", name: "Planning", glyph: "rows", tone: "purple", route: "/projects", requires: ["projects.view"], sub: "Проекты · брони · команда" },
-  { id: "ctr", name: "Contractors", glyph: "person", tone: "info", route: "/contractors", requires: ["projects.reservation.manage", "finance.view"], sub: "Подрядчики · цены · возвраты" },
-  { id: "fin", name: "Finance", glyph: "coin", tone: "ok", route: "/finance", requires: ["finance.view"], sub: "Счета · долги · окупаемость" },
-  { id: "adm", name: "Admin", glyph: "shield", tone: "alert", route: "/settings", requires: ["people.view", "people.manage", "roles.manage"], sub: "Люди · роли · права · курсы" },
+  { id: "apex", name: "Apex", shortcut: "A", glyph: "radar", tone: "info", route: "/apex", requires: ["apex.view"], sub: "Управление · прокаты · проблемы · долги" },
+  { id: "ops", name: "Operations", shortcut: "O", glyph: "pin", tone: "warn", route: "/operations", requires: ["operations.view"], sub: "Бригада · мои проекты · выдача/возврат" },
+  { id: "wh", name: "Warehouse", shortcut: "W", glyph: "box", tone: "warn", route: "/warehouse", requires: ["warehouse.view"], sub: "Каталог · склад · кабели" },
+  { id: "plan", name: "Planning", shortcut: "P", glyph: "rows", tone: "purple", route: "/projects", requires: ["projects.view"], sub: "Проекты · брони · команда" },
+  { id: "ctr", name: "Contractors", shortcut: "C", glyph: "person", tone: "info", route: "/contractors", requires: ["projects.reservation.manage", "finance.view"], sub: "Подрядчики · цены · возвраты" },
+  { id: "fin", name: "Finance", shortcut: "F", glyph: "coin", tone: "ok", route: "/finance", requires: ["finance.view"], sub: "Счета · долги · окупаемость" },
+  { id: "adm", name: "Settings", shortcut: "S", glyph: "shield", tone: "alert", route: "/settings", requires: ["people.view", "people.manage", "roles.manage"], sub: "Люди · роли · права · курсы" },
 ];
 
 export const WORKSPACE_COPY: Record<string, Record<"ru" | "en" | "sr", { name: string; sub: string }>> = {
@@ -56,9 +57,9 @@ export const WORKSPACE_COPY: Record<string, Record<"ru" | "en" | "sr", { name: s
     sr: { name: "Finance", sub: "Računi · dugovi · marža" },
   },
   adm: {
-    ru: { name: "Admin", sub: "Люди · роли · права · курсы" },
-    en: { name: "Admin", sub: "People · roles · access · FX" },
-    sr: { name: "Admin", sub: "Ljudi · uloge · prava · kurs" },
+    ru: { name: "Settings", sub: "Люди · роли · права · курсы" },
+    en: { name: "Settings", sub: "People · roles · access · FX" },
+    sr: { name: "Settings", sub: "Ljudi · uloge · prava · kurs" },
   },
 };
 

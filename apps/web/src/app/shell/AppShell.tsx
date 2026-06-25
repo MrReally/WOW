@@ -9,6 +9,12 @@ import { WorkspaceSwitcher } from "./WorkspaceSwitcher.tsx";
 import { NotificationsBell } from "../../features/notifications/NotificationsBell.tsx";
 import "./shell.css";
 
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  return target.isContentEditable || tag === "input" || tag === "textarea" || tag === "select";
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, can } = useSession();
   const location = useLocation();
@@ -24,6 +30,20 @@ export function AppShell({ children }: { children: ReactNode }) {
   // native back button.
   const isDetail = location.pathname !== ws.route;
   useEffect(() => platform.backButton(isDetail, () => navigate(-1)), [isDetail, navigate]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.repeat || isTypingTarget(event.target)) return;
+      const key = event.key.toUpperCase();
+      const target = workspacesFor(can).find((workspace) => workspace.shortcut === key);
+      if (!target || location.pathname === target.route) return;
+      event.preventDefault();
+      setSwitcherOpen(false);
+      navigate(target.route);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [can, location.pathname, navigate]);
 
   return (
     <div className="app-shell">
