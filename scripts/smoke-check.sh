@@ -37,7 +37,7 @@ check_header_contains() {
   local expected_status="$2"
   local needle="$3"
   local headers
-  headers="$(curl -sS -I "$BASE_URL$path")"
+  headers="$(curl -sS -D - -o /tmp/sever-smoke-body "$BASE_URL$path")"
   echo "$headers" | grep -qi "HTTP/.* $expected_status" || fail "$path did not return HTTP $expected_status"
   echo "$headers" | grep -qi "$needle" || fail "$path headers did not include $needle"
 }
