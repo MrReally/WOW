@@ -4,6 +4,7 @@ import { useI18n } from "../../app/i18n.tsx";
 import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreateAccount, usePeopleNames, useContractorDebts, useContractorsList } from "./hooks.ts";
 import { AddTransactionSheet } from "./components/AddTransactionSheet.tsx";
 import { useSession } from "../../app/session.ts";
+import { toast } from "../../lib/toastBus.ts";
 
 const categoryLabel: Record<string, string> = {
   rental_revenue: "Выручка",
@@ -43,11 +44,24 @@ export function FinancePage() {
 
   return (
     <div className="stack">
-      {canManage && (
-        <div className="row">
-          <Button block onClick={() => setTxOpen(true)} disabled={(accounts.data ?? []).length === 0}>
-            + Транзакция
-          </Button>
+      <div className="row">
+        <Button
+          block
+          onClick={() => {
+            if (!canManage) {
+              toast("error", "Недостаточно прав для создания транзакций.");
+              return;
+            }
+            if ((accounts.data ?? []).length === 0) {
+              toast("error", "Сначала создайте счёт, куда будет записана транзакция.");
+              return;
+            }
+            setTxOpen(true);
+          }}
+        >
+          + Транзакция
+        </Button>
+        {canManage && (
           <Button
             variant="secondary"
             onClick={() => {
@@ -57,8 +71,8 @@ export function FinancePage() {
           >
             + Счёт
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       <SectionTitle>{t("finance.accounts")}</SectionTitle>
       {(accounts.data ?? []).length === 0 ? (
@@ -141,6 +155,7 @@ export function FinancePage() {
         accounts={accounts.data ?? []}
         projects={projects.data ?? []}
         currentUserId={user?.id ?? null}
+        canManage={canManage}
       />
     </div>
   );
