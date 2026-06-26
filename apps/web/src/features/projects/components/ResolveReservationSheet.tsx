@@ -75,9 +75,10 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
                   {u.serial && <p className="card__subtitle">S/N {u.serial}</p>}
                 </div>
                 <div className="row">
-                  <Button
-                    variant="ghost"
-                    style={{ height: 34, padding: "0 8px" }}
+                  <button
+                    className="icon-btn"
+                    aria-label="Открыть карточку единицы"
+                    title="Открыть"
                     onClick={(e) => {
                       e.stopPropagation();
                       navigate(`/warehouse/units/${u.id}`, {
@@ -89,8 +90,8 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
                       });
                     }}
                   >
-                    Открыть
-                  </Button>
+                    ↗
+                  </button>
                   {selected.has(u.id) ? <Chip label="ВЫБРАНО" tone="accent" /> : <Chip label="СВОБОДНО" tone="ok" />}
                 </div>
               </div>

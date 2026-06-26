@@ -142,8 +142,11 @@ export function createModules(bus: EventBus = new EventBus()) {
   });
 
   // ── Invitations: deliver an accept/decline message to the invited person ──
-  const fmtDateTime = (iso: string) =>
-    new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const padDatePart = (n: number) => String(n).padStart(2, "0");
+  const fmtDateTime = (iso: string) => {
+    const d = new Date(iso);
+    return `${padDatePart(d.getDate())}/${padDatePart(d.getMonth() + 1)}/${d.getFullYear()} ${padDatePart(d.getHours())}:${padDatePart(d.getMinutes())}`;
+  };
 
   bus.on("project.invited", async (e) => {
     const [project, user, assignment] = await Promise.all([

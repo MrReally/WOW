@@ -40,7 +40,7 @@ const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "o
 };
 
 type ProjectTab = "overview" | "reservations" | "timing" | "team" | "contractors" | "finance";
-type ProjectTabIcon = ProjectTab | "plan" | "invoice" | "back";
+type ProjectTabIcon = ProjectTab | "plan" | "invoice" | "back" | "close";
 
 const PROJECT_TABS: { id: ProjectTab; label: string; shortLabel: string; count?: "reservations" | "timing" | "team" | "contractors"; tone?: "accent" | "warn" | "info" | "ok" }[] = [
   { id: "overview", label: "Обзор", shortLabel: "Обзор", tone: "accent" },
@@ -128,10 +128,19 @@ export function ProjectDetailPage() {
     setSearchParams(next);
   };
   const reservationCount = (reservations.data ?? []).length;
+  const reservedUnitCount = (reservations.data ?? []).reduce((sum, r) => {
+    const model = (models.data ?? []).find((m) => m.id === r.modelId);
+    return model?.trackingMode === "quantity" ? sum : sum + r.qty;
+  }, 0);
   const timingCount = (timings.data ?? []).length;
   const teamCount = (assignments.data ?? []).length;
   const contractorCost = invoice.data?.contractorCostEUR ?? 0;
-  const contractorCount = invoice.data?.rentalLines.filter((line) => line.section.startsWith("Vendor:")).length ?? 0;
+  const projectPayableCost = (invoice.data?.contractorCostEUR ?? 0) + (invoice.data?.laborEUR ?? 0);
+  const contractorCount = new Set(
+    (invoice.data?.rentalLines ?? [])
+      .filter((line) => line.section.startsWith("Vendor:"))
+      .map((line) => line.section)
+  ).size;
   const tabCount = (kind?: "reservations" | "timing" | "team" | "contractors") => {
     if (kind === "reservations") return reservationCount;
     if (kind === "timing") return timingCount;
@@ -182,18 +191,12 @@ export function ProjectDetailPage() {
           <Card>
             <p className="card__title">Сводка проекта</p>
             <div className="project-stat-grid">
-              <FinanceTile icon="reservations" label="Брони" value={String(reservationCount)} />
-              <FinanceTile icon="timing" label="Тайминг" value={String(timingCount)} />
-              {canViewPeople && <FinanceTile icon="team" label="Команда" value={String(teamCount)} />}
-              <FinanceTile icon="contractors" label={t("finance.payables")} value={eur(contractorCost)} tone={contractorCost > 0 ? "var(--warn)" : "var(--ok)"} />
+              <FinanceTile icon="reservations" label="Брони" value={String(reservedUnitCount)} onClick={() => setActiveTab("reservations")} />
+              <FinanceTile icon="timing" label="События" value={String(timingCount)} onClick={() => setActiveTab("timing")} />
+              {canViewPeople && <FinanceTile icon="team" label="Команда" value={String(teamCount)} onClick={() => setActiveTab("team")} />}
+              <FinanceTile icon="contractors" label="Подряд" value={String(contractorCount)} tone={contractorCost > 0 ? "var(--warn)" : "var(--text)"} onClick={() => setActiveTab("contractors")} />
             </div>
           </Card>
-          <div className="project-action-grid">
-            <ProjectActionButton icon="reservations" label="Брони" meta={`${reservationCount}`} onClick={() => setActiveTab("reservations")} />
-            <ProjectActionButton icon="timing" label="Тайминг" meta={`${timingCount}`} onClick={() => setActiveTab("timing")} />
-            {canViewPeople && <ProjectActionButton icon="team" label="Команда" meta={`${teamCount}`} onClick={() => setActiveTab("team")} />}
-            {(canReserve || contractorCost > 0) && <ProjectActionButton icon="contractors" label="Подряд" meta={contractorCost > 0 ? eur(contractorCost) : `${contractorCount}`} onClick={() => setActiveTab("contractors")} />}
-          </div>
           {canPlans && (
             <ProjectActionButton icon="plan" label="План сцены" meta="схема" onClick={() => navigate(`/projects/${p.id}/plan`)} wide />
           )}
@@ -242,7 +245,7 @@ export function ProjectDetailPage() {
                   <div className="row" style={{ marginTop: 10 }}>
                     {canReserve && (
                       <Button variant="secondary" block disabled={issued} onClick={() => setResolving(r)}>
-                        {resolved ? "Изменить состав" : "Распределить"}
+                        {resolved ? "Изменить" : "Распределить"}
                       </Button>
                     )}
                     {resolved && canIssue &&
@@ -260,13 +263,15 @@ export function ProjectDetailPage() {
                         </Button>
                       ))}
                     {canReserve && (
-                      <Button
-                        variant="ghost"
+                      <button
+                        className="icon-btn icon-btn--danger"
+                        aria-label="Удалить бронь"
+                        title="Удалить"
                         disabled={deleteReservation.isPending || issuedCount > 0}
                         onClick={() => confirm("Удалить эту бронь?") && deleteReservation.mutate(r.id)}
                       >
-                        Удалить
-                      </Button>
+                        <ProjectGlyph type="close" />
+                      </button>
                     )}
                   </div>
                 )}
@@ -337,7 +342,9 @@ export function ProjectDetailPage() {
                   <p className="card__title">{t.title}</p>
                   <p className="card__subtitle">{dateTime(t.startsAt)} – {dateTime(t.endsAt)}</p>
                 </div>
-                <Button variant="ghost" onClick={() => deleteTiming.mutate(t.id)}>Удалить</Button>
+                <button className="icon-btn icon-btn--danger" aria-label="Удалить тайминг" title="Удалить" onClick={() => deleteTiming.mutate(t.id)}>
+                  <ProjectGlyph type="close" />
+                </button>
               </div>
               <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                 {t.assigneeIds.length === 0 && <span className="card__subtitle">Никого не назначено</span>}
@@ -467,12 +474,9 @@ export function ProjectDetailPage() {
                 Добавить
               </Button>
               <Button block disabled={addAssignment.isPending} onClick={() => submit(true)}>
-                Пригласить в Telegram
+                TG
               </Button>
             </div>
-            <p className="card__subtitle" style={{ marginTop: 8 }}>
-              «Пригласить» отправит человеку в Telegram дату, роль и ставку — он примет или откажется прямо в чате.
-            </p>
           </Card>
         );
       })()}
@@ -513,14 +517,14 @@ export function ProjectDetailPage() {
                 <FinanceTile
                   icon="contractors"
                   label={t("finance.payables")}
-                  value={eur(inv.contractorCostEUR)}
-                  tone={inv.contractorCostEUR > 0 ? "var(--warn)" : "var(--ok)"}
+                  value={eur(inv.contractorCostEUR + inv.laborEUR)}
+                  tone={inv.contractorCostEUR + inv.laborEUR > 0 ? "var(--warn)" : "var(--ok)"}
                 />
                 <FinanceTile icon="invoice" label={t("finance.revenue")} value={eur(inv.invoiceEUR)} />
                 <FinanceTile icon="overview" label={t("finance.net")} value={eur(inv.profitEUR)} tone={inv.profitEUR >= 0 ? "var(--ok)" : "var(--alert)"} />
               </div>
               <p className="card__subtitle" style={{ marginTop: 8 }}>
-                {t("finance.clientDebt")} — по смете и оплатам. {t("finance.payables")} — по себестоимости субаренды.
+                {t("finance.clientDebt")} — по смете и оплатам.
               </p>
             </Card>
             <Card>
@@ -562,7 +566,7 @@ export function ProjectDetailPage() {
             </Card>
 
             <Button block variant="secondary" onClick={() => navigate(`/projects/${p.id}/invoice`)}>
-              📄 Сформировать счёт (с правкой цен)
+              Счёт
             </Button>
           </>
         );
@@ -602,14 +606,26 @@ export function ProjectDetailPage() {
   );
 }
 
-function FinanceTile({ icon, label, value, tone = "var(--text)" }: { icon: ProjectTabIcon; label: string; value: string; tone?: string }) {
-  return (
-    <div className="project-stat-tile">
+function FinanceTile({ icon, label, value, tone = "var(--text)", onClick }: { icon: ProjectTabIcon; label: string; value: string; tone?: string; onClick?: () => void }) {
+  const content = (
+    <>
       <span className="project-stat-tile__icon"><ProjectGlyph type={icon} /></span>
       <div style={{ minWidth: 0 }}>
         <div className="card__subtitle">{label}</div>
         <div className="card__title" style={{ color: tone, marginTop: 2 }}>{value}</div>
       </div>
+    </>
+  );
+  if (onClick) {
+    return (
+      <button className="project-stat-tile project-stat-tile--button" onClick={onClick} type="button">
+        {content}
+      </button>
+    );
+  }
+  return (
+    <div className="project-stat-tile">
+      {content}
     </div>
   );
 }
@@ -653,6 +669,8 @@ function ProjectGlyph({ type }: { type: ProjectTabIcon }) {
       return <svg viewBox="0 0 24 24"><path d="M4.5 18.5h15M6 16l4-8 3 5 2-3 3 6" {...p} /><circle cx="10" cy="8" r="1.3" fill="currentColor" stroke="none" /></svg>;
     case "invoice":
       return <svg viewBox="0 0 24 24"><path d="M7 4.5h8l3 3v12H7z" {...p} /><path d="M15 4.5v3h3M9.5 12h5M9.5 15.5h5" {...p} /></svg>;
+    case "close":
+      return <svg viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" {...p} /></svg>;
     default:
       return null;
   }

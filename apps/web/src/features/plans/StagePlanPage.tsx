@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { Plans } from "@sever/contracts";
 import { PLAN_LAYERS } from "@sever/contracts";
@@ -68,6 +68,30 @@ export function StagePlanPage() {
       next.has(l) ? next.delete(l) : next.add(l);
       return next;
     });
+  const confirmDeleteSelected = () => {
+    if (!selected || deleteElement.isPending) return;
+    if (confirm(`Удалить «${selected.label || "элемент"}» из плана сцены?`)) {
+      deleteElement.mutate(selected.id);
+      setSelectedId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!canManage || !selected) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName.toLowerCase();
+        if (target.isContentEditable || tag === "input" || tag === "textarea" || tag === "select") return;
+      }
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        confirmDeleteSelected();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [canManage, selected?.id, selected?.label, deleteElement.isPending]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
@@ -154,7 +178,7 @@ export function StagePlanPage() {
             <Card style={{ marginTop: 12 }}>
               <div className="row row--between" style={{ marginBottom: 8 }}>
                 <Chip label={LAYER_LABEL[selected.layer]} tone="neutral" />
-                <Button variant="danger" onClick={() => { deleteElement.mutate(selected.id); setSelectedId(null); }}>
+                <Button variant="danger" onClick={confirmDeleteSelected}>
                   Удалить
                 </Button>
               </div>
@@ -227,7 +251,6 @@ export function StagePlanPage() {
                   >
                     + Поставить на сцену
                   </Button>
-                  <p className="card__subtitle" style={{ marginTop: 8 }}>Перетаскивай приборы по сцене, чтобы расставить их.</p>
                 </>
               ) : devices.length < 2 ? (
                 <p className="card__subtitle">Сначала добавьте минимум два прибора — кабель соединяет их.</p>

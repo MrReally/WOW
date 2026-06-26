@@ -145,7 +145,7 @@ export function InvoicePage() {
     });
 
   if (mode === "preview") {
-    const displayDate = dateStr.slice(5).replace("-", ".");
+    const displayDate = dateStr.split("-").reverse().join("/");
     const labels = DOC_LABELS[lang];
     const canConvert = fxRateToEUR !== null;
     const printOrOpen = () => {
@@ -159,7 +159,9 @@ export function InvoicePage() {
     return (
       <div className="stack">
         <div className="row no-print">
-          <Button variant="ghost" onClick={() => setMode("edit")}>← Редактировать</Button>
+          <button className="icon-btn" onClick={() => setMode("edit")} aria-label="Редактировать счёт" title="Редактировать">
+            ✎
+          </button>
           <Select value={lang} onChange={(e) => setLang(e.target.value as InvoiceLang)} options={[{ value: "EN", label: "EN" }, { value: "RU", label: "RU" }, { value: "RS", label: "RS" }]} />
           <Select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)} options={[{ value: "EUR", label: "EUR" }, { value: "RSD", label: "RSD" }, { value: "RUB", label: "RUB" }]} />
           <Button onClick={printOrOpen}>Печать / PDF</Button>

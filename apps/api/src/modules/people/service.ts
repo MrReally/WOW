@@ -28,6 +28,10 @@ interface UserRow {
   hourly_rate_eur: string | null;
   calendar_token: string | null;
   is_system: boolean;
+  document_number: string | null;
+  languages: string | null;
+  photo_url: string | null;
+  birth_date: Date | string | null;
   active: boolean;
   created_at: Date;
 }
@@ -49,6 +53,10 @@ const userDTO = (r: UserRow): People.UserDTO => ({
   roleName: r.role_name ?? "—",
   hourlyRateEUR: r.hourly_rate_eur === null ? null : Number(r.hourly_rate_eur),
   isSystem: r.is_system,
+  documentNumber: r.document_number,
+  languages: r.languages,
+  photoUrl: r.photo_url,
+  birthDate: r.birth_date ? (typeof r.birth_date === "string" ? r.birth_date : r.birth_date.toISOString().slice(0, 10)) : null,
   active: r.active,
   mustChangePassword: r.must_change_password,
   hasPassword: r.password_hash !== null,
@@ -278,8 +286,9 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
       const temp = input.email ? temporaryPassword() : null;
       const row = await one<UserRow>(
         db,
-        `INSERT INTO people.users (email, telegram_id, display_name, role_id, hourly_rate_eur, password_hash, must_change_password)
-         VALUES (lower($1), $2, $3, $4, $5, $6, $7) RETURNING id`,
+        `INSERT INTO people.users
+           (email, telegram_id, display_name, role_id, hourly_rate_eur, password_hash, must_change_password, document_number, languages, photo_url, birth_date)
+         VALUES (lower($1), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
         [
           input.email ?? null,
           input.telegramId ?? null,
@@ -288,6 +297,10 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
           input.hourlyRateEUR ?? null,
           temp ? hashPassword(temp) : null,
           temp !== null,
+          input.documentNumber ?? null,
+          input.languages ?? null,
+          input.photoUrl ?? null,
+          input.birthDate ?? null,
         ]
       );
       const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [row!.id]);
@@ -306,7 +319,11 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
            email           = $4,
            telegram_id     = $5,
            hourly_rate_eur = $6,
-           active          = COALESCE($7, active)
+           active          = COALESCE($7, active),
+           document_number = $8,
+           languages       = $9,
+           photo_url       = $10,
+           birth_date      = $11
          WHERE id=$1 RETURNING id`,
         [
           id,
@@ -316,6 +333,10 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
           input.telegramId === undefined ? existing.telegram_id : input.telegramId,
           input.hourlyRateEUR === undefined ? existing.hourly_rate_eur : input.hourlyRateEUR,
           input.active ?? null,
+          input.documentNumber === undefined ? existing.document_number : input.documentNumber,
+          input.languages === undefined ? existing.languages : input.languages,
+          input.photoUrl === undefined ? existing.photo_url : input.photoUrl,
+          input.birthDate === undefined ? existing.birth_date : input.birthDate,
         ]
       );
       const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [row!.id]);

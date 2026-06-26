@@ -64,10 +64,10 @@ const dictionaries = {
     "finance.clientDebt": "Долг клиентов",
     "finance.payables": "К оплате",
     "finance.transactions": "Транзакции",
-    "finance.revenue": "Начислено",
+    "finance.revenue": "Выручка",
     "finance.paid": "Оплачено",
     "finance.recordedCost": "Затраты",
-    "finance.net": "Прогноз",
+    "finance.net": "Прибыль",
     "finance.balances": "На счетах",
     "finance.noAccounts": "Нет счетов",
     "finance.noClientDebt": "Клиентских долгов нет",
@@ -111,8 +111,8 @@ const dictionaries = {
     "settings.notifications": "Уведомления",
     "settings.notificationsHint": "Выберите, какие события получать в приложении и Telegram.",
     "settings.calendar": "Google Calendar",
-    "settings.calendarTitle": "Односторонняя подписка",
-    "settings.calendarHint": "Добавьте ссылку в Google Calendar как календарь по URL. SEVER только публикует события и ничего не читает из Google.",
+    "settings.calendarTitle": "Подписка на календарь",
+    "settings.calendarHint": "Добавьте ссылку в Google Calendar как календарь по URL.",
     "settings.openFeed": "Открыть feed",
     "notifications.assigned": "Назначения и приглашения",
     "notifications.issued": "Выдача оборудования",
@@ -175,7 +175,7 @@ const dictionaries = {
     "finance.revenue": "Revenue",
     "finance.paid": "Paid",
     "finance.recordedCost": "Costs",
-    "finance.net": "Forecast",
+    "finance.net": "Profit",
     "finance.balances": "Balances",
     "finance.noAccounts": "No accounts",
     "finance.noClientDebt": "No receivables",
@@ -387,7 +387,7 @@ function readLocale(): Locale {
 
 const intlLocale = (locale: Locale) => (locale === "ru" ? "ru-RU" : locale === "sr" ? "sr-RS" : "en-US");
 const pad = (n: number) => String(n).padStart(2, "0");
-const fmtDate = (d: Date) => `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
+const fmtDate = (d: Date) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 const fmtTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
 export function I18nProvider({ children }: { children: ReactNode }) {

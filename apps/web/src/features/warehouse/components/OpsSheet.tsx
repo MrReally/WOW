@@ -338,16 +338,17 @@ function UnitPickRow({
           </p>
         </div>
         <div className="row">
-          <Button
-            variant="ghost"
-            style={{ height: 34, padding: "0 8px" }}
+          <button
+            className="icon-btn"
+            aria-label="Открыть карточку единицы"
+            title="Открыть"
             onClick={(e) => {
               e.stopPropagation();
               onOpen();
             }}
           >
-            Открыть
-          </Button>
+            ↗
+          </button>
           <StatusBadge tone={unitStatusTone[unit.status]}>{unitStatusLabel[unit.status]}</StatusBadge>
           <input type="checkbox" checked={selected} readOnly />
         </div>

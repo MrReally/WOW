@@ -27,7 +27,7 @@ export function useTransactions() {
 }
 
 export function useDebts() {
-  return useQuery({ queryKey: ["finance", "debts"], queryFn: () => api.get<Finance.ProjectFinanceDTO[]>("/api/finance/debts") });
+  return useQuery({ queryKey: ["finance", "debts"], queryFn: () => api.get<Finance.ProjectFinanceDTO[]>("/api/billing/client-debts") });
 }
 
 export function useProjectsForFinance() {

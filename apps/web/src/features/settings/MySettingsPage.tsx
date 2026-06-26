@@ -117,9 +117,6 @@ export function MySettingsPage() {
         <>
           <SectionTitle>Расширенные уведомления</SectionTitle>
           <Card>
-            <p className="card__subtitle" style={{ marginBottom: 8 }}>
-              Для владельца: получать события приложения даже без связи с проектом. Уведомления приходят в Telegram и в шторку.
-            </p>
             {advancedPrefs.isLoading || !advancedPrefs.data ? (
               <Loading />
             ) : (
@@ -164,9 +161,6 @@ export function MySettingsPage() {
             <div className="row" style={{ marginTop: 10 }}>
               <Button variant="secondary" disabled={!calendar.data?.url} onClick={() => calendar.data?.url && navigator.clipboard?.writeText(calendar.data.url)}>
                 {t("common.copy")}
-              </Button>
-              <Button variant="secondary" disabled={!calendar.data?.url} onClick={() => calendar.data?.url && window.open(calendar.data.url, "_blank")}>
-                {t("settings.openFeed")}
               </Button>
             </div>
           </>

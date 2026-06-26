@@ -34,7 +34,7 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   cursor: pointer;
-  transition: transform 0.05s ease, opacity 0.15s ease, background 0.15s ease;
+  transition: transform 0.08s ease, opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   color: var(--text);
   background: var(--s1);
   user-select: none;
@@ -71,6 +71,40 @@
 .btn--block {
   width: 100%;
 }
+.icon-btn {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+  transition: transform 0.08s ease, color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.icon-btn:hover,
+.icon-btn:focus-visible {
+  color: var(--text);
+  background: var(--s2);
+  border-color: var(--bdr);
+  outline: none;
+}
+.icon-btn:active {
+  transform: scale(0.94);
+}
+.icon-btn--danger {
+  color: var(--alert);
+}
+.icon-btn--ok {
+  color: var(--ok);
+}
+.icon-btn svg {
+  width: 19px;
+  height: 19px;
+}
 
 /* ── Card ──────────────────────────────────────────────────────────── */
 .card {
@@ -86,7 +120,7 @@
 }
 .card--tappable {
   cursor: pointer;
-  transition: transform 0.05s ease, border-color 0.15s ease;
+  transition: transform 0.08s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 .card--tappable:active {
   transform: scale(0.99);
@@ -306,11 +340,45 @@
   font-family: var(--font);
   font-size: var(--fs-md);
   min-height: 48px;
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.05s ease;
+}
+.select {
+  appearance: none;
+  padding-right: 38px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text2) 50%),
+    linear-gradient(135deg, var(--text2) 50%, transparent 50%);
+  background-position:
+    calc(100% - 20px) calc(50% - 2px),
+    calc(100% - 14px) calc(50% - 2px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+.input[type="number"] {
+  appearance: textfield;
+}
+.input[type="number"]::-webkit-outer-spin-button,
+.input[type="number"]::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+.input[type="datetime-local"],
+.input[type="date"],
+.input[type="time"] {
+  font-size: var(--fs-sm);
+  padding-left: 10px;
+  padding-right: 10px;
 }
 .input:focus,
 .select:focus {
   outline: none;
   border-color: var(--accent);
+  background-color: var(--card);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.input:active,
+.select:active {
+  transform: scale(0.995);
 }
 
 /* ── Layout helpers ────────────────────────────────────────────────── */
@@ -361,6 +429,18 @@
   border-radius: 10px;
   padding: 10px;
   background: var(--s1);
+}
+.project-stat-tile--button {
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 0.08s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.project-stat-tile--button:active {
+  transform: scale(0.985);
+  border-color: var(--bdr-hi);
+  background: var(--s2);
 }
 .project-stat-tile__icon,
 .project-action__icon {
@@ -491,6 +571,43 @@
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0;
+}
+.timeline-now {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 8px;
+  color: var(--alert);
+}
+.timeline-now__line {
+  height: 2px;
+  flex: 1;
+  border-radius: 999px;
+  background: var(--alert);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--alert) 45%, transparent);
+}
+.timeline-now__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.crew-photo {
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+  border-radius: 18px;
+  object-fit: cover;
+  border: 1px solid var(--bdr-md);
+  background: var(--s2);
+}
+.crew-photo--empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-weight: 800;
 }
 
 /* ── States ────────────────────────────────────────────────────────── */

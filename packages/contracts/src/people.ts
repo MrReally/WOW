@@ -35,6 +35,10 @@ export interface UserDTO {
   hourlyRateEUR: number | null;
   /** Hidden protected account for recovery/developer access. */
   isSystem: boolean;
+  documentNumber: string | null;
+  languages: string | null;
+  photoUrl: string | null;
+  birthDate: string | null;
   active: boolean;
   mustChangePassword: boolean;
   hasPassword: boolean;
@@ -47,6 +51,10 @@ export interface CreateUserInput {
   email?: string | null;
   telegramId?: string | null;
   hourlyRateEUR?: number | null;
+  documentNumber?: string | null;
+  languages?: string | null;
+  photoUrl?: string | null;
+  birthDate?: string | null;
 }
 
 export interface UpdateUserInput {
@@ -55,6 +63,10 @@ export interface UpdateUserInput {
   email?: string | null;
   telegramId?: string | null;
   hourlyRateEUR?: number | null;
+  documentNumber?: string | null;
+  languages?: string | null;
+  photoUrl?: string | null;
+  birthDate?: string | null;
   active?: boolean;
 }
 

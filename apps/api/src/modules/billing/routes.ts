@@ -9,4 +9,9 @@ export function registerBillingRoutes(app: FastifyInstance, ctx: RouteContext, s
     requirePermission(auth, "finance.view", "finance.manage");
     return service.projectInvoice(req.params.id);
   });
+  app.get("/api/billing/client-debts", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.view", "finance.manage");
+    return service.outstandingClientDebts();
+  });
 }

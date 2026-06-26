@@ -68,10 +68,10 @@ export function money(amount: number, currency: string): string {
   }
 }
 
-// Dates are always DD-MM-YYYY and time is always 24h (no AM/PM), in local time.
+// Dates are always DD/MM/YYYY and time is always 24h (no AM/PM), in local time.
 const pad = (n: number) => String(n).padStart(2, "0");
 function fmtDate(d: Date): string {
-  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 function fmtTime(d: Date): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;

@@ -943,7 +943,7 @@ export function createEquipmentService(
             client,
             `INSERT INTO equipment.problems (kind, severity, title, detail, refs)
              VALUES ('unit_lost','critical',$1,$2,$3)`,
-            [`Утеря единицы`, `Единица отмечена как утерянная`, JSON.stringify({ unitId })]
+            [`Утеря`, `Единица утеряна`, JSON.stringify({ unitId })]
           );
         }
         return unitDTO(updated!);

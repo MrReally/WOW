@@ -20,6 +20,7 @@ export const WORKSPACES: Workspace[] = [
   { id: "ops", name: "Operations", shortcut: "O", glyph: "pin", tone: "warn", route: "/operations", requires: ["operations.view"], sub: "Бригада · мои проекты · выдача/возврат" },
   { id: "wh", name: "Warehouse", shortcut: "W", glyph: "box", tone: "warn", route: "/warehouse", requires: ["warehouse.view"], sub: "Каталог · склад · кабели" },
   { id: "plan", name: "Planning", shortcut: "P", glyph: "rows", tone: "purple", route: "/projects", requires: ["projects.view"], sub: "Проекты · брони · команда" },
+  { id: "crew", name: "Crew", shortcut: "E", glyph: "person", tone: "ok", route: "/crew", requires: ["people.view"], sub: "Работники · досье · история" },
   { id: "ctr", name: "Contractors", shortcut: "C", glyph: "person", tone: "info", route: "/contractors", requires: ["projects.reservation.manage", "finance.view"], sub: "Подрядчики · цены · возвраты" },
   { id: "fin", name: "Finance", shortcut: "F", glyph: "coin", tone: "ok", route: "/finance", requires: ["finance.view"], sub: "Счета · долги · окупаемость" },
   { id: "adm", name: "Settings", shortcut: "S", glyph: "shield", tone: "alert", route: "/settings", requires: ["people.view", "people.manage", "roles.manage"], sub: "Люди · роли · права · курсы" },
@@ -50,6 +51,11 @@ export const WORKSPACE_COPY: Record<string, Record<"ru" | "en" | "sr", { name: s
     ru: { name: "Contractors", sub: "Поставщики · цены · возвраты" },
     en: { name: "Contractors", sub: "Suppliers · prices · returns" },
     sr: { name: "Contractors", sub: "Dobavljači · cene · povraćaji" },
+  },
+  crew: {
+    ru: { name: "Crew", sub: "Работники · досье · история" },
+    en: { name: "Crew", sub: "People · profiles · history" },
+    sr: { name: "Crew", sub: "Ekipa · dosijei · istorija" },
   },
   fin: {
     ru: { name: "Finance", sub: "Счета · долги · маржа" },

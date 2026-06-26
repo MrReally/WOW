@@ -23,6 +23,10 @@ const createUserSchema = z.object({
   email: z.string().email().nullable().optional(),
   telegramId: z.string().min(1).nullable().optional(),
   hourlyRateEUR: z.number().nullable().optional(),
+  documentNumber: z.string().nullable().optional(),
+  languages: z.string().nullable().optional(),
+  photoUrl: z.string().nullable().optional(),
+  birthDate: z.string().nullable().optional(),
 });
 const updateUserSchema = z.object({
   displayName: z.string().min(1).optional(),
@@ -30,6 +34,10 @@ const updateUserSchema = z.object({
   email: z.string().email().nullable().optional(),
   telegramId: z.string().min(1).nullable().optional(),
   hourlyRateEUR: z.number().nullable().optional(),
+  documentNumber: z.string().nullable().optional(),
+  languages: z.string().nullable().optional(),
+  photoUrl: z.string().nullable().optional(),
+  birthDate: z.string().nullable().optional(),
   active: z.boolean().optional(),
 });
 

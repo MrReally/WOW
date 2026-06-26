@@ -55,8 +55,13 @@ function packCluster(timings: Projects.TimingDTO[]): Projects.TimingDTO[][] {
   return lanes.map((l) => l.items);
 }
 
-const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-const fmtDay = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { weekday: "short", day: "2-digit", month: "2-digit" });
+const pad = (n: number) => String(n).padStart(2, "0");
+const fmtClock = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const fmtTime = (iso: string) => fmtClock(new Date(iso));
+const fmtDay = (iso: string) => {
+  const d = new Date(iso);
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+};
 const dayKey = (iso: string) => {
   const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -76,12 +81,23 @@ function groupByDay(timings: Projects.TimingDTO[]) {
 export function TimingTimeline({ timings, userName }: Props) {
   if (timings.length === 0) return null;
   const days = groupByDay(timings);
+  const now = new Date();
 
   return (
     <div className="stack" style={{ gap: 10 }}>
-      {days.map((day) => (
+      {days.map((day) => {
+        const dayStart = Math.min(...day.map((t) => Date.parse(t.startsAt)));
+        const dayEnd = Math.max(...day.map((t) => Date.parse(t.endsAt)));
+        const showNow = Date.now() >= dayStart && Date.now() <= dayEnd && dayKey(now.toISOString()) === dayKey(day[0]!.startsAt);
+        return (
         <div key={dayKey(day[0]!.startsAt)}>
           <div className="card__subtitle" style={{ marginBottom: 6 }}>{fmtDay(day[0]!.startsAt)}</div>
+          {showNow && (
+            <div className="timeline-now">
+              <span className="timeline-now__line" />
+              <span className="timeline-now__label">{fmtClock(now)}</span>
+            </div>
+          )}
           <div className="stack" style={{ gap: 6 }}>
             {packLanes(day).map((cluster, clusterIndex) => (
               <div
@@ -127,7 +143,8 @@ export function TimingTimeline({ timings, userName }: Props) {
             ))}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

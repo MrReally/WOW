@@ -73,16 +73,17 @@ export function PeopleManager() {
                 </Button>
               )}
               {isLinked(u.telegramId) ? (
-                <Chip label="Telegram ✓" tone="ok" />
+                <span className="icon-btn icon-btn--ok" title="Telegram привязан" aria-label="Telegram привязан">✓</span>
               ) : botInfo.data?.username ? (
                 <a
-                  className="btn btn--ghost"
+                  className="icon-btn"
                   href={`https://t.me/${botInfo.data.username}?start=${u.id}`}
                   target="_blank"
                   rel="noreferrer"
-                  style={{ height: 36, padding: "0 10px" }}
+                  title="Привязать Telegram"
+                  aria-label="Привязать Telegram"
                 >
-                  Привязать Telegram
+                  TG
                 </a>
               ) : null}
             </div>

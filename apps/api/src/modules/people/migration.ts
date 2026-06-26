@@ -52,4 +52,8 @@ END $$;
 
 ALTER TABLE people.users ADD COLUMN IF NOT EXISTS calendar_token text UNIQUE;
 ALTER TABLE people.users ADD COLUMN IF NOT EXISTS is_system boolean NOT NULL DEFAULT false;
+ALTER TABLE people.users ADD COLUMN IF NOT EXISTS document_number text;
+ALTER TABLE people.users ADD COLUMN IF NOT EXISTS languages text;
+ALTER TABLE people.users ADD COLUMN IF NOT EXISTS photo_url text;
+ALTER TABLE people.users ADD COLUMN IF NOT EXISTS birth_date date;
 `;
