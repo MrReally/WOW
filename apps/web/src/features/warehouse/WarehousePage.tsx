@@ -231,7 +231,7 @@ export function WarehousePage() {
           </p>
         )}
         {canCatalog && (
-          <div className="row" style={{ marginTop: 10, gap: 8 }}>
+          <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
             <Button variant="secondary" onClick={openWarehouseCreate}>
               + Склад
             </Button>
@@ -243,9 +243,12 @@ export function WarehousePage() {
                 <Button
                   variant="ghost"
                   disabled={warehouseList.find((w) => w.id === warehouseFilter)?.isDefault}
+                  aria-label={warehouseList.find((w) => w.id === warehouseFilter)?.isDefault ? "Основной склад" : "Сделать основным"}
+                  title={warehouseList.find((w) => w.id === warehouseFilter)?.isDefault ? "Основной склад" : "Сделать основным"}
+                  style={{ width: 44, height: 44, padding: 0, flex: "0 0 auto", fontSize: 20 }}
                   onClick={() => updateWarehouse.mutate({ id: warehouseFilter, input: { isDefault: true } })}
                 >
-                  Сделать основным
+                  {warehouseList.find((w) => w.id === warehouseFilter)?.isDefault ? "★" : "☆"}
                 </Button>
               </>
             )}
