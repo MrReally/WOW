@@ -57,7 +57,7 @@ export function OperationsPage() {
 
       {can("warehouse.issue") && (
         <div style={{ marginBottom: 12 }}>
-          <Button block variant="primary" onClick={() => setOpsOpen(true)}>Выдача / Возврат оборудования</Button>
+          <Button block variant="primary" onClick={() => setOpsOpen(true)}>+ Перемещение</Button>
         </div>
       )}
 

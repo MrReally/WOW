@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { Equipment, Projects } from "@sever/contracts";
 import { Sheet, Field, Select, Input, Button, StatusBadge, Loading, Chip } from "../../../ui-kit/index.ts";
 import { unitStatusLabel, unitStatusTone } from "../../../lib/labels.ts";
-import { useUnits, useIssueUnits, useReturnUnits, useProjectReservations } from "../hooks.ts";
+import { useUnits, useIssueUnits, useReturnUnits, useProjectReservations, useWarehouses, useTransferUnit } from "../hooks.ts";
 
 interface Props {
   open: boolean;
@@ -14,8 +14,10 @@ interface Props {
 
 export function OpsSheet({ open, onClose, projects, models }: Props) {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"issue" | "return">("issue");
+  const [mode, setMode] = useState<"issue" | "return" | "transfer">("issue");
   const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
+  const [fromWarehouseId, setFromWarehouseId] = useState("");
+  const [toWarehouseId, setToWarehouseId] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [note, setNote] = useState("");
   const [search, setSearch] = useState("");
@@ -24,17 +26,19 @@ export function OpsSheet({ open, onClose, projects, models }: Props) {
 
   const issue = useIssueUnits();
   const ret = useReturnUnits();
+  const transfer = useTransferUnit();
+  const warehouses = useWarehouses();
 
   // Issue: pick from in-stock units. Return: from units out on this project.
-  const inStock = useUnits(mode === "issue" ? { status: "in_stock" } : undefined);
+  const inStock = useUnits(mode === "issue" ? { status: "in_stock" } : mode === "transfer" && fromWarehouseId ? { status: "in_stock", warehouseId: fromWarehouseId } : undefined);
   const onProject = useUnits(mode === "return" && projectId ? { projectId } : undefined);
   const reservations = useProjectReservations(projectId);
 
   const units = useMemo(
-    () => (mode === "issue" ? inStock.data ?? [] : (onProject.data ?? []).filter((u) => u.status === "on_project")),
+    () => (mode === "return" ? (onProject.data ?? []).filter((u) => u.status === "on_project") : inStock.data ?? []),
     [mode, inStock.data, onProject.data]
   );
-  const loading = mode === "issue" ? inStock.isLoading : onProject.isLoading;
+  const loading = mode === "return" ? onProject.isLoading : inStock.isLoading;
   const modelName = useMemo(() => {
     const map = new Map(models.map((m) => [m.id, m.name]));
     return (id: string) => map.get(id) ?? id;
@@ -79,6 +83,13 @@ export function OpsSheet({ open, onClose, projects, models }: Props) {
     if (!projectId && projects[0]) setProjectId(projects[0].id);
   }, [projectId, projects]);
 
+  useEffect(() => {
+    const list = warehouses.data ?? [];
+    if (!fromWarehouseId && list[0]) setFromWarehouseId(list[0].id);
+    const nextTo = list.find((w) => w.id !== fromWarehouseId)?.id ?? "";
+    if ((!toWarehouseId || toWarehouseId === fromWarehouseId) && nextTo) setToWarehouseId(nextTo);
+  }, [fromWarehouseId, toWarehouseId, warehouses.data]);
+
   const toggle = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -96,39 +107,73 @@ export function OpsSheet({ open, onClose, projects, models }: Props) {
 
   const missingCount = mode === "return" ? units.length - selected.size : 0;
 
-  const submit = () => {
+  const submit = async () => {
     if (mode === "issue") {
       issue.mutate(
         { projectId, unitIds: [...selected], note: note.trim() || undefined },
         { onSuccess: closeAll }
       );
-    } else {
+    } else if (mode === "return") {
       setSnapshot(new Map(units.map((u) => [u.id, u.assetTag])));
       ret.mutate(
         { projectId, expectedUnitIds: units.map((u) => u.id), returnedUnitIds: [...selected], note: note.trim() || undefined },
         { onSuccess: (r) => setResult(r) }
       );
+    } else {
+      await Promise.all(
+        [...selected].map((id) => transfer.mutateAsync({ id, warehouseId: toWarehouseId, note: note.trim() || undefined }))
+      );
+      closeAll();
     }
   };
 
   return (
-    <Sheet open={open} onClose={closeAll} title="Выдача / Возврат">
-      <div className="row" style={{ marginBottom: "var(--space-4)" }}>
+    <Sheet open={open} onClose={closeAll} title="Выдача / Возврат / Перемещение">
+      <div className="row" style={{ marginBottom: "var(--space-4)", flexWrap: "wrap" }}>
         <Button variant={mode === "issue" ? "primary" : "secondary"} block onClick={() => setMode("issue")}>
           Выдача
         </Button>
         <Button variant={mode === "return" ? "primary" : "secondary"} block onClick={() => setMode("return")}>
           Возврат
         </Button>
+        <Button variant={mode === "transfer" ? "primary" : "secondary"} block onClick={() => setMode("transfer")}>
+          Перемещение
+        </Button>
       </div>
 
-      <Field label="Проект">
-        <Select
-          value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
-          options={projects.map((p) => ({ value: p.id, label: p.name }))}
-        />
-      </Field>
+      {mode === "transfer" ? (
+        <div className="row" style={{ gap: 8, alignItems: "flex-start" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Field label="Со склада">
+              <Select
+                value={fromWarehouseId}
+                onChange={(e) => {
+                  setFromWarehouseId(e.target.value);
+                  setSelected(new Set());
+                }}
+                options={(warehouses.data ?? []).map((w) => ({ value: w.id, label: w.name }))}
+              />
+            </Field>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Field label="На склад">
+              <Select
+                value={toWarehouseId}
+                onChange={(e) => setToWarehouseId(e.target.value)}
+                options={(warehouses.data ?? []).filter((w) => w.id !== fromWarehouseId).map((w) => ({ value: w.id, label: w.name }))}
+              />
+            </Field>
+          </div>
+        </div>
+      ) : (
+        <Field label="Проект">
+          <Select
+            value={projectId}
+            onChange={(e) => setProjectId(e.target.value)}
+            options={projects.map((p) => ({ value: p.id, label: p.name }))}
+          />
+        </Field>
+      )}
 
       <Field label="Поиск">
         <Input
@@ -164,7 +209,7 @@ export function OpsSheet({ open, onClose, projects, models }: Props) {
         <>
           <div className="row row--between" style={{ alignItems: "center", margin: "4px 0" }}>
             <span className="section-title" style={{ margin: 0 }}>
-              {mode === "issue" ? "Нужно по заказу / дополнительно" : "Выдано на проект"} · выбрано {selected.size}
+              {mode === "issue" ? "Нужно по заказу / дополнительно" : mode === "return" ? "Выдано на проект" : "На выбранном складе"} · выбрано {selected.size}
             </span>
             {units.length > 0 && (
               <div className="row" style={{ gap: 6 }}>
@@ -180,10 +225,10 @@ export function OpsSheet({ open, onClose, projects, models }: Props) {
             </p>
           )}
 
-          {loading || (mode === "issue" && reservations.isLoading) ? (
+          {loading || (mode === "issue" && reservations.isLoading) || (mode === "transfer" && warehouses.isLoading) ? (
             <Loading />
           ) : visibleUnits.length === 0 ? (
-            <p className="card__subtitle">{mode === "issue" ? "На складе нет свободных единиц." : "На этом проекте нет выданного оборудования."}</p>
+            <p className="card__subtitle">{mode === "issue" ? "На складе нет свободных единиц." : mode === "return" ? "На этом проекте нет выданного оборудования." : "На выбранном складе нет свободных единиц."}</p>
           ) : (
             <div className="stack">
               {mode === "issue" && needs.length > 0 && needs.map((need) => {
@@ -226,6 +271,10 @@ export function OpsSheet({ open, onClose, projects, models }: Props) {
               {mode === "return" && visibleUnits.map((u) => (
                 <UnitPickRow key={u.id} unit={u} modelName={modelName(u.modelId)} selected={selected.has(u.id)} onToggle={() => toggle(u.id)} onOpen={() => navigate(`/warehouse/units/${u.id}`)} />
               ))}
+
+              {mode === "transfer" && visibleUnits.map((u) => (
+                <UnitPickRow key={u.id} unit={u} modelName={modelName(u.modelId)} selected={selected.has(u.id)} onToggle={() => toggle(u.id)} onOpen={() => navigate(`/warehouse/units/${u.id}`)} />
+              ))}
             </div>
           )}
 
@@ -240,10 +289,17 @@ export function OpsSheet({ open, onClose, projects, models }: Props) {
           <div style={{ marginTop: "var(--space-3)" }}>
             <Button
               block
-              disabled={!projectId || issue.isPending || ret.isPending || (mode === "issue" && selected.size === 0)}
+              disabled={
+                issue.isPending ||
+                ret.isPending ||
+                transfer.isPending ||
+                (mode !== "transfer" && !projectId) ||
+                (mode === "issue" && selected.size === 0) ||
+                (mode === "transfer" && (!fromWarehouseId || !toWarehouseId || fromWarehouseId === toWarehouseId || selected.size === 0))
+              }
               onClick={submit}
             >
-              {mode === "issue" ? `Выдать ${selected.size}` : `Принять возврат (${selected.size})`}
+              {mode === "issue" ? `Выдать ${selected.size}` : mode === "return" ? `Принять возврат (${selected.size})` : `Переместить ${selected.size}`}
             </Button>
           </div>
         </>

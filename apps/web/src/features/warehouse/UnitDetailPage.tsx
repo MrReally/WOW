@@ -7,7 +7,7 @@ import { useSession } from "../../app/session.ts";
 import {
   useUnit, useUnitJournal, useChangeStatus, useUpdateUnit,
   useModels, useTypes, useUnitRepairs, useProjectsForOps, usePeopleNames,
-  useWarehouses, useTransferUnit,
+  useWarehouses,
 } from "./hooks.ts";
 import { RepairContractorPanel } from "./components/RepairContractor.tsx";
 
@@ -53,18 +53,15 @@ export function UnitDetailPage() {
   const warehouses = useWarehouses();
   const changeStatus = useChangeStatus();
   const updateUnit = useUpdateUnit();
-  const transferUnit = useTransferUnit();
 
   const [serialDraft, setSerialDraft] = useState("");
   const [notesDraft, setNotesDraft] = useState("");
-  const [warehouseDraft, setWarehouseDraft] = useState("");
   useEffect(() => {
     if (unit.data) {
       setSerialDraft(unit.data.serial ?? "");
       setNotesDraft(unit.data.notes ?? "");
-      setWarehouseDraft(unit.data.warehouseId ?? "");
     }
-  }, [unit.data?.id, unit.data?.serial, unit.data?.notes, unit.data?.warehouseId]);
+  }, [unit.data?.id, unit.data?.serial, unit.data?.notes]);
 
   if (unit.isLoading) return <Loading />;
   if (unit.error) return <ErrorState error={unit.error} onRetry={unit.refetch} />;
@@ -139,32 +136,6 @@ export function UnitDetailPage() {
         {projectName && <InfoRow label="Сейчас на проекте" value={projectName} />}
         <InfoRow label="В системе с" value={dateTime(u.createdAt)} />
         <InfoRow label="Потрачено на ремонт" value={repairTotal > 0 ? eur(repairTotal) : "—"} />
-
-        <div style={{ marginTop: 10 }}>
-          <span className="field__label">Склад хранения</span>
-          {canEdit ? (
-            <div className="row" style={{ marginTop: 4 }}>
-              <div style={{ flex: 1 }}>
-                <Select
-                  value={warehouseDraft}
-                  disabled={u.status !== "in_stock"}
-                  onChange={(e) => setWarehouseDraft(e.target.value)}
-                  options={warehouseList.map((w) => ({ value: w.id, label: `${w.name}${w.address ? ` · ${w.address}` : ""}` }))}
-                />
-              </div>
-              <Button
-                variant="secondary"
-                disabled={u.status !== "in_stock" || !warehouseDraft || warehouseDraft === (u.warehouseId ?? "") || transferUnit.isPending}
-                onClick={() => transferUnit.mutate({ id: u.id, warehouseId: warehouseDraft })}
-              >
-                Переместить
-              </Button>
-            </div>
-          ) : (
-            <p style={{ marginTop: 4 }}>{warehouseName(u.warehouseId)}</p>
-          )}
-          {u.status !== "in_stock" && <p className="card__subtitle" style={{ marginTop: 4 }}>Перемещение доступно только для единиц на складе.</p>}
-        </div>
 
         <div style={{ marginTop: 10 }}>
           <span className="field__label">Серийный номер</span>

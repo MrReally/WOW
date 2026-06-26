@@ -73,7 +73,7 @@ function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps
       </div>
 
       <div style={{ marginTop: 20 }}>
-        <Button block variant="primary" onClick={onOps}>Выдача / Возврат оборудования</Button>
+        <Button block variant="primary" onClick={onOps}>+ Перемещение</Button>
       </div>
     </div>
   );
