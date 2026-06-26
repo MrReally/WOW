@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS equipment.journal (
   to_status   text,
   project_id  uuid,                   -- opaque id
   warehouse_id uuid REFERENCES equipment.warehouses(id),
+  from_warehouse_id uuid REFERENCES equipment.warehouses(id),
+  to_warehouse_id uuid REFERENCES equipment.warehouses(id),
   actor_id    uuid,                   -- opaque people id
   note        text,
   at          timestamptz NOT NULL DEFAULT now()
@@ -82,6 +84,8 @@ ALTER TABLE equipment.journal ALTER COLUMN unit_id DROP NOT NULL;
 ALTER TABLE equipment.journal ADD COLUMN IF NOT EXISTS model_id uuid REFERENCES equipment.models(id);
 ALTER TABLE equipment.journal ADD COLUMN IF NOT EXISTS qty integer;
 ALTER TABLE equipment.journal ADD COLUMN IF NOT EXISTS warehouse_id uuid REFERENCES equipment.warehouses(id);
+ALTER TABLE equipment.journal ADD COLUMN IF NOT EXISTS from_warehouse_id uuid REFERENCES equipment.warehouses(id);
+ALTER TABLE equipment.journal ADD COLUMN IF NOT EXISTS to_warehouse_id uuid REFERENCES equipment.warehouses(id);
 UPDATE equipment.journal
 SET warehouse_id=(SELECT id FROM equipment.warehouses ORDER BY is_default DESC, created_at LIMIT 1)
 WHERE warehouse_id IS NULL AND model_id IS NOT NULL;

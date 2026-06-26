@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useParams, useNavigate } from "react-router-dom";
 import type { Equipment } from "@sever/contracts";
 import { Card, Button, SectionTitle, StatusBadge, Select, Input, Textarea, Loading, ErrorState } from "../../ui-kit/index.ts";
@@ -22,6 +22,7 @@ const journalActionLabel: Record<Equipment.JournalAction, string> = {
   sent_to_contractor: "Подрядчику",
   back_from_contractor: "От подрядчика",
   marked_lost: "Утеряно",
+  transferred: "Перемещено",
   status_changed: "Смена статуса",
 };
 
@@ -62,6 +63,20 @@ export function UnitDetailPage() {
       setNotesDraft(unit.data.notes ?? "");
     }
   }, [unit.data?.id, unit.data?.serial, unit.data?.notes]);
+
+  const journalEntries = useMemo(() => {
+    let currentWarehouseId: string | null = null;
+    return (journal.data ?? []).map((entry) => {
+      const isTransfer =
+        entry.action === "transferred" ||
+        (entry.action === "status_changed" && entry.warehouseId && entry.fromStatus === entry.toStatus);
+      const fromWarehouseId = entry.fromWarehouseId ?? (isTransfer ? currentWarehouseId : null);
+      const toWarehouseId = entry.toWarehouseId ?? (isTransfer ? entry.warehouseId : null);
+      if (entry.action === "created" && entry.warehouseId) currentWarehouseId = entry.warehouseId;
+      if (toWarehouseId) currentWarehouseId = toWarehouseId;
+      return { ...entry, fromWarehouseId, toWarehouseId };
+    });
+  }, [journal.data]);
 
   if (unit.isLoading) return <Loading />;
   if (unit.error) return <ErrorState error={unit.error} onRetry={unit.refetch} />;
@@ -202,15 +217,18 @@ export function UnitDetailPage() {
         <Loading />
       ) : (
         <div className="stack">
-          {(journal.data ?? []).slice().reverse().map((e) => {
+          {journalEntries.slice().reverse().map((e) => {
             const proj = e.projectId ? (projects.data ?? []).find((p) => p.id === e.projectId)?.name ?? null : null;
             const actor = e.actorId ? (people.data ?? []).find((u) => u.id === e.actorId)?.displayName ?? null : null;
             const transition =
               e.fromStatus && e.toStatus && e.fromStatus !== e.toStatus
                 ? `${unitStatusLabel[e.fromStatus]} → ${unitStatusLabel[e.toStatus]}`
                 : null;
+            const warehouseRoute = e.toWarehouseId
+              ? `Склад: ${e.fromWarehouseId ? `${warehouseName(e.fromWarehouseId)} → ` : ""}${warehouseName(e.toWarehouseId)}`
+              : null;
             const where = proj ? `Проект: ${proj}` : transition;
-            const meta = [where, actor ? `Кто: ${actor}` : null].filter(Boolean).join(" · ");
+            const meta = [warehouseRoute, where, actor ? `Кто: ${actor}` : null].filter(Boolean).join(" · ");
             return (
               <Card key={e.id}>
                 <div className="row row--between">

@@ -105,6 +105,7 @@ export type JournalAction =
   | "sent_to_contractor"
   | "back_from_contractor"
   | "marked_lost"
+  | "transferred"
   | "status_changed";
 
 export interface JournalEntryDTO {
@@ -120,6 +121,8 @@ export interface JournalEntryDTO {
   toStatus: UnitStatus | null;
   projectId: ID | null;
   warehouseId: ID | null;
+  fromWarehouseId: ID | null;
+  toWarehouseId: ID | null;
   /** Who performed it (people.userId). */
   actorId: ID | null;
   note: string | null;

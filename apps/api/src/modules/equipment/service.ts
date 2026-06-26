@@ -44,6 +44,8 @@ interface JournalRow {
   to_status: Equipment.UnitStatus | null;
   project_id: string | null;
   warehouse_id: string | null;
+  from_warehouse_id: string | null;
+  to_warehouse_id: string | null;
   actor_id: string | null;
   note: string | null;
   at: Date;
@@ -106,6 +108,8 @@ const journalDTO = (r: JournalRow): Equipment.JournalEntryDTO => ({
   toStatus: r.to_status,
   projectId: r.project_id,
   warehouseId: r.warehouse_id,
+  fromWarehouseId: r.from_warehouse_id,
+  toWarehouseId: r.to_warehouse_id,
   actorId: r.actor_id,
   note: r.note,
   at: r.at.toISOString(),
@@ -209,6 +213,8 @@ export function createEquipmentService(
       toStatus?: Equipment.UnitStatus | null;
       projectId?: ID | null;
       warehouseId?: ID | null;
+      fromWarehouseId?: ID | null;
+      toWarehouseId?: ID | null;
       actorId?: ID | null;
       note?: string | null;
     }
@@ -216,8 +222,8 @@ export function createEquipmentService(
     await query(
       client,
       `INSERT INTO equipment.journal
-         (unit_id, model_id, qty, action, from_status, to_status, project_id, warehouse_id, actor_id, note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+         (unit_id, model_id, qty, action, from_status, to_status, project_id, warehouse_id, from_warehouse_id, to_warehouse_id, actor_id, note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [
         entry.unitId ?? null,
         entry.modelId ?? null,
@@ -227,6 +233,8 @@ export function createEquipmentService(
         entry.toStatus ?? null,
         entry.projectId ?? null,
         entry.warehouseId ?? null,
+        entry.fromWarehouseId ?? null,
+        entry.toWarehouseId ?? null,
         entry.actorId ?? null,
         entry.note ?? null,
       ]
@@ -501,6 +509,7 @@ export function createEquipmentService(
         const unit = await one<UnitRow>(client, `SELECT * FROM equipment.units WHERE id=$1 FOR UPDATE`, [unitId]);
         if (!unit) throw NotFound("unit", unitId);
         if (unit.status !== "in_stock") throw BadRequest("перемещать между складами можно только единицы на складе");
+        if (unit.warehouse_id === warehouseId) throw BadRequest("выберите другой склад");
         const updated = await one<UnitRow>(
           client,
           `UPDATE equipment.units SET warehouse_id=$2 WHERE id=$1 RETURNING *`,
@@ -508,10 +517,12 @@ export function createEquipmentService(
         );
         await appendJournal(client, {
           unitId,
-          action: "status_changed",
+          action: "transferred",
           fromStatus: unit.status,
           toStatus: unit.status,
           warehouseId,
+          fromWarehouseId: unit.warehouse_id,
+          toWarehouseId: warehouseId,
           actorId,
           note: note ?? `перемещение между складами`,
         });
@@ -618,8 +629,10 @@ export function createEquipmentService(
         await appendJournal(client, {
           modelId: input.modelId,
           qty: input.qty,
-          action: "status_changed",
+          action: "transferred",
           warehouseId: input.toWarehouseId,
+          fromWarehouseId: input.fromWarehouseId,
+          toWarehouseId: input.toWarehouseId,
           actorId: input.actorId,
           note: input.note ?? `перемещение между складами`,
         });
