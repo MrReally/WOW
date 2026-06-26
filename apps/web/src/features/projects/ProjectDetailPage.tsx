@@ -40,14 +40,15 @@ const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "o
 };
 
 type ProjectTab = "overview" | "reservations" | "timing" | "team" | "contractors" | "finance";
+type ProjectTabIcon = ProjectTab | "plan" | "invoice" | "back";
 
-const PROJECT_TABS: { id: ProjectTab; label: string }[] = [
-  { id: "overview", label: "Обзор" },
-  { id: "reservations", label: "Брони" },
-  { id: "timing", label: "Тайминг" },
-  { id: "team", label: "Команда" },
-  { id: "contractors", label: "Подрядчики" },
-  { id: "finance", label: "Финансы" },
+const PROJECT_TABS: { id: ProjectTab; label: string; shortLabel: string; count?: "reservations" | "timing" | "team" | "contractors"; tone?: "accent" | "warn" | "info" | "ok" }[] = [
+  { id: "overview", label: "Обзор", shortLabel: "Обзор", tone: "accent" },
+  { id: "reservations", label: "Брони", shortLabel: "Брони", count: "reservations", tone: "info" },
+  { id: "timing", label: "Тайминг", shortLabel: "План", count: "timing", tone: "warn" },
+  { id: "team", label: "Команда", shortLabel: "Люди", count: "team", tone: "ok" },
+  { id: "contractors", label: "Подрядчики", shortLabel: "Подряд", count: "contractors", tone: "warn" },
+  { id: "finance", label: "Финансы", shortLabel: "€", tone: "accent" },
 ];
 
 function projectTabFrom(value: string | null): ProjectTab {
@@ -130,6 +131,14 @@ export function ProjectDetailPage() {
   const timingCount = (timings.data ?? []).length;
   const teamCount = (assignments.data ?? []).length;
   const contractorCost = invoice.data?.contractorCostEUR ?? 0;
+  const contractorCount = invoice.data?.rentalLines.filter((line) => line.section.startsWith("Vendor:")).length ?? 0;
+  const tabCount = (kind?: "reservations" | "timing" | "team" | "contractors") => {
+    if (kind === "reservations") return reservationCount;
+    if (kind === "timing") return timingCount;
+    if (kind === "team") return teamCount;
+    if (kind === "contractors") return contractorCount;
+    return 0;
+  };
   const visibleTabs = PROJECT_TABS.filter((tab) => {
     if (tab.id === "team") return canViewPeople;
     if (tab.id === "contractors") return canReserve || contractorCost > 0;
@@ -139,8 +148,11 @@ export function ProjectDetailPage() {
   const currentTab = visibleTabs.some((tab) => tab.id === activeTab) ? activeTab : "overview";
 
   return (
-    <div className="stack" style={{ paddingBottom: 76 }}>
-      <Button variant="ghost" onClick={() => navigate(-1)}>← Назад</Button>
+    <div className="stack project-mobile-page">
+      <button className="icon-text-action" onClick={() => navigate(-1)} aria-label="Назад">
+        <ProjectGlyph type="back" />
+        <span>Назад</span>
+      </button>
 
       <Card>
         <div className="row row--between">
@@ -169,28 +181,24 @@ export function ProjectDetailPage() {
         <div className="stack">
           <Card>
             <p className="card__title">Сводка проекта</p>
-            <div className="row" style={{ gap: 8, marginTop: 10 }}>
-              <FinanceTile label="Брони" value={String(reservationCount)} />
-              <FinanceTile label="Тайминг" value={String(timingCount)} />
-            </div>
-            <div className="row" style={{ gap: 8, marginTop: 8 }}>
-              <FinanceTile label="Команда" value={String(teamCount)} />
-              <FinanceTile label={t("finance.payables")} value={eur(contractorCost)} tone={contractorCost > 0 ? "var(--warn)" : "var(--ok)"} />
+            <div className="project-stat-grid">
+              <FinanceTile icon="reservations" label="Брони" value={String(reservationCount)} />
+              <FinanceTile icon="timing" label="Тайминг" value={String(timingCount)} />
+              {canViewPeople && <FinanceTile icon="team" label="Команда" value={String(teamCount)} />}
+              <FinanceTile icon="contractors" label={t("finance.payables")} value={eur(contractorCost)} tone={contractorCost > 0 ? "var(--warn)" : "var(--ok)"} />
             </div>
           </Card>
-          <div className="row" style={{ flexWrap: "wrap" }}>
-            <Button variant="secondary" block onClick={() => setActiveTab("reservations")}>Брони</Button>
-            <Button variant="secondary" block onClick={() => setActiveTab("timing")}>Тайминг</Button>
+          <div className="project-action-grid">
+            <ProjectActionButton icon="reservations" label="Брони" meta={`${reservationCount}`} onClick={() => setActiveTab("reservations")} />
+            <ProjectActionButton icon="timing" label="Тайминг" meta={`${timingCount}`} onClick={() => setActiveTab("timing")} />
+            {canViewPeople && <ProjectActionButton icon="team" label="Команда" meta={`${teamCount}`} onClick={() => setActiveTab("team")} />}
+            {(canReserve || contractorCost > 0) && <ProjectActionButton icon="contractors" label="Подряд" meta={contractorCost > 0 ? eur(contractorCost) : `${contractorCount}`} onClick={() => setActiveTab("contractors")} />}
           </div>
           {canPlans && (
-            <Button variant="secondary" block onClick={() => navigate(`/projects/${p.id}/plan`)}>
-              🎛 Технический план сцены
-            </Button>
+            <ProjectActionButton icon="plan" label="План сцены" meta="схема" onClick={() => navigate(`/projects/${p.id}/plan`)} wide />
           )}
           {canFinance && invoice.data && (
-            <Button block variant="secondary" onClick={() => navigate(`/projects/${p.id}/invoice`)}>
-              📄 Сформировать счёт
-            </Button>
+            <ProjectActionButton icon="invoice" label="Счёт" meta="PDF" onClick={() => navigate(`/projects/${p.id}/invoice`)} wide />
           )}
         </div>
       )}
@@ -495,21 +503,21 @@ export function ProjectDetailPage() {
             <SectionTitle>Смета и счёт</SectionTitle>
             <Card>
               <p className="card__title">Деньги по проекту</p>
-              <div className="row" style={{ gap: 8, marginTop: 10 }}>
+              <div className="project-stat-grid">
                 <FinanceTile
+                  icon="finance"
                   label={inv.dueEUR >= 0 ? t("finance.clientDebt") : "Переплата"}
                   value={eur(Math.abs(inv.dueEUR))}
                   tone={inv.dueEUR > 0 ? "var(--danger)" : "var(--ok)"}
                 />
                 <FinanceTile
+                  icon="contractors"
                   label={t("finance.payables")}
                   value={eur(inv.contractorCostEUR)}
                   tone={inv.contractorCostEUR > 0 ? "var(--warn)" : "var(--ok)"}
                 />
-              </div>
-              <div className="row" style={{ gap: 8, marginTop: 8 }}>
-                <FinanceTile label={t("finance.revenue")} value={eur(inv.invoiceEUR)} />
-                <FinanceTile label={t("finance.net")} value={eur(inv.profitEUR)} tone={inv.profitEUR >= 0 ? "var(--ok)" : "var(--alert)"} />
+                <FinanceTile icon="invoice" label={t("finance.revenue")} value={eur(inv.invoiceEUR)} />
+                <FinanceTile icon="overview" label={t("finance.net")} value={eur(inv.profitEUR)} tone={inv.profitEUR >= 0 ? "var(--ok)" : "var(--alert)"} />
               </div>
               <p className="card__subtitle" style={{ marginTop: 8 }}>
                 {t("finance.clientDebt")} — по смете и оплатам. {t("finance.payables")} — по себестоимости субаренды.
@@ -566,42 +574,86 @@ export function ProjectDetailPage() {
         onClose={() => setResolving(null)}
       />
       <EditProjectSheet open={editOpen} project={p} clients={clients.data ?? []} onClose={() => setEditOpen(false)} />
-      <div
-        style={{
-          position: "sticky",
-          bottom: 8,
-          zIndex: 10,
-          marginTop: "var(--space-3)",
-          padding: "8px",
-          border: "1px solid var(--bdr)",
-          borderRadius: 14,
-          background: "color-mix(in srgb, var(--card) 94%, transparent)",
-          boxShadow: "var(--shadow-card)",
-          backdropFilter: "blur(14px)",
-        }}
-      >
-        <div className="row" style={{ gap: 6, overflowX: "auto", flexWrap: "nowrap" }}>
-          {visibleTabs.map((tab) => (
+      <div className="project-tabbar" role="tablist" aria-label="Разделы проекта">
+        {visibleTabs.map((tab) => {
+          const isActive = currentTab === tab.id;
+          const count = tabCount(tab.count);
+          return (
             <button
               key={tab.id}
-              className={`chip ${currentTab === tab.id ? "chip--accent chip--solid" : "chip--neutral"}`}
-              style={{ cursor: "pointer", border: "none", whiteSpace: "nowrap", flex: "0 0 auto" }}
+              className={`project-tabbar__item ${isActive ? "project-tabbar__item--active" : ""}`}
               onClick={() => setActiveTab(tab.id)}
+              aria-label={tab.label}
+              aria-selected={isActive}
+              role="tab"
+              type="button"
+              style={{ ["--tab-c" as string]: tab.tone ? `var(--${tab.tone === "accent" ? "accent" : tab.tone})` : "var(--accent)" }}
             >
-              {tab.label}
+              <span className="project-tabbar__icon">
+                <ProjectGlyph type={tab.id} />
+                {count > 0 && <span className="project-tabbar__badge">{count > 9 ? "9+" : count}</span>}
+              </span>
+              <span className="project-tabbar__label">{tab.shortLabel}</span>
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function FinanceTile({ label, value, tone = "var(--text)" }: { label: string; value: string; tone?: string }) {
+function FinanceTile({ icon, label, value, tone = "var(--text)" }: { icon: ProjectTabIcon; label: string; value: string; tone?: string }) {
   return (
-    <div style={{ flex: 1, minWidth: 0, border: "1px solid var(--bdr)", borderRadius: 8, padding: 10 }}>
-      <div className="card__subtitle">{label}</div>
-      <div className="card__title" style={{ color: tone, marginTop: 2 }}>{value}</div>
+    <div className="project-stat-tile">
+      <span className="project-stat-tile__icon"><ProjectGlyph type={icon} /></span>
+      <div style={{ minWidth: 0 }}>
+        <div className="card__subtitle">{label}</div>
+        <div className="card__title" style={{ color: tone, marginTop: 2 }}>{value}</div>
+      </div>
     </div>
   );
+}
+
+function ProjectActionButton({ icon, label, meta, onClick, wide = false }: { icon: ProjectTabIcon; label: string; meta?: string; onClick: () => void; wide?: boolean }) {
+  return (
+    <button className={`project-action ${wide ? "project-action--wide" : ""}`} onClick={onClick} type="button">
+      <span className="project-action__icon"><ProjectGlyph type={icon} /></span>
+      <span className="project-action__text">
+        <span className="project-action__label">{label}</span>
+        {meta && <span className="project-action__meta">{meta}</span>}
+      </span>
+    </button>
+  );
+}
+
+function ProjectGlyph({ type }: { type: ProjectTabIcon }) {
+  const p = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  switch (type) {
+    case "overview":
+      return <svg viewBox="0 0 24 24"><rect x="4.5" y="5" width="6" height="6" rx="1.4" {...p} /><rect x="13.5" y="5" width="6" height="6" rx="1.4" {...p} /><rect x="4.5" y="14" width="6" height="5" rx="1.4" {...p} /><rect x="13.5" y="14" width="6" height="5" rx="1.4" {...p} /></svg>;
+    case "back":
+      return <svg viewBox="0 0 24 24"><path d="M5 12h14" {...p} /><path d="M12 5l-7 7 7 7" {...p} /></svg>;
+    case "reservations":
+      return <svg viewBox="0 0 24 24"><rect x="4.5" y="6.5" width="15" height="12" rx="2.4" {...p} /><path d="M8 4.5v4M16 4.5v4M4.5 10.5h15" {...p} /></svg>;
+    case "timing":
+      return <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" {...p} /><path d="M12 7.5v5l3.2 2" {...p} /></svg>;
+    case "team":
+      return <svg viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3" {...p} /><path d="M4 19c.5-3.1 2.5-5 5-5s4.5 1.9 5 5" {...p} /><path d="M15.4 11.4a2.5 2.5 0 10-.1-4.8M15.8 14.2c2.2.4 3.7 2 4.2 4.8" {...p} /></svg>;
+    case "contractors":
+      return <svg viewBox="0 0 24 24"><rect x="4.5" y="7" width="15" height="11" rx="2" {...p} /><path d="M8.5 7V5.8A1.8 1.8 0 0110.3 4h3.4a1.8 1.8 0 011.8 1.8V7M8 12h8M8 15h5" {...p} /></svg>;
+    case "finance":
+      return <svg viewBox="0 0 24 24"><path d="M7 8.2h8.8M7 12h7M7 15.8h8.8" {...p} /><path d="M18 5.5c-1.2-.9-2.6-1.3-4.2-1.3-4.2 0-7.3 3.3-7.3 7.8s3.1 7.8 7.3 7.8c1.6 0 3-.4 4.2-1.3" {...p} /></svg>;
+    case "plan":
+      return <svg viewBox="0 0 24 24"><path d="M4.5 18.5h15M6 16l4-8 3 5 2-3 3 6" {...p} /><circle cx="10" cy="8" r="1.3" fill="currentColor" stroke="none" /></svg>;
+    case "invoice":
+      return <svg viewBox="0 0 24 24"><path d="M7 4.5h8l3 3v12H7z" {...p} /><path d="M15 4.5v3h3M9.5 12h5M9.5 15.5h5" {...p} /></svg>;
+    default:
+      return null;
+  }
 }

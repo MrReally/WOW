@@ -319,6 +319,180 @@
 .row--between { justify-content: space-between; }
 .spacer { flex: 1; }
 
+/* ── Project mobile ergonomics ─────────────────────────────────────── */
+.project-mobile-page {
+  padding-bottom: calc(94px + env(safe-area-inset-bottom));
+}
+.icon-text-action {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  padding: 0 2px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.icon-text-action svg {
+  width: 18px;
+  height: 18px;
+}
+.project-stat-grid,
+.project-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.project-stat-tile {
+  min-width: 0;
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--bdr);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--s1);
+}
+.project-stat-tile__icon,
+.project-action__icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.project-stat-tile__icon svg,
+.project-action__icon svg,
+.project-tabbar__icon svg {
+  width: 20px;
+  height: 20px;
+}
+.project-action {
+  min-width: 0;
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  border: 1px solid var(--bdr-md);
+  border-radius: 13px;
+  padding: 10px;
+  background: var(--s1);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.05s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.project-action:active {
+  transform: scale(0.985);
+  border-color: var(--bdr-hi);
+}
+.project-action--wide {
+  grid-column: 1 / -1;
+}
+.project-action__text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.project-action__label {
+  font-weight: 700;
+  color: var(--text);
+}
+.project-action__meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.project-tabbar {
+  position: sticky;
+  bottom: 8px;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(46px, 1fr));
+  gap: 4px;
+  margin-top: var(--space-3);
+  padding: 7px;
+  padding-bottom: calc(7px + env(safe-area-inset-bottom));
+  border: 1px solid var(--bdr);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(14px);
+}
+.project-tabbar__item {
+  position: relative;
+  min-width: 0;
+  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: none;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease;
+}
+.project-tabbar__item:active {
+  transform: scale(0.97);
+}
+.project-tabbar__item--active {
+  color: var(--tab-c, var(--accent));
+  background: color-mix(in srgb, var(--tab-c, var(--accent)) 15%, transparent);
+}
+.project-tabbar__icon {
+  position: relative;
+  display: inline-flex;
+}
+.project-tabbar__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.project-tabbar__badge {
+  position: absolute;
+  top: -8px;
+  right: -10px;
+  min-width: 17px;
+  height: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--alert);
+  color: #fff;
+  border: 2px solid var(--card);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
 /* ── States ────────────────────────────────────────────────────────── */
 .center-state {
   display: flex;
