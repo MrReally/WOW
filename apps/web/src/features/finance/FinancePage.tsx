@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Card, Button, SectionTitle, Metric, StatusBadge, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
+import { CURRENCIES } from "@sever/contracts";
+import type { Finance } from "@sever/contracts";
+import { Card, Button, SectionTitle, Metric, StatusBadge, Loading, ErrorState, EmptyState, Field, Input, Select } from "../../ui-kit/index.ts";
 import { useI18n } from "../../app/i18n.tsx";
 import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreateAccount, usePeopleNames, useContractorDebts, useContractorsList } from "./hooks.ts";
 import { AddTransactionSheet } from "./components/AddTransactionSheet.tsx";
@@ -29,6 +31,9 @@ export function FinancePage() {
   const canManage = can("finance.manage");
   const people = usePeopleNames(can("people.view"));
   const [txOpen, setTxOpen] = useState(false);
+  const [accountFormOpen, setAccountFormOpen] = useState(false);
+  const [accountName, setAccountName] = useState("");
+  const [accountCurrency, setAccountCurrency] = useState<Finance.AccountDTO["currency"]>("EUR");
   const authorName = (uid: string | null) => {
     if (!uid) return `${t("finance.addedBy")}: ${t("common.system")}`;
     return `${t("finance.addedBy")}: ${(people.data ?? []).find((u) => u.id === uid)?.displayName ?? uid.slice(0, 8)}`;
@@ -41,6 +46,27 @@ export function FinancePage() {
   const totalOwed = (contractorDebts.data ?? []).reduce((a, d) => a + d.debtEUR, 0);
   const projectName = (id: string) => (projects.data ?? []).find((p) => p.id === id)?.name ?? "—";
   const contractorName = (id: string) => (contractors.data ?? []).find((c) => c.id === id)?.name ?? "—";
+  const saveAccount = () => {
+    if (!canManage) {
+      toast("error", "Недостаточно прав для создания счёта.");
+      return;
+    }
+    const name = accountName.trim();
+    if (!name) {
+      toast("error", "Введите название счёта.");
+      return;
+    }
+    createAccount.mutate(
+      { name, currency: accountCurrency },
+      {
+        onSuccess: () => {
+          setAccountName("");
+          setAccountCurrency("EUR");
+          setAccountFormOpen(false);
+        },
+      }
+    );
+  };
 
   return (
     <div className="stack">
@@ -65,14 +91,32 @@ export function FinancePage() {
           <Button
             variant="secondary"
             onClick={() => {
-              const name = prompt("Название счёта");
-              if (name) createAccount.mutate({ name, currency: "EUR" });
+              setAccountFormOpen((v) => !v);
             }}
           >
             + Счёт
           </Button>
         )}
       </div>
+      {accountFormOpen && canManage && (
+        <Card>
+          <p className="card__title">Новый счёт</p>
+          <Field label="Название">
+            <Input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="Касса / Bank / Wise" />
+          </Field>
+          <Field label="Валюта">
+            <Select
+              value={accountCurrency}
+              onChange={(e) => setAccountCurrency(e.target.value as Finance.AccountDTO["currency"])}
+              options={CURRENCIES.map((currency) => ({ value: currency, label: currency }))}
+            />
+          </Field>
+          <div className="row" style={{ marginTop: 8 }}>
+            <Button block disabled={!accountName.trim() || createAccount.isPending} onClick={saveAccount}>Сохранить</Button>
+            <Button variant="secondary" block onClick={() => setAccountFormOpen(false)}>Отмена</Button>
+          </div>
+        </Card>
+      )}
 
       <SectionTitle>{t("finance.accounts")}</SectionTitle>
       {(accounts.data ?? []).length === 0 ? (
