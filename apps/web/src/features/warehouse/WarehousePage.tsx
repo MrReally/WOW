@@ -117,6 +117,9 @@ export function WarehousePage() {
   const [editModel, setEditModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [statusFilter, setStatusFilter] = useState<Equipment.UnitStatus | "all">("all");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
+  const [warehouseForm, setWarehouseForm] = useState<{ mode: "create" | "edit"; id?: string } | null>(null);
+  const [warehouseNameDraft, setWarehouseNameDraft] = useState("");
+  const [warehouseAddressDraft, setWarehouseAddressDraft] = useState("");
   const [search, setSearch] = useState("");
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
 
@@ -134,6 +137,43 @@ export function WarehousePage() {
   const allModels = models.data ?? [];
   const getTypeName = (tid: string | undefined) => (types.data ?? []).find((t) => t.id === tid)?.name ?? "Без типа";
   const warehouseName = (id: string | null | undefined) => warehouseList.find((w) => w.id === id)?.name ?? "—";
+  const selectedWarehouse = warehouseList.find((w) => w.id === warehouseFilter) ?? null;
+  const openWarehouseCreate = () => {
+    setWarehouseNameDraft("");
+    setWarehouseAddressDraft("");
+    setWarehouseForm({ mode: "create" });
+  };
+  const openWarehouseEdit = (warehouse: Equipment.WarehouseDTO) => {
+    setWarehouseNameDraft(warehouse.name);
+    setWarehouseAddressDraft(warehouse.address ?? "");
+    setWarehouseForm({ mode: "edit", id: warehouse.id });
+  };
+  const closeWarehouseForm = () => {
+    setWarehouseForm(null);
+    setWarehouseNameDraft("");
+    setWarehouseAddressDraft("");
+  };
+  const saveWarehouse = () => {
+    const name = warehouseNameDraft.trim();
+    if (!name) return;
+    const address = warehouseAddressDraft.trim() || null;
+    if (warehouseForm?.mode === "edit" && warehouseForm.id) {
+      updateWarehouse.mutate(
+        { id: warehouseForm.id, input: { name, address } },
+        { onSuccess: closeWarehouseForm }
+      );
+      return;
+    }
+    createWarehouse.mutate(
+      { name, address },
+      {
+        onSuccess: (warehouse) => {
+          setWarehouseFilter(warehouse.id);
+          closeWarehouseForm();
+        },
+      }
+    );
+  };
   const query = search.trim().toLowerCase();
   const modelMatches = (m: Equipment.EquipmentModelDTO) =>
     !query || [m.name, m.manufacturer ?? "", getTypeName(m.typeId)].some((v) => v.toLowerCase().includes(query));
@@ -190,30 +230,12 @@ export function WarehousePage() {
         )}
         {canCatalog && (
           <div className="row" style={{ marginTop: 10, gap: 8 }}>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                const name = prompt("Название склада");
-                if (!name?.trim()) return;
-                const address = prompt("Адрес склада") ?? "";
-                createWarehouse.mutate({ name: name.trim(), address: address.trim() || null });
-              }}
-            >
+            <Button variant="secondary" onClick={openWarehouseCreate}>
               + Склад
             </Button>
             {warehouseFilter !== "all" && (
               <>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    const w = warehouseList.find((x) => x.id === warehouseFilter);
-                    if (!w) return;
-                    const name = prompt("Название склада", w.name);
-                    if (!name?.trim()) return;
-                    const address = prompt("Адрес склада", w.address ?? "") ?? "";
-                    updateWarehouse.mutate({ id: w.id, input: { name: name.trim(), address: address.trim() || null } });
-                  }}
-                >
+                <Button variant="ghost" disabled={!selectedWarehouse} onClick={() => selectedWarehouse && openWarehouseEdit(selectedWarehouse)}>
                   Редактировать
                 </Button>
                 <Button
@@ -225,6 +247,27 @@ export function WarehousePage() {
                 </Button>
               </>
             )}
+          </div>
+        )}
+        {canCatalog && warehouseForm && (
+          <div className="card card--flat" style={{ marginTop: 12 }}>
+            <p className="card__title">{warehouseForm.mode === "create" ? "Новый склад" : "Редактировать склад"}</p>
+            <Field label="Название">
+              <Input value={warehouseNameDraft} onChange={(e) => setWarehouseNameDraft(e.target.value)} placeholder="Main warehouse" />
+            </Field>
+            <Field label="Адрес">
+              <Input value={warehouseAddressDraft} onChange={(e) => setWarehouseAddressDraft(e.target.value)} placeholder="Город, улица, помещение" />
+            </Field>
+            <div className="row" style={{ marginTop: 8 }}>
+              <Button
+                block
+                disabled={!warehouseNameDraft.trim() || createWarehouse.isPending || updateWarehouse.isPending}
+                onClick={saveWarehouse}
+              >
+                Сохранить
+              </Button>
+              <Button variant="secondary" block onClick={closeWarehouseForm}>Отмена</Button>
+            </div>
           </div>
         )}
       </div>
