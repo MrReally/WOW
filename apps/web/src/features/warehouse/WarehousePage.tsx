@@ -221,7 +221,7 @@ export function WarehousePage() {
               onClick={() => setWarehouseFilter(w.id)}
               title={w.address ?? undefined}
             >
-              {w.name}{w.isDefault ? " · основной" : ""}
+              {w.name}{w.isDefault ? " ★" : ""}
             </button>
           ))}
         </div>
