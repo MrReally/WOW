@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation, useParams, useNavigate } from "react-router-dom";
+import { useLocation, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type { Projects } from "@sever/contracts";
 import { PROJECT_STATUSES } from "@sever/contracts";
 import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
@@ -39,10 +39,26 @@ const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "o
   declined: { label: "отклонил", tone: "warn" },
 };
 
+type ProjectTab = "overview" | "reservations" | "timing" | "team" | "contractors" | "finance";
+
+const PROJECT_TABS: { id: ProjectTab; label: string }[] = [
+  { id: "overview", label: "Обзор" },
+  { id: "reservations", label: "Брони" },
+  { id: "timing", label: "Тайминг" },
+  { id: "team", label: "Команда" },
+  { id: "contractors", label: "Подрядчики" },
+  { id: "finance", label: "Финансы" },
+];
+
+function projectTabFrom(value: string | null): ProjectTab {
+  return PROJECT_TABS.some((tab) => tab.id === value) ? (value as ProjectTab) : "overview";
+}
+
 export function ProjectDetailPage() {
   const { id = "" } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { can } = useSession();
   const { t } = useI18n();
   const canManage = can("projects.manage");
@@ -103,6 +119,24 @@ export function ProjectDetailPage() {
   const clientName = (cid: string) => (clients.data ?? []).find((c) => c.id === cid)?.name ?? "—";
   const modelName = (mid: string) => (models.data ?? []).find((m) => m.id === mid)?.name ?? mid;
   const userName = (uid: string) => (people.data ?? []).find((u) => u.id === uid)?.displayName ?? "";
+  const activeTab = projectTabFrom(searchParams.get("tab"));
+  const setActiveTab = (tab: ProjectTab) => {
+    const next = new URLSearchParams(searchParams);
+    if (tab === "overview") next.delete("tab");
+    else next.set("tab", tab);
+    setSearchParams(next);
+  };
+  const reservationCount = (reservations.data ?? []).length;
+  const timingCount = (timings.data ?? []).length;
+  const teamCount = (assignments.data ?? []).length;
+  const contractorCost = invoice.data?.contractorCostEUR ?? 0;
+  const visibleTabs = PROJECT_TABS.filter((tab) => {
+    if (tab.id === "team") return canViewPeople;
+    if (tab.id === "contractors") return canReserve || contractorCost > 0;
+    if (tab.id === "finance") return canFinance && !!invoice.data;
+    return true;
+  });
+  const currentTab = visibleTabs.some((tab) => tab.id === activeTab) ? activeTab : "overview";
 
   return (
     <div className="stack">
@@ -131,13 +165,52 @@ export function ProjectDetailPage() {
         )}
       </Card>
 
-      {canPlans && (
-        <Button variant="secondary" block onClick={() => navigate(`/projects/${p.id}/plan`)}>
-          🎛 Технический план сцены
-        </Button>
+      <div className="row" style={{ gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+        {visibleTabs.map((tab) => (
+          <button
+            key={tab.id}
+            className={`chip ${currentTab === tab.id ? "chip--accent chip--solid" : "chip--neutral"}`}
+            style={{ cursor: "pointer", border: "none", whiteSpace: "nowrap" }}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {currentTab === "overview" && (
+        <div className="stack">
+          <Card>
+            <p className="card__title">Сводка проекта</p>
+            <div className="row" style={{ gap: 8, marginTop: 10 }}>
+              <FinanceTile label="Брони" value={String(reservationCount)} />
+              <FinanceTile label="Тайминг" value={String(timingCount)} />
+            </div>
+            <div className="row" style={{ gap: 8, marginTop: 8 }}>
+              <FinanceTile label="Команда" value={String(teamCount)} />
+              <FinanceTile label={t("finance.payables")} value={eur(contractorCost)} tone={contractorCost > 0 ? "var(--warn)" : "var(--ok)"} />
+            </div>
+          </Card>
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <Button variant="secondary" block onClick={() => setActiveTab("reservations")}>Брони</Button>
+            <Button variant="secondary" block onClick={() => setActiveTab("timing")}>Тайминг</Button>
+          </div>
+          {canPlans && (
+            <Button variant="secondary" block onClick={() => navigate(`/projects/${p.id}/plan`)}>
+              🎛 Технический план сцены
+            </Button>
+          )}
+          {canFinance && invoice.data && (
+            <Button block variant="secondary" onClick={() => navigate(`/projects/${p.id}/invoice`)}>
+              📄 Сформировать счёт
+            </Button>
+          )}
+        </div>
       )}
 
       {/* Reservations */}
+      {currentTab === "reservations" && (
+        <>
       <SectionTitle>Брони (по часам)</SectionTitle>
       {(reservations.data ?? []).length === 0 ? (
         <EmptyState title="Броней нет" />
@@ -241,9 +314,13 @@ export function ProjectDetailPage() {
           </div>
         </Card>
       )}
+        </>
+      )}
 
       {/* Timings — parallel timeline (everyone sees the blocks they may see; the
           whole picture needs the «весь тайминг» permission, enforced by the API) */}
+      {currentTab === "timing" && (
+        <>
       <SectionTitle>Тайминги</SectionTitle>
       {(timings.data ?? []).length === 0 ? (
         <EmptyState title={canTiming ? "Таймингов нет" : "Вас пока нет ни в одном событии"} />
@@ -328,10 +405,12 @@ export function ProjectDetailPage() {
           </Card>
         );
       })()}
+        </>
+      )}
 
       {/* Assignments — hidden unless you can see the people directory, so field
           crew without people.view never get a section full of raw ids. */}
-      {canViewPeople && (
+      {currentTab === "team" && canViewPeople && (
         <>
       <SectionTitle>Команда</SectionTitle>
       {(assignments.data ?? []).length === 0 ? (
@@ -406,14 +485,14 @@ export function ProjectDetailPage() {
       )}
 
       {/* Contractor (subrent) equipment */}
-      {(canReserve || (invoice.data && (invoice.data.contractorCostEUR > 0))) && (
+      {currentTab === "contractors" && (canReserve || (invoice.data && (invoice.data.contractorCostEUR > 0))) && (
         <>
           <SectionTitle>{t("contractors.title")}</SectionTitle>
           <ContractorEquipment projectId={id} canManage={canReserve} />
         </>
       )}
 
-      {canFinance && invoice.data && (() => {
+      {currentTab === "finance" && canFinance && invoice.data && (() => {
         const inv = invoice.data;
         const Line = ({ l }: { l: { refId: string; label: string; detail: string; amountEUR: number } }) => (
           <div className="row row--between" style={{ padding: "4px 0", gap: 12 }}>
