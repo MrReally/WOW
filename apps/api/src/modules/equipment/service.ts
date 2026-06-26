@@ -29,6 +29,7 @@ interface UnitRow {
   asset_tag: string;
   serial: string | null;
   status: Equipment.UnitStatus;
+  warehouse_id: string | null;
   current_project_id: string | null;
   notes: string | null;
   created_at: Date;
@@ -42,9 +43,17 @@ interface JournalRow {
   from_status: Equipment.UnitStatus | null;
   to_status: Equipment.UnitStatus | null;
   project_id: string | null;
+  warehouse_id: string | null;
   actor_id: string | null;
   note: string | null;
   at: Date;
+}
+interface WarehouseRow {
+  id: string;
+  name: string;
+  address: string | null;
+  is_default: boolean;
+  created_at: Date;
 }
 interface ProblemRow {
   id: string;
@@ -82,6 +91,7 @@ const unitDTO = (r: UnitRow): Equipment.EquipmentUnitDTO => ({
   assetTag: r.asset_tag,
   serial: r.serial,
   status: r.status,
+  warehouseId: r.warehouse_id,
   currentProjectId: r.current_project_id,
   notes: r.notes,
   createdAt: r.created_at.toISOString(),
@@ -95,9 +105,17 @@ const journalDTO = (r: JournalRow): Equipment.JournalEntryDTO => ({
   fromStatus: r.from_status,
   toStatus: r.to_status,
   projectId: r.project_id,
+  warehouseId: r.warehouse_id,
   actorId: r.actor_id,
   note: r.note,
   at: r.at.toISOString(),
+});
+const warehouseDTO = (r: WarehouseRow): Equipment.WarehouseDTO => ({
+  id: r.id,
+  name: r.name,
+  address: r.address,
+  isDefault: r.is_default,
+  createdAt: r.created_at.toISOString(),
 });
 const problemDTO = (r: ProblemRow): Problem => ({
   id: r.id,
@@ -190,6 +208,7 @@ export function createEquipmentService(
       fromStatus?: Equipment.UnitStatus | null;
       toStatus?: Equipment.UnitStatus | null;
       projectId?: ID | null;
+      warehouseId?: ID | null;
       actorId?: ID | null;
       note?: string | null;
     }
@@ -197,8 +216,8 @@ export function createEquipmentService(
     await query(
       client,
       `INSERT INTO equipment.journal
-         (unit_id, model_id, qty, action, from_status, to_status, project_id, actor_id, note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+         (unit_id, model_id, qty, action, from_status, to_status, project_id, warehouse_id, actor_id, note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [
         entry.unitId ?? null,
         entry.modelId ?? null,
@@ -207,6 +226,7 @@ export function createEquipmentService(
         entry.fromStatus ?? null,
         entry.toStatus ?? null,
         entry.projectId ?? null,
+        entry.warehouseId ?? null,
         entry.actorId ?? null,
         entry.note ?? null,
       ]
@@ -219,7 +239,64 @@ export function createEquipmentService(
     FROM equipment.models m
     JOIN equipment.types t ON t.id = m.type_id`;
 
+  async function defaultWarehouseId(client: Sql = db): Promise<string> {
+    let row = await one<{ id: string }>(
+      client,
+      `SELECT id FROM equipment.warehouses ORDER BY is_default DESC, created_at LIMIT 1`
+    );
+    if (!row) {
+      row = await one<{ id: string }>(
+        client,
+        `INSERT INTO equipment.warehouses (name, is_default) VALUES ('Main warehouse', true) RETURNING id`
+      );
+    }
+    return row!.id;
+  }
+
+  async function assertWarehouse(id: string, client: Sql = db): Promise<void> {
+    const row = await one<{ id: string }>(client, `SELECT id FROM equipment.warehouses WHERE id=$1`, [id]);
+    if (!row) throw NotFound("warehouse", id);
+  }
+
   return {
+    // ── Warehouses ──
+    async listWarehouses() {
+      const rows = await query<WarehouseRow>(db, `SELECT * FROM equipment.warehouses ORDER BY is_default DESC, name`);
+      return rows.map(warehouseDTO);
+    },
+    async createWarehouse(input) {
+      const row = await one<WarehouseRow>(
+        db,
+        `INSERT INTO equipment.warehouses (name, address) VALUES ($1,$2) RETURNING *`,
+        [input.name, input.address ?? null]
+      );
+      return warehouseDTO(row!);
+    },
+    async updateWarehouse(id, input) {
+      return tx(async (client) => {
+        const existing = await one<WarehouseRow>(client, `SELECT * FROM equipment.warehouses WHERE id=$1`, [id]);
+        if (!existing) throw NotFound("warehouse", id);
+        if (input.isDefault) {
+          await query(client, `UPDATE equipment.warehouses SET is_default=false`);
+        }
+        const row = await one<WarehouseRow>(
+          client,
+          `UPDATE equipment.warehouses SET
+             name=$2,
+             address=$3,
+             is_default=$4
+           WHERE id=$1 RETURNING *`,
+          [
+            id,
+            input.name ?? existing.name,
+            input.address === undefined ? existing.address : input.address,
+            input.isDefault === undefined ? existing.is_default : input.isDefault,
+          ]
+        );
+        return warehouseDTO(row!);
+      });
+    },
+
     // ── Catalog: types ──
     async listTypes() {
       const rows = await query<TypeRow>(db, `SELECT * FROM equipment.types ORDER BY name`);
@@ -309,6 +386,10 @@ export function createEquipmentService(
         params.push(filter.projectId);
         conds.push(`current_project_id = $${params.length}`);
       }
+      if (filter?.warehouseId) {
+        params.push(filter.warehouseId);
+        conds.push(`warehouse_id = $${params.length}`);
+      }
       const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
       const rows = await query<UnitRow>(
         db,
@@ -325,15 +406,18 @@ export function createEquipmentService(
       const model = await this.getModel(input.modelId);
       if (!model) throw NotFound("model", input.modelId);
       return tx(async (client) => {
+        const warehouseId = input.warehouseId ?? await defaultWarehouseId(client);
+        await assertWarehouse(warehouseId, client);
         const row = await one<UnitRow>(
           client,
-          `INSERT INTO equipment.units (model_id, asset_tag, serial, notes) VALUES ($1,$2,$3,$4) RETURNING *`,
-          [input.modelId, input.assetTag, input.serial ?? null, input.notes ?? null]
+          `INSERT INTO equipment.units (model_id, asset_tag, serial, notes, warehouse_id) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+          [input.modelId, input.assetTag, input.serial ?? null, input.notes ?? null, warehouseId]
         );
         await appendJournal(client, {
           unitId: row!.id,
           action: "created",
           toStatus: "in_stock",
+          warehouseId,
         });
         return unitDTO(row!);
       });
@@ -363,38 +447,46 @@ export function createEquipmentService(
       );
       return rows.map(journalDTO);
     },
-    async modelStock(modelId) {
+    async modelStock(modelId, warehouseId) {
       const model = await this.getModel(modelId);
       if (!model) throw NotFound("model", modelId);
+      if (warehouseId) await assertWarehouse(warehouseId);
 
       if (model.trackingMode === "quantity") {
-        const stock = await one<{ total_qty: number }>(
-          db,
-          `SELECT total_qty FROM equipment.model_stock WHERE model_id=$1`,
-          [modelId]
-        );
-        const total = stock?.total_qty ?? 0;
+        const stock = warehouseId
+          ? await one<{ total_qty: number }>(
+              db,
+              `SELECT total_qty FROM equipment.model_stock WHERE model_id=$1 AND warehouse_id=$2`,
+              [modelId, warehouseId]
+            )
+          : await one<{ total_qty: string }>(
+              db,
+              `SELECT COALESCE(SUM(total_qty),0)::text AS total_qty FROM equipment.model_stock WHERE model_id=$1`,
+              [modelId]
+            );
+        const total = Number(stock?.total_qty ?? 0);
         const moved = await one<{ out: string }>(
           db,
           `SELECT COALESCE(SUM(CASE WHEN action='issued' THEN qty
                                     WHEN action IN ('returned','return_incomplete') THEN -qty
                                     ELSE 0 END),0)::text AS out
-           FROM equipment.journal WHERE model_id=$1 AND qty IS NOT NULL`,
-          [modelId]
+           FROM equipment.journal WHERE model_id=$1 AND qty IS NOT NULL ${warehouseId ? "AND warehouse_id=$2" : ""}`,
+          warehouseId ? [modelId, warehouseId] : [modelId]
         );
         const onProjects = Math.max(0, Number(moved?.out ?? 0));
-        return { modelId, total, inStock: total - onProjects, onProjects, inRepair: 0 };
+        return { modelId, warehouseId: warehouseId ?? null, total, inStock: total - onProjects, onProjects, inRepair: 0 };
       }
 
       const rows = await query<{ status: Equipment.UnitStatus; count: string }>(
         db,
-        `SELECT status, count(*)::text AS count FROM equipment.units WHERE model_id=$1 GROUP BY status`,
-        [modelId]
+        `SELECT status, count(*)::text AS count FROM equipment.units WHERE model_id=$1 ${warehouseId ? "AND warehouse_id=$2" : ""} GROUP BY status`,
+        warehouseId ? [modelId, warehouseId] : [modelId]
       );
       const by = (s: Equipment.UnitStatus) => Number(rows.find((r) => r.status === s)?.count ?? 0);
       const total = rows.reduce((a, r) => a + Number(r.count), 0);
       return {
         modelId,
+        warehouseId: warehouseId ?? null,
         total,
         inStock: by("in_stock"),
         onProjects: by("on_project"),
@@ -403,22 +495,49 @@ export function createEquipmentService(
     },
 
     // ── Quantity (cable) stock + moves ──
-    async setModelStockTotal(modelId, total) {
+    async transferUnit(unitId, warehouseId, actorId, note) {
+      await assertWarehouse(warehouseId);
+      return tx(async (client) => {
+        const unit = await one<UnitRow>(client, `SELECT * FROM equipment.units WHERE id=$1 FOR UPDATE`, [unitId]);
+        if (!unit) throw NotFound("unit", unitId);
+        if (unit.status !== "in_stock") throw BadRequest("перемещать между складами можно только единицы на складе");
+        const updated = await one<UnitRow>(
+          client,
+          `UPDATE equipment.units SET warehouse_id=$2 WHERE id=$1 RETURNING *`,
+          [unitId, warehouseId]
+        );
+        await appendJournal(client, {
+          unitId,
+          action: "status_changed",
+          fromStatus: unit.status,
+          toStatus: unit.status,
+          warehouseId,
+          actorId,
+          note: note ?? `перемещение между складами`,
+        });
+        return unitDTO(updated!);
+      });
+    },
+
+    async setModelStockTotal(modelId, total, warehouseIdInput) {
       const model = await this.getModel(modelId);
       if (!model) throw NotFound("model", modelId);
       if (model.trackingMode !== "quantity") throw BadRequest("model is not quantity-tracked");
+      const warehouseId = warehouseIdInput ?? await defaultWarehouseId();
+      await assertWarehouse(warehouseId);
       await query(
         db,
-        `INSERT INTO equipment.model_stock (model_id, total_qty) VALUES ($1,$2)
-         ON CONFLICT (model_id) DO UPDATE SET total_qty=$2`,
-        [modelId, Math.max(0, Math.trunc(total))]
+        `INSERT INTO equipment.model_stock (model_id, warehouse_id, total_qty) VALUES ($1,$2,$3)
+         ON CONFLICT (model_id, warehouse_id) DO UPDATE SET total_qty=$3`,
+        [modelId, warehouseId, Math.max(0, Math.trunc(total))]
       );
-      return this.modelStock(modelId);
+      return this.modelStock(modelId, warehouseId);
     },
 
     async issueQuantity(input) {
       if (input.qty <= 0) throw BadRequest("qty must be positive");
-      const stock = await this.modelStock(input.modelId);
+      const warehouseId = input.warehouseId ?? await defaultWarehouseId();
+      const stock = await this.modelStock(input.modelId, warehouseId);
       if (input.qty > stock.inStock) {
         throw BadRequest(`only ${stock.inStock} available on stock`);
       }
@@ -428,15 +547,17 @@ export function createEquipmentService(
           qty: input.qty,
           action: "issued",
           projectId: input.projectId,
+          warehouseId,
           actorId: input.actorId,
           note: input.note ?? null,
         });
       });
-      return this.modelStock(input.modelId);
+      return this.modelStock(input.modelId, warehouseId);
     },
 
     async returnQuantity(input) {
       if (input.qty <= 0) throw BadRequest("qty must be positive");
+      const warehouseId = input.warehouseId ?? await defaultWarehouseId();
       const issuedOnProject = await one<{ out: string }>(
         db,
         `SELECT COALESCE(SUM(CASE WHEN action='issued' THEN qty
@@ -452,15 +573,58 @@ export function createEquipmentService(
       }
       await tx(async (client) => {
         await appendJournal(client, {
-          modelId: input.modelId,
+           modelId: input.modelId,
           qty: input.qty,
           action: "returned",
           projectId: input.projectId,
+          warehouseId,
           actorId: input.actorId,
           note: input.note ?? null,
         });
       });
-      return this.modelStock(input.modelId);
+      return this.modelStock(input.modelId, warehouseId);
+    },
+
+    async transferQuantity(input) {
+      if (input.qty <= 0) throw BadRequest("qty must be positive");
+      if (input.fromWarehouseId === input.toWarehouseId) throw BadRequest("выберите разные склады");
+      await assertWarehouse(input.fromWarehouseId);
+      await assertWarehouse(input.toWarehouseId);
+      const stock = await this.modelStock(input.modelId, input.fromWarehouseId);
+      if (input.qty > stock.inStock) throw BadRequest(`only ${stock.inStock} available on stock`);
+      await tx(async (client) => {
+        await query(
+          client,
+          `INSERT INTO equipment.model_stock (model_id, warehouse_id, total_qty) VALUES ($1,$2,0)
+           ON CONFLICT (model_id, warehouse_id) DO NOTHING`,
+          [input.modelId, input.fromWarehouseId]
+        );
+        await query(
+          client,
+          `INSERT INTO equipment.model_stock (model_id, warehouse_id, total_qty) VALUES ($1,$2,0)
+           ON CONFLICT (model_id, warehouse_id) DO NOTHING`,
+          [input.modelId, input.toWarehouseId]
+        );
+        await query(
+          client,
+          `UPDATE equipment.model_stock SET total_qty=total_qty-$3 WHERE model_id=$1 AND warehouse_id=$2`,
+          [input.modelId, input.fromWarehouseId, input.qty]
+        );
+        await query(
+          client,
+          `UPDATE equipment.model_stock SET total_qty=total_qty+$3 WHERE model_id=$1 AND warehouse_id=$2`,
+          [input.modelId, input.toWarehouseId, input.qty]
+        );
+        await appendJournal(client, {
+          modelId: input.modelId,
+          qty: input.qty,
+          action: "status_changed",
+          warehouseId: input.toWarehouseId,
+          actorId: input.actorId,
+          note: input.note ?? `перемещение между складами`,
+        });
+      });
+      return this.modelStock(input.modelId, input.toWarehouseId);
     },
 
     // ── CSV import ──
@@ -475,6 +639,7 @@ export function createEquipmentService(
       };
       const typeCache = new Map<string, { id: string; trackingMode: "serial" | "quantity" }>();
       const modelCache = new Map<string, string>(); // `${typeId}::${name}` -> modelId
+      const warehouseId = await defaultWarehouseId();
 
       const findOrCreateType = async (name: string, mode: "serial" | "quantity") => {
         const key = name.toLowerCase();
@@ -538,19 +703,13 @@ export function createEquipmentService(
           if (type.trackingMode === "quantity") {
             const qty = row.qty ?? 0;
             if (qty > 0) {
-              const cur = await one<{ total_qty: number }>(
-                db,
-                `SELECT total_qty FROM equipment.model_stock WHERE model_id=$1`,
-                [modelId]
-              );
               await query(
                 db,
-                `INSERT INTO equipment.model_stock (model_id, total_qty) VALUES ($1,$2)
-                 ON CONFLICT (model_id) DO UPDATE SET total_qty = equipment.model_stock.total_qty + $2`,
-                [modelId, Math.trunc(qty)]
+                `INSERT INTO equipment.model_stock (model_id, warehouse_id, total_qty) VALUES ($1,$2,$3)
+                 ON CONFLICT (model_id, warehouse_id) DO UPDATE SET total_qty = equipment.model_stock.total_qty + $3`,
+                [modelId, warehouseId, Math.trunc(qty)]
               );
               result.stockUpdated++;
-              void cur;
             } else {
               result.skipped++;
             }
@@ -571,10 +730,10 @@ export function createEquipmentService(
             await tx(async (client) => {
               const u = await one<UnitRow>(
                 client,
-                `INSERT INTO equipment.units (model_id, asset_tag, serial) VALUES ($1,$2,$3) RETURNING *`,
-                [modelId, row.assetTag, row.serial ?? null]
+                `INSERT INTO equipment.units (model_id, asset_tag, serial, warehouse_id) VALUES ($1,$2,$3,$4) RETURNING *`,
+                [modelId, row.assetTag, row.serial ?? null, warehouseId]
               );
-              await appendJournal(client, { unitId: u!.id, action: "created", toStatus: "in_stock" });
+              await appendJournal(client, { unitId: u!.id, action: "created", toStatus: "in_stock", warehouseId });
             });
             result.unitsCreated++;
           }

@@ -20,11 +20,27 @@ CREATE TABLE IF NOT EXISTS equipment.models (
   created_at                   timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS equipment.warehouses (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       text NOT NULL,
+  address    text,
+  is_default boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO equipment.warehouses (name, is_default)
+SELECT 'Main warehouse', true
+WHERE NOT EXISTS (SELECT 1 FROM equipment.warehouses);
+UPDATE equipment.warehouses
+SET is_default=true
+WHERE id = (SELECT id FROM equipment.warehouses ORDER BY is_default DESC, created_at LIMIT 1)
+  AND NOT EXISTS (SELECT 1 FROM equipment.warehouses WHERE is_default=true);
+
 CREATE TABLE IF NOT EXISTS equipment.units (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   model_id           uuid NOT NULL REFERENCES equipment.models(id),
   asset_tag          text NOT NULL UNIQUE,
   serial             text,
+  warehouse_id       uuid REFERENCES equipment.warehouses(id),
   status             text NOT NULL DEFAULT 'in_stock'
                      CHECK (status IN ('in_stock','reserved','on_project','in_repair','at_contractor','lost')),
   current_project_id uuid,            -- opaque id from projects module (no FK)
@@ -36,6 +52,11 @@ CREATE INDEX IF NOT EXISTS units_project_idx ON equipment.units(current_project_
 
 -- Per-unit free-form notes: unique defects, quirks, marks.
 ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS notes text;
+ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS warehouse_id uuid REFERENCES equipment.warehouses(id);
+UPDATE equipment.units
+SET warehouse_id=(SELECT id FROM equipment.warehouses ORDER BY is_default DESC, created_at LIMIT 1)
+WHERE warehouse_id IS NULL;
+CREATE INDEX IF NOT EXISTS units_warehouse_idx ON equipment.units(warehouse_id);
 
 -- Append-only journal. Never updated or deleted. Entries are either per serial
 -- unit (unit_id set) or per model for quantity/cable moves (model_id + qty).
@@ -48,6 +69,7 @@ CREATE TABLE IF NOT EXISTS equipment.journal (
   from_status text,
   to_status   text,
   project_id  uuid,                   -- opaque id
+  warehouse_id uuid REFERENCES equipment.warehouses(id),
   actor_id    uuid,                   -- opaque people id
   note        text,
   at          timestamptz NOT NULL DEFAULT now()
@@ -59,13 +81,25 @@ CREATE INDEX IF NOT EXISTS journal_model_idx ON equipment.journal(model_id, at);
 ALTER TABLE equipment.journal ALTER COLUMN unit_id DROP NOT NULL;
 ALTER TABLE equipment.journal ADD COLUMN IF NOT EXISTS model_id uuid REFERENCES equipment.models(id);
 ALTER TABLE equipment.journal ADD COLUMN IF NOT EXISTS qty integer;
+ALTER TABLE equipment.journal ADD COLUMN IF NOT EXISTS warehouse_id uuid REFERENCES equipment.warehouses(id);
+UPDATE equipment.journal
+SET warehouse_id=(SELECT id FROM equipment.warehouses ORDER BY is_default DESC, created_at LIMIT 1)
+WHERE warehouse_id IS NULL AND model_id IS NOT NULL;
 
 -- Quantity stock totals for models tracked by quantity (cables). Counts on
 -- projects are derived from the journal; this row holds the owned total.
 CREATE TABLE IF NOT EXISTS equipment.model_stock (
-  model_id  uuid PRIMARY KEY REFERENCES equipment.models(id),
+  model_id  uuid REFERENCES equipment.models(id),
+  warehouse_id uuid REFERENCES equipment.warehouses(id),
   total_qty integer NOT NULL DEFAULT 0
 );
+ALTER TABLE equipment.model_stock ADD COLUMN IF NOT EXISTS warehouse_id uuid REFERENCES equipment.warehouses(id);
+UPDATE equipment.model_stock
+SET warehouse_id=(SELECT id FROM equipment.warehouses ORDER BY is_default DESC, created_at LIMIT 1)
+WHERE warehouse_id IS NULL;
+ALTER TABLE equipment.model_stock ALTER COLUMN warehouse_id SET NOT NULL;
+ALTER TABLE equipment.model_stock DROP CONSTRAINT IF EXISTS model_stock_pkey;
+ALTER TABLE equipment.model_stock ADD PRIMARY KEY (model_id, warehouse_id);
 
 -- Contractors (external parties equipment can be handed to).
 CREATE TABLE IF NOT EXISTS equipment.contractors (

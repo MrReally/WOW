@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Equipment } from "@sever/contracts";
 import {
@@ -16,7 +16,17 @@ import {
 } from "../../ui-kit/index.ts";
 import { eur, unitStatusLabel } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
-import { useModels, useUnits, useTypes, useProjectsForOps, useOpenRepairs, useOpenHandovers } from "./hooks.ts";
+import {
+  useModels,
+  useUnits,
+  useTypes,
+  useProjectsForOps,
+  useOpenRepairs,
+  useOpenHandovers,
+  useWarehouses,
+  useCreateWarehouse,
+  useUpdateWarehouse,
+} from "./hooks.ts";
 import { AddModelSheet } from "./components/AddModelSheet.tsx";
 import { EditModelSheet } from "./components/EditModelSheet.tsx";
 import { ImportSheet } from "./components/ImportSheet.tsx";
@@ -93,6 +103,9 @@ export function WarehousePage() {
   const models = useModels();
   const units = useUnits();
   const types = useTypes();
+  const warehouses = useWarehouses();
+  const createWarehouse = useCreateWarehouse();
+  const updateWarehouse = useUpdateWarehouse();
   const projects = useProjectsForOps();
   const openRepairs = useOpenRepairs();
   const openHandovers = useOpenHandovers();
@@ -103,15 +116,24 @@ export function WarehousePage() {
   const [cableModel, setCableModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [editModel, setEditModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [statusFilter, setStatusFilter] = useState<Equipment.UnitStatus | "all">("all");
+  const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (warehouseFilter === "all") return;
+    if ((warehouses.data ?? []).some((w) => w.id === warehouseFilter)) return;
+    setWarehouseFilter("all");
+  }, [warehouseFilter, warehouses.data]);
 
   if (models.isLoading || units.isLoading) return <Loading />;
   if (models.error) return <ErrorState error={models.error} onRetry={models.refetch} />;
 
   const allUnits = units.data ?? [];
+  const warehouseList = warehouses.data ?? [];
   const allModels = models.data ?? [];
   const getTypeName = (tid: string | undefined) => (types.data ?? []).find((t) => t.id === tid)?.name ?? "Без типа";
+  const warehouseName = (id: string | null | undefined) => warehouseList.find((w) => w.id === id)?.name ?? "—";
   const query = search.trim().toLowerCase();
   const modelMatches = (m: Equipment.EquipmentModelDTO) =>
     !query || [m.name, m.manufacturer ?? "", getTypeName(m.typeId)].some((v) => v.toLowerCase().includes(query));
@@ -121,7 +143,8 @@ export function WarehousePage() {
   };
   const serialModels = allModels.filter((m) => m.trackingMode === "serial" && modelMatches(m));
   const cableModels = allModels.filter((m) => m.trackingMode === "quantity" && modelMatches(m));
-  const filteredByStatus = statusFilter === "all" ? allUnits : allUnits.filter((u) => u.status === statusFilter);
+  const filteredByWarehouse = warehouseFilter === "all" ? allUnits : allUnits.filter((u) => u.warehouseId === warehouseFilter);
+  const filteredByStatus = statusFilter === "all" ? filteredByWarehouse : filteredByWarehouse.filter((u) => u.status === statusFilter);
   const filtered = filteredByStatus.filter(unitMatches);
   const statuses: (Equipment.UnitStatus | "all")[] = ["all", "in_stock", "on_project", "in_repair", "reserved", "lost"];
 
@@ -137,6 +160,74 @@ export function WarehousePage() {
   return (
     <div>
       <PrepHero units={allUnits} onOps={canIssue ? () => setOpsOpen(true) : () => navigate("/operations")} />
+
+      <SectionHead label="Склады" meta={warehouseFilter === "all" ? "ВСЕ" : warehouseName(warehouseFilter)} />
+      <div className="card" style={{ padding: "12px 14px", marginBottom: 12 }}>
+        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+          <button
+            className={`chip ${warehouseFilter === "all" ? "chip--accent chip--solid" : "chip--neutral"}`}
+            style={{ cursor: "pointer", border: "none" }}
+            onClick={() => setWarehouseFilter("all")}
+          >
+            Все склады
+          </button>
+          {warehouseList.map((w) => (
+            <button
+              key={w.id}
+              className={`chip ${warehouseFilter === w.id ? "chip--accent chip--solid" : "chip--neutral"}`}
+              style={{ cursor: "pointer", border: "none" }}
+              onClick={() => setWarehouseFilter(w.id)}
+              title={w.address ?? undefined}
+            >
+              {w.name}{w.isDefault ? " · основной" : ""}
+            </button>
+          ))}
+        </div>
+        {warehouseFilter !== "all" && (
+          <p className="card__subtitle" style={{ marginTop: 8 }}>
+            {warehouseList.find((w) => w.id === warehouseFilter)?.address || "Адрес не указан"}
+          </p>
+        )}
+        {canCatalog && (
+          <div className="row" style={{ marginTop: 10, gap: 8 }}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const name = prompt("Название склада");
+                if (!name?.trim()) return;
+                const address = prompt("Адрес склада") ?? "";
+                createWarehouse.mutate({ name: name.trim(), address: address.trim() || null });
+              }}
+            >
+              + Склад
+            </Button>
+            {warehouseFilter !== "all" && (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    const w = warehouseList.find((x) => x.id === warehouseFilter);
+                    if (!w) return;
+                    const name = prompt("Название склада", w.name);
+                    if (!name?.trim()) return;
+                    const address = prompt("Адрес склада", w.address ?? "") ?? "";
+                    updateWarehouse.mutate({ id: w.id, input: { name: name.trim(), address: address.trim() || null } });
+                  }}
+                >
+                  Редактировать
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={warehouseList.find((w) => w.id === warehouseFilter)?.isDefault}
+                  onClick={() => updateWarehouse.mutate({ id: warehouseFilter, input: { isDefault: true } })}
+                >
+                  Сделать основным
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {((openRepairs.data ?? []).length > 0 || (openHandovers.data ?? []).length > 0) && (
         <>
@@ -190,7 +281,7 @@ export function WarehousePage() {
               <SectionHead label="Кабели (по количеству)" meta={`${cableModels.length}`} />
               <div className="card" style={{ padding: "2px 16px" }}>
                 {cableModels.map((m, i) => (
-                  <CableRow key={m.id} model={m} onMove={() => setCableModel(m)} last={i === cableModels.length - 1} />
+                  <CableRow key={m.id} model={m} warehouseId={warehouseFilter === "all" ? null : warehouseFilter} onMove={() => setCableModel(m)} last={i === cableModels.length - 1} />
                 ))}
               </div>
             </>
@@ -244,7 +335,7 @@ export function WarehousePage() {
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div className="lrow__title">{u.assetTag}</div>
-                          <div className="lrow__detail">{modelOf(u.modelId)?.name ?? u.modelId}</div>
+                          <div className="lrow__detail">{modelOf(u.modelId)?.name ?? u.modelId} · {warehouseName(u.warehouseId)}</div>
                         </div>
                         <Chip label={unitStatusLabel[u.status]} tone={tone} />
                       </div>
@@ -267,7 +358,7 @@ export function WarehousePage() {
         <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} projects={projects.data ?? []} models={allModels} />
       )}
       {canCatalog && <EditModelSheet model={editModel} onClose={() => setEditModel(null)} />}
-      <CableMoveSheet model={cableModel} projects={projects.data ?? []} onClose={() => setCableModel(null)} />
+      <CableMoveSheet model={cableModel} projects={projects.data ?? []} warehouses={warehouseList} selectedWarehouseId={warehouseFilter === "all" ? null : warehouseFilter} onClose={() => setCableModel(null)} />
     </div>
   );
 }

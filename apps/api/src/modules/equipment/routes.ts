@@ -10,6 +10,15 @@ const createTypeSchema = z.object({
   name: z.string().min(1),
   trackingMode: z.enum(["serial", "quantity"]),
 });
+const warehouseSchema = z.object({
+  name: z.string().min(1),
+  address: z.string().nullable().optional(),
+});
+const updateWarehouseSchema = z.object({
+  name: z.string().min(1).optional(),
+  address: z.string().nullable().optional(),
+  isDefault: z.boolean().optional(),
+});
 
 const createModelSchema = z.object({
   typeId: z.string().uuid(),
@@ -34,6 +43,7 @@ const createUnitSchema = z.object({
   assetTag: z.string().min(1),
   serial: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  warehouseId: z.string().uuid().nullable().optional(),
 });
 const updateUnitSchema = z.object({
   serial: z.string().nullable().optional(),
@@ -63,8 +73,20 @@ const stockSchema = z.object({ total: z.number().int().nonnegative() });
 const qtyMoveSchema = z.object({
   projectId: z.string().uuid(),
   modelId: z.string().uuid(),
+  warehouseId: z.string().uuid().nullable().optional(),
   qty: z.number().int().positive(),
   note: z.string().optional(),
+});
+const qtyTransferSchema = z.object({
+  modelId: z.string().uuid(),
+  fromWarehouseId: z.string().uuid(),
+  toWarehouseId: z.string().uuid(),
+  qty: z.number().int().positive(),
+  note: z.string().optional(),
+});
+const unitTransferSchema = z.object({
+  warehouseId: z.string().uuid(),
+  note: z.string().nullable().optional(),
 });
 
 const importSchema = z.object({ csv: z.string().min(1) });
@@ -97,6 +119,22 @@ export function registerEquipmentRoutes(
   ctx: RouteContext,
   service: Equipment.EquipmentService
 ): void {
+  // ── Warehouses ──
+  app.get("/api/equipment/warehouses", async (req) => {
+    await ctx.auth(req);
+    return service.listWarehouses();
+  });
+  app.post("/api/equipment/warehouses", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.catalog.manage");
+    return service.createWarehouse(warehouseSchema.parse(req.body));
+  });
+  app.patch<{ Params: { id: string } }>("/api/equipment/warehouses/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.catalog.manage");
+    return service.updateWarehouse(req.params.id, updateWarehouseSchema.parse(req.body));
+  });
+
   // ── Types ──
   app.get("/api/equipment/types", async (req) => {
     await ctx.auth(req);
@@ -118,10 +156,10 @@ export function registerEquipmentRoutes(
     await ctx.auth(req);
     return service.getModel(id);
   });
-  app.get<{ Params: { id: string } }>("/api/equipment/models/:id/stock", async (req) => {
+  app.get<{ Params: { id: string }; Querystring: { warehouseId?: string } }>("/api/equipment/models/:id/stock", async (req) => {
     const { id } = modelIdParamsSchema.parse(req.params);
     await ctx.auth(req);
-    return service.modelStock(id);
+    return service.modelStock(id, req.query.warehouseId);
   });
   app.post("/api/equipment/models", async (req) => {
     const auth = await ctx.auth(req);
@@ -138,7 +176,7 @@ export function registerEquipmentRoutes(
     const { id } = modelIdParamsSchema.parse(req.params);
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.catalog.manage");
-    return service.setModelStockTotal(id, stockSchema.parse(req.body).total);
+    return service.setModelStockTotal(id, stockSchema.parse(req.body).total, (req.query as { warehouseId?: string }).warehouseId);
   });
 
   // ── Catalog import (CSV) ──
@@ -162,9 +200,15 @@ export function registerEquipmentRoutes(
     const body = qtyMoveSchema.parse(req.body);
     return service.returnQuantity({ ...body, actorId: auth.userId });
   });
+  app.post("/api/equipment/transfer-qty", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.catalog.manage");
+    const body = qtyTransferSchema.parse(req.body);
+    return service.transferQuantity({ ...body, actorId: auth.userId });
+  });
 
   // ── Units ──
-  app.get<{ Querystring: { modelId?: string; status?: Equipment.UnitStatus; projectId?: string } }>(
+  app.get<{ Querystring: { modelId?: string; status?: Equipment.UnitStatus; projectId?: string; warehouseId?: string } }>(
     "/api/equipment/units",
     async (req) => {
       await ctx.auth(req);
@@ -172,6 +216,7 @@ export function registerEquipmentRoutes(
         modelId: req.query.modelId,
         status: req.query.status,
         projectId: req.query.projectId,
+        warehouseId: req.query.warehouseId,
       });
     }
   );
@@ -198,6 +243,12 @@ export function registerEquipmentRoutes(
     requirePermission(auth, "warehouse.unit.status");
     const body = statusSchema.parse(req.body);
     return service.changeStatus(req.params.id, body.status as Equipment.UnitStatus, auth.userId, body.note);
+  });
+  app.post<{ Params: { id: string } }>("/api/equipment/units/:id/transfer", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.catalog.manage");
+    const body = unitTransferSchema.parse(req.body);
+    return service.transferUnit(req.params.id, body.warehouseId, auth.userId, body.note ?? null);
   });
 
   // ── Operations (warehouse prepares; tech confirms on phone) ──

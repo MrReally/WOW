@@ -26,11 +26,27 @@ export function useModelStock(modelId: string, enabled = true) {
   });
 }
 
-export function useUnits(filter?: { modelId?: string; status?: Equipment.UnitStatus; projectId?: string }) {
+export function useModelStockAtWarehouse(modelId: string, warehouseId: string, enabled = true) {
+  return useQuery({
+    enabled: enabled && !!modelId && !!warehouseId,
+    queryKey: ["equipment", "stock", modelId, warehouseId],
+    queryFn: () => api.get<Equipment.ModelStockDTO>(`/api/equipment/models/${modelId}/stock?warehouseId=${warehouseId}`),
+  });
+}
+
+export function useWarehouses() {
+  return useQuery({
+    queryKey: ["equipment", "warehouses"],
+    queryFn: () => api.get<Equipment.WarehouseDTO[]>("/api/equipment/warehouses"),
+  });
+}
+
+export function useUnits(filter?: { modelId?: string; status?: Equipment.UnitStatus; projectId?: string; warehouseId?: string }) {
   const qs = new URLSearchParams();
   if (filter?.modelId) qs.set("modelId", filter.modelId);
   if (filter?.status) qs.set("status", filter.status);
   if (filter?.projectId) qs.set("projectId", filter.projectId);
+  if (filter?.warehouseId) qs.set("warehouseId", filter.warehouseId);
   const suffix = qs.toString() ? `?${qs}` : "";
   return useQuery({
     queryKey: ["equipment", "units", filter ?? {}],
@@ -73,6 +89,25 @@ export function useCreateType() {
   });
 }
 
+export function useCreateWarehouse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; address?: string | null }) => api.post<Equipment.WarehouseDTO>("/api/equipment/warehouses", input),
+    meta: { successMessage: "Склад добавлен" },
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
+export function useUpdateWarehouse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: { name?: string; address?: string | null; isDefault?: boolean } }) =>
+      api.patch<Equipment.WarehouseDTO>(`/api/equipment/warehouses/${id}`, input),
+    meta: { successMessage: "Склад обновлён" },
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
 export function useCreateModel() {
   const qc = useQueryClient();
   return useMutation({
@@ -94,8 +129,18 @@ export function useUpdateModel() {
 export function useCreateUnit() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { modelId: string; assetTag: string; serial?: string | null }) =>
+    mutationFn: (input: { modelId: string; assetTag: string; serial?: string | null; warehouseId?: string | null }) =>
       api.post("/api/equipment/units", input),
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
+export function useTransferUnit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, warehouseId, note }: { id: string; warehouseId: string; note?: string | null }) =>
+      api.post<Equipment.EquipmentUnitDTO>(`/api/equipment/units/${id}/transfer`, { warehouseId, note }),
+    meta: { successMessage: "Перемещено" },
     onSuccess: () => invalidateEquipment(qc),
   });
 }
@@ -148,8 +193,8 @@ export function useImportCsv() {
 export function useSetModelStock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ modelId, total }: { modelId: string; total: number }) =>
-      api.put<Equipment.ModelStockDTO>(`/api/equipment/models/${modelId}/stock`, { total }),
+    mutationFn: ({ modelId, total, warehouseId }: { modelId: string; total: number; warehouseId?: string | null }) =>
+      api.put<Equipment.ModelStockDTO>(`/api/equipment/models/${modelId}/stock${warehouseId ? `?warehouseId=${warehouseId}` : ""}`, { total }),
     onSuccess: () => invalidateEquipment(qc),
   });
 }
@@ -157,7 +202,7 @@ export function useSetModelStock() {
 export function useIssueQty() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { projectId: string; modelId: string; qty: number; note?: string }) =>
+    mutationFn: (input: { projectId: string; modelId: string; warehouseId?: string | null; qty: number; note?: string }) =>
       api.post<Equipment.ModelStockDTO>("/api/equipment/issue-qty", input),
     onSuccess: () => invalidateEquipment(qc),
   });
@@ -166,8 +211,18 @@ export function useIssueQty() {
 export function useReturnQty() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { projectId: string; modelId: string; qty: number; note?: string }) =>
+    mutationFn: (input: { projectId: string; modelId: string; warehouseId?: string | null; qty: number; note?: string }) =>
       api.post<Equipment.ModelStockDTO>("/api/equipment/return-qty", input),
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
+export function useTransferQty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { modelId: string; fromWarehouseId: string; toWarehouseId: string; qty: number; note?: string }) =>
+      api.post<Equipment.ModelStockDTO>("/api/equipment/transfer-qty", input),
+    meta: { successMessage: "Остаток перемещён" },
     onSuccess: () => invalidateEquipment(qc),
   });
 }

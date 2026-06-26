@@ -62,6 +62,8 @@ export interface EquipmentUnitDTO {
   assetTag: string;
   serial: string | null;
   status: UnitStatus;
+  /** Current storage location for this unit when it is in our warehouse flow. */
+  warehouseId: ID | null;
   /** Opaque id of the project the unit is currently on (or reserved for). */
   currentProjectId: ID | null;
   /** Free-form per-unit notes: unique defects, quirks, marks, accessories. */
@@ -72,10 +74,22 @@ export interface EquipmentUnitDTO {
 /** For quantity-tracked models, current counts derived from the journal. */
 export interface ModelStockDTO {
   modelId: ID;
+  /** Null means aggregate across all warehouses. */
+  warehouseId: ID | null;
   total: number;
   inStock: number;
   onProjects: number;
   inRepair: number;
+}
+
+// ── Warehouses ───────────────────────────────────────────────────────────────
+
+export interface WarehouseDTO {
+  id: ID;
+  name: string;
+  address: string | null;
+  isDefault: boolean;
+  createdAt: ISODateTime;
 }
 
 // ── Journal: append-only event log per unit ─────────────────────────────────
@@ -105,6 +119,7 @@ export interface JournalEntryDTO {
   fromStatus: UnitStatus | null;
   toStatus: UnitStatus | null;
   projectId: ID | null;
+  warehouseId: ID | null;
   /** Who performed it (people.userId). */
   actorId: ID | null;
   note: string | null;
@@ -142,6 +157,16 @@ export interface ReturnResult {
 export interface QuantityMoveInput {
   projectId: ID;
   modelId: ID;
+  warehouseId?: ID | null;
+  qty: number;
+  actorId: ID;
+  note?: string;
+}
+
+export interface TransferQuantityInput {
+  modelId: ID;
+  fromWarehouseId: ID;
+  toWarehouseId: ID;
   qty: number;
   actorId: ID;
   note?: string;
@@ -245,6 +270,11 @@ export interface SendToContractorInput {
 // ── Public service contract ──────────────────────────────────────────────────
 
 export interface EquipmentService {
+  // Warehouses
+  listWarehouses(): Promise<WarehouseDTO[]>;
+  createWarehouse(input: { name: string; address?: string | null }): Promise<WarehouseDTO>;
+  updateWarehouse(id: ID, input: { name?: string; address?: string | null; isDefault?: boolean }): Promise<WarehouseDTO>;
+
   // Catalog
   listTypes(): Promise<EquipmentTypeDTO[]>;
   createType(input: { name: string; trackingMode: "serial" | "quantity" }): Promise<EquipmentTypeDTO>;
@@ -254,18 +284,20 @@ export interface EquipmentService {
   updateModel(id: ID, input: UpdateModelInput): Promise<EquipmentModelDTO>;
 
   // Units
-  listUnits(filter?: { modelId?: ID; status?: UnitStatus; projectId?: ID }): Promise<EquipmentUnitDTO[]>;
+  listUnits(filter?: { modelId?: ID; status?: UnitStatus; projectId?: ID; warehouseId?: ID }): Promise<EquipmentUnitDTO[]>;
   getUnit(id: ID): Promise<EquipmentUnitDTO | null>;
-  createUnit(input: { modelId: ID; assetTag: string; serial?: string | null; notes?: string | null }): Promise<EquipmentUnitDTO>;
+  createUnit(input: { modelId: ID; assetTag: string; serial?: string | null; notes?: string | null; warehouseId?: ID | null }): Promise<EquipmentUnitDTO>;
   /** Edit per-unit particulars (serial, defects/notes). */
   updateUnit(id: ID, input: { serial?: string | null; notes?: string | null }): Promise<EquipmentUnitDTO>;
   getUnitJournal(unitId: ID): Promise<JournalEntryDTO[]>;
-  modelStock(modelId: ID): Promise<ModelStockDTO>;
+  modelStock(modelId: ID, warehouseId?: ID | null): Promise<ModelStockDTO>;
+  transferUnit(unitId: ID, warehouseId: ID, actorId: ID, note?: string | null): Promise<EquipmentUnitDTO>;
 
   // Quantity (cable) stock — models whose type is tracked by quantity.
-  setModelStockTotal(modelId: ID, total: number): Promise<ModelStockDTO>;
+  setModelStockTotal(modelId: ID, total: number, warehouseId?: ID | null): Promise<ModelStockDTO>;
   issueQuantity(input: QuantityMoveInput): Promise<ModelStockDTO>;
   returnQuantity(input: QuantityMoveInput): Promise<ModelStockDTO>;
+  transferQuantity(input: TransferQuantityInput): Promise<ModelStockDTO>;
 
   // Bulk catalog import (CSV parsed upstream into rows).
   importCatalog(rows: ImportRow[]): Promise<ImportResult>;

@@ -52,10 +52,11 @@ export function createApexService(deps: ApexDeps): ApexService {
         );
       };
       const isUpcoming = (p: Projects.ProjectDTO) =>
-        (p.status === "confirmed" || p.status === "draft") && Date.parse(p.startsAt) > now;
+        (p.status === "confirmed" || p.status === "draft" || p.status === "in_progress") && Date.parse(p.startsAt) > now;
 
-      const current = await Promise.all(allProjects.filter(isCurrent).map(buildRow));
-      const upcoming = await Promise.all(allProjects.filter(isUpcoming).map(buildRow));
+      const byStart = (a: ApexRentalRow, b: ApexRentalRow) => Date.parse(a.project.startsAt) - Date.parse(b.project.startsAt);
+      const current = (await Promise.all(allProjects.filter(isCurrent).map(buildRow))).sort(byStart);
+      const upcoming = (await Promise.all(allProjects.filter(isUpcoming).map(buildRow))).sort(byStart);
 
       const [equipProblems, projProblems, debts, openContractorItems, contractorDebts, accounts] = await Promise.all([
         deps.equipment.listProblems(),
