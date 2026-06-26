@@ -44,10 +44,11 @@ function PrepStat({ tone, value, label }: { tone: Tone; value: number; label: st
 }
 
 function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps: () => void }) {
-  const total = units.length;
   const inStock = units.filter((u) => u.status === "in_stock").length;
   const onProject = units.filter((u) => u.status === "on_project").length;
   const inRepair = units.filter((u) => u.status === "in_repair").length;
+  const lost = units.filter((u) => u.status === "lost").length;
+  const total = inStock + onProject;
   const pct = total ? (inStock / total) * 100 : 0;
 
   return (
@@ -67,6 +68,7 @@ function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps
           <PrepStat tone="ok" value={inStock} label="на складе" />
           <PrepStat tone="warn" value={onProject} label="на проектах" />
           <PrepStat tone="alert" value={inRepair} label="в ремонте" />
+          <PrepStat tone="alert" value={lost} label="утеряно" />
         </div>
       </div>
 
