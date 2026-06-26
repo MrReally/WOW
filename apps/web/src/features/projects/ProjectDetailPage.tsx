@@ -139,7 +139,7 @@ export function ProjectDetailPage() {
   const currentTab = visibleTabs.some((tab) => tab.id === activeTab) ? activeTab : "overview";
 
   return (
-    <div className="stack">
+    <div className="stack" style={{ paddingBottom: 76 }}>
       <Button variant="ghost" onClick={() => navigate(-1)}>← Назад</Button>
 
       <Card>
@@ -164,19 +164,6 @@ export function ProjectDetailPage() {
           </div>
         )}
       </Card>
-
-      <div className="row" style={{ gap: 6, overflowX: "auto", paddingBottom: 2 }}>
-        {visibleTabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={`chip ${currentTab === tab.id ? "chip--accent chip--solid" : "chip--neutral"}`}
-            style={{ cursor: "pointer", border: "none", whiteSpace: "nowrap" }}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
 
       {currentTab === "overview" && (
         <div className="stack">
@@ -579,6 +566,33 @@ export function ProjectDetailPage() {
         onClose={() => setResolving(null)}
       />
       <EditProjectSheet open={editOpen} project={p} clients={clients.data ?? []} onClose={() => setEditOpen(false)} />
+      <div
+        style={{
+          position: "sticky",
+          bottom: 8,
+          zIndex: 10,
+          marginTop: "var(--space-3)",
+          padding: "8px",
+          border: "1px solid var(--bdr)",
+          borderRadius: 14,
+          background: "color-mix(in srgb, var(--card) 94%, transparent)",
+          boxShadow: "var(--shadow-card)",
+          backdropFilter: "blur(14px)",
+        }}
+      >
+        <div className="row" style={{ gap: 6, overflowX: "auto", flexWrap: "nowrap" }}>
+          {visibleTabs.map((tab) => (
+            <button
+              key={tab.id}
+              className={`chip ${currentTab === tab.id ? "chip--accent chip--solid" : "chip--neutral"}`}
+              style={{ cursor: "pointer", border: "none", whiteSpace: "nowrap", flex: "0 0 auto" }}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
