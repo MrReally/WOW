@@ -13,6 +13,8 @@ export const env = {
   auth: {
     devBypass: bool(process.env.AUTH_DEV_BYPASS, true),
     telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
+    systemOwnerEmail: process.env.SYSTEM_OWNER_EMAIL ?? "",
+    systemOwnerPassword: process.env.SYSTEM_OWNER_PASSWORD ?? "",
   },
   /** Optional explicit path to the built web bundle (apps/web/dist). */
   webDist: process.env.WEB_DIST ?? "",

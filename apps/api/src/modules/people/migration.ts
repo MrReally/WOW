@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS people.users (
   must_change_password boolean NOT NULL DEFAULT false,
   hourly_rate_eur      numeric(12,2),
   calendar_token       text UNIQUE,
+  is_system            boolean NOT NULL DEFAULT false,
   active               boolean NOT NULL DEFAULT true,
   created_at           timestamptz NOT NULL DEFAULT now()
 );
@@ -50,4 +51,5 @@ BEGIN
 END $$;
 
 ALTER TABLE people.users ADD COLUMN IF NOT EXISTS calendar_token text UNIQUE;
+ALTER TABLE people.users ADD COLUMN IF NOT EXISTS is_system boolean NOT NULL DEFAULT false;
 `;

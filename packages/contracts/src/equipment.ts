@@ -371,6 +371,16 @@ export interface UnitReturnedEvent {
   unitId: ID;
   projectId: ID;
   complete: boolean;
+  actorId?: ID | null;
+  at: ISODateTime;
+}
+
+export interface UnitTransferredEvent {
+  type: "equipment.unit.transferred";
+  unitId: ID;
+  fromWarehouseId: ID | null;
+  toWarehouseId: ID;
+  actorId: ID;
   at: ISODateTime;
 }
 
@@ -390,4 +400,4 @@ export interface UnitsIssuedBatchEvent {
   at: ISODateTime;
 }
 
-export type EquipmentEvent = UnitIssuedEvent | UnitReturnedEvent | IncompleteReturnEvent | UnitsIssuedBatchEvent;
+export type EquipmentEvent = UnitIssuedEvent | UnitReturnedEvent | UnitTransferredEvent | IncompleteReturnEvent | UnitsIssuedBatchEvent;

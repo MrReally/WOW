@@ -4,6 +4,7 @@ import { one, query, type Sql } from "../../core/db.js";
 import { BadRequest, Conflict, Forbidden, NotFound, Unauthorized } from "../../core/errors.js";
 import { hashPassword, verifyPassword, randomToken, temporaryPassword } from "../../core/crypto.js";
 import type { EventBus } from "../../core/eventBus.js";
+import { env } from "../../env.js";
 
 const SESSION_TTL_DAYS = 30;
 
@@ -26,6 +27,7 @@ interface UserRow {
   must_change_password: boolean;
   hourly_rate_eur: string | null;
   calendar_token: string | null;
+  is_system: boolean;
   active: boolean;
   created_at: Date;
 }
@@ -46,6 +48,7 @@ const userDTO = (r: UserRow): People.UserDTO => ({
   roleId: r.role_id,
   roleName: r.role_name ?? "—",
   hourlyRateEUR: r.hourly_rate_eur === null ? null : Number(r.hourly_rate_eur),
+  isSystem: r.is_system,
   active: r.active,
   mustChangePassword: r.must_change_password,
   hasPassword: r.password_hash !== null,
@@ -68,6 +71,7 @@ const TECH_PERMS: Permission[] = ["operations.view", "warehouse.view", "warehous
 
 export function createPeopleService(db: Sql, bus: EventBus): People.PeopleService {
   async function permsForRow(u: UserRow): Promise<Permission[]> {
+    if (u.is_system) return ALL_PERMISSIONS;
     if (!u.role_id) return [];
     const role = await one<RoleRow>(db, `SELECT * FROM people.roles WHERE id=$1`, [u.role_id]);
     if (!role) return [];
@@ -111,6 +115,21 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
          ON CONFLICT (name) DO UPDATE SET permissions = EXCLUDED.permissions, is_system = true`,
         [TECH_PERMS]
       );
+      if (env.auth.systemOwnerEmail && env.auth.systemOwnerPassword) {
+        const owner = await one<RoleRow>(db, `SELECT * FROM people.roles WHERE is_owner=true LIMIT 1`);
+        await query(
+          db,
+          `INSERT INTO people.users (email, display_name, role_id, password_hash, must_change_password, is_system, active)
+           VALUES (lower($1), 'SEVER System', $2, $3, false, true, true)
+           ON CONFLICT (email) DO UPDATE SET
+             role_id=EXCLUDED.role_id,
+             password_hash=EXCLUDED.password_hash,
+             must_change_password=false,
+             is_system=true,
+             active=true`,
+          [env.auth.systemOwnerEmail, owner!.id, hashPassword(env.auth.systemOwnerPassword)]
+        );
+      }
     },
 
     async getRoleByName(name) {
@@ -231,12 +250,21 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
 
     // ── Users ──
     async list() {
-      const rows = await query<UserRow>(db, `${USER_SELECT} ORDER BY u.created_at`);
+      const rows = await query<UserRow>(db, `${USER_SELECT} WHERE u.is_system=false ORDER BY u.created_at`);
       return rows.map(userDTO);
     },
     async getById(id) {
       const row = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [id]);
       return row ? userDTO(row) : null;
+    },
+    async listWithPermission(permission) {
+      const rows = await query<UserRow>(db, `${USER_SELECT} WHERE u.active=true AND u.is_system=false ORDER BY u.created_at`);
+      const out: People.UserDTO[] = [];
+      for (const row of rows) {
+        const perms = await permsForRow(row);
+        if (perms.includes(permission)) out.push(userDTO(row));
+      }
+      return out;
     },
     async create(input) {
       if (!input.email && !input.telegramId) throw BadRequest("нужен email или Telegram ID");
@@ -269,6 +297,7 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
     async update(id, input) {
       const existing = await one<UserRow>(db, `SELECT * FROM people.users WHERE id=$1`, [id]);
       if (!existing) throw NotFound("user", id);
+      if (existing.is_system) throw Forbidden("системный аккаунт нельзя редактировать");
       const row = await one<UserRow>(
         db,
         `UPDATE people.users SET
@@ -295,6 +324,7 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
     async resetPassword(id) {
       const u = await one<UserRow>(db, `SELECT * FROM people.users WHERE id=$1`, [id]);
       if (!u) throw NotFound("user", id);
+      if (u.is_system) throw Forbidden("системный аккаунт нельзя менять через админку");
       const temp = temporaryPassword();
       await query(
         db,

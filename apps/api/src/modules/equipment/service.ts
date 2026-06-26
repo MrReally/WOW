@@ -505,7 +505,7 @@ export function createEquipmentService(
     // ── Quantity (cable) stock + moves ──
     async transferUnit(unitId, warehouseId, actorId, note) {
       await assertWarehouse(warehouseId);
-      return tx(async (client) => {
+      const result = await tx(async (client) => {
         const unit = await one<UnitRow>(client, `SELECT * FROM equipment.units WHERE id=$1 FOR UPDATE`, [unitId]);
         if (!unit) throw NotFound("unit", unitId);
         if (unit.status !== "in_stock") throw BadRequest("перемещать между складами можно только единицы на складе");
@@ -526,8 +526,17 @@ export function createEquipmentService(
           actorId,
           note: note ?? `перемещение между складами`,
         });
-        return unitDTO(updated!);
+        return { unit: unitDTO(updated!), fromWarehouseId: unit.warehouse_id };
       });
+      await bus.publish({
+        type: "equipment.unit.transferred",
+        unitId,
+        fromWarehouseId: result.fromWarehouseId,
+        toWarehouseId: warehouseId,
+        actorId,
+        at: new Date().toISOString(),
+      });
+      return result.unit;
     },
 
     async setModelStockTotal(modelId, total, warehouseIdInput) {
@@ -882,6 +891,7 @@ export function createEquipmentService(
           unitId,
           projectId: input.projectId,
           complete: missing.length === 0,
+          actorId: input.actorId,
           at: new Date().toISOString(),
         });
       }

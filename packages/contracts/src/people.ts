@@ -33,6 +33,8 @@ export interface UserDTO {
   roleName: string;
   /** Hourly rate in EUR for assignment costing (techs). null if not set. */
   hourlyRateEUR: number | null;
+  /** Hidden protected account for recovery/developer access. */
+  isSystem: boolean;
   active: boolean;
   mustChangePassword: boolean;
   hasPassword: boolean;
@@ -105,6 +107,7 @@ export interface PeopleService {
   // Users
   list(): Promise<UserDTO[]>;
   getById(id: ID): Promise<UserDTO | null>;
+  listWithPermission(permission: Permission): Promise<UserDTO[]>;
   create(input: CreateUserInput): Promise<CreatedUserDTO>;
   update(id: ID, input: UpdateUserInput): Promise<UserDTO>;
   resetPassword(id: ID): Promise<{ temporaryPassword: string }>;

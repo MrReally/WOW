@@ -4,8 +4,32 @@ export type NotificationKind = "issued" | "returned" | "assigned" | "problem" | 
 
 export const NOTIFICATION_KINDS: NotificationKind[] = ["assigned", "issued", "returned", "problem", "info"];
 
+export type AdvancedNotificationEvent =
+  | "project.assigned"
+  | "project.unassigned"
+  | "project.invited"
+  | "project.invite.responded"
+  | "equipment.units.issued"
+  | "equipment.unit.returned"
+  | "equipment.return.incomplete"
+  | "equipment.unit.transferred"
+  | "people.user.created";
+
+export const ADVANCED_NOTIFICATION_EVENTS: AdvancedNotificationEvent[] = [
+  "project.assigned",
+  "project.unassigned",
+  "project.invited",
+  "project.invite.responded",
+  "equipment.units.issued",
+  "equipment.unit.returned",
+  "equipment.return.incomplete",
+  "equipment.unit.transferred",
+  "people.user.created",
+];
+
 /** Per-user opt-in map: kind → wants it. Missing/true means enabled. */
 export type NotificationPrefs = Record<NotificationKind, boolean>;
+export type AdvancedNotificationPrefs = Record<AdvancedNotificationEvent, boolean>;
 
 export interface NotificationDTO {
   id: ID;
@@ -39,4 +63,7 @@ export interface NotificationsService {
   setPrefs(userId: ID, prefs: NotificationPrefs): Promise<NotificationPrefs>;
   /** Whether the user wants a given kind (defaults to true if never set). */
   isEnabled(userId: ID, kind: NotificationKind): Promise<boolean>;
+  getAdvancedPrefs(userId: ID): Promise<AdvancedNotificationPrefs>;
+  setAdvancedPrefs(userId: ID, prefs: AdvancedNotificationPrefs): Promise<AdvancedNotificationPrefs>;
+  isAdvancedEnabled(userId: ID, event: AdvancedNotificationEvent): Promise<boolean>;
 }

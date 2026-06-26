@@ -334,6 +334,43 @@ describe("Tech pickup/return → некомплект", () => {
     expect((await notifications.service.listForUser(tech.id)).some((n) => n.kind === "assigned")).toBe(true);
   });
 
+  it("advanced notification preferences deliver warehouse transfer events to observers", async () => {
+    const { people, equipment, notifications } = wiring;
+    const observerRole = await people.service.createRole({
+      name: `Observer ${Date.now()}`,
+      permissions: ["notifications.advanced"],
+    });
+    const observer = (await people.service.create({
+      displayName: "Observer Owner",
+      roleId: observerRole.id,
+      telegramId: `observer-${Date.now()}`,
+    })).user;
+    const actor = await makeTech("Transfer Actor");
+
+    expect(await notifications.service.isAdvancedEnabled(observer.id, "equipment.unit.transferred")).toBe(false);
+    await notifications.service.setAdvancedPrefs(observer.id, {
+      "project.assigned": false,
+      "project.unassigned": false,
+      "project.invited": false,
+      "project.invite.responded": false,
+      "equipment.units.issued": false,
+      "equipment.unit.returned": false,
+      "equipment.return.incomplete": false,
+      "equipment.unit.transferred": true,
+      "people.user.created": false,
+    });
+
+    const from = await equipment.service.createWarehouse({ name: `From ${Date.now()}` });
+    const to = await equipment.service.createWarehouse({ name: `To ${Date.now()}` });
+    const type = await equipment.service.createType({ name: `TR-${Date.now()}`, trackingMode: "serial" });
+    const model = await equipment.service.createModel({ typeId: type.id, name: "Transfer Model", unitCostEUR: 1, dailyPriceEUR: 1 });
+    const unit = await equipment.service.createUnit({ modelId: model.id, assetTag: `TR-${Date.now()}`, warehouseId: from.id });
+
+    await equipment.service.transferUnit(unit.id, to.id, actor.id);
+    const inbox = await notifications.service.listForUser(observer.id);
+    expect(inbox.some((n) => n.title === "Перемещение между складами" && n.body.includes(`${from.name} → ${to.name}`))).toBe(true);
+  });
+
   it("repairs and contractor handovers: full cycle with status + history", async () => {
     const { equipment } = wiring;
     const tech = await makeTech("Repair Tech");

@@ -26,6 +26,7 @@ type AnyHandler = (event: DomainEvent) => void | Promise<void>;
 
 export class EventBus {
   private handlers = new Map<EventType, AnyHandler[]>();
+  private anyHandlers: AnyHandler[] = [];
   private log: DomainEvent[] = [];
 
   on<T extends EventType>(type: T, handler: Handler<T>): void {
@@ -34,9 +35,13 @@ export class EventBus {
     this.handlers.set(type, list);
   }
 
+  onAny(handler: AnyHandler): void {
+    this.anyHandlers.push(handler);
+  }
+
   async publish(event: DomainEvent): Promise<void> {
     this.log.push(event);
-    const list = this.handlers.get(event.type) ?? [];
+    const list = [...(this.handlers.get(event.type) ?? []), ...this.anyHandlers];
     // Subscribers run sequentially; a failing subscriber must not break the
     // publisher's own transaction, which already committed before publish.
     for (const handler of list) {

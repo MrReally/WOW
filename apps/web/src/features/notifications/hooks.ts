@@ -54,3 +54,21 @@ export function useSetNotifPrefs() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications", "prefs"] }),
   });
 }
+
+export function useAdvancedNotifPrefs(enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: ["notifications", "advanced-prefs"],
+    queryFn: () => api.get<Notifications.AdvancedNotificationPrefs>("/api/notifications/advanced-preferences"),
+  });
+}
+
+export function useSetAdvancedNotifPrefs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (prefs: Notifications.AdvancedNotificationPrefs) =>
+      api.put<Notifications.AdvancedNotificationPrefs>("/api/notifications/advanced-preferences", prefs),
+    meta: { successMessage: "Расширенные уведомления сохранены" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications", "advanced-prefs"] }),
+  });
+}

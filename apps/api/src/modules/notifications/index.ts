@@ -1,8 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import type { Notifications } from "@sever/contracts";
-import { NOTIFICATION_KINDS } from "@sever/contracts";
+import { ADVANCED_NOTIFICATION_EVENTS, NOTIFICATION_KINDS } from "@sever/contracts";
 import { one, query, type Sql } from "../../core/db.js";
 import type { SeverModule } from "../../core/module.js";
+import { requirePermission } from "../../core/auth.js";
 
 const migration = `
 CREATE SCHEMA IF NOT EXISTS notifications;
@@ -49,6 +50,7 @@ const toDTO = (r: Row): Notifications.NotificationDTO => ({
 });
 
 function createService(db: Sql): Notifications.NotificationsService {
+  const advKey = (event: Notifications.AdvancedNotificationEvent) => `advanced:${event}`;
   return {
     async listForUser(userId, opts) {
       const limit = Math.min(opts?.limit ?? 50, 100);
@@ -111,6 +113,37 @@ function createService(db: Sql): Notifications.NotificationsService {
       );
       return row?.enabled ?? true; // default on
     },
+    async getAdvancedPrefs(userId) {
+      const rows = await query<{ kind: string; enabled: boolean }>(
+        db,
+        `SELECT kind, enabled FROM notifications.prefs WHERE user_id=$1 AND kind LIKE 'advanced:%'`,
+        [userId]
+      );
+      const set = new Map(rows.map((r) => [r.kind.replace(/^advanced:/, ""), r.enabled]));
+      const out = {} as Notifications.AdvancedNotificationPrefs;
+      for (const k of ADVANCED_NOTIFICATION_EVENTS) out[k] = set.get(k) ?? false; // default off
+      return out;
+    },
+    async setAdvancedPrefs(userId, prefs) {
+      for (const k of ADVANCED_NOTIFICATION_EVENTS) {
+        const enabled = prefs[k] ?? false;
+        await query(
+          db,
+          `INSERT INTO notifications.prefs (user_id, kind, enabled) VALUES ($1,$2,$3)
+           ON CONFLICT (user_id, kind) DO UPDATE SET enabled=EXCLUDED.enabled`,
+          [userId, advKey(k), enabled]
+        );
+      }
+      return this.getAdvancedPrefs(userId);
+    },
+    async isAdvancedEnabled(userId, event) {
+      const row = await one<{ enabled: boolean }>(
+        db,
+        `SELECT enabled FROM notifications.prefs WHERE user_id=$1 AND kind=$2`,
+        [userId, advKey(event)]
+      );
+      return row?.enabled ?? false;
+    },
   };
 }
 
@@ -146,6 +179,16 @@ export function createNotificationsModule(db: Sql): SeverModule<Notifications.No
       app.put("/api/notifications/preferences", async (req) => {
         const auth = await ctx.auth(req);
         return service.setPrefs(auth.userId, (req.body ?? {}) as Notifications.NotificationPrefs);
+      });
+      app.get("/api/notifications/advanced-preferences", async (req) => {
+        const auth = await ctx.auth(req);
+        requirePermission(auth, "notifications.advanced");
+        return service.getAdvancedPrefs(auth.userId);
+      });
+      app.put("/api/notifications/advanced-preferences", async (req) => {
+        const auth = await ctx.auth(req);
+        requirePermission(auth, "notifications.advanced");
+        return service.setAdvancedPrefs(auth.userId, (req.body ?? {}) as Notifications.AdvancedNotificationPrefs);
       });
     },
   };

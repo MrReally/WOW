@@ -21,6 +21,7 @@ import { createBillingService } from "./modules/billing/service.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
 import { sendTelegramMessage } from "./core/telegram.js";
 import type { Notifications } from "@sever/contracts";
+import type { DomainEvent } from "./core/eventBus.js";
 
 export function createModules(bus: EventBus = new EventBus()) {
   const people = createPeopleModule(pool, bus);
@@ -55,6 +56,68 @@ export function createModules(bus: EventBus = new EventBus()) {
     const user = await people.service.getById(userId);
     await sendTelegramMessage(user?.telegramId ?? null, `<b>${n.title}</b>\n${n.body}`);
   }
+
+  const fmtActor = async (actorId?: string | null) => {
+    if (!actorId) return "Система";
+    const actor = await people.service.getById(actorId);
+    return actor?.isSystem ? "Система" : actor?.displayName ?? "Неизвестно";
+  };
+
+  async function advancedMessage(event: DomainEvent): Promise<{ title: string; body: string; link?: string | null } | null> {
+    switch (event.type) {
+      case "project.assigned": {
+        const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
+        return { title: "Назначение на проект", body: `${user?.displayName ?? "Человек"} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+      }
+      case "project.unassigned": {
+        const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
+        return { title: "Сняли с проекта", body: `${user?.displayName ?? "Человек"} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+      }
+      case "project.invited": {
+        const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
+        return { title: "Приглашение в проект", body: `${user?.displayName ?? "Человек"} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+      }
+      case "project.invite.responded": {
+        const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
+        return { title: event.accepted ? "Приглашение принято" : "Приглашение отклонено", body: `${user?.displayName ?? "Человек"} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+      }
+      case "equipment.units.issued": {
+        const project = await projects.service.getProject(event.projectId);
+        return { title: "Выдача оборудования", body: `${event.count} ед. · ${project?.name ?? event.projectId} · ${await fmtActor(event.actorId)}`, link: `/projects/${event.projectId}` };
+      }
+      case "equipment.unit.returned": {
+        const [project, unit] = await Promise.all([projects.service.getProject(event.projectId), equipment.service.getUnit(event.unitId)]);
+        return { title: event.complete ? "Возврат оборудования" : "Возврат с некомплектом", body: `${unit?.assetTag ?? event.unitId} · ${project?.name ?? event.projectId} · ${await fmtActor(event.actorId)}`, link: `/projects/${event.projectId}` };
+      }
+      case "equipment.return.incomplete": {
+        const project = await projects.service.getProject(event.projectId);
+        return { title: "Некомплект", body: `${event.missingUnitIds.length} ед. · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+      }
+      case "equipment.unit.transferred": {
+        const [unit, warehouses] = await Promise.all([equipment.service.getUnit(event.unitId), equipment.service.listWarehouses()]);
+        const wh = (id: string | null) => warehouses.find((w) => w.id === id)?.name ?? "—";
+        return { title: "Перемещение между складами", body: `${unit?.assetTag ?? event.unitId} · ${wh(event.fromWarehouseId)} → ${wh(event.toWarehouseId)} · ${await fmtActor(event.actorId)}`, link: `/warehouse/units/${event.unitId}` };
+      }
+      case "people.user.created": {
+        const user = await people.service.getById(event.userId);
+        if (user?.isSystem) return null;
+        return { title: "Новый пользователь", body: user?.displayName ?? event.userId, link: "/settings" };
+      }
+      default:
+        return null;
+    }
+  }
+
+  bus.onAny(async (event) => {
+    const msg = await advancedMessage(event);
+    if (!msg) return;
+    const recipients = await people.service.listWithPermission("notifications.advanced");
+    for (const user of recipients) {
+      if (!(await notifications.service.isAdvancedEnabled(user.id, event.type as Notifications.AdvancedNotificationEvent))) continue;
+      await notifications.service.create({ userId: user.id, kind: "info", title: msg.title, body: msg.body, link: msg.link ?? null });
+      await sendTelegramMessage(user.telegramId, `<b>${msg.title}</b>\n${msg.body}`);
+    }
+  });
 
   bus.on("project.assigned", async (e) => {
     const project = await projects.service.getProject(e.projectId);

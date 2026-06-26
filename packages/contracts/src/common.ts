@@ -41,6 +41,7 @@ export type Permission =
   | "people.view"
   | "people.manage"
   | "roles.manage"
+  | "notifications.advanced"
   | "data.reset";
 
 export interface PermissionMeta {
@@ -73,6 +74,7 @@ export const PERMISSIONS: PermissionMeta[] = [
   { key: "people.view", group: "Администрирование", label: "Видеть людей" },
   { key: "people.manage", group: "Администрирование", label: "Создавать/редактировать людей" },
   { key: "roles.manage", group: "Администрирование", label: "Управлять ролями и правами" },
+  { key: "notifications.advanced", group: "Администрирование", label: "Расширенные уведомления о действиях в системе" },
   { key: "data.reset", group: "Администрирование", label: "Сброс/очистка базы данных" },
 ];
 
