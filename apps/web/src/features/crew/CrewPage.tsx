@@ -1,12 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQueries } from "@tanstack/react-query";
-import type { People, Projects } from "@sever/contracts";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import type { Equipment, People, Projects } from "@sever/contracts";
 import { Card, Button, SectionHead, Field, Input, Textarea, Loading, EmptyState, Chip } from "../../ui-kit/index.ts";
 import { useSession } from "../../app/session.ts";
 import { api } from "../../lib/api.ts";
-import { dateRange } from "../../lib/labels.ts";
+import { dateRange, dateTime } from "../../lib/labels.ts";
 import { usePeople, useUpdateUser } from "../settings/hooks.ts";
 import { useProjectsForFinance } from "../finance/hooks.ts";
+import { personName } from "../../lib/people.ts";
+
+const actionLabel: Record<Equipment.JournalAction, string> = {
+  created: "Создано",
+  reserved: "Бронь",
+  issued: "Выдача",
+  returned: "Возврат",
+  return_incomplete: "Некомплект",
+  sent_to_repair: "В ремонт",
+  back_from_repair: "Из ремонта",
+  sent_to_contractor: "Подрядчику",
+  back_from_contractor: "От подрядчика",
+  marked_lost: "Утеря",
+  transferred: "Перемещение",
+  status_changed: "Статус",
+};
 
 const fileToDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -28,9 +44,18 @@ export function CrewPage() {
   const updateUser = useUpdateUser();
   const [selectedId, setSelectedId] = useState("");
   const [draft, setDraft] = useState<People.UpdateUserInput>({});
+  const [historyMode, setHistoryMode] = useState<"projects" | "actions">("projects");
 
   const list = people.data ?? [];
   const selected = list.find((u) => u.id === selectedId) ?? list[0] ?? null;
+  const actionHistory = useQuery({
+    enabled: !!selected,
+    queryKey: ["people", selected?.id, "equipment-journal"],
+    queryFn: () => api.get<Equipment.JournalEntryDTO[]>(`/api/people/${selected!.id}/equipment-journal`),
+  });
+  const units = useQuery({ queryKey: ["equipment", "units"], queryFn: () => api.get<Equipment.EquipmentUnitDTO[]>("/api/equipment/units") });
+  const models = useQuery({ queryKey: ["equipment", "models"], queryFn: () => api.get<Equipment.EquipmentModelDTO[]>("/api/equipment/models") });
+  const warehouses = useQuery({ queryKey: ["equipment", "warehouses"], queryFn: () => api.get<Equipment.WarehouseDTO[]>("/api/equipment/warehouses") });
 
   useEffect(() => {
     if (!selectedId && list[0]) setSelectedId(list[0].id);
@@ -121,7 +146,7 @@ export function CrewPage() {
             style={{ border: "none", cursor: "pointer" }}
             onClick={() => setSelectedId(person.id)}
           >
-            {person.displayName}
+            {personName(person)}
           </button>
         ))}
       </div>
@@ -132,10 +157,10 @@ export function CrewPage() {
             {draft.photoUrl ? (
               <img src={avatarSrc || draft.photoUrl} alt="" className="crew-photo" />
             ) : (
-              <span className="crew-photo crew-photo--empty">{selected.displayName.slice(0, 2).toUpperCase()}</span>
+              <span className="crew-photo crew-photo--empty">{personName(selected).slice(0, 2).toUpperCase()}</span>
             )}
             <div style={{ minWidth: 0 }}>
-              <p className="card__title" style={{ fontSize: "var(--fs-lg)" }}>{selected.displayName}</p>
+              <p className="card__title" style={{ fontSize: "var(--fs-lg)" }}>{personName(selected)}</p>
               <p className="card__subtitle">{selected.roleName}{selected.hourlyRateEUR != null ? ` · ${selected.hourlyRateEUR} €` : ""}</p>
             </div>
           </div>
@@ -218,27 +243,65 @@ export function CrewPage() {
         <Button block disabled={updateUser.isPending || !fullName(draft)} onClick={save}>Сохранить</Button>
       </Card>
 
-      <SectionHead label="История проектов" meta={`${history.length}`} />
-      {projects.isLoading || assignmentQueries.some((q) => q.isLoading) ? (
+      <SectionHead label="История" meta={historyMode === "projects" ? `${history.length}` : `${actionHistory.data?.length ?? 0}`} />
+      <div className="row" style={{ gap: 8 }}>
+        <button className={`chip ${historyMode === "projects" ? "chip--accent chip--solid" : "chip--neutral"}`} style={{ border: "none", cursor: "pointer" }} onClick={() => setHistoryMode("projects")}>
+          Проекты
+        </button>
+        <button className={`chip ${historyMode === "actions" ? "chip--accent chip--solid" : "chip--neutral"}`} style={{ border: "none", cursor: "pointer" }} onClick={() => setHistoryMode("actions")}>
+          Действия
+        </button>
+      </div>
+      {historyMode === "projects" ? (
+        projects.isLoading || assignmentQueries.some((q) => q.isLoading) ? (
+          <Loading />
+        ) : history.length === 0 ? (
+          <EmptyState title="Назначений нет" />
+        ) : (
+          <div className="stack">
+            {history.map(({ project, assignment }) => (
+              <Card key={assignment.id}>
+                <div className="row row--between">
+                  <div style={{ minWidth: 0 }}>
+                    <p className="card__title">{project.name}</p>
+                    <p className="card__subtitle">{dateRange(project.startsAt, project.endsAt)}</p>
+                  </div>
+                  <Chip label={assignment.status} tone={assignment.status === "declined" ? "warn" : "ok"} />
+                </div>
+                <p className="card__subtitle" style={{ marginTop: 6 }}>
+                  {assignment.roleNote || "роль не указана"}{assignment.rateEUR != null ? ` · ${assignment.rateEUR} €` : ""}
+                </p>
+              </Card>
+            ))}
+          </div>
+        )
+      ) : actionHistory.isLoading || units.isLoading || models.isLoading || warehouses.isLoading ? (
         <Loading />
-      ) : history.length === 0 ? (
-        <EmptyState title="Назначений нет" />
+      ) : (actionHistory.data ?? []).length === 0 ? (
+        <EmptyState title="Действий нет" />
       ) : (
         <div className="stack">
-          {history.map(({ project, assignment }) => (
-            <Card key={assignment.id}>
-              <div className="row row--between">
-                <div style={{ minWidth: 0 }}>
-                  <p className="card__title">{project.name}</p>
-                  <p className="card__subtitle">{dateRange(project.startsAt, project.endsAt)}</p>
+          {(actionHistory.data ?? []).map((entry) => {
+            const unit = entry.unitId ? (units.data ?? []).find((u) => u.id === entry.unitId) : null;
+            const model = entry.modelId ? (models.data ?? []).find((m) => m.id === entry.modelId) : unit ? (models.data ?? []).find((m) => m.id === unit.modelId) : null;
+            const project = entry.projectId ? (projects.data ?? []).find((p) => p.id === entry.projectId) : null;
+            const fromWh = entry.fromWarehouseId ? (warehouses.data ?? []).find((w) => w.id === entry.fromWarehouseId)?.name : null;
+            const toWh = entry.toWarehouseId || entry.warehouseId ? (warehouses.data ?? []).find((w) => w.id === (entry.toWarehouseId ?? entry.warehouseId))?.name : null;
+            const target = unit?.assetTag || model?.name || "—";
+            const route = fromWh || toWh ? `${fromWh ? `${fromWh} → ` : ""}${toWh ?? "—"}` : null;
+            return (
+              <Card key={entry.id}>
+                <div className="row row--between">
+                  <p className="card__title">{actionLabel[entry.action] ?? entry.action}</p>
+                  <span className="card__subtitle">{dateTime(entry.at)}</span>
                 </div>
-                <Chip label={assignment.status} tone={assignment.status === "declined" ? "warn" : "ok"} />
-              </div>
-              <p className="card__subtitle" style={{ marginTop: 6 }}>
-                {assignment.roleNote || "роль не указана"}{assignment.rateEUR != null ? ` · ${assignment.rateEUR} €` : ""}
-              </p>
-            </Card>
-          ))}
+                <p className="card__subtitle" style={{ marginTop: 6 }}>
+                  {[target, project?.name, route, entry.qty ? `${entry.qty} шт.` : null].filter(Boolean).join(" · ")}
+                </p>
+                {entry.note && <p className="card__subtitle">{entry.note}</p>}
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

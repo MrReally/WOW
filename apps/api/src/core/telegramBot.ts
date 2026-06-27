@@ -54,6 +54,8 @@ export function startTelegramBot(deps: BotDeps): void {
   const { people, onCallback } = deps;
   if (!env.auth.telegramBotToken) return;
   const send = (chatId: string | number, text: string) => tg("sendMessage", { chat_id: chatId, text, parse_mode: "HTML" });
+  const publicName = (user: { nickname?: string | null; displayName?: string | null }) =>
+    user.nickname?.trim() || user.displayName?.trim() || "аккаунт";
   let offset = 0;
 
   async function handleCallback(cb: NonNullable<Update["callback_query"]>) {
@@ -102,7 +104,7 @@ export function startTelegramBot(deps: BotDeps): void {
               const user = await people.getById(userId);
               if (user) {
                 await people.update(userId, { telegramId: chatId });
-                await send(chatId, `✅ Telegram привязан к аккаунту <b>${user.displayName}</b>. Уведомления будут приходить сюда.`);
+                await send(chatId, `✅ Telegram привязан к аккаунту <b>${publicName(user)}</b>. Уведомления будут приходить сюда.`);
               } else {
                 await send(chatId, `Не нашёл аккаунт по коду. Ваш chat_id: <code>${chatId}</code>`);
               }
@@ -112,14 +114,14 @@ export function startTelegramBot(deps: BotDeps): void {
             const users = await people.list();
             const already = users.find((p) => p.telegramId === chatId);
             if (already) {
-              await send(chatId, `Вы уже привязаны к аккаунту <b>${already.displayName}</b>.`);
+              await send(chatId, `Вы уже привязаны к аккаунту <b>${publicName(already)}</b>.`);
               continue;
             }
             const norm = normHandle(username);
             const match = norm ? users.find((p) => normHandle(p.telegramId) === norm) : undefined;
             if (match) {
               await people.update(match.id, { telegramId: chatId });
-              await send(chatId, `✅ Telegram привязан к аккаунту <b>${match.displayName}</b>. Уведомления будут приходить сюда.`);
+              await send(chatId, `✅ Telegram привязан к аккаунту <b>${publicName(match)}</b>. Уведомления будут приходить сюда.`);
             } else {
               await send(
                 chatId,

@@ -7,6 +7,7 @@ import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreat
 import { AddTransactionSheet } from "./components/AddTransactionSheet.tsx";
 import { useSession } from "../../app/session.ts";
 import { toast } from "../../lib/toastBus.ts";
+import { personName } from "../../lib/people.ts";
 
 const categoryLabel: Record<string, string> = {
   rental_revenue: "Выручка",
@@ -36,7 +37,7 @@ export function FinancePage() {
   const [accountCurrency, setAccountCurrency] = useState<Finance.AccountDTO["currency"]>("EUR");
   const authorName = (uid: string | null) => {
     if (!uid) return `${t("finance.addedBy")}: ${t("common.system")}`;
-    return `${t("finance.addedBy")}: ${(people.data ?? []).find((u) => u.id === uid)?.displayName ?? uid.slice(0, 8)}`;
+    return `${t("finance.addedBy")}: ${personName((people.data ?? []).find((u) => u.id === uid), uid.slice(0, 8))}`;
   };
 
   if (accounts.isLoading) return <Loading />;

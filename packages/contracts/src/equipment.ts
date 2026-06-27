@@ -293,6 +293,7 @@ export interface EquipmentService {
   /** Edit per-unit particulars (serial, defects/notes). */
   updateUnit(id: ID, input: { serial?: string | null; notes?: string | null }): Promise<EquipmentUnitDTO>;
   getUnitJournal(unitId: ID): Promise<JournalEntryDTO[]>;
+  getJournalByActor(actorId: ID): Promise<JournalEntryDTO[]>;
   modelStock(modelId: ID, warehouseId?: ID | null): Promise<ModelStockDTO>;
   transferUnit(unitId: ID, warehouseId: ID, actorId: ID, note?: string | null): Promise<EquipmentUnitDTO>;
 

@@ -4,8 +4,9 @@ import type { People } from "@sever/contracts";
 import { Sheet, WSChip, Avatar, Chip, SectionHead, Button } from "../../ui-kit/index.ts";
 import { api, clearToken } from "../../lib/api.ts";
 import { useSession } from "../session.ts";
-import { workspacesFor, initialsOf, WORKSPACE_COPY, type Workspace } from "../workspaces.ts";
+import { workspacesFor, WORKSPACE_COPY, type Workspace } from "../workspaces.ts";
 import { useI18n } from "../i18n.tsx";
+import { personInitials, personName } from "../../lib/people.ts";
 
 interface Props {
   open: boolean;
@@ -43,9 +44,9 @@ export function WorkspaceSwitcher({ open, onClose, user, current }: Props) {
     <Sheet open={open} onClose={onClose}>
       {/* Account */}
       <div className="row" style={{ padding: "4px 4px 16px", gap: 13 }}>
-        <Avatar initials={initialsOf(user.displayName)} size={46} />
+        <Avatar initials={personInitials(user)} src={user.usePhotoAsAvatar ? user.photoUrl : null} size={46} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>{user.displayName}</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>{personName(user)}</div>
           <div className="t-label" style={{ marginTop: 2, letterSpacing: "0.06em" }}>
             {user.roleName} · {all.length} {locale === "ru" ? "workspaces" : t("common.workspaces")}
           </div>

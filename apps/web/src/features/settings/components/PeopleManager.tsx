@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { People } from "@sever/contracts";
 import { Card, Button, SectionHead, Field, Input, Select, Chip, Loading } from "../../../ui-kit/index.ts";
 import { dateTime } from "../../../lib/labels.ts";
+import { personName } from "../../../lib/people.ts";
 import { usePeople, useRoles, useCreateUser, useUpdateUser, useResetPassword, useBotInfo } from "../hooks.ts";
 
 const isLinked = (telegramId: string | null) => !!telegramId && /^\d+$/.test(telegramId);
@@ -46,7 +47,7 @@ export function PeopleManager() {
           <Card key={u.id}>
             <div className="row row--between">
               <div style={{ minWidth: 0 }}>
-                <p className="card__title">{u.displayName} {!u.active && <Chip label="выкл" tone="neutral" />}</p>
+                <p className="card__title">{personName(u)} {!u.active && <Chip label="выкл" tone="neutral" />}</p>
                 <p className="card__subtitle">
                   {u.email ?? "без email"}
                   {!isLinked(u.telegramId) && u.telegramId ? ` · @${u.telegramId.replace(/^@/, "")} (ждёт «Старт»)` : ""}
@@ -67,7 +68,7 @@ export function PeopleManager() {
                 <Button
                   variant="ghost"
                   disabled={resetPw.isPending}
-                  onClick={() => resetPw.mutate(u.id, { onSuccess: (r) => setRevealed({ who: u.displayName, pw: r.temporaryPassword }) })}
+                  onClick={() => resetPw.mutate(u.id, { onSuccess: (r) => setRevealed({ who: personName(u), pw: r.temporaryPassword }) })}
                 >
                   Сбросить пароль
                 </Button>
@@ -106,7 +107,7 @@ export function PeopleManager() {
               {
                 onSuccess: (res) => {
                   setName(""); setEmail(""); setTelegram("");
-                  if (res.temporaryPassword) setRevealed({ who: res.user.displayName, pw: res.temporaryPassword });
+                  if (res.temporaryPassword) setRevealed({ who: personName(res.user), pw: res.temporaryPassword });
                 },
               }
             )

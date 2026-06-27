@@ -2,11 +2,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { WSChip, Avatar } from "../../ui-kit/index.ts";
 import { useSession } from "../session.ts";
-import { currentWorkspace, workspacesFor, initialsOf, WORKSPACE_COPY } from "../workspaces.ts";
+import { currentWorkspace, workspacesFor, WORKSPACE_COPY } from "../workspaces.ts";
 import { useI18n } from "../i18n.tsx";
 import { platform } from "../platform/telegram.ts";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher.tsx";
 import { NotificationsBell } from "../../features/notifications/NotificationsBell.tsx";
+import { personInitials } from "../../lib/people.ts";
 import "./shell.css";
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -68,7 +69,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
               aria-label={t("app.mySettings")}
             >
-              <Avatar initials={initialsOf(user.displayName)} src={user.usePhotoAsAvatar ? user.photoUrl : null} size={36} />
+              <Avatar initials={personInitials(user)} src={user.usePhotoAsAvatar ? user.photoUrl : null} size={36} />
             </button>
           </div>
         )}

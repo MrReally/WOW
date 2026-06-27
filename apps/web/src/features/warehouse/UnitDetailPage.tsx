@@ -3,6 +3,7 @@ import { useLocation, useParams, useNavigate } from "react-router-dom";
 import type { Equipment } from "@sever/contracts";
 import { Card, Button, SectionTitle, StatusBadge, Select, Input, Textarea, Loading, ErrorState } from "../../ui-kit/index.ts";
 import { unitStatusLabel, unitStatusTone, dateTime } from "../../lib/labels.ts";
+import { personName } from "../../lib/people.ts";
 import { useSession } from "../../app/session.ts";
 import {
   useUnit, useUnitJournal, useChangeStatus, useUpdateUnit,
@@ -219,7 +220,7 @@ export function UnitDetailPage() {
         <div className="stack">
           {journalEntries.slice().reverse().map((e) => {
             const proj = e.projectId ? (projects.data ?? []).find((p) => p.id === e.projectId)?.name ?? null : null;
-            const actor = e.actorId ? (people.data ?? []).find((u) => u.id === e.actorId)?.displayName ?? null : null;
+            const actor = e.actorId ? personName((people.data ?? []).find((u) => u.id === e.actorId), e.actorId.slice(0, 8)) : null;
             const transition =
               e.fromStatus && e.toStatus && e.fromStatus !== e.toStatus
                 ? `${unitStatusLabel[e.fromStatus]} → ${unitStatusLabel[e.toStatus]}`

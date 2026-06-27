@@ -6,6 +6,7 @@ import { useSession } from "../../app/session.ts";
 import { LOCALE_OPTIONS, useI18n } from "../../app/i18n.tsx";
 import { useAdvancedNotifPrefs, useNotifPrefs, useSetAdvancedNotifPrefs, useSetNotifPrefs } from "../notifications/hooks.ts";
 import { useCalendarFeed } from "./hooks.ts";
+import { personName } from "../../lib/people.ts";
 
 // Personal mini-settings — available to every signed-in user (not the admin
 // SettingsPage). Theme + which notifications they want.
@@ -59,7 +60,7 @@ export function MySettingsPage() {
       <SectionTitle>{t("settings.title")}</SectionTitle>
       {user && (
         <Card>
-          <p className="card__title">{user.displayName}</p>
+          <p className="card__title">{personName(user)}</p>
           <p className="card__subtitle">{user.roleName}{user.email ? ` · ${user.email}` : ""}</p>
         </Card>
       )}

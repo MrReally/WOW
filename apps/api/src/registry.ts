@@ -57,29 +57,32 @@ export function createModules(bus: EventBus = new EventBus()) {
     await sendTelegramMessage(user?.telegramId ?? null, `<b>${n.title}</b>\n${n.body}`);
   }
 
+  const publicName = (user: { nickname?: string | null; displayName?: string | null } | null | undefined, fallback = "Человек") =>
+    user?.nickname?.trim() || user?.displayName?.trim() || fallback;
+
   const fmtActor = async (actorId?: string | null) => {
     if (!actorId) return "Система";
     const actor = await people.service.getById(actorId);
-    return actor?.isSystem ? "Система" : actor?.displayName ?? "Неизвестно";
+    return actor?.isSystem ? "Система" : publicName(actor, "Неизвестно");
   };
 
   async function advancedMessage(event: DomainEvent): Promise<{ title: string; body: string; link?: string | null } | null> {
     switch (event.type) {
       case "project.assigned": {
         const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
-        return { title: "Назначение на проект", body: `${user?.displayName ?? "Человек"} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+        return { title: "Назначение на проект", body: `${publicName(user)} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
       }
       case "project.unassigned": {
         const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
-        return { title: "Сняли с проекта", body: `${user?.displayName ?? "Человек"} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+        return { title: "Сняли с проекта", body: `${publicName(user)} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
       }
       case "project.invited": {
         const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
-        return { title: "Приглашение в проект", body: `${user?.displayName ?? "Человек"} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+        return { title: "Приглашение в проект", body: `${publicName(user)} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
       }
       case "project.invite.responded": {
         const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
-        return { title: event.accepted ? "Приглашение принято" : "Приглашение отклонено", body: `${user?.displayName ?? "Человек"} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+        return { title: event.accepted ? "Приглашение принято" : "Приглашение отклонено", body: `${publicName(user)} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
       }
       case "equipment.units.issued": {
         const project = await projects.service.getProject(event.projectId);
@@ -101,7 +104,7 @@ export function createModules(bus: EventBus = new EventBus()) {
       case "people.user.created": {
         const user = await people.service.getById(event.userId);
         if (user?.isSystem) return null;
-        return { title: "Новый пользователь", body: user?.displayName ?? event.userId, link: "/settings" };
+        return { title: "Новый пользователь", body: publicName(user, event.userId), link: "/settings" };
       }
       default:
         return null;
@@ -192,7 +195,7 @@ export function createModules(bus: EventBus = new EventBus()) {
     await notify(assignment.invitedByUserId, {
       kind: e.accepted ? "info" : "problem",
       title: e.accepted ? "Приглашение принято" : "Приглашение отклонено",
-      body: `${who?.displayName ?? "Человек"} ${e.accepted ? "принял" : "отклонил"} участие в «${project?.name ?? ""}»`,
+      body: `${publicName(who)} ${e.accepted ? "принял" : "отклонил"} участие в «${project?.name ?? ""}»`,
       link: `/projects/${e.projectId}`,
     });
   });

@@ -31,6 +31,7 @@ import { EditProjectSheet } from "./components/EditProjectSheet.tsx";
 import { TimingTimeline } from "./components/TimingTimeline.tsx";
 import { ContractorEquipment } from "./components/ContractorEquipment.tsx";
 import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
+import { personName } from "../../lib/people.ts";
 
 const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "ok" | "info" | "warn" | "neutral" }> = {
   added: { label: "в команде", tone: "ok" },
@@ -121,7 +122,7 @@ export function ProjectDetailPage() {
   const modelName = (mid: string) => (models.data ?? []).find((m) => m.id === mid)?.name ?? mid;
   const userName = (uid: string) => {
     const user = (people.data ?? []).find((u) => u.id === uid);
-    return user?.nickname || user?.displayName || "";
+    return personName(user, "");
   };
   const activeTab = projectTabFrom(searchParams.get("tab"));
   const setActiveTab = (tab: ProjectTab) => {
@@ -462,7 +463,7 @@ export function ProjectDetailPage() {
         return (
           <Card>
             <Field label="Человек">
-              <Select value={sel} onChange={(e) => setAssignUser(e.target.value)} options={available.map((u) => ({ value: u.id, label: u.displayName }))} />
+              <Select value={sel} onChange={(e) => setAssignUser(e.target.value)} options={available.map((u) => ({ value: u.id, label: personName(u) }))} />
             </Field>
             <div className="row">
               <Field label="Роль">

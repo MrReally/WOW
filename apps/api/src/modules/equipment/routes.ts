@@ -228,6 +228,11 @@ export function registerEquipmentRoutes(
     await ctx.auth(req);
     return service.getUnitJournal(req.params.id);
   });
+  app.get<{ Params: { id: string } }>("/api/people/:id/equipment-journal", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "people.view", "people.manage");
+    return service.getJournalByActor(req.params.id);
+  });
   app.post("/api/equipment/units", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.catalog.manage");

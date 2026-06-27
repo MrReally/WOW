@@ -455,6 +455,14 @@ export function createEquipmentService(
       );
       return rows.map(journalDTO);
     },
+    async getJournalByActor(actorId) {
+      const rows = await query<JournalRow>(
+        db,
+        `SELECT * FROM equipment.journal WHERE actor_id=$1 ORDER BY at DESC LIMIT 200`,
+        [actorId]
+      );
+      return rows.map(journalDTO);
+    },
     async modelStock(modelId, warehouseId) {
       const model = await this.getModel(modelId);
       if (!model) throw NotFound("model", modelId);

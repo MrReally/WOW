@@ -78,7 +78,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
     const laborLines: Finance.InvoiceLineDTO[] = crew.map((a, i) => ({
       refId: a.id,
       section: "Crew",
-      label: names[i]?.displayName ?? "—",
+      label: names[i]?.nickname || names[i]?.displayName || "—",
       detail: [a.roleNote || "crew", a.status === "invited" ? "invited" : null].filter(Boolean).join(" · "),
       qty: 1,
       unitEUR: round2(a.rateEUR ?? 0),
