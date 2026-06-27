@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { Projects } from "@sever/contracts";
+import type { Equipment, Projects } from "@sever/contracts";
 import { Button, Card, Chip, EmptyState, ErrorState, Input, Loading, SectionHead, Select, WSGlyph } from "../../ui-kit/index.ts";
 import { dateRange, dateTime, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
@@ -12,10 +12,12 @@ import {
   useDeleteChecklistItem,
   useDeleteProjectTask,
   useOperationEvents,
+  useOperationUnitMarks,
   useProjectChecklist,
   useProjectTasks,
   useProjectTimings,
   useSetOperationStage,
+  useSetOperationUnitMark,
   useUpdateChecklistItem,
   useUpdateProjectTask,
 } from "./hooks.ts";
@@ -36,6 +38,46 @@ const taskStatusLabel: Record<Projects.ProjectTaskStatus, string> = {
   todo: "Нужно",
   in_progress: "В работе",
   done: "Готово",
+};
+
+const markLabel: Record<Projects.OperationUnitMarkStatus, string> = {
+  ready: "готово",
+  packed: "сложено",
+  picked: "забрано",
+  missing: "нет",
+  left: "оставлено",
+  delivered: "на месте",
+  mounted: "монтаж",
+  collected: "собрано",
+  broken: "ремонт",
+  lost: "утеря",
+  returned: "склад",
+};
+
+const stageMarkActions: Partial<Record<Projects.ProjectChecklistGroup, { status: Projects.OperationUnitMarkStatus; label: string; tone?: "ok" | "warn" | "danger" }[]>> = {
+  prep: [
+    { status: "ready", label: "✓", tone: "ok" },
+    { status: "packed", label: "▣", tone: "ok" },
+  ],
+  pickup: [
+    { status: "picked", label: "✓", tone: "ok" },
+    { status: "missing", label: "?", tone: "warn" },
+    { status: "left", label: "–", tone: "warn" },
+  ],
+  delivery: [
+    { status: "delivered", label: "✓", tone: "ok" },
+  ],
+  mount: [
+    { status: "mounted", label: "✓", tone: "ok" },
+  ],
+  dismantle: [
+    { status: "collected", label: "✓", tone: "ok" },
+    { status: "broken", label: "!", tone: "warn" },
+    { status: "lost", label: "×", tone: "danger" },
+  ],
+  return: [
+    { status: "returned", label: "✓", tone: "ok" },
+  ],
 };
 
 function nextStage(stage: Projects.ProjectChecklistGroup): Projects.ProjectChecklistGroup | null {
@@ -164,13 +206,16 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
   const models = useEquipmentModels();
   const units = useAllUnits();
   const warehouses = useWarehouses();
+  const marks = useOperationUnitMarks(projectId);
+  const setMark = useSetOperationUnitMark(projectId);
   const changeStatus = useChangeStatus();
   const canMarkStatus = can("warehouse.unit.status");
-  const shouldShow = stage === "prep" || stage === "pickup" || stage === "dismantle" || stage === "return";
+  const shouldShow = stage !== "show";
   if (!shouldShow) return null;
 
   const modelName = (modelId: string) => models.data?.find((m) => m.id === modelId)?.name ?? modelId;
   const unitById = new Map((units.data ?? []).map((unit) => [unit.id, unit]));
+  const markByUnit = new Map((marks.data ?? []).filter((mark) => mark.stage === stage).map((mark) => [mark.unitId, mark]));
   const warehouseName = (warehouseId: string | null | undefined) =>
     (warehouses.data ?? []).find((w) => w.id === warehouseId)?.name ?? "Склад ?";
   const resolved = (reservations.data ?? []).flatMap((reservation) =>
@@ -183,14 +228,37 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
     byWarehouse.get(key)!.rows.push(row);
   }
   const unresolved = (reservations.data ?? []).filter((reservation) => reservation.resolvedUnitIds.length < reservation.qty);
-  const title = stage === "return" ? "Вернуть" : stage === "dismantle" ? "Собрать" : stage === "pickup" ? "Забрать" : "Подготовить";
+  const title =
+    stage === "return"
+      ? "Вернуть"
+      : stage === "dismantle"
+        ? "Собрать"
+        : stage === "mount"
+          ? "Монтаж"
+          : stage === "delivery"
+            ? "Доставка"
+            : stage === "pickup"
+              ? "Забрать"
+              : "Подготовить";
+  const actions = stageMarkActions[stage] ?? [];
+  const markUnit = (unitId: string, status: Projects.OperationUnitMarkStatus) => {
+    setMark.mutate({ stage, unitId, status });
+    if (status === "broken" && canMarkStatus) {
+      changeStatus.mutate({ id: unitId, status: "in_repair", note: `Демонтаж · ${projectId}` });
+    }
+    if (status === "lost" && canMarkStatus) {
+      changeStatus.mutate({ id: unitId, status: "lost", note: `Демонтаж · ${projectId}` });
+    }
+  };
 
   return (
     <>
       <SectionHead label={title} meta={`${resolved.length}`} />
       <div className="stack">
-        {reservations.isLoading || models.isLoading || units.isLoading || warehouses.isLoading ? (
+        {reservations.isLoading || models.isLoading || units.isLoading || warehouses.isLoading || marks.isLoading ? (
           <Loading />
+        ) : marks.error ? (
+          <ErrorState error={marks.error} onRetry={marks.refetch} />
         ) : resolved.length === 0 && unresolved.length === 0 ? (
           <EmptyState title="Список пуст" />
         ) : (
@@ -203,44 +271,16 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
                 </div>
                 <div className="stack" style={{ marginTop: 10 }}>
                   {group.rows.map(({ reservation, unit }) => (
-                    <div
+                    <UnitStageRow
                       key={`${reservation.id}:${unit?.id ?? "missing"}`}
-                      className="row row--between"
-                      style={{ width: "100%", gap: 8 }}
-                    >
-                      <button
-                        style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: unit ? "pointer" : "default" }}
-                        disabled={!unit}
-                        onClick={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
-                      >
-                        <p className="card__title" style={{ fontSize: 16 }}>{unit?.assetTag ?? "Не найдено"}</p>
-                        <p className="card__subtitle">{modelName(reservation.modelId)}</p>
-                      </button>
-                      {stage === "dismantle" && unit && canMarkStatus ? (
-                        <div className="row" style={{ gap: 2, flex: "0 0 auto" }}>
-                          <button
-                            className="icon-btn"
-                            aria-label="В ремонт"
-                            title="В ремонт"
-                            disabled={changeStatus.isPending}
-                            onClick={() => changeStatus.mutate({ id: unit.id, status: "in_repair", note: `Демонтаж · ${projectId}` })}
-                          >
-                            !
-                          </button>
-                          <button
-                            className="icon-btn icon-btn--danger"
-                            aria-label="Утеря"
-                            title="Утеря"
-                            disabled={changeStatus.isPending}
-                            onClick={() => changeStatus.mutate({ id: unit.id, status: "lost", note: `Демонтаж · ${projectId}` })}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ) : (
-                        <Chip label={unit?.status ?? "—"} tone="neutral" />
-                      )}
-                    </div>
+                      unit={unit}
+                      modelName={modelName(reservation.modelId)}
+                      mark={unit ? markByUnit.get(unit.id) : undefined}
+                      actions={actions}
+                      disabled={setMark.isPending || changeStatus.isPending}
+                      onOpen={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
+                      onMark={(status) => unit && markUnit(unit.id, status)}
+                    />
                   ))}
                 </div>
               </Card>
@@ -268,6 +308,52 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
         )}
       </div>
     </>
+  );
+}
+
+function UnitStageRow({
+  unit,
+  modelName,
+  mark,
+  actions,
+  disabled,
+  onOpen,
+  onMark,
+}: {
+  unit: Equipment.EquipmentUnitDTO | undefined;
+  modelName: string;
+  mark?: Projects.OperationUnitMarkDTO;
+  actions: { status: Projects.OperationUnitMarkStatus; label: string; tone?: "ok" | "warn" | "danger" }[];
+  disabled: boolean;
+  onOpen: () => void;
+  onMark: (status: Projects.OperationUnitMarkStatus) => void;
+}) {
+  return (
+    <div className="row row--between" style={{ width: "100%", gap: 8 }}>
+      <button
+        style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: unit ? "pointer" : "default" }}
+        disabled={!unit}
+        onClick={onOpen}
+      >
+        <p className="card__title" style={{ fontSize: 16 }}>{unit?.assetTag ?? "Не найдено"}</p>
+        <p className="card__subtitle">{modelName}</p>
+      </button>
+      <div className="row" style={{ gap: 4, flex: "0 0 auto" }}>
+        <Chip label={mark ? markLabel[mark.status] : unit?.status ?? "—"} tone={mark ? (mark.status === "lost" || mark.status === "broken" ? "warn" : "ok") : "neutral"} />
+        {unit && actions.map((action) => (
+          <button
+            key={action.status}
+            className={`icon-btn ${action.tone === "ok" ? "icon-btn--ok" : ""} ${action.tone === "danger" ? "icon-btn--danger" : ""}`}
+            aria-label={markLabel[action.status]}
+            title={markLabel[action.status]}
+            disabled={disabled}
+            onClick={() => onMark(action.status)}
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

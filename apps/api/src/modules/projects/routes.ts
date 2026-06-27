@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Projects } from "@sever/contracts";
-import { PROJECT_CHECKLIST_GROUPS, PROJECT_STATUSES, PROJECT_TASK_STATUSES } from "@sever/contracts";
+import { OPERATION_UNIT_MARK_STATUSES, PROJECT_CHECKLIST_GROUPS, PROJECT_STATUSES, PROJECT_TASK_STATUSES } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
 import { requirePermission } from "../../core/auth.js";
 
@@ -18,6 +18,12 @@ const projectSchema = z.object({
 });
 const statusSchema = z.object({ status: z.enum(PROJECT_STATUSES as [string, ...string[]]) });
 const operationStageSchema = z.object({ stage: z.enum(PROJECT_CHECKLIST_GROUPS as [string, ...string[]]) });
+const operationUnitMarkSchema = z.object({
+  stage: z.enum(PROJECT_CHECKLIST_GROUPS as [string, ...string[]]),
+  unitId: z.string().uuid(),
+  status: z.enum(OPERATION_UNIT_MARK_STATUSES as [string, ...string[]]),
+  note: z.string().nullable().optional(),
+});
 const updateProjectSchema = z.object({
   name: z.string().min(1).optional(),
   clientId: z.string().uuid().optional(),
@@ -229,6 +235,24 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "operations.view", "projects.timing.viewAll", "projects.manage");
     return service.listOperationEvents(req.params.id);
+  });
+  app.get<{ Params: { id: string } }>("/api/projects/:id/operation-unit-marks", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "operations.view", "projects.timing.viewAll", "projects.manage");
+    return service.listOperationUnitMarks(req.params.id);
+  });
+  app.put<{ Params: { id: string } }>("/api/projects/:id/operation-unit-marks", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "operations.view", "projects.timing.manage", "projects.manage");
+    const body = operationUnitMarkSchema.parse(req.body);
+    return service.setOperationUnitMark({
+      projectId: req.params.id,
+      stage: body.stage as Projects.ProjectChecklistGroup,
+      unitId: body.unitId,
+      status: body.status as Projects.OperationUnitMarkStatus,
+      actorId: auth.userId,
+      note: body.note ?? null,
+    });
   });
   app.post<{ Params: { id: string } }>("/api/projects/:id/checklist", async (req) => {
     const auth = await ctx.auth(req);

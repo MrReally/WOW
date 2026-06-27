@@ -73,6 +73,17 @@ interface OperationEventRow {
   actor_id: string | null;
   created_at: Date;
 }
+interface OperationUnitMarkRow {
+  id: string;
+  project_id: string;
+  stage: Projects.ProjectChecklistGroup;
+  unit_id: string;
+  status: Projects.OperationUnitMarkStatus;
+  actor_id: string | null;
+  note: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
 interface AssignmentRow {
   id: string;
   project_id: string;
@@ -172,6 +183,17 @@ const operationEventDTO = (r: OperationEventRow): Projects.ProjectOperationEvent
   toStage: r.to_stage,
   actorId: r.actor_id,
   createdAt: r.created_at.toISOString(),
+});
+const operationUnitMarkDTO = (r: OperationUnitMarkRow): Projects.OperationUnitMarkDTO => ({
+  id: r.id,
+  projectId: r.project_id,
+  stage: r.stage,
+  unitId: r.unit_id,
+  status: r.status,
+  actorId: r.actor_id,
+  note: r.note,
+  createdAt: r.created_at.toISOString(),
+  updatedAt: r.updated_at.toISOString(),
 });
 const assignmentDTO = (r: AssignmentRow): Projects.AssignmentDTO => ({
   id: r.id,
@@ -349,6 +371,45 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         [projectId]
       );
       return rows.map(operationEventDTO);
+    },
+    async listOperationUnitMarks(projectId) {
+      const project = await this.getProject(projectId);
+      if (!project) throw NotFound("project", projectId);
+      const rows = await query<OperationUnitMarkRow>(
+        db,
+        `SELECT * FROM projects.operation_unit_marks WHERE project_id=$1
+         ORDER BY
+           CASE stage
+             WHEN 'prep' THEN 0
+             WHEN 'pickup' THEN 1
+             WHEN 'delivery' THEN 2
+             WHEN 'mount' THEN 3
+             WHEN 'show' THEN 4
+             WHEN 'dismantle' THEN 5
+             ELSE 6
+           END,
+           updated_at DESC`,
+        [projectId]
+      );
+      return rows.map(operationUnitMarkDTO);
+    },
+    async setOperationUnitMark(input) {
+      const project = await this.getProject(input.projectId);
+      if (!project) throw NotFound("project", input.projectId);
+      const row = await one<OperationUnitMarkRow>(
+        db,
+        `INSERT INTO projects.operation_unit_marks (project_id, stage, unit_id, status, actor_id, note)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (project_id, stage, unit_id)
+         DO UPDATE SET
+           status=EXCLUDED.status,
+           actor_id=EXCLUDED.actor_id,
+           note=EXCLUDED.note,
+           updated_at=now()
+         RETURNING *`,
+        [input.projectId, input.stage, input.unitId, input.status, input.actorId ?? null, input.note ?? null]
+      );
+      return operationUnitMarkDTO(row!);
     },
 
     // ── Reservations ──

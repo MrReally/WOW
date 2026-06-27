@@ -37,6 +37,24 @@ CREATE TABLE IF NOT EXISTS projects.operation_events (
 );
 CREATE INDEX IF NOT EXISTS operation_events_project_idx ON projects.operation_events(project_id, created_at);
 
+CREATE TABLE IF NOT EXISTS projects.operation_unit_marks (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES projects.projects(id) ON DELETE CASCADE,
+  stage      text NOT NULL CHECK (stage IN ('prep','pickup','delivery','mount','show','dismantle','return')),
+  unit_id    uuid NOT NULL,
+  status     text NOT NULL CHECK (status IN ('ready','packed','picked','missing','left','delivered','mounted','collected','broken','lost','returned')),
+  actor_id   uuid,
+  note       text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(project_id, stage, unit_id)
+);
+ALTER TABLE projects.operation_unit_marks DROP CONSTRAINT IF EXISTS operation_unit_marks_stage_check;
+ALTER TABLE projects.operation_unit_marks ADD CONSTRAINT operation_unit_marks_stage_check CHECK (stage IN ('prep','pickup','delivery','mount','show','dismantle','return'));
+ALTER TABLE projects.operation_unit_marks DROP CONSTRAINT IF EXISTS operation_unit_marks_status_check;
+ALTER TABLE projects.operation_unit_marks ADD CONSTRAINT operation_unit_marks_status_check CHECK (status IN ('ready','packed','picked','missing','left','delivered','mounted','collected','broken','lost','returned'));
+CREATE INDEX IF NOT EXISTS operation_unit_marks_project_idx ON projects.operation_unit_marks(project_id, stage, updated_at);
+
 -- Hourly reservations. model_id is an opaque equipment id (no cross-schema FK).
 CREATE TABLE IF NOT EXISTS projects.reservations (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),

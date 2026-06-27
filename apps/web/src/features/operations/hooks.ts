@@ -40,6 +40,14 @@ export function useOperationEvents(projectId: string | null) {
   });
 }
 
+export function useOperationUnitMarks(projectId: string | null) {
+  return useQuery({
+    enabled: !!projectId,
+    queryKey: ["projects", "operation-unit-marks", projectId],
+    queryFn: () => api.get<Projects.OperationUnitMarkDTO[]>(`/api/projects/${projectId}/operation-unit-marks`),
+  });
+}
+
 export function useSetOperationStage(projectId: string | null) {
   const qc = useQueryClient();
   return useMutation({
@@ -57,7 +65,19 @@ export function useSetOperationStage(projectId: string | null) {
 function invalidateOps(qc: ReturnType<typeof useQueryClient>, projectId?: string | null) {
   qc.invalidateQueries({ queryKey: ["projects", "tasks", projectId] });
   qc.invalidateQueries({ queryKey: ["projects", "checklist", projectId] });
+  qc.invalidateQueries({ queryKey: ["projects", "operation-unit-marks", projectId] });
   qc.invalidateQueries({ queryKey: ["projects", "mine"] });
+}
+
+export function useSetOperationUnitMark(projectId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Omit<Projects.SetOperationUnitMarkInput, "projectId">) =>
+      api.put<Projects.OperationUnitMarkDTO>(`/api/projects/${projectId}/operation-unit-marks`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects", "operation-unit-marks", projectId] });
+    },
+  });
 }
 
 export function useCreateProjectTask(projectId: string | null) {

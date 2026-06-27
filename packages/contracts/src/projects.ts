@@ -177,6 +177,54 @@ export interface ProjectOperationEventDTO {
   createdAt: ISODateTime;
 }
 
+export type OperationUnitMarkStatus =
+  | "ready"
+  | "packed"
+  | "picked"
+  | "missing"
+  | "left"
+  | "delivered"
+  | "mounted"
+  | "collected"
+  | "broken"
+  | "lost"
+  | "returned";
+
+export const OPERATION_UNIT_MARK_STATUSES: OperationUnitMarkStatus[] = [
+  "ready",
+  "packed",
+  "picked",
+  "missing",
+  "left",
+  "delivered",
+  "mounted",
+  "collected",
+  "broken",
+  "lost",
+  "returned",
+];
+
+export interface OperationUnitMarkDTO {
+  id: ID;
+  projectId: ID;
+  stage: ProjectChecklistGroup;
+  unitId: ID;
+  status: OperationUnitMarkStatus;
+  actorId: ID | null;
+  note: string | null;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+export interface SetOperationUnitMarkInput {
+  projectId: ID;
+  stage: ProjectChecklistGroup;
+  unitId: ID;
+  status: OperationUnitMarkStatus;
+  actorId?: ID | null;
+  note?: string | null;
+}
+
 // ── Assignments (people on a project) ────────────────────────────────────────
 // A person is either added directly (status "added") or invited (status
 // "invited") — an invite is delivered to Telegram and the person accepts or
@@ -268,6 +316,8 @@ export interface ProjectsService {
   setStatus(id: ID, status: ProjectStatus): Promise<ProjectDTO>;
   setOperationStage(id: ID, stage: ProjectChecklistGroup, actorId?: ID | null): Promise<ProjectDTO>;
   listOperationEvents(projectId: ID): Promise<ProjectOperationEventDTO[]>;
+  listOperationUnitMarks(projectId: ID): Promise<OperationUnitMarkDTO[]>;
+  setOperationUnitMark(input: SetOperationUnitMarkInput): Promise<OperationUnitMarkDTO>;
 
   // Reservations
   listReservations(projectId: ID): Promise<ReservationDTO[]>;
