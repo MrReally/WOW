@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Projects } from "@sever/contracts";
 import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
 import { useUpdateProject } from "../hooks.ts";
+import { useVenues } from "../../plans/hooks.ts";
 import { toLocalInput } from "../../../lib/datetime.ts";
 
 interface Props {
@@ -13,8 +14,10 @@ interface Props {
 
 export function EditProjectSheet({ open, project, clients, onClose }: Props) {
   const update = useUpdateProject();
+  const venues = useVenues();
   const [name, setName] = useState(project.name);
   const [clientId, setClientId] = useState(project.clientId);
+  const [venueId, setVenueId] = useState(project.venueId ?? "");
   const [starts, setStarts] = useState(toLocalInput(project.startsAt));
   const [ends, setEnds] = useState(toLocalInput(project.endsAt));
 
@@ -23,6 +26,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
     if (open) {
       setName(project.name);
       setClientId(project.clientId);
+      setVenueId(project.venueId ?? "");
       setStarts(toLocalInput(project.startsAt));
       setEnds(toLocalInput(project.endsAt));
     }
@@ -37,6 +41,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
         input: {
           name,
           clientId,
+          venueId: venueId || null,
           startsAt: new Date(starts).toISOString(),
           endsAt: new Date(ends).toISOString(),
         },
@@ -52,6 +57,13 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
       </Field>
       <Field label="Клиент">
         <Select value={clientId} onChange={(e) => setClientId(e.target.value)} options={clients.map((c) => ({ value: c.id, label: c.name }))} />
+      </Field>
+      <Field label="Площадка">
+        <Select
+          value={venueId}
+          onChange={(e) => setVenueId(e.target.value)}
+          options={[{ value: "", label: "— не выбрана —" }, ...(venues.data ?? []).map((v) => ({ value: v.id, label: v.name }))]}
+        />
       </Field>
       <div className="row">
         <Field label="Начало">

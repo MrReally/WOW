@@ -82,13 +82,25 @@ export function CableMoveSheet({ model, projects, warehouses, selectedWarehouseI
   );
 }
 
-export function CableRow({ model, warehouseId, onMove, last }: { model: Equipment.EquipmentModelDTO; warehouseId?: string | null; onMove: () => void; last?: boolean }) {
+export function CableRow({
+  model,
+  warehouseId,
+  onMove,
+  onEdit,
+  last,
+}: {
+  model: Equipment.EquipmentModelDTO;
+  warehouseId?: string | null;
+  onMove: () => void;
+  onEdit?: () => void;
+  last?: boolean;
+}) {
   const aggregateStock = useModelStock(model.id, !warehouseId);
   const scopedStock = useModelStockAtWarehouse(model.id, warehouseId ?? "", !!warehouseId);
   const stock = warehouseId ? scopedStock : aggregateStock;
   const attrs = model.attrs as Equipment.CableAttrs | null;
   return (
-    <div className="lrow" style={{ borderBottom: last ? "none" : undefined }}>
+    <div className={`lrow ${onEdit ? "card--tappable" : ""}`} style={{ borderBottom: last ? "none" : undefined }} onClick={onEdit}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="lrow__title">{model.name}</div>
         <div className="lrow__detail">
@@ -96,7 +108,7 @@ export function CableRow({ model, warehouseId, onMove, last }: { model: Equipmen
           {stock.data ? ` · свободно ${stock.data.inStock}/${stock.data.total}` : ""}
         </div>
       </div>
-      <Button variant="secondary" style={{ height: 38, padding: "0 12px" }} onClick={onMove}>
+      <Button variant="secondary" style={{ height: 38, padding: "0 12px" }} onClick={(event) => { event.stopPropagation(); onMove(); }}>
         Выдать / Принять
       </Button>
     </div>

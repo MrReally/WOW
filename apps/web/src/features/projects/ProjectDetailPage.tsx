@@ -52,6 +52,16 @@ const PROJECT_TABS: { id: ProjectTab; label: string; shortLabel: string; count?:
   { id: "finance", label: "Финансы", shortLabel: "€", tone: "accent" },
 ];
 
+interface StoredInvoiceVersion {
+  id: string;
+  number: string;
+  date: string;
+  totalEUR: number;
+  currency: string;
+  lang: string;
+  createdAt: string;
+}
+
 function projectTabFrom(value: string | null): ProjectTab {
   return PROJECT_TABS.some((tab) => tab.id === value) ? (value as ProjectTab) : "overview";
 }
@@ -97,11 +107,21 @@ export function ProjectDetailPage() {
   const [timingTitle, setTimingTitle] = useState("");
   const [timingStart, setTimingStart] = useState("");
   const [timingEnd, setTimingEnd] = useState("");
-  const [assignUser, setAssignUser] = useState("");
   const [assignRole, setAssignRole] = useState("");
   const [assignRate, setAssignRate] = useState("");
+  const [assignCandidates, setAssignCandidates] = useState<string[]>([]);
   const [resolving, setResolving] = useState<Projects.ReservationDTO | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [invoiceVersions, setInvoiceVersions] = useState<StoredInvoiceVersion[]>([]);
+  const activeTab = projectTabFrom(searchParams.get("tab"));
+
+  useEffect(() => {
+    try {
+      setInvoiceVersions(JSON.parse(localStorage.getItem(`sever.invoice.versions.${id}`) || "[]"));
+    } catch {
+      setInvoiceVersions([]);
+    }
+  }, [id, activeTab]);
 
   const reopen = location.state as { reopenReservationId?: string; selectedUnitIds?: string[] } | null;
   useEffect(() => {
@@ -124,7 +144,6 @@ export function ProjectDetailPage() {
     const user = (people.data ?? []).find((u) => u.id === uid);
     return personName(user, "");
   };
-  const activeTab = projectTabFrom(searchParams.get("tab"));
   const setActiveTab = (tab: ProjectTab) => {
     const next = new URLSearchParams(searchParams);
     if (tab === "overview") next.delete("tab");
@@ -234,10 +253,9 @@ export function ProjectDetailPage() {
                     {issued ? "выдано" : resolved ? "распределено" : "по модели"}
                   </StatusBadge>
                 </div>
-                <p className="card__subtitle">
-                  {dateRange(r.startsAt, r.endsAt)}
-                  {issuedCount > 0 ? ` · выдано ${Math.min(issuedCount, r.qty)}/${r.qty}` : ""}
-                </p>
+                {issuedCount > 0 && (
+                  <p className="card__subtitle">выдано {Math.min(issuedCount, r.qty)}/{r.qty}</p>
+                )}
                 {shownIds.length > 0 && (
                   <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                     {shownIds.map((uid) => (
@@ -453,18 +471,21 @@ export function ProjectDetailPage() {
         if (available.length === 0) {
           return <p className="card__subtitle" style={{ textAlign: "center", padding: 12 }}>Все доступные люди назначены</p>;
         }
-        const sel = assignUser && available.some((u) => u.id === assignUser) ? assignUser : available[0]!.id;
+        const selected = assignCandidates.filter((uid) => available.some((u) => u.id === uid));
         const rateNum = assignRate ? Number(assignRate) : null;
-        const submit = (invite: boolean) =>
-          addAssignment.mutate(
-            { projectId: p.id, userId: sel, roleNote: assignRole || null, rateEUR: rateNum, invite },
-            { onSuccess: () => { setAssignUser(""); setAssignRole(""); setAssignRate(""); } }
-          );
+        const toggleCandidate = (uid: string) =>
+          setAssignCandidates((prev) => prev.includes(uid) ? prev.filter((x) => x !== uid) : [...prev, uid]);
+        const submit = async (invite: boolean) => {
+          if (selected.length === 0) return;
+          for (const userId of selected) {
+            await addAssignment.mutateAsync({ projectId: p.id, userId, roleNote: assignRole.trim() || null, rateEUR: rateNum, invite });
+          }
+          setAssignCandidates([]);
+          setAssignRole("");
+          setAssignRate("");
+        };
         return (
           <Card>
-            <Field label="Человек">
-              <Select value={sel} onChange={(e) => setAssignUser(e.target.value)} options={available.map((u) => ({ value: u.id, label: personName(u) }))} />
-            </Field>
             <div className="row">
               <Field label="Роль">
                 <Input value={assignRole} onChange={(e) => setAssignRole(e.target.value)} placeholder="Световик / шеф монтажа…" />
@@ -473,11 +494,27 @@ export function ProjectDetailPage() {
                 <Input type="number" value={assignRate} onChange={(e) => setAssignRate(e.target.value)} placeholder="напр. 150" />
               </Field>
             </div>
+            <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              {available.map((u) => {
+                const picked = selected.includes(u.id);
+                return (
+                  <button
+                    key={u.id}
+                    className={`chip ${picked ? "chip--accent chip--solid" : "chip--neutral"}`}
+                    style={{ border: "none", cursor: "pointer" }}
+                    onClick={() => toggleCandidate(u.id)}
+                    type="button"
+                  >
+                    {personName(u)}
+                  </button>
+                );
+              })}
+            </div>
             <div className="row" style={{ marginTop: 4 }}>
-              <Button variant="secondary" block disabled={addAssignment.isPending} onClick={() => submit(false)}>
+              <Button variant="secondary" block disabled={selected.length === 0 || addAssignment.isPending} onClick={() => void submit(false)}>
                 Добавить
               </Button>
-              <Button block disabled={addAssignment.isPending} onClick={() => submit(true)}>
+              <Button block disabled={selected.length === 0 || addAssignment.isPending} onClick={() => void submit(true)}>
                 TG
               </Button>
             </div>
@@ -572,6 +609,22 @@ export function ProjectDetailPage() {
             <Button block variant="secondary" onClick={() => navigate(`/projects/${p.id}/invoice`)}>
               Счёт
             </Button>
+            {invoiceVersions.length > 0 && (
+              <Card>
+                <p className="card__title">Версии сметы</p>
+                <div style={{ marginTop: 6 }}>
+                  {invoiceVersions.slice(0, 5).map((version) => (
+                    <div key={version.id} className="row row--between" style={{ padding: "5px 0", gap: 10 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: "var(--text)" }}>{version.number || "Смета"} · {version.lang}</div>
+                        <div className="card__subtitle">{version.date} · {dateTime(version.createdAt)}</div>
+                      </div>
+                      <span style={{ color: "var(--text)", whiteSpace: "nowrap" }}>{eur(version.totalEUR)}</span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
           </>
         );
       })()}

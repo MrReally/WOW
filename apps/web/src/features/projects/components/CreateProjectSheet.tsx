@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
 import { useClients, useCreateClient, useCreateProject } from "../hooks.ts";
+import { useVenues } from "../../plans/hooks.ts";
 
 function toLocalInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -9,12 +10,14 @@ function toLocalInput(d: Date): string {
 
 export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const clients = useClients();
+  const venues = useVenues();
   const createClient = useCreateClient();
   const createProject = useCreateProject();
 
   const [name, setName] = useState("");
   const [clientId, setClientId] = useState("");
   const [newClient, setNewClient] = useState("");
+  const [venueId, setVenueId] = useState("");
   const [starts, setStarts] = useState(toLocalInput(new Date(Date.now() + 86_400_000)));
   const [ends, setEnds] = useState(toLocalInput(new Date(Date.now() + 2 * 86_400_000)));
 
@@ -30,6 +33,7 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
       {
         name,
         clientId,
+        venueId: venueId || null,
         startsAt: new Date(starts).toISOString(),
         endsAt: new Date(ends).toISOString(),
       },
@@ -50,6 +54,14 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
 
       <Field label="Клиент">
         <Select value={clientId} onChange={(e) => setClientId(e.target.value)} options={clientOptions} />
+      </Field>
+
+      <Field label="Площадка">
+        <Select
+          value={venueId}
+          onChange={(e) => setVenueId(e.target.value)}
+          options={[{ value: "", label: "— не выбрана —" }, ...(venues.data ?? []).map((v) => ({ value: v.id, label: v.name }))]}
+        />
       </Field>
 
       <div className="row" style={{ alignItems: "flex-end", marginBottom: "var(--space-4)" }}>

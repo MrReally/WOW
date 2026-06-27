@@ -39,20 +39,20 @@ export function createBillingService(deps: BillingDeps): BillingService {
     const modelMap = new Map(models.map((m) => [m.id, m]));
     const typeName = new Map(types.map((t) => [t.id, t.name]));
     const contractorName = new Map(contractors.map((c) => [c.id, c.name]));
+    const projectDays = daysBetween(project.startsAt, project.endsAt);
 
     const ownLines: Finance.InvoiceLineDTO[] = reservations.map((r) => {
       const m = modelMap.get(r.modelId);
       const price = m?.dailyPriceEUR ?? 0;
-      const rdays = daysBetween(r.startsAt, r.endsAt);
       return {
         refId: r.id,
         section: (m && typeName.get(m.typeId)) || "Equipment",
         label: m?.name ?? r.modelId,
-        detail: `${rdays} day${rdays === 1 ? "" : "s"} × ${price} €/day`,
+        detail: `${projectDays} day${projectDays === 1 ? "" : "s"} × ${price} €/day`,
         qty: r.qty,
         unitEUR: price,
-        periods: rdays,
-        amountEUR: round2(price * r.qty * rdays),
+        periods: projectDays,
+        amountEUR: round2(price * r.qty * projectDays),
         costEUR: 0,
       };
     });
@@ -73,7 +73,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
     const rentalEUR = round2(rentalLines.reduce((s, l) => s + l.amountEUR, 0));
     const contractorCostEUR = round2(contractorLines.reduce((s, l) => s + l.costEUR, 0));
 
-    const crew = assignments.filter((a) => a.status !== "declined" && a.rateEUR != null);
+    const crew = assignments.filter((a) => (a.status === "added" || a.status === "accepted") && a.rateEUR != null);
     const names = await Promise.all(crew.map((a) => deps.people.getById(a.userId)));
     const laborLines: Finance.InvoiceLineDTO[] = crew.map((a, i) => ({
       refId: a.id,
@@ -105,7 +105,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
 
     return {
       projectId,
-      days: daysBetween(project.startsAt, project.endsAt),
+      days: projectDays,
       rentalLines,
       rentalEUR,
       laborLines,

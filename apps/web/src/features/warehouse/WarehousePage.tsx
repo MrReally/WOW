@@ -26,6 +26,7 @@ import {
   useWarehouses,
   useCreateWarehouse,
   useUpdateWarehouse,
+  useUpdateType,
 } from "./hooks.ts";
 import { AddModelSheet } from "./components/AddModelSheet.tsx";
 import { EditModelSheet } from "./components/EditModelSheet.tsx";
@@ -108,6 +109,7 @@ export function WarehousePage() {
   const warehouses = useWarehouses();
   const createWarehouse = useCreateWarehouse();
   const updateWarehouse = useUpdateWarehouse();
+  const updateType = useUpdateType();
   const projects = useProjectsForOps();
   const openRepairs = useOpenRepairs();
   const openHandovers = useOpenHandovers();
@@ -198,6 +200,12 @@ export function WarehousePage() {
       next.has(tid) ? next.delete(tid) : next.add(tid);
       return next;
     });
+  const renameType = (tid: string) => {
+    const current = getTypeName(tid);
+    const next = prompt("Новое название типа", current)?.trim();
+    if (!next || next === current) return;
+    updateType.mutate({ id: tid, input: { name: next } });
+  };
 
   return (
     <div>
@@ -329,7 +337,14 @@ export function WarehousePage() {
               <SectionHead label="Кабели (по количеству)" meta={`${cableModels.length}`} />
               <div className="card" style={{ padding: "2px 16px" }}>
                 {cableModels.map((m, i) => (
-                  <CableRow key={m.id} model={m} warehouseId={warehouseFilter === "all" ? null : warehouseFilter} onMove={() => setCableModel(m)} last={i === cableModels.length - 1} />
+                  <CableRow
+                    key={m.id}
+                    model={m}
+                    warehouseId={warehouseFilter === "all" ? null : warehouseFilter}
+                    onMove={() => setCableModel(m)}
+                    onEdit={canCatalog ? () => setEditModel(m) : undefined}
+                    last={i === cableModels.length - 1}
+                  />
                 ))}
               </div>
             </>
@@ -366,9 +381,16 @@ export function WarehousePage() {
             <div key={tid}>
               <div className="row row--between" style={{ alignItems: "center" }}>
                 <SectionHead label={getTypeName(tid)} meta={`${list.length}`} />
-                <Button variant="ghost" onClick={() => toggleType(tid)}>
-                  {collapsedTypes.has(tid) ? "Развернуть" : "Свернуть"}
-                </Button>
+                <div className="row" style={{ gap: 6 }}>
+                  {canCatalog && (
+                    <button className="icon-btn" aria-label="Редактировать тип" title="Редактировать тип" onClick={() => renameType(tid)}>
+                      ✎
+                    </button>
+                  )}
+                  <button className="icon-btn" aria-label={collapsedTypes.has(tid) ? "Развернуть" : "Свернуть"} title={collapsedTypes.has(tid) ? "Развернуть" : "Свернуть"} onClick={() => toggleType(tid)}>
+                    {collapsedTypes.has(tid) ? "▾" : "▴"}
+                  </button>
+                </div>
               </div>
               {!collapsedTypes.has(tid) && (
                 <div className="card" style={{ padding: "2px 16px" }}>

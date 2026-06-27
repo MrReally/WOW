@@ -89,6 +89,16 @@ export function useCreateType() {
   });
 }
 
+export function useUpdateType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: { name?: string } }) =>
+      api.patch<Equipment.EquipmentTypeDTO>(`/api/equipment/types/${id}`, input),
+    meta: { successMessage: "Тип обновлён" },
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
 export function useCreateWarehouse() {
   const qc = useQueryClient();
   return useMutation({
@@ -148,7 +158,7 @@ export function useTransferUnit() {
 export function useUpdateUnit() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: { serial?: string | null; notes?: string | null } }) =>
+    mutationFn: ({ id, input }: { id: string; input: { assetTag?: string; serial?: string | null; notes?: string | null } }) =>
       api.patch<Equipment.EquipmentUnitDTO>(`/api/equipment/units/${id}`, input),
     meta: { successMessage: "Сохранено" },
     onSuccess: () => invalidateEquipment(qc),

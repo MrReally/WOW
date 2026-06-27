@@ -1,12 +1,40 @@
 import type { Notifications } from "@sever/contracts";
 import { ADVANCED_NOTIFICATION_EVENTS, NOTIFICATION_KINDS } from "@sever/contracts";
-import { Card, Button, SectionTitle, Loading } from "../../ui-kit/index.ts";
+import { useEffect, useState } from "react";
+import { Card, Button, SectionTitle, Loading, Field, Input } from "../../ui-kit/index.ts";
 import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
 import { LOCALE_OPTIONS, useI18n } from "../../app/i18n.tsx";
 import { useAdvancedNotifPrefs, useNotifPrefs, useSetAdvancedNotifPrefs, useSetNotifPrefs } from "../notifications/hooks.ts";
 import { useCalendarFeed, useSetMyPreferences } from "./hooks.ts";
 import { personName } from "../../lib/people.ts";
+
+interface InvoiceCompanySettings {
+  name: string;
+  requisites: string;
+  phone: string;
+  email: string;
+  telegram: string;
+}
+
+function loadInvoiceCompany(): InvoiceCompanySettings {
+  try {
+    const raw = localStorage.getItem("sever.invoice.company");
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<InvoiceCompanySettings>;
+      return {
+        name: parsed.name ?? "SEVER",
+        requisites: parsed.requisites ?? "",
+        phone: parsed.phone ?? "+381 62 852 5240",
+        email: parsed.email ?? "sever.beo.contact@gmail.com",
+        telegram: parsed.telegram ?? "@sever_contact",
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { name: "SEVER", requisites: "", phone: "+381 62 852 5240", email: "sever.beo.contact@gmail.com", telegram: "@sever_contact" };
+}
 
 // Personal mini-settings — available to every signed-in user (not the admin
 // SettingsPage). Theme + which notifications they want.
@@ -22,6 +50,11 @@ export function MySettingsPage() {
   const calendar = useCalendarFeed();
   const setMyPreferences = useSetMyPreferences();
   const current = prefs.data;
+  const [invoiceCompany, setInvoiceCompany] = useState<InvoiceCompanySettings>(loadInvoiceCompany);
+
+  useEffect(() => {
+    localStorage.setItem("sever.invoice.company", JSON.stringify(invoiceCompany));
+  }, [invoiceCompany]);
 
   const togglePref = (kind: Notifications.NotificationKind) => {
     if (!current) return;
@@ -104,6 +137,28 @@ export function MySettingsPage() {
                 style={{ width: 20, height: 20, accentColor: "var(--accent)", flexShrink: 0 }}
               />
             </label>
+          </Card>
+        </>
+      )}
+
+      {can("finance.view", "finance.manage") && (
+        <>
+          <SectionTitle>Смета</SectionTitle>
+          <Card>
+            <Field label="Исполнитель">
+              <Input value={invoiceCompany.name} onChange={(e) => setInvoiceCompany({ ...invoiceCompany, name: e.target.value })} />
+            </Field>
+            <div className="row">
+              <Field label="Phone">
+                <Input value={invoiceCompany.phone} onChange={(e) => setInvoiceCompany({ ...invoiceCompany, phone: e.target.value })} />
+              </Field>
+              <Field label="Email">
+                <Input value={invoiceCompany.email} onChange={(e) => setInvoiceCompany({ ...invoiceCompany, email: e.target.value })} />
+              </Field>
+            </div>
+            <Field label="Telegram">
+              <Input value={invoiceCompany.telegram} onChange={(e) => setInvoiceCompany({ ...invoiceCompany, telegram: e.target.value })} />
+            </Field>
           </Card>
         </>
       )}

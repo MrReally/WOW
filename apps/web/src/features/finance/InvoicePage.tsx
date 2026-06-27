@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import type { Currency } from "@sever/contracts";
 import { Card, Button, SectionTitle, Field, Input, Textarea, Select, Loading, ErrorState, BrandLogo } from "../../ui-kit/index.ts";
 import { useProject, useClients, useProjectInvoice } from "../projects/hooks.ts";
+import { useVenues } from "../plans/hooks.ts";
 import { useFxRates } from "./hooks.ts";
 import "./invoice.css";
 
@@ -24,6 +25,7 @@ const num = (v: string) => (v === "" ? 0 : Number(v) || 0);
 const uid = () => Math.random().toString(36).slice(2, 9);
 const money = (n: number, cur: string) => `${new Intl.NumberFormat("en-US").format(round2(n))} ${cur}`;
 const amount = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(n));
+const cleanText = (value: string) => value.trim().replace(/\s+/g, " ");
 type InvoiceLang = "EN" | "RU" | "RS";
 const DOC_LABELS: Record<InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
   EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
@@ -63,6 +65,7 @@ export function InvoicePage() {
   const project = useProject(id);
   const clients = useClients();
   const invoice = useProjectInvoice(id, true);
+  const venues = useVenues();
   const fx = useFxRates();
 
   const [mode, setMode] = useState<"edit" | "preview">("edit");
@@ -75,6 +78,7 @@ export function InvoicePage() {
   const [dateStr, setDateStr] = useState(() => new Date().toISOString().slice(0, 10));
   const [clientName, setClientName] = useState("");
   const [place, setPlace] = useState("");
+  const [placeTouched, setPlaceTouched] = useState(false);
   const [note, setNote] = useState("");
 
   // Prices are pre-filled from the project but fully editable before the document.
@@ -101,8 +105,11 @@ export function InvoicePage() {
       const c = (clients.data ?? []).find((x) => x.id === project.data!.clientId);
       if (c) setClientName(c.name);
     }
-    if (project.data && !place) setPlace(project.data.name);
-  }, [project.data, clients.data, dateStr, id, number, clientName, place]);
+    if (project.data && !placeTouched && (!project.data.venueId || venues.data)) {
+      const venue = (venues.data ?? []).find((x) => x.id === project.data!.venueId);
+      setPlace(venue?.name ?? "");
+    }
+  }, [project.data, clients.data, venues.data, dateStr, id, number, clientName, placeTouched]);
 
   useEffect(() => {
     localStorage.setItem("sever.invoice.company", JSON.stringify(company));
@@ -115,16 +122,24 @@ export function InvoicePage() {
   const margin = round2(total - costTotal);
 
   // Group lines into sections, preserving first-appearance order.
+  const normalizedLines = useMemo(() => lines.map((l) => ({
+    ...l,
+    section: cleanText(l.section) || "—",
+    name: cleanText(l.name),
+    count: cleanText(l.count) || "1",
+    comment: l.comment.trim(),
+  })), [lines]);
+
   const sections = useMemo(() => {
     const order: string[] = [];
     const map = new Map<string, Line[]>();
-    for (const l of lines) {
-      const key = l.section || "—";
+    for (const l of normalizedLines) {
+      const key = l.section;
       if (!map.has(key)) { map.set(key, []); order.push(key); }
       map.get(key)!.push(l);
     }
     return order.map((s) => ({ section: s, items: map.get(s)! }));
-  }, [lines]);
+  }, [normalizedLines]);
 
   if (project.isLoading || invoice.isLoading) return <Loading />;
   if (invoice.error) return <ErrorState error={invoice.error} onRetry={invoice.refetch} />;
@@ -143,6 +158,31 @@ export function InvoicePage() {
         .map((l) => ({ id: l.refId, section: l.section, name: l.label, count: String(l.qty), price: l.amountEUR, cost: l.costEUR, comment: l.detail }));
       return [...prev, ...crew];
     });
+  const saveVersionAndPreview = () => {
+    const normalized = normalizedLines;
+    setLines(normalized);
+    const version = {
+      id: uid(),
+      projectId: id,
+      number: number.trim(),
+      date: dateStr,
+      place: place.trim(),
+      clientName: clientName.trim(),
+      totalEUR: total,
+      currency,
+      lang,
+      createdAt: new Date().toISOString(),
+      lines: normalized,
+    };
+    try {
+      const key = `sever.invoice.versions.${id}`;
+      const prev = JSON.parse(localStorage.getItem(key) || "[]") as unknown[];
+      localStorage.setItem(key, JSON.stringify([version, ...prev].slice(0, 20)));
+    } catch {
+      /* ignore */
+    }
+    setMode("preview");
+  };
 
   if (mode === "preview") {
     const displayDate = dateStr.split("-").reverse().join("/");
@@ -181,7 +221,7 @@ export function InvoicePage() {
               </div>
               <div className="estimate-field estimate-field--tall">
                 <div>{labels.place}</div>
-                <strong>{place || project.data?.name || "—"}</strong>
+                <strong>{place.trim() || "—"}</strong>
               </div>
             </div>
             <div className="estimate-logo">
@@ -241,7 +281,7 @@ export function InvoicePage() {
         </div>
         <Field label="Исполнитель"><Input value={company.name} onChange={(e) => setCompany({ ...company, name: e.target.value })} /></Field>
         <Field label="Заказчик"><Input value={clientName} onChange={(e) => setClientName(e.target.value)} /></Field>
-        <Field label="Place в смете"><Input value={place} onChange={(e) => setPlace(e.target.value)} placeholder="Villa Viko" /></Field>
+        <Field label="Place в смете"><Input value={place} onChange={(e) => { setPlaceTouched(true); setPlace(e.target.value); }} placeholder="Villa Viko" /></Field>
         <div className="row">
           <Field label="Phone"><Input value={company.phone} onChange={(e) => setCompany({ ...company, phone: e.target.value })} /></Field>
           <Field label="Email"><Input value={company.email} onChange={(e) => setCompany({ ...company, email: e.target.value })} /></Field>
@@ -298,7 +338,7 @@ export function InvoicePage() {
 
       <Field label="Примечание / условия"><Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Сроки оплаты, условия аренды и т.п." /></Field>
 
-      <Button block disabled={lines.length === 0} onClick={() => setMode("preview")}>Сформировать документ</Button>
+      <Button block disabled={lines.length === 0} onClick={saveVersionAndPreview}>Сформировать документ</Button>
     </div>
   );
 }

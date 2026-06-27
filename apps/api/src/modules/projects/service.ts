@@ -618,9 +618,12 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       const project = await this.getProject(projectId);
       if (!project) throw NotFound("project", projectId);
       let rows = await loadChecklist(projectId);
-      if (rows.length === 0) {
+      const hasDefault = (item: { group: Projects.ProjectChecklistGroup; title: string }) =>
+        rows.some((row) => row.group_key === item.group && row.title === item.title);
+      const missingDefaults = defaultChecklist.filter((item) => !hasDefault(item));
+      if (missingDefaults.length > 0) {
         await tx(async (client) => {
-          for (const item of defaultChecklist) {
+          for (const item of missingDefaults) {
             await query(
               client,
               `INSERT INTO projects.project_checklist (project_id, group_key, title) VALUES ($1,$2,$3)`,
@@ -726,11 +729,26 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       if (!row) throw NotFound("assignment", assignmentId);
       if (row.user_id !== byUserId) throw BadRequest("это приглашение адресовано не вам");
       const status: Projects.AssignmentStatus = accept ? "accepted" : "declined";
-      const updated = await one<AssignmentRow>(
-        db,
-        `UPDATE projects.assignments SET status=$2, responded_at=now() WHERE id=$1 RETURNING *`,
-        [assignmentId, status]
-      );
+      let updated: AssignmentRow | null = null;
+      await tx(async (client) => {
+        updated = await one<AssignmentRow>(
+          client,
+          `UPDATE projects.assignments SET status=$2, responded_at=now() WHERE id=$1 RETURNING *`,
+          [assignmentId, status]
+        );
+        if (accept) {
+          await query(
+            client,
+            `UPDATE projects.assignments
+             SET status='declined', responded_at=now()
+             WHERE project_id=$1
+               AND id <> $2
+               AND status='invited'
+               AND COALESCE(role_note, '') = COALESCE($3, '')`,
+            [row.project_id, assignmentId, row.role_note]
+          );
+        }
+      });
       await bus.publish({
         type: "project.invite.responded",
         projectId: row.project_id,

@@ -58,17 +58,17 @@ const moveSchema = z.object({
 export function registerPlansRoutes(app: FastifyInstance, ctx: RouteContext, service: Plans.PlansService): void {
   app.get<{ Params: { projectId: string } }>("/api/projects/:projectId/plans", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "plans.view", "plans.manage");
+    requirePermission(auth, "plans.view", "plans.manage", "operations.view");
     return service.listPlans(req.params.projectId);
   });
   app.get<{ Params: { projectId: string } }>("/api/projects/:projectId/plan", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "plans.view", "plans.manage");
+    requirePermission(auth, "plans.view", "plans.manage", "operations.view");
     return service.getCurrentPlan(req.params.projectId);
   });
   app.get<{ Params: { id: string } }>("/api/plans/:id", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "plans.view", "plans.manage");
+    requirePermission(auth, "plans.view", "plans.manage", "operations.view");
     return service.getPlan(req.params.id);
   });
   app.post("/api/plans", async (req) => {

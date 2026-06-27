@@ -44,6 +44,7 @@ export function UnitDetailPage() {
   const location = useLocation();
   const { can } = useSession();
   const canEdit = can("warehouse.unit.status");
+  const canCatalog = can("warehouse.catalog.manage");
 
   const unit = useUnit(id);
   const journal = useUnitJournal(id);
@@ -57,13 +58,15 @@ export function UnitDetailPage() {
   const updateUnit = useUpdateUnit();
 
   const [serialDraft, setSerialDraft] = useState("");
+  const [assetTagDraft, setAssetTagDraft] = useState("");
   const [notesDraft, setNotesDraft] = useState("");
   useEffect(() => {
     if (unit.data) {
+      setAssetTagDraft(unit.data.assetTag);
       setSerialDraft(unit.data.serial ?? "");
       setNotesDraft(unit.data.notes ?? "");
     }
-  }, [unit.data?.id, unit.data?.serial, unit.data?.notes]);
+  }, [unit.data?.id, unit.data?.assetTag, unit.data?.serial, unit.data?.notes]);
 
   const journalEntries = useMemo(() => {
     let currentWarehouseId: string | null = null;
@@ -92,6 +95,7 @@ export function UnitDetailPage() {
   const warehouseName = (wid: string | null) => warehouseList.find((w) => w.id === wid)?.name ?? "—";
   const repairTotal = (repairs.data ?? []).filter((r) => r.status === "closed").reduce((s, r) => s + (r.costEUR ?? 0), 0);
 
+  const assetTagDirty = assetTagDraft !== u.assetTag;
   const serialDirty = serialDraft !== (u.serial ?? "");
   const notesDirty = notesDraft !== (u.notes ?? "");
 
@@ -152,6 +156,26 @@ export function UnitDetailPage() {
         {projectName && <InfoRow label="Сейчас на проекте" value={projectName} />}
         <InfoRow label="В системе с" value={dateTime(u.createdAt)} />
         <InfoRow label="Потрачено на ремонт" value={repairTotal > 0 ? eur(repairTotal) : "—"} />
+
+        <div style={{ marginTop: 10 }}>
+          <span className="field__label">Название / инв. номер</span>
+          {canCatalog ? (
+            <div className="row" style={{ marginTop: 4 }}>
+              <div style={{ flex: 1 }}>
+                <Input value={assetTagDraft} onChange={(e) => setAssetTagDraft(e.target.value)} placeholder="STROBE-ABL-002" />
+              </div>
+              <Button
+                variant="secondary"
+                disabled={!assetTagDirty || !assetTagDraft.trim() || updateUnit.isPending}
+                onClick={() => updateUnit.mutate({ id: u.id, input: { assetTag: assetTagDraft.trim() } })}
+              >
+                Сохранить
+              </Button>
+            </div>
+          ) : (
+            <p style={{ marginTop: 4 }}>{u.assetTag}</p>
+          )}
+        </div>
 
         <div style={{ marginTop: 10 }}>
           <span className="field__label">Серийный номер</span>

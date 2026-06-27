@@ -504,7 +504,8 @@ function Checklist({
   const deleteItem = useDeleteChecklistItem(projectId);
   const [titleByStage, setTitleByStage] = useState<Record<string, string>>({});
   const list = checklist.data ?? [];
-  const done = list.filter((i) => i.done).length;
+  const activeItems = list.filter((i) => i.group === activeStage);
+  const activeDone = activeItems.filter((i) => i.done).length;
 
   const add = (group: Projects.ProjectChecklistGroup) => {
     const clean = (titleByStage[group] ?? "").trim();
@@ -514,7 +515,7 @@ function Checklist({
 
   return (
     <>
-      <SectionHead label={stageLabel[activeStage]} meta={`${done}/${list.length}`} />
+      <SectionHead label="Чек-лист" meta={`${activeDone}/${activeItems.length}`} />
       <div className="stack">
         {checklist.isLoading ? (
           <Loading />
@@ -522,7 +523,7 @@ function Checklist({
           <ErrorState error={checklist.error} onRetry={checklist.refetch} />
         ) : (
           [activeStage].map((group) => {
-            const items = list.filter((i) => i.group === group);
+            const items = activeItems;
             const value = titleByStage[group] ?? "";
             return (
               <Card key={group}>

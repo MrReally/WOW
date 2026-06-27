@@ -10,6 +10,9 @@ const createTypeSchema = z.object({
   name: z.string().min(1),
   trackingMode: z.enum(["serial", "quantity"]),
 });
+const updateTypeSchema = z.object({
+  name: z.string().min(1).optional(),
+});
 const warehouseSchema = z.object({
   name: z.string().min(1),
   address: z.string().nullable().optional(),
@@ -46,6 +49,7 @@ const createUnitSchema = z.object({
   warehouseId: z.string().uuid().nullable().optional(),
 });
 const updateUnitSchema = z.object({
+  assetTag: z.string().min(1).optional(),
   serial: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
 });
@@ -145,6 +149,11 @@ export function registerEquipmentRoutes(
     requirePermission(auth, "warehouse.catalog.manage");
     return service.createType(createTypeSchema.parse(req.body));
   });
+  app.patch<{ Params: { id: string } }>("/api/equipment/types/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.catalog.manage");
+    return service.updateType(req.params.id, updateTypeSchema.parse(req.body));
+  });
 
   // ── Models ──
   app.get<{ Querystring: { typeId?: string } }>("/api/equipment/models", async (req) => {
@@ -240,7 +249,7 @@ export function registerEquipmentRoutes(
   });
   app.patch<{ Params: { id: string } }>("/api/equipment/units/:id", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "warehouse.unit.status");
+    requirePermission(auth, "warehouse.catalog.manage", "warehouse.unit.status");
     return service.updateUnit(req.params.id, updateUnitSchema.parse(req.body));
   });
   app.patch<{ Params: { id: string } }>("/api/equipment/units/:id/status", async (req) => {

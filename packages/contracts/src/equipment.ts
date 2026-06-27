@@ -281,6 +281,7 @@ export interface EquipmentService {
   // Catalog
   listTypes(): Promise<EquipmentTypeDTO[]>;
   createType(input: { name: string; trackingMode: "serial" | "quantity" }): Promise<EquipmentTypeDTO>;
+  updateType(id: ID, input: { name?: string }): Promise<EquipmentTypeDTO>;
   listModels(typeId?: ID): Promise<EquipmentModelDTO[]>;
   getModel(id: ID): Promise<EquipmentModelDTO | null>;
   createModel(input: CreateModelInput): Promise<EquipmentModelDTO>;
@@ -290,8 +291,8 @@ export interface EquipmentService {
   listUnits(filter?: { modelId?: ID; status?: UnitStatus; projectId?: ID; warehouseId?: ID }): Promise<EquipmentUnitDTO[]>;
   getUnit(id: ID): Promise<EquipmentUnitDTO | null>;
   createUnit(input: { modelId: ID; assetTag: string; serial?: string | null; notes?: string | null; warehouseId?: ID | null }): Promise<EquipmentUnitDTO>;
-  /** Edit per-unit particulars (serial, defects/notes). */
-  updateUnit(id: ID, input: { serial?: string | null; notes?: string | null }): Promise<EquipmentUnitDTO>;
+  /** Edit per-unit particulars (visible name/tag, serial, defects/notes). */
+  updateUnit(id: ID, input: { assetTag?: string; serial?: string | null; notes?: string | null }): Promise<EquipmentUnitDTO>;
   getUnitJournal(unitId: ID): Promise<JournalEntryDTO[]>;
   getJournalByActor(actorId: ID): Promise<JournalEntryDTO[]>;
   modelStock(modelId: ID, warehouseId?: ID | null): Promise<ModelStockDTO>;

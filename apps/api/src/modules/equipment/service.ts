@@ -318,6 +318,16 @@ export function createEquipmentService(
       );
       return typeDTO(row!);
     },
+    async updateType(id, input) {
+      const existing = await one<TypeRow>(db, `SELECT * FROM equipment.types WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("type", id);
+      const row = await one<TypeRow>(
+        db,
+        `UPDATE equipment.types SET name=COALESCE($2, name) WHERE id=$1 RETURNING *`,
+        [id, input.name ?? null]
+      );
+      return typeDTO(row!);
+    },
 
     // ── Catalog: models ──
     async listModels(typeId) {
@@ -436,11 +446,13 @@ export function createEquipmentService(
       const row = await one<UnitRow>(
         db,
         `UPDATE equipment.units SET
-           serial = $2,
-           notes  = $3
+           asset_tag = $2,
+           serial    = $3,
+           notes     = $4
          WHERE id=$1 RETURNING *`,
         [
           id,
+          input.assetTag === undefined ? existing.asset_tag : input.assetTag,
           input.serial === undefined ? existing.serial : input.serial,
           input.notes === undefined ? existing.notes : input.notes,
         ]
