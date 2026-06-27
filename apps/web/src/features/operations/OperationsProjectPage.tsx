@@ -5,7 +5,7 @@ import { Button, Card, Chip, EmptyState, ErrorState, Input, Loading, SectionHead
 import { dateRange, dateTime, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
 import { useAllUnits, useEquipmentModels, usePeople, useProject, useReservations } from "../projects/hooks.ts";
-import { useWarehouses } from "../warehouse/hooks.ts";
+import { useChangeStatus, useWarehouses } from "../warehouse/hooks.ts";
 import {
   useCreateChecklistItem,
   useCreateProjectTask,
@@ -159,10 +159,13 @@ function StageHistory({ events }: { events: Projects.ProjectOperationEventDTO[] 
 
 function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: Projects.ProjectChecklistGroup }) {
   const navigate = useNavigate();
+  const { can } = useSession();
   const reservations = useReservations(projectId);
   const models = useEquipmentModels();
   const units = useAllUnits();
   const warehouses = useWarehouses();
+  const changeStatus = useChangeStatus();
+  const canMarkStatus = can("warehouse.unit.status");
   const shouldShow = stage === "prep" || stage === "pickup" || stage === "dismantle" || stage === "return";
   if (!shouldShow) return null;
 
@@ -200,19 +203,44 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
                 </div>
                 <div className="stack" style={{ marginTop: 10 }}>
                   {group.rows.map(({ reservation, unit }) => (
-                    <button
+                    <div
                       key={`${reservation.id}:${unit?.id ?? "missing"}`}
                       className="row row--between"
-                      style={{ width: "100%", border: "none", background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: unit ? "pointer" : "default" }}
-                      disabled={!unit}
-                      onClick={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
+                      style={{ width: "100%", gap: 8 }}
                     >
-                      <div style={{ minWidth: 0 }}>
+                      <button
+                        style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: unit ? "pointer" : "default" }}
+                        disabled={!unit}
+                        onClick={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
+                      >
                         <p className="card__title" style={{ fontSize: 16 }}>{unit?.assetTag ?? "Не найдено"}</p>
                         <p className="card__subtitle">{modelName(reservation.modelId)}</p>
-                      </div>
-                      <Chip label={unit?.status ?? "—"} tone="neutral" />
-                    </button>
+                      </button>
+                      {stage === "dismantle" && unit && canMarkStatus ? (
+                        <div className="row" style={{ gap: 2, flex: "0 0 auto" }}>
+                          <button
+                            className="icon-btn"
+                            aria-label="В ремонт"
+                            title="В ремонт"
+                            disabled={changeStatus.isPending}
+                            onClick={() => changeStatus.mutate({ id: unit.id, status: "in_repair", note: `Демонтаж · ${projectId}` })}
+                          >
+                            !
+                          </button>
+                          <button
+                            className="icon-btn icon-btn--danger"
+                            aria-label="Утеря"
+                            title="Утеря"
+                            disabled={changeStatus.isPending}
+                            onClick={() => changeStatus.mutate({ id: unit.id, status: "lost", note: `Демонтаж · ${projectId}` })}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ) : (
+                        <Chip label={unit?.status ?? "—"} tone="neutral" />
+                      )}
+                    </div>
                   ))}
                 </div>
               </Card>
