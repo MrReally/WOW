@@ -31,13 +31,19 @@ export interface UserDTO {
   displayName: string;
   roleId: ID | null;
   roleName: string;
+  firstName: string | null;
+  lastName: string | null;
+  patronymic: string | null;
+  nickname: string | null;
   /** Hourly rate in EUR for assignment costing (techs). null if not set. */
   hourlyRateEUR: number | null;
   /** Hidden protected account for recovery/developer access. */
   isSystem: boolean;
   documentNumber: string | null;
+  documentPhotoUrl: string | null;
   languages: string | null;
   photoUrl: string | null;
+  usePhotoAsAvatar: boolean;
   birthDate: string | null;
   active: boolean;
   mustChangePassword: boolean;
@@ -51,9 +57,15 @@ export interface CreateUserInput {
   email?: string | null;
   telegramId?: string | null;
   hourlyRateEUR?: number | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  patronymic?: string | null;
+  nickname?: string | null;
   documentNumber?: string | null;
+  documentPhotoUrl?: string | null;
   languages?: string | null;
   photoUrl?: string | null;
+  usePhotoAsAvatar?: boolean;
   birthDate?: string | null;
 }
 
@@ -63,9 +75,15 @@ export interface UpdateUserInput {
   email?: string | null;
   telegramId?: string | null;
   hourlyRateEUR?: number | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  patronymic?: string | null;
+  nickname?: string | null;
   documentNumber?: string | null;
+  documentPhotoUrl?: string | null;
   languages?: string | null;
   photoUrl?: string | null;
+  usePhotoAsAvatar?: boolean;
   birthDate?: string | null;
   active?: boolean;
 }

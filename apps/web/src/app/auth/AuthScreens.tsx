@@ -86,13 +86,37 @@ export function ChangePasswordScreen() {
     onSuccess: () => qc.invalidateQueries(),
   });
   const ok = password.length >= 6 && password === confirm;
+  const pasteConfirm = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData("text");
+    if (!text) return;
+    e.preventDefault();
+    setConfirm(text);
+  };
   return (
     <Centered>
       <Card>
         <p className="card__title" style={{ marginBottom: 4 }}>Смените временный пароль</p>
         <p className="card__subtitle" style={{ marginBottom: 16 }}>Это нужно сделать при первом входе.</p>
-        <Field label="Новый пароль (мин. 6)"><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
-        <Field label="Повторите пароль"><Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></Field>
+        <Field label="Новый пароль (мин. 6)">
+          <Input
+            type="password"
+            name="new-password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </Field>
+        <Field label="Повторите пароль">
+          <Input
+            type="password"
+            name="confirm-password"
+            autoComplete="new-password"
+            inputMode="text"
+            value={confirm}
+            onPaste={pasteConfirm}
+            onChange={(e) => setConfirm(e.target.value)}
+          />
+        </Field>
         {confirm && password !== confirm && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Пароли не совпадают</p>}
         <Button block disabled={!ok || m.isPending} onClick={() => m.mutate()}>Сохранить</Button>
       </Card>

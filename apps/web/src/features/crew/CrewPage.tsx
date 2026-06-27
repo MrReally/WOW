@@ -8,6 +8,19 @@ import { dateRange } from "../../lib/labels.ts";
 import { usePeople, useUpdateUser } from "../settings/hooks.ts";
 import { useProjectsForFinance } from "../finance/hooks.ts";
 
+const fileToDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+
+function fullName(draft: People.UpdateUserInput): string {
+  const parts = [draft.firstName, draft.lastName, draft.patronymic].map((p) => p?.trim()).filter(Boolean);
+  return parts.join(" ") || draft.displayName?.trim() || "";
+}
+
 export function CrewPage() {
   const { can } = useSession();
   const people = usePeople();
@@ -27,12 +40,18 @@ export function CrewPage() {
     if (!selected) return;
     setDraft({
       displayName: selected.displayName,
+      firstName: selected.firstName,
+      lastName: selected.lastName,
+      patronymic: selected.patronymic,
+      nickname: selected.nickname,
       email: selected.email,
       telegramId: selected.telegramId,
       hourlyRateEUR: selected.hourlyRateEUR,
       documentNumber: selected.documentNumber,
+      documentPhotoUrl: selected.documentPhotoUrl,
       languages: selected.languages,
       photoUrl: selected.photoUrl,
+      usePhotoAsAvatar: selected.usePhotoAsAvatar,
       birthDate: selected.birthDate,
     });
   }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -62,20 +81,34 @@ export function CrewPage() {
   if (!selected) return <EmptyState title="Crew пуст" />;
 
   const save = () => {
+    const name = fullName(draft);
     updateUser.mutate({
       id: selected.id,
       input: {
         ...draft,
+        displayName: name || selected.displayName,
+        firstName: draft.firstName || null,
+        lastName: draft.lastName || null,
+        patronymic: draft.patronymic || null,
+        nickname: draft.nickname || null,
         email: draft.email || null,
         telegramId: draft.telegramId || null,
         hourlyRateEUR: draft.hourlyRateEUR == null || Number.isNaN(Number(draft.hourlyRateEUR)) ? null : Number(draft.hourlyRateEUR),
         documentNumber: draft.documentNumber || null,
+        documentPhotoUrl: draft.documentPhotoUrl || null,
         languages: draft.languages || null,
         photoUrl: draft.photoUrl || null,
+        usePhotoAsAvatar: !!draft.usePhotoAsAvatar,
         birthDate: draft.birthDate || null,
       },
     });
   };
+  const attach = async (field: "photoUrl" | "documentPhotoUrl", file: File | undefined) => {
+    if (!file) return;
+    const url = await fileToDataUrl(file);
+    setDraft((d) => ({ ...d, [field]: url }));
+  };
+  const avatarSrc = draft.usePhotoAsAvatar ? draft.photoUrl : null;
 
   return (
     <div className="stack">
@@ -97,7 +130,7 @@ export function CrewPage() {
         <div className="row row--between" style={{ alignItems: "flex-start" }}>
           <div className="row" style={{ minWidth: 0 }}>
             {draft.photoUrl ? (
-              <img src={draft.photoUrl} alt="" className="crew-photo" />
+              <img src={avatarSrc || draft.photoUrl} alt="" className="crew-photo" />
             ) : (
               <span className="crew-photo crew-photo--empty">{selected.displayName.slice(0, 2).toUpperCase()}</span>
             )}
@@ -112,9 +145,22 @@ export function CrewPage() {
 
       <Card>
         <SectionHead label="Досье" />
-        <Field label="Имя">
-          <Input value={draft.displayName ?? ""} onChange={(e) => setDraft((d) => ({ ...d, displayName: e.target.value }))} />
-        </Field>
+        <div className="row">
+          <Field label="Имя">
+            <Input value={draft.firstName ?? ""} onChange={(e) => setDraft((d) => ({ ...d, firstName: e.target.value }))} />
+          </Field>
+          <Field label="Фамилия">
+            <Input value={draft.lastName ?? ""} onChange={(e) => setDraft((d) => ({ ...d, lastName: e.target.value }))} />
+          </Field>
+        </div>
+        <div className="row">
+          <Field label="Отчество">
+            <Input value={draft.patronymic ?? ""} onChange={(e) => setDraft((d) => ({ ...d, patronymic: e.target.value }))} />
+          </Field>
+          <Field label="Ник">
+            <Input value={draft.nickname ?? ""} onChange={(e) => setDraft((d) => ({ ...d, nickname: e.target.value }))} placeholder="для таймингов" />
+          </Field>
+        </div>
         <div className="row">
           <Field label="Email">
             <Input type="email" value={draft.email ?? ""} onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))} />
@@ -134,13 +180,42 @@ export function CrewPage() {
         <Field label="Документ">
           <Input value={draft.documentNumber ?? ""} onChange={(e) => setDraft((d) => ({ ...d, documentNumber: e.target.value }))} />
         </Field>
+        <div className="crew-attach">
+          <div style={{ minWidth: 0 }}>
+            <p className="card__title">Фото документа</p>
+            <p className="card__subtitle">{draft.documentPhotoUrl ? "Файл приложен" : "Фото или скриншот"}</p>
+          </div>
+          {draft.documentPhotoUrl && <img src={draft.documentPhotoUrl} alt="" className="crew-attach__thumb" />}
+          <label className="btn btn--secondary" style={{ height: 38, padding: "0 12px" }}>
+            +
+            <input type="file" accept="image/*" hidden onChange={(e) => attach("documentPhotoUrl", e.target.files?.[0])} />
+          </label>
+        </div>
         <Field label="Языки">
           <Textarea value={draft.languages ?? ""} onChange={(e) => setDraft((d) => ({ ...d, languages: e.target.value }))} placeholder="RU C2, EN B2, SR A2" />
         </Field>
-        <Field label="Фото URL">
-          <Input value={draft.photoUrl ?? ""} onChange={(e) => setDraft((d) => ({ ...d, photoUrl: e.target.value }))} />
-        </Field>
-        <Button block disabled={updateUser.isPending || !draft.displayName} onClick={save}>Сохранить</Button>
+        <div className="crew-attach">
+          <div style={{ minWidth: 0 }}>
+            <p className="card__title">Фото человека</p>
+            <p className="card__subtitle">{draft.photoUrl ? "Файл приложен" : "Для досье или аватарки"}</p>
+          </div>
+          {draft.photoUrl && <img src={draft.photoUrl} alt="" className="crew-attach__thumb" />}
+          <label className="btn btn--secondary" style={{ height: 38, padding: "0 12px" }}>
+            +
+            <input type="file" accept="image/*" hidden onChange={(e) => attach("photoUrl", e.target.files?.[0])} />
+          </label>
+        </div>
+        <label className="row row--between" style={{ padding: "4px 0 12px", cursor: "pointer" }}>
+          <span style={{ color: "var(--text)" }}>Использовать как аватарку</span>
+          <input
+            type="checkbox"
+            checked={!!draft.usePhotoAsAvatar}
+            disabled={!draft.photoUrl}
+            onChange={(e) => setDraft((d) => ({ ...d, usePhotoAsAvatar: e.target.checked }))}
+            style={{ width: 20, height: 20, accentColor: "var(--accent)", flexShrink: 0 }}
+          />
+        </label>
+        <Button block disabled={updateUser.isPending || !fullName(draft)} onClick={save}>Сохранить</Button>
       </Card>
 
       <SectionHead label="История проектов" meta={`${history.length}`} />

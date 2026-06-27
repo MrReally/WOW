@@ -116,10 +116,10 @@ export function ProgressRing({
   );
 }
 
-export function Avatar({ initials, size = 34 }: { initials: string; size?: number }) {
+export function Avatar({ initials, size = 34, src }: { initials: string; size?: number; src?: string | null }) {
   return (
     <span className="avatar" style={{ width: size, height: size, fontSize: size * 0.3 }}>
-      {initials}
+      {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} /> : initials}
     </span>
   );
 }

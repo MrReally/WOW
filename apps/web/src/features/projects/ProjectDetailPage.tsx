@@ -119,7 +119,10 @@ export function ProjectDetailPage() {
 
   const clientName = (cid: string) => (clients.data ?? []).find((c) => c.id === cid)?.name ?? "—";
   const modelName = (mid: string) => (models.data ?? []).find((m) => m.id === mid)?.name ?? mid;
-  const userName = (uid: string) => (people.data ?? []).find((u) => u.id === uid)?.displayName ?? "";
+  const userName = (uid: string) => {
+    const user = (people.data ?? []).find((u) => u.id === uid);
+    return user?.nickname || user?.displayName || "";
+  };
   const activeTab = projectTabFrom(searchParams.get("tab"));
   const setActiveTab = (tab: ProjectTab) => {
     const next = new URLSearchParams(searchParams);

@@ -21,6 +21,10 @@ interface UserRow {
   email: string | null;
   telegram_id: string | null;
   display_name: string;
+  first_name: string | null;
+  last_name: string | null;
+  patronymic: string | null;
+  nickname: string | null;
   role_id: string | null;
   role_name: string | null;
   password_hash: string | null;
@@ -29,8 +33,10 @@ interface UserRow {
   calendar_token: string | null;
   is_system: boolean;
   document_number: string | null;
+  document_photo_url: string | null;
   languages: string | null;
   photo_url: string | null;
+  use_photo_as_avatar: boolean;
   birth_date: Date | string | null;
   active: boolean;
   created_at: Date;
@@ -51,11 +57,17 @@ const userDTO = (r: UserRow): People.UserDTO => ({
   displayName: r.display_name,
   roleId: r.role_id,
   roleName: r.role_name ?? "—",
+  firstName: r.first_name,
+  lastName: r.last_name,
+  patronymic: r.patronymic,
+  nickname: r.nickname,
   hourlyRateEUR: r.hourly_rate_eur === null ? null : Number(r.hourly_rate_eur),
   isSystem: r.is_system,
   documentNumber: r.document_number,
+  documentPhotoUrl: r.document_photo_url,
   languages: r.languages,
   photoUrl: r.photo_url,
+  usePhotoAsAvatar: r.use_photo_as_avatar,
   birthDate: r.birth_date ? (typeof r.birth_date === "string" ? r.birth_date : r.birth_date.toISOString().slice(0, 10)) : null,
   active: r.active,
   mustChangePassword: r.must_change_password,
@@ -287,8 +299,10 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
       const row = await one<UserRow>(
         db,
         `INSERT INTO people.users
-           (email, telegram_id, display_name, role_id, hourly_rate_eur, password_hash, must_change_password, document_number, languages, photo_url, birth_date)
-         VALUES (lower($1), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+           (email, telegram_id, display_name, role_id, hourly_rate_eur, password_hash, must_change_password,
+            document_number, document_photo_url, languages, photo_url, use_photo_as_avatar, birth_date,
+            first_name, last_name, patronymic, nickname)
+         VALUES (lower($1), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
         [
           input.email ?? null,
           input.telegramId ?? null,
@@ -298,9 +312,15 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
           temp ? hashPassword(temp) : null,
           temp !== null,
           input.documentNumber ?? null,
+          input.documentPhotoUrl ?? null,
           input.languages ?? null,
           input.photoUrl ?? null,
+          input.usePhotoAsAvatar ?? false,
           input.birthDate ?? null,
+          input.firstName ?? null,
+          input.lastName ?? null,
+          input.patronymic ?? null,
+          input.nickname ?? null,
         ]
       );
       const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [row!.id]);
@@ -323,7 +343,13 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
            document_number = $8,
            languages       = $9,
            photo_url       = $10,
-           birth_date      = $11
+           birth_date      = $11,
+           first_name      = $12,
+           last_name       = $13,
+           patronymic      = $14,
+           nickname        = $15,
+           document_photo_url = $16,
+           use_photo_as_avatar = COALESCE($17, use_photo_as_avatar)
          WHERE id=$1 RETURNING id`,
         [
           id,
@@ -337,6 +363,12 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
           input.languages === undefined ? existing.languages : input.languages,
           input.photoUrl === undefined ? existing.photo_url : input.photoUrl,
           input.birthDate === undefined ? existing.birth_date : input.birthDate,
+          input.firstName === undefined ? existing.first_name : input.firstName,
+          input.lastName === undefined ? existing.last_name : input.lastName,
+          input.patronymic === undefined ? existing.patronymic : input.patronymic,
+          input.nickname === undefined ? existing.nickname : input.nickname,
+          input.documentPhotoUrl === undefined ? existing.document_photo_url : input.documentPhotoUrl,
+          input.usePhotoAsAvatar ?? null,
         ]
       );
       const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [row!.id]);

@@ -68,7 +68,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
               aria-label={t("app.mySettings")}
             >
-              <Avatar initials={initialsOf(user.displayName)} size={36} />
+              <Avatar initials={initialsOf(user.displayName)} src={user.usePhotoAsAvatar ? user.photoUrl : null} size={36} />
             </button>
           </div>
         )}

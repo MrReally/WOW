@@ -607,6 +607,25 @@
   font-family: var(--font-mono);
   font-weight: 800;
 }
+.crew-attach {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 10px;
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--bdr);
+  border-radius: 12px;
+  background: var(--s1);
+}
+.crew-attach__thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 1px solid var(--bdr-md);
+  margin-left: auto;
+}
 
 /* ── States ────────────────────────────────────────────────────────── */
 .center-state {
