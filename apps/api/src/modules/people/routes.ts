@@ -16,6 +16,7 @@ const bootstrapSchema = z.object({
 });
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
 const changePwSchema = z.object({ newPassword: z.string().min(6), currentPassword: z.string().optional() });
+const myPreferencesSchema = z.object({ operationsShowAllProjects: z.boolean().optional() });
 
 const createUserSchema = z.object({
   displayName: z.string().min(1),
@@ -95,7 +96,16 @@ export function registerPeopleRoutes(
   app.get("/api/people/me", async (req) => {
     const auth = await ctx.auth(req);
     const user = await service.getById(auth.userId);
-    return { user, permissions: auth.permissions };
+    return { user, permissions: auth.permissions, isOwner: auth.isOwner };
+  });
+  app.patch("/api/people/me/preferences", async (req) => {
+    const auth = await ctx.auth(req);
+    const body = myPreferencesSchema.parse(req.body);
+    if (body.operationsShowAllProjects && !auth.isOwner) {
+      throw Forbidden("эта настройка доступна только владельцу");
+    }
+    const user = await service.updateMyPreferences(auth.userId, body as People.UpdateMyPreferencesInput);
+    return { user, permissions: auth.permissions, isOwner: auth.isOwner };
   });
 
   // ── Users ──

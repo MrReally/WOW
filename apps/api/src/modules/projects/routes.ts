@@ -104,6 +104,9 @@ export function registerProjectsRoutes(
       // Field techs see only their own projects; managers and warehouse staff
       // (who issue/return gear and manage reservations) see all of them.
       const seesAll = auth.permissions.includes("projects.manage") || auth.permissions.includes("projects.reservation.manage");
+      if (req.query.mine === "true" && auth.isOwner && auth.operationsShowAllProjects) {
+        return service.listProjects({ status: req.query.status });
+      }
       if (req.query.mine === "true" || !seesAll) {
         return service.listProjectsForUser(auth.userId);
       }

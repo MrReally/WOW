@@ -55,6 +55,7 @@ function toContext(su: People.SessionUser): AuthContext {
     roleId: su.user.roleId,
     roleName: su.user.roleName,
     isOwner,
+    operationsShowAllProjects: su.user.operationsShowAllProjects,
     permissions,
   };
 }

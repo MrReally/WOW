@@ -5,6 +5,7 @@ import { api } from "../lib/api.ts";
 interface MeResponse {
   user: People.UserDTO | null;
   permissions: Permission[];
+  isOwner: boolean;
 }
 
 // Current authenticated user + permissions. Drives navigation and what's shown.
@@ -19,6 +20,7 @@ export function useSession() {
     user: query.data?.user ?? null,
     permissions,
     can: (...perms: Permission[]) => perms.some((p) => permissions.includes(p)),
+    isOwner: query.data?.isOwner ?? false,
     mustChangePassword: query.data?.user?.mustChangePassword ?? false,
     isLoading: query.isLoading,
     error: query.error,

@@ -14,6 +14,18 @@ export function useBotInfo() {
 export function useCalendarFeed() {
   return useQuery({ queryKey: ["me", "calendar-feed"], queryFn: () => api.get<People.CalendarFeedDTO>("/api/me/calendar-feed") });
 }
+export function useSetMyPreferences() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: People.UpdateMyPreferencesInput) =>
+      api.patch<{ user: People.UserDTO | null; permissions: string[]; isOwner: boolean }>("/api/people/me/preferences", input),
+    meta: { successMessage: "Настройки сохранены" },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["me"] });
+      qc.invalidateQueries({ queryKey: ["projects", "mine"] });
+    },
+  });
+}
 export function useFxRates() {
   return useQuery({ queryKey: ["finance", "fx"], queryFn: () => api.get<Finance.FxRateDTO[]>("/api/finance/fx") });
 }

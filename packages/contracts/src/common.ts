@@ -89,6 +89,7 @@ export interface AuthContext {
   roleId: ID | null;
   roleName: string;
   isOwner: boolean;
+  operationsShowAllProjects: boolean;
   permissions: Permission[];
 }
 

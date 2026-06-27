@@ -39,6 +39,13 @@ function isLive(p: Projects.ProjectDTO): boolean {
   return (p.status === "in_progress" || p.status === "confirmed") && Date.parse(p.startsAt) <= now && Date.parse(p.endsAt) >= now;
 }
 
+function operationsProjectSort(a: Projects.ProjectDTO, b: Projects.ProjectDTO): number {
+  const aDone = a.status === "completed";
+  const bDone = b.status === "completed";
+  if (aDone !== bDone) return aDone ? 1 : -1;
+  return Date.parse(a.startsAt) - Date.parse(b.startsAt);
+}
+
 export function OperationsPage() {
   const { can, user } = useSession();
   const navigate = useNavigate();
@@ -49,7 +56,10 @@ export function OperationsPage() {
   if (projects.isLoading) return <Loading />;
   if (projects.error) return <ErrorState error={projects.error} onRetry={projects.refetch} />;
 
-  const list = projects.data ?? [];
+  const list = (projects.data ?? [])
+    .filter((p) => p.status !== "cancelled")
+    .slice()
+    .sort(operationsProjectSort);
   const current = list.find(isLive) ?? null;
   const upcoming = list.filter((p) => Date.parse(p.startsAt) > Date.now() && p.status !== "cancelled" && p.status !== "completed");
   const lead = current ?? upcoming[0] ?? null;

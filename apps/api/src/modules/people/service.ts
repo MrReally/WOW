@@ -38,6 +38,7 @@ interface UserRow {
   photo_url: string | null;
   use_photo_as_avatar: boolean;
   birth_date: Date | string | null;
+  operations_show_all_projects: boolean;
   active: boolean;
   created_at: Date;
 }
@@ -69,6 +70,7 @@ const userDTO = (r: UserRow): People.UserDTO => ({
   photoUrl: r.photo_url,
   usePhotoAsAvatar: r.use_photo_as_avatar,
   birthDate: r.birth_date ? (typeof r.birth_date === "string" ? r.birth_date : r.birth_date.toISOString().slice(0, 10)) : null,
+  operationsShowAllProjects: r.operations_show_all_projects,
   active: r.active,
   mustChangePassword: r.must_change_password,
   hasPassword: r.password_hash !== null,
@@ -266,6 +268,18 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
     async getByCalendarToken(token) {
       const row = await one<UserRow>(db, `${USER_SELECT} WHERE u.calendar_token=$1`, [token]);
       return row && row.active ? userDTO(row) : null;
+    },
+    async updateMyPreferences(userId, input) {
+      const row = await one<UserRow>(
+        db,
+        `UPDATE people.users SET
+           operations_show_all_projects = COALESCE($2, operations_show_all_projects)
+         WHERE id=$1 RETURNING id`,
+        [userId, input.operationsShowAllProjects ?? null]
+      );
+      if (!row) throw NotFound("user", userId);
+      const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [userId]);
+      return userDTO(u!);
     },
 
     // ── Users ──

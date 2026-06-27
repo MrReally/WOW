@@ -45,6 +45,7 @@ export interface UserDTO {
   photoUrl: string | null;
   usePhotoAsAvatar: boolean;
   birthDate: string | null;
+  operationsShowAllProjects: boolean;
   active: boolean;
   mustChangePassword: boolean;
   hasPassword: boolean;
@@ -86,6 +87,10 @@ export interface UpdateUserInput {
   usePhotoAsAvatar?: boolean;
   birthDate?: string | null;
   active?: boolean;
+}
+
+export interface UpdateMyPreferencesInput {
+  operationsShowAllProjects?: boolean;
 }
 
 /** Returned when an admin creates a user — the one-time temporary password. */
@@ -133,6 +138,7 @@ export interface PeopleService {
   issueToken(userId: ID): Promise<string>;
   ensureCalendarToken(userId: ID): Promise<string>;
   getByCalendarToken(token: string): Promise<UserDTO | null>;
+  updateMyPreferences(userId: ID, input: UpdateMyPreferencesInput): Promise<UserDTO>;
 
   // Users
   list(): Promise<UserDTO[]>;

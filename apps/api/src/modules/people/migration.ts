@@ -62,4 +62,5 @@ ALTER TABLE people.users ADD COLUMN IF NOT EXISTS first_name text;
 ALTER TABLE people.users ADD COLUMN IF NOT EXISTS last_name text;
 ALTER TABLE people.users ADD COLUMN IF NOT EXISTS patronymic text;
 ALTER TABLE people.users ADD COLUMN IF NOT EXISTS nickname text;
+ALTER TABLE people.users ADD COLUMN IF NOT EXISTS operations_show_all_projects boolean NOT NULL DEFAULT false;
 `;

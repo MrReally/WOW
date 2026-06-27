@@ -5,14 +5,14 @@ import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
 import { LOCALE_OPTIONS, useI18n } from "../../app/i18n.tsx";
 import { useAdvancedNotifPrefs, useNotifPrefs, useSetAdvancedNotifPrefs, useSetNotifPrefs } from "../notifications/hooks.ts";
-import { useCalendarFeed } from "./hooks.ts";
+import { useCalendarFeed, useSetMyPreferences } from "./hooks.ts";
 import { personName } from "../../lib/people.ts";
 
 // Personal mini-settings — available to every signed-in user (not the admin
 // SettingsPage). Theme + which notifications they want.
 export function MySettingsPage() {
   const { theme, toggle } = useTheme();
-  const { can, user } = useSession();
+  const { can, isOwner, user } = useSession();
   const { locale, setLocale, t } = useI18n();
   const prefs = useNotifPrefs();
   const setPrefs = useSetNotifPrefs();
@@ -20,6 +20,7 @@ export function MySettingsPage() {
   const advancedPrefs = useAdvancedNotifPrefs(canAdvancedNotifications);
   const setAdvancedPrefs = useSetAdvancedNotifPrefs();
   const calendar = useCalendarFeed();
+  const setMyPreferences = useSetMyPreferences();
   const current = prefs.data;
 
   const togglePref = (kind: Notifications.NotificationKind) => {
@@ -88,6 +89,24 @@ export function MySettingsPage() {
           ))}
         </div>
       </Card>
+
+      {isOwner && user && (
+        <>
+          <SectionTitle>Operations</SectionTitle>
+          <Card>
+            <label className="row row--between" style={{ padding: "4px 0", cursor: "pointer", gap: 12 }}>
+              <span style={{ color: "var(--text)" }}>Отображать все проекты</span>
+              <input
+                type="checkbox"
+                checked={user.operationsShowAllProjects}
+                disabled={setMyPreferences.isPending}
+                onChange={(e) => setMyPreferences.mutate({ operationsShowAllProjects: e.target.checked })}
+                style={{ width: 20, height: 20, accentColor: "var(--accent)", flexShrink: 0 }}
+              />
+            </label>
+          </Card>
+        </>
+      )}
 
       <SectionTitle>{t("settings.notifications")}</SectionTitle>
       <Card>
