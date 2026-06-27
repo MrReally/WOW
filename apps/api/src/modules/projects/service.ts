@@ -1,4 +1,4 @@
-import type { Projects, Problem, ISODateTime } from "@sever/contracts";
+import type { Projects, Problem, ISODateTime, ID } from "@sever/contracts";
 import { one, query, tx, type Sql } from "../../core/db.js";
 import { NotFound, BadRequest, Conflict } from "../../core/errors.js";
 
@@ -191,7 +191,38 @@ const problemDTO = (r: ProblemRow): Problem => ({
   resolvedAt: r.resolved_at ? r.resolved_at.toISOString() : null,
 });
 
+const defaultChecklist: { group: Projects.ProjectChecklistGroup; title: string }[] = [
+  { group: "prep", title: "Собрано" },
+  { group: "prep", title: "Комплект" },
+  { group: "pickup", title: "Забрано" },
+  { group: "delivery", title: "На площадке" },
+  { group: "mount", title: "Смонтировано" },
+  { group: "mount", title: "Проверено" },
+  { group: "show", title: "Готово" },
+  { group: "dismantle", title: "Собрано обратно" },
+  { group: "return", title: "Вернули на склад" },
+];
+
 export function createProjectsService(db: Sql, bus: EventBus): Projects.ProjectsService {
+  async function loadChecklist(projectId: ID): Promise<ProjectChecklistRow[]> {
+    return query<ProjectChecklistRow>(
+      db,
+      `SELECT * FROM projects.project_checklist WHERE project_id=$1
+       ORDER BY
+         CASE group_key
+           WHEN 'prep' THEN 0
+           WHEN 'pickup' THEN 1
+           WHEN 'delivery' THEN 2
+           WHEN 'mount' THEN 3
+           WHEN 'show' THEN 4
+           WHEN 'dismantle' THEN 5
+           ELSE 6
+         END,
+         created_at`,
+      [projectId]
+    );
+  }
+
   return {
     // ── Clients ──
     async listClients() {
@@ -469,22 +500,21 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       if (!row) throw NotFound("project task", id);
     },
     async listChecklist(projectId) {
-      const rows = await query<ProjectChecklistRow>(
-        db,
-        `SELECT * FROM projects.project_checklist WHERE project_id=$1
-         ORDER BY
-           CASE group_key
-             WHEN 'prep' THEN 0
-             WHEN 'pickup' THEN 1
-             WHEN 'delivery' THEN 2
-             WHEN 'mount' THEN 3
-             WHEN 'show' THEN 4
-             WHEN 'dismantle' THEN 5
-             ELSE 6
-           END,
-           created_at`,
-        [projectId]
-      );
+      const project = await this.getProject(projectId);
+      if (!project) throw NotFound("project", projectId);
+      let rows = await loadChecklist(projectId);
+      if (rows.length === 0) {
+        await tx(async (client) => {
+          for (const item of defaultChecklist) {
+            await query(
+              client,
+              `INSERT INTO projects.project_checklist (project_id, group_key, title) VALUES ($1,$2,$3)`,
+              [projectId, item.group, item.title]
+            );
+          }
+        });
+        rows = await loadChecklist(projectId);
+      }
       return rows.map(checklistDTO);
     },
     async createChecklistItem(input) {
