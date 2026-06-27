@@ -32,6 +32,19 @@ export function useProjectChecklist(projectId: string | null) {
   });
 }
 
+export function useSetOperationStage(projectId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (stage: Projects.ProjectChecklistGroup) =>
+      api.patch<Projects.ProjectDTO>(`/api/projects/${projectId}/operation-stage`, { stage }),
+    meta: { successMessage: "Этап обновлён" },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects", "one", projectId] });
+      qc.invalidateQueries({ queryKey: ["projects", "mine"] });
+    },
+  });
+}
+
 function invalidateOps(qc: ReturnType<typeof useQueryClient>, projectId?: string | null) {
   qc.invalidateQueries({ queryKey: ["projects", "tasks", projectId] });
   qc.invalidateQueries({ queryKey: ["projects", "checklist", projectId] });

@@ -36,6 +36,7 @@ export interface ProjectDTO {
   name: string;
   clientId: ID;
   status: ProjectStatus;
+  operationStage: ProjectChecklistGroup;
   /** Opaque id of the venue (venues module, later phase). */
   venueId: ID | null;
   startsAt: ISODateTime;
@@ -163,6 +164,10 @@ export interface UpdateProjectChecklistItemInput {
   actorId?: ID | null;
 }
 
+export interface UpdateProjectOperationStageInput {
+  stage: ProjectChecklistGroup;
+}
+
 // ── Assignments (people on a project) ────────────────────────────────────────
 // A person is either added directly (status "added") or invited (status
 // "invited") — an invite is delivered to Telegram and the person accepts or
@@ -252,6 +257,7 @@ export interface ProjectsService {
   createProject(input: CreateProjectInput): Promise<ProjectDTO>;
   updateProject(id: ID, input: UpdateProjectInput): Promise<ProjectDTO>;
   setStatus(id: ID, status: ProjectStatus): Promise<ProjectDTO>;
+  setOperationStage(id: ID, stage: ProjectChecklistGroup): Promise<ProjectDTO>;
 
   // Reservations
   listReservations(projectId: ID): Promise<ReservationDTO[]>;

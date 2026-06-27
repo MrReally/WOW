@@ -20,6 +20,7 @@ interface ProjectRow {
   name: string;
   client_id: string;
   status: Projects.ProjectStatus;
+  operation_stage: Projects.ProjectChecklistGroup;
   venue_id: string | null;
   starts_at: Date;
   ends_at: Date;
@@ -111,6 +112,7 @@ const projectDTO = (r: ProjectRow): Projects.ProjectDTO => ({
   name: r.name,
   clientId: r.client_id,
   status: r.status,
+  operationStage: r.operation_stage ?? "prep",
   venueId: r.venue_id,
   startsAt: r.starts_at.toISOString(),
   endsAt: r.ends_at.toISOString(),
@@ -294,6 +296,15 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       if (status === "confirmed") {
         await bus.publish({ type: "project.confirmed", projectId: id, at: new Date().toISOString() });
       }
+      return projectDTO(row);
+    },
+    async setOperationStage(id, stage) {
+      const row = await one<ProjectRow>(
+        db,
+        `UPDATE projects.projects SET operation_stage=$2 WHERE id=$1 RETURNING *`,
+        [id, stage]
+      );
+      if (!row) throw NotFound("project", id);
       return projectDTO(row);
     },
 

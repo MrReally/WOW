@@ -13,6 +13,7 @@ import {
   useProjectChecklist,
   useProjectTasks,
   useProjectTimings,
+  useSetOperationStage,
   useUpdateChecklistItem,
   useUpdateProjectTask,
 } from "./hooks.ts";
@@ -35,6 +36,11 @@ const taskStatusLabel: Record<Projects.ProjectTaskStatus, string> = {
   done: "Готово",
 };
 
+function nextStage(stage: Projects.ProjectChecklistGroup): Projects.ProjectChecklistGroup | null {
+  const i = stageOrder.indexOf(stage);
+  return i >= 0 && i < stageOrder.length - 1 ? stageOrder[i + 1]! : null;
+}
+
 function currentTiming(list: Projects.TimingDTO[]) {
   const now = Date.now();
   return list.find((t) => Date.parse(t.startsAt) <= now && Date.parse(t.endsAt) >= now) ?? list.find((t) => Date.parse(t.startsAt) > now) ?? null;
@@ -46,6 +52,8 @@ export function OperationsProjectPage() {
   const { can, user } = useSession();
   const project = useProject(id);
   const timings = useProjectTimings(id);
+  const setStage = useSetOperationStage(id);
+  const [viewStage, setViewStage] = useState<Projects.ProjectChecklistGroup | null>(null);
   const canManage = can("projects.timing.manage", "projects.manage");
   const canListPeople = can("people.view");
 
@@ -54,6 +62,9 @@ export function OperationsProjectPage() {
   if (!project.data) return <EmptyState title="Проект не найден" />;
 
   const activeTiming = currentTiming(timings.data ?? []);
+  const activeStage = project.data.operationStage ?? "prep";
+  const shownStage = viewStage ?? activeStage;
+  const upcomingStage = nextStage(activeStage);
 
   return (
     <div className="stack">
@@ -84,8 +95,35 @@ export function OperationsProjectPage() {
         <Button block variant="secondary" onClick={() => navigate(`/projects/${id}`)}>Проект</Button>
       </div>
 
+      <SectionHead label="Этап" meta={stageLabel[activeStage]} />
+      <Card>
+        <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+          {stageOrder.map((stage) => (
+            <button
+              key={stage}
+              className={`chip ${shownStage === stage ? "chip--accent chip--solid" : "chip--neutral"}`}
+              style={{ border: "none", cursor: "pointer" }}
+              onClick={() => setViewStage(stage)}
+            >
+              {stageLabel[stage]}
+            </button>
+          ))}
+        </div>
+        {upcomingStage && (
+          <Button
+            block
+            variant="primary"
+            disabled={setStage.isPending}
+            style={{ marginTop: 12 }}
+            onClick={() => setStage.mutate(upcomingStage, { onSuccess: () => setViewStage(null) })}
+          >
+            Далее · {stageLabel[upcomingStage]}
+          </Button>
+        )}
+      </Card>
+
       <TaskBoard projectId={id} canManage={canManage} canListPeople={canListPeople} userId={user?.id ?? null} />
-      <Checklist projectId={id} canManage={canManage} />
+      <Checklist projectId={id} activeStage={shownStage} canManage={canManage} />
     </div>
   );
 }
@@ -226,7 +264,15 @@ function TaskList({
   );
 }
 
-function Checklist({ projectId, canManage }: { projectId: string; canManage: boolean }) {
+function Checklist({
+  projectId,
+  activeStage,
+  canManage,
+}: {
+  projectId: string;
+  activeStage: Projects.ProjectChecklistGroup;
+  canManage: boolean;
+}) {
   const checklist = useProjectChecklist(projectId);
   const createItem = useCreateChecklistItem(projectId);
   const updateItem = useUpdateChecklistItem(projectId);
@@ -243,14 +289,14 @@ function Checklist({ projectId, canManage }: { projectId: string; canManage: boo
 
   return (
     <>
-      <SectionHead label="Этапы" meta={`${done}/${list.length}`} />
+      <SectionHead label={stageLabel[activeStage]} meta={`${done}/${list.length}`} />
       <div className="stack">
         {checklist.isLoading ? (
           <Loading />
         ) : checklist.error ? (
           <ErrorState error={checklist.error} onRetry={checklist.refetch} />
         ) : (
-          stageOrder.map((group) => {
+          [activeStage].map((group) => {
             const items = list.filter((i) => i.group === group);
             const value = titleByStage[group] ?? "";
             return (

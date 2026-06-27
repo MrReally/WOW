@@ -17,6 +17,7 @@ const projectSchema = z.object({
   venueId: z.string().uuid().nullable().optional(),
 });
 const statusSchema = z.object({ status: z.enum(PROJECT_STATUSES as [string, ...string[]]) });
+const operationStageSchema = z.object({ stage: z.enum(PROJECT_CHECKLIST_GROUPS as [string, ...string[]]) });
 const updateProjectSchema = z.object({
   name: z.string().min(1).optional(),
   clientId: z.string().uuid().optional(),
@@ -127,6 +128,12 @@ export function registerProjectsRoutes(
     requirePermission(auth, "projects.manage");
     const body = statusSchema.parse(req.body);
     return service.setStatus(req.params.id, body.status as Projects.ProjectStatus);
+  });
+  app.patch<{ Params: { id: string } }>("/api/projects/:id/operation-stage", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "operations.view", "projects.timing.manage", "projects.manage");
+    const body = operationStageSchema.parse(req.body);
+    return service.setOperationStage(req.params.id, body.stage as Projects.ProjectChecklistGroup);
   });
   app.patch<{ Params: { id: string } }>("/api/projects/:id", async (req) => {
     const auth = await ctx.auth(req);

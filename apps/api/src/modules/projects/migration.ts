@@ -15,12 +15,17 @@ CREATE TABLE IF NOT EXISTS projects.projects (
   status     text NOT NULL DEFAULT 'draft'
              CHECK (status IN ('draft','confirmed','in_progress','completed','cancelled')),
   venue_id   uuid,                  -- opaque id (venues module, later phase)
+  operation_stage text NOT NULL DEFAULT 'prep'
+             CHECK (operation_stage IN ('prep','pickup','delivery','mount','show','dismantle','return')),
   starts_at  timestamptz NOT NULL,
   ends_at    timestamptz NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS projects_status_idx ON projects.projects(status);
 CREATE INDEX IF NOT EXISTS projects_window_idx ON projects.projects(starts_at, ends_at);
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS operation_stage text NOT NULL DEFAULT 'prep';
+ALTER TABLE projects.projects DROP CONSTRAINT IF EXISTS projects_operation_stage_check;
+ALTER TABLE projects.projects ADD CONSTRAINT projects_operation_stage_check CHECK (operation_stage IN ('prep','pickup','delivery','mount','show','dismantle','return'));
 
 -- Hourly reservations. model_id is an opaque equipment id (no cross-schema FK).
 CREATE TABLE IF NOT EXISTS projects.reservations (
