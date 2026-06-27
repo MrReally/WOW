@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Projects } from "@sever/contracts";
-import { PROJECT_STATUSES } from "@sever/contracts";
+import { PROJECT_CHECKLIST_GROUPS, PROJECT_STATUSES, PROJECT_TASK_STATUSES } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
 import { requirePermission } from "../../core/auth.js";
 
@@ -40,6 +40,28 @@ const timingSchema = z.object({
   assigneeIds: z.array(z.string().uuid()).optional(),
 });
 const timingAssigneesSchema = z.object({ userIds: z.array(z.string().uuid()) });
+const taskSchema = z.object({
+  projectId: z.string().uuid(),
+  title: z.string().min(1),
+  assigneeId: z.string().uuid().nullable().optional(),
+  timingId: z.string().uuid().nullable().optional(),
+});
+const updateTaskSchema = z.object({
+  title: z.string().min(1).optional(),
+  status: z.enum(PROJECT_TASK_STATUSES as [string, ...string[]]).optional(),
+  assigneeId: z.string().uuid().nullable().optional(),
+  timingId: z.string().uuid().nullable().optional(),
+});
+const checklistSchema = z.object({
+  projectId: z.string().uuid(),
+  group: z.enum(PROJECT_CHECKLIST_GROUPS as [string, ...string[]]),
+  title: z.string().min(1),
+});
+const updateChecklistSchema = z.object({
+  group: z.enum(PROJECT_CHECKLIST_GROUPS as [string, ...string[]]).optional(),
+  title: z.string().min(1).optional(),
+  done: z.boolean().optional(),
+});
 const contractorItemSchema = z.object({
   projectId: z.string().uuid(),
   contractorId: z.string().uuid(),
@@ -156,6 +178,67 @@ export function registerProjectsRoutes(
     await service.deleteTiming(req.params.id);
     return { ok: true };
   });
+
+  app.get<{ Params: { id: string } }>("/api/projects/:id/tasks", async (req) => {
+    const auth = await ctx.auth(req);
+    const seesAll =
+      auth.permissions.includes("projects.timing.viewAll") ||
+      auth.permissions.includes("projects.timing.manage") ||
+      auth.permissions.includes("projects.manage");
+    return service.listTasks(req.params.id, seesAll ? undefined : { forUserId: auth.userId });
+  });
+  app.post<{ Params: { id: string } }>("/api/projects/:id/tasks", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.timing.manage", "projects.manage");
+    const raw = req.body && typeof req.body === "object" ? req.body : {};
+    const body = taskSchema.parse({ ...raw, projectId: req.params.id });
+    return service.createTask(body as Projects.CreateProjectTaskInput);
+  });
+  app.patch<{ Params: { id: string } }>("/api/project-tasks/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    const body = updateTaskSchema.parse(req.body);
+    if (body.status && Object.keys(body).length === 1) {
+      requirePermission(auth, "operations.view", "projects.timing.manage", "projects.manage");
+    } else {
+      requirePermission(auth, "projects.timing.manage", "projects.manage");
+    }
+    return service.updateTask(req.params.id, body as Projects.UpdateProjectTaskInput);
+  });
+  app.delete<{ Params: { id: string } }>("/api/project-tasks/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.timing.manage", "projects.manage");
+    await service.deleteTask(req.params.id);
+    return { ok: true };
+  });
+
+  app.get<{ Params: { id: string } }>("/api/projects/:id/checklist", async (req) => {
+    await ctx.auth(req);
+    return service.listChecklist(req.params.id);
+  });
+  app.post<{ Params: { id: string } }>("/api/projects/:id/checklist", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.timing.manage", "projects.manage");
+    const raw = req.body && typeof req.body === "object" ? req.body : {};
+    const body = checklistSchema.parse({ ...raw, projectId: req.params.id });
+    return service.createChecklistItem(body as Projects.CreateProjectChecklistItemInput);
+  });
+  app.patch<{ Params: { id: string } }>("/api/project-checklist/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    const body = updateChecklistSchema.parse(req.body);
+    if (body.done !== undefined && Object.keys(body).length === 1) {
+      requirePermission(auth, "operations.view", "projects.timing.manage", "projects.manage");
+    } else {
+      requirePermission(auth, "projects.timing.manage", "projects.manage");
+    }
+    return service.updateChecklistItem(req.params.id, { ...body, actorId: auth.userId } as Projects.UpdateProjectChecklistItemInput);
+  });
+  app.delete<{ Params: { id: string } }>("/api/project-checklist/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.timing.manage", "projects.manage");
+    await service.deleteChecklistItem(req.params.id);
+    return { ok: true };
+  });
+
   app.get<{ Params: { id: string } }>("/api/projects/:id/assignments", async (req) => {
     await ctx.auth(req);
     return service.listAssignments(req.params.id);

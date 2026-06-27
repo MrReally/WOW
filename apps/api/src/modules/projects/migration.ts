@@ -51,6 +51,33 @@ CREATE TABLE IF NOT EXISTS projects.timing_assignees (
 );
 CREATE INDEX IF NOT EXISTS timing_assignees_user_idx ON projects.timing_assignees(user_id);
 
+CREATE TABLE IF NOT EXISTS projects.project_tasks (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id   uuid NOT NULL REFERENCES projects.projects(id) ON DELETE CASCADE,
+  title        text NOT NULL,
+  status       text NOT NULL DEFAULT 'todo' CHECK (status IN ('todo','in_progress','done')),
+  assignee_id  uuid,
+  timing_id    uuid REFERENCES projects.timings(id) ON DELETE SET NULL,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  completed_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS project_tasks_project_idx ON projects.project_tasks(project_id, status);
+CREATE INDEX IF NOT EXISTS project_tasks_assignee_idx ON projects.project_tasks(assignee_id);
+CREATE INDEX IF NOT EXISTS project_tasks_timing_idx ON projects.project_tasks(timing_id);
+
+CREATE TABLE IF NOT EXISTS projects.project_checklist (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id      uuid NOT NULL REFERENCES projects.projects(id) ON DELETE CASCADE,
+  group_key       text NOT NULL CHECK (group_key IN ('mount','show','dismantle','return')),
+  title           text NOT NULL,
+  done            boolean NOT NULL DEFAULT false,
+  done_by_user_id uuid,
+  done_at         timestamptz,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS project_checklist_project_idx ON projects.project_checklist(project_id, group_key, created_at);
+
 CREATE TABLE IF NOT EXISTS projects.assignments (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL REFERENCES projects.projects(id),

@@ -103,6 +103,66 @@ export interface AddTimingInput {
   assigneeIds?: ID[];
 }
 
+// ── Operations tasks + field checklist ──────────────────────────────────────
+
+export type ProjectTaskStatus = "todo" | "in_progress" | "done";
+
+export const PROJECT_TASK_STATUSES: ProjectTaskStatus[] = ["todo", "in_progress", "done"];
+
+export interface ProjectTaskDTO {
+  id: ID;
+  projectId: ID;
+  title: string;
+  status: ProjectTaskStatus;
+  assigneeId: ID | null;
+  timingId: ID | null;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+  completedAt: ISODateTime | null;
+}
+
+export interface CreateProjectTaskInput {
+  projectId: ID;
+  title: string;
+  assigneeId?: ID | null;
+  timingId?: ID | null;
+}
+
+export interface UpdateProjectTaskInput {
+  title?: string;
+  status?: ProjectTaskStatus;
+  assigneeId?: ID | null;
+  timingId?: ID | null;
+}
+
+export type ProjectChecklistGroup = "mount" | "show" | "dismantle" | "return";
+
+export const PROJECT_CHECKLIST_GROUPS: ProjectChecklistGroup[] = ["mount", "show", "dismantle", "return"];
+
+export interface ProjectChecklistItemDTO {
+  id: ID;
+  projectId: ID;
+  group: ProjectChecklistGroup;
+  title: string;
+  done: boolean;
+  doneByUserId: ID | null;
+  doneAt: ISODateTime | null;
+  createdAt: ISODateTime;
+}
+
+export interface CreateProjectChecklistItemInput {
+  projectId: ID;
+  group: ProjectChecklistGroup;
+  title: string;
+}
+
+export interface UpdateProjectChecklistItemInput {
+  group?: ProjectChecklistGroup;
+  title?: string;
+  done?: boolean;
+  actorId?: ID | null;
+}
+
 // ── Assignments (people on a project) ────────────────────────────────────────
 // A person is either added directly (status "added") or invited (status
 // "invited") — an invite is delivered to Telegram and the person accepts or
@@ -207,6 +267,14 @@ export interface ProjectsService {
   addTiming(input: AddTimingInput): Promise<TimingDTO>;
   setTimingAssignees(timingId: ID, userIds: ID[]): Promise<TimingDTO>;
   deleteTiming(id: ID): Promise<void>;
+  listTasks(projectId: ID, opts?: { forUserId?: ID }): Promise<ProjectTaskDTO[]>;
+  createTask(input: CreateProjectTaskInput): Promise<ProjectTaskDTO>;
+  updateTask(id: ID, input: UpdateProjectTaskInput): Promise<ProjectTaskDTO>;
+  deleteTask(id: ID): Promise<void>;
+  listChecklist(projectId: ID): Promise<ProjectChecklistItemDTO[]>;
+  createChecklistItem(input: CreateProjectChecklistItemInput): Promise<ProjectChecklistItemDTO>;
+  updateChecklistItem(id: ID, input: UpdateProjectChecklistItemInput): Promise<ProjectChecklistItemDTO>;
+  deleteChecklistItem(id: ID): Promise<void>;
   listAssignments(projectId: ID): Promise<AssignmentDTO[]>;
   getAssignment(id: ID): Promise<AssignmentDTO | null>;
   addAssignment(input: AddAssignmentInput): Promise<AssignmentDTO>;

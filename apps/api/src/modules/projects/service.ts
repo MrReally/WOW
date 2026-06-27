@@ -43,6 +43,27 @@ interface TimingRow {
   ends_at: Date;
   assignee_ids?: string[];
 }
+interface ProjectTaskRow {
+  id: string;
+  project_id: string;
+  title: string;
+  status: Projects.ProjectTaskStatus;
+  assignee_id: string | null;
+  timing_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+  completed_at: Date | null;
+}
+interface ProjectChecklistRow {
+  id: string;
+  project_id: string;
+  group_key: Projects.ProjectChecklistGroup;
+  title: string;
+  done: boolean;
+  done_by_user_id: string | null;
+  done_at: Date | null;
+  created_at: Date;
+}
 interface AssignmentRow {
   id: string;
   project_id: string;
@@ -112,6 +133,27 @@ const timingDTO = (r: TimingRow): Projects.TimingDTO => ({
   startsAt: r.starts_at.toISOString(),
   endsAt: r.ends_at.toISOString(),
   assigneeIds: r.assignee_ids ?? [],
+});
+const taskDTO = (r: ProjectTaskRow): Projects.ProjectTaskDTO => ({
+  id: r.id,
+  projectId: r.project_id,
+  title: r.title,
+  status: r.status,
+  assigneeId: r.assignee_id,
+  timingId: r.timing_id,
+  createdAt: r.created_at.toISOString(),
+  updatedAt: r.updated_at.toISOString(),
+  completedAt: r.completed_at ? r.completed_at.toISOString() : null,
+});
+const checklistDTO = (r: ProjectChecklistRow): Projects.ProjectChecklistItemDTO => ({
+  id: r.id,
+  projectId: r.project_id,
+  group: r.group_key,
+  title: r.title,
+  done: r.done,
+  doneByUserId: r.done_by_user_id,
+  doneAt: r.done_at ? r.done_at.toISOString() : null,
+  createdAt: r.created_at.toISOString(),
 });
 const assignmentDTO = (r: AssignmentRow): Projects.AssignmentDTO => ({
   id: r.id,
@@ -355,6 +397,126 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
     },
     async deleteTiming(id) {
       await query(db, `DELETE FROM projects.timings WHERE id=$1`, [id]);
+    },
+    async listTasks(projectId, opts) {
+      const params: unknown[] = [projectId];
+      let mineClause = "";
+      if (opts?.forUserId) {
+        params.push(opts.forUserId);
+        mineClause = `AND (assignee_id IS NULL OR assignee_id = $2)`;
+      }
+      const rows = await query<ProjectTaskRow>(
+        db,
+        `SELECT * FROM projects.project_tasks
+         WHERE project_id=$1 ${mineClause}
+         ORDER BY
+           CASE status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 ELSE 2 END,
+           created_at`,
+        params
+      );
+      return rows.map(taskDTO);
+    },
+    async createTask(input) {
+      const project = await this.getProject(input.projectId);
+      if (!project) throw NotFound("project", input.projectId);
+      if (input.timingId) {
+        const timing = await one<TimingRow>(db, `SELECT * FROM projects.timings WHERE id=$1 AND project_id=$2`, [input.timingId, input.projectId]);
+        if (!timing) throw NotFound("timing", input.timingId);
+      }
+      const row = await one<ProjectTaskRow>(
+        db,
+        `INSERT INTO projects.project_tasks (project_id, title, assignee_id, timing_id)
+         VALUES ($1,$2,$3,$4) RETURNING *`,
+        [input.projectId, input.title, input.assigneeId ?? null, input.timingId ?? null]
+      );
+      return taskDTO(row!);
+    },
+    async updateTask(id, input) {
+      const existing = await one<ProjectTaskRow>(db, `SELECT * FROM projects.project_tasks WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("project task", id);
+      const nextStatus = input.status ?? existing.status;
+      if (input.timingId) {
+        const timing = await one<TimingRow>(db, `SELECT * FROM projects.timings WHERE id=$1 AND project_id=$2`, [input.timingId, existing.project_id]);
+        if (!timing) throw NotFound("timing", input.timingId);
+      }
+      const completedAt =
+        nextStatus === "done"
+          ? existing.completed_at ?? new Date()
+          : null;
+      const row = await one<ProjectTaskRow>(
+        db,
+        `UPDATE projects.project_tasks SET
+           title=$2,
+           status=$3,
+           assignee_id=$4,
+           timing_id=$5,
+           updated_at=now(),
+           completed_at=$6
+         WHERE id=$1 RETURNING *`,
+        [
+          id,
+          input.title ?? existing.title,
+          nextStatus,
+          input.assigneeId === undefined ? existing.assignee_id : input.assigneeId,
+          input.timingId === undefined ? existing.timing_id : input.timingId,
+          completedAt,
+        ]
+      );
+      return taskDTO(row!);
+    },
+    async deleteTask(id) {
+      const row = await one<{ id: string }>(db, `DELETE FROM projects.project_tasks WHERE id=$1 RETURNING id`, [id]);
+      if (!row) throw NotFound("project task", id);
+    },
+    async listChecklist(projectId) {
+      const rows = await query<ProjectChecklistRow>(
+        db,
+        `SELECT * FROM projects.project_checklist WHERE project_id=$1
+         ORDER BY
+           CASE group_key WHEN 'mount' THEN 0 WHEN 'show' THEN 1 WHEN 'dismantle' THEN 2 ELSE 3 END,
+           created_at`,
+        [projectId]
+      );
+      return rows.map(checklistDTO);
+    },
+    async createChecklistItem(input) {
+      const project = await this.getProject(input.projectId);
+      if (!project) throw NotFound("project", input.projectId);
+      const row = await one<ProjectChecklistRow>(
+        db,
+        `INSERT INTO projects.project_checklist (project_id, group_key, title)
+         VALUES ($1,$2,$3) RETURNING *`,
+        [input.projectId, input.group, input.title]
+      );
+      return checklistDTO(row!);
+    },
+    async updateChecklistItem(id, input) {
+      const existing = await one<ProjectChecklistRow>(db, `SELECT * FROM projects.project_checklist WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("project checklist item", id);
+      const done = input.done ?? existing.done;
+      const row = await one<ProjectChecklistRow>(
+        db,
+        `UPDATE projects.project_checklist SET
+           group_key=$2,
+           title=$3,
+           done=$4,
+           done_by_user_id=$5,
+           done_at=$6
+         WHERE id=$1 RETURNING *`,
+        [
+          id,
+          input.group ?? existing.group_key,
+          input.title ?? existing.title,
+          done,
+          done ? (input.actorId ?? existing.done_by_user_id) : null,
+          done ? (existing.done_at ?? new Date()) : null,
+        ]
+      );
+      return checklistDTO(row!);
+    },
+    async deleteChecklistItem(id) {
+      const row = await one<{ id: string }>(db, `DELETE FROM projects.project_checklist WHERE id=$1 RETURNING id`, [id]);
+      if (!row) throw NotFound("project checklist item", id);
     },
     async listAssignments(projectId) {
       const rows = await query<AssignmentRow>(
