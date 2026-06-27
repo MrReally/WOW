@@ -1,4 +1,4 @@
-import type { Projects, Problem, ISODateTime, ID } from "@sever/contracts";
+import { PROJECT_CHECKLIST_GROUPS, type Projects, type Problem, type ISODateTime, type ID } from "@sever/contracts";
 import { one, query, tx, type Sql } from "../../core/db.js";
 import { NotFound, BadRequest, Conflict } from "../../core/errors.js";
 
@@ -340,13 +340,16 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       const existing = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
       if (!existing) throw NotFound("project", id);
       if (existing.operation_stage === stage) return projectDTO(existing);
-      const currentItems = await query<ProjectChecklistRow>(
-        db,
-        `SELECT * FROM projects.project_checklist WHERE project_id=$1 AND group_key=$2`,
-        [id, existing.operation_stage]
-      );
-      if (currentItems.length > 0 && currentItems.some((item) => !item.done)) {
-        throw BadRequest("сначала закройте чек-лист текущего этапа");
+      const isForward = PROJECT_CHECKLIST_GROUPS.indexOf(stage) > PROJECT_CHECKLIST_GROUPS.indexOf(existing.operation_stage);
+      if (isForward) {
+        const currentItems = await query<ProjectChecklistRow>(
+          db,
+          `SELECT * FROM projects.project_checklist WHERE project_id=$1 AND group_key=$2`,
+          [id, existing.operation_stage]
+        );
+        if (currentItems.length > 0 && currentItems.some((item) => !item.done)) {
+          throw BadRequest("сначала закройте чек-лист текущего этапа");
+        }
       }
       let row: ProjectRow | null = null;
       await tx(async (client) => {

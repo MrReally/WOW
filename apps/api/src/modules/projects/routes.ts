@@ -137,8 +137,16 @@ export function registerProjectsRoutes(
   });
   app.patch<{ Params: { id: string } }>("/api/projects/:id/operation-stage", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "operations.view", "projects.timing.manage", "projects.manage");
     const body = operationStageSchema.parse(req.body);
+    const current = await service.getProject(req.params.id);
+    if (!current) return current;
+    const currentIndex = PROJECT_CHECKLIST_GROUPS.indexOf(current.operationStage);
+    const nextIndex = PROJECT_CHECKLIST_GROUPS.indexOf(body.stage as Projects.ProjectChecklistGroup);
+    if (nextIndex < currentIndex) {
+      requirePermission(auth, "operations.stage.back", "projects.timing.manage", "projects.manage");
+    } else {
+      requirePermission(auth, "operations.view", "projects.timing.manage", "projects.manage");
+    }
     return service.setOperationStage(req.params.id, body.stage as Projects.ProjectChecklistGroup, auth.userId);
   });
   app.patch<{ Params: { id: string } }>("/api/projects/:id", async (req) => {

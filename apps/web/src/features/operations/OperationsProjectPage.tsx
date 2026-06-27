@@ -85,6 +85,11 @@ function nextStage(stage: Projects.ProjectChecklistGroup): Projects.ProjectCheck
   return i >= 0 && i < stageOrder.length - 1 ? stageOrder[i + 1]! : null;
 }
 
+function previousStage(stage: Projects.ProjectChecklistGroup): Projects.ProjectChecklistGroup | null {
+  const i = stageOrder.indexOf(stage);
+  return i > 0 ? stageOrder[i - 1]! : null;
+}
+
 function currentTiming(list: Projects.TimingDTO[]) {
   const now = Date.now();
   return list.find((t) => Date.parse(t.startsAt) <= now && Date.parse(t.endsAt) >= now) ?? list.find((t) => Date.parse(t.startsAt) > now) ?? null;
@@ -99,6 +104,7 @@ export function OperationsProjectPage() {
   const events = useOperationEvents(id);
   const setStage = useSetOperationStage(id);
   const canManage = can("projects.timing.manage", "projects.manage");
+  const canStepBack = can("operations.stage.back", "projects.timing.manage", "projects.manage");
   const canListPeople = can("people.view");
 
   if (project.isLoading) return <Loading />;
@@ -108,6 +114,7 @@ export function OperationsProjectPage() {
   const activeTiming = currentTiming(timings.data ?? []);
   const activeStage = project.data.operationStage ?? "prep";
   const upcomingStage = nextStage(activeStage);
+  const rollbackStage = previousStage(activeStage);
 
   return (
     <div className="stack">
@@ -147,17 +154,30 @@ export function OperationsProjectPage() {
           </div>
           <Chip label={`${stageOrder.indexOf(activeStage) + 1}/${stageOrder.length}`} tone="accent" />
         </div>
-        {upcomingStage && (
-          <Button
-            block
-            variant="primary"
-            disabled={setStage.isPending}
-            style={{ marginTop: 12 }}
-            onClick={() => setStage.mutate(upcomingStage)}
-          >
-            Далее · {stageLabel[upcomingStage]}
-          </Button>
-        )}
+        {(rollbackStage && canStepBack) || upcomingStage ? (
+          <div className="row" style={{ marginTop: 12 }}>
+            {rollbackStage && canStepBack && (
+              <Button
+                block
+                variant="secondary"
+                disabled={setStage.isPending}
+                onClick={() => setStage.mutate(rollbackStage)}
+              >
+                Назад · {stageLabel[rollbackStage]}
+              </Button>
+            )}
+            {upcomingStage && (
+              <Button
+                block
+                variant="primary"
+                disabled={setStage.isPending}
+                onClick={() => setStage.mutate(upcomingStage)}
+              >
+                Далее · {stageLabel[upcomingStage]}
+              </Button>
+            )}
+          </div>
+        ) : null}
       </Card>
 
       <StageEquipmentPanel projectId={id} stage={activeStage} />

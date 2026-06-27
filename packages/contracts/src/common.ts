@@ -21,6 +21,7 @@ export const ROLES: Role[] = ["admin", "warehouse", "tech"];
 export type Permission =
   | "apex.view"
   | "operations.view"
+  | "operations.stage.back"
   | "warehouse.view"
   | "warehouse.catalog.manage"
   | "warehouse.issue"
@@ -54,6 +55,7 @@ export interface PermissionMeta {
 export const PERMISSIONS: PermissionMeta[] = [
   { key: "apex.view", group: "Apex (управление)", label: "Видеть Apex — прокаты, проблемы, долги" },
   { key: "operations.view", group: "Operations (бригада)", label: "Видеть Operations — рабочее окно бригады" },
+  { key: "operations.stage.back", group: "Operations (бригада)", label: "Возвращать проект на предыдущий этап" },
   { key: "warehouse.view", group: "Склад", label: "Видеть склад и каталог" },
   { key: "warehouse.catalog.manage", group: "Склад", label: "Управлять каталогом (типы/модели/единицы)" },
   { key: "warehouse.import", group: "Склад", label: "Импорт каталога из CSV" },
