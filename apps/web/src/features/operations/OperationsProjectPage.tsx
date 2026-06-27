@@ -98,7 +98,6 @@ export function OperationsProjectPage() {
   const timings = useProjectTimings(id);
   const events = useOperationEvents(id);
   const setStage = useSetOperationStage(id);
-  const [viewStage, setViewStage] = useState<Projects.ProjectChecklistGroup | null>(null);
   const canManage = can("projects.timing.manage", "projects.manage");
   const canListPeople = can("people.view");
 
@@ -108,7 +107,6 @@ export function OperationsProjectPage() {
 
   const activeTiming = currentTiming(timings.data ?? []);
   const activeStage = project.data.operationStage ?? "prep";
-  const shownStage = viewStage ?? activeStage;
   const upcomingStage = nextStage(activeStage);
 
   return (
@@ -140,19 +138,14 @@ export function OperationsProjectPage() {
         <Button block variant="secondary" onClick={() => navigate(`/projects/${id}`)}>Проект</Button>
       </div>
 
-      <SectionHead label="Этап" meta={stageLabel[activeStage]} />
+      <SectionHead label="Этап" />
       <Card>
-        <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-          {stageOrder.map((stage) => (
-            <button
-              key={stage}
-              className={`chip ${shownStage === stage ? "chip--accent chip--solid" : "chip--neutral"}`}
-              style={{ border: "none", cursor: "pointer" }}
-              onClick={() => setViewStage(stage)}
-            >
-              {stageLabel[stage]}
-            </button>
-          ))}
+        <div className="row row--between">
+          <div style={{ minWidth: 0 }}>
+            <p className="card__title">{stageLabel[activeStage]}</p>
+            <p className="card__subtitle">{upcomingStage ? `Дальше: ${stageLabel[upcomingStage]}` : "Финальный этап"}</p>
+          </div>
+          <Chip label={`${stageOrder.indexOf(activeStage) + 1}/${stageOrder.length}`} tone="accent" />
         </div>
         {upcomingStage && (
           <Button
@@ -160,16 +153,16 @@ export function OperationsProjectPage() {
             variant="primary"
             disabled={setStage.isPending}
             style={{ marginTop: 12 }}
-            onClick={() => setStage.mutate(upcomingStage, { onSuccess: () => setViewStage(null) })}
+            onClick={() => setStage.mutate(upcomingStage)}
           >
             Далее · {stageLabel[upcomingStage]}
           </Button>
         )}
       </Card>
 
-      <StageEquipmentPanel projectId={id} stage={shownStage} />
+      <StageEquipmentPanel projectId={id} stage={activeStage} />
       <TaskBoard projectId={id} canManage={canManage} canListPeople={canListPeople} userId={user?.id ?? null} />
-      <Checklist projectId={id} activeStage={shownStage} canManage={canManage} />
+      <Checklist projectId={id} activeStage={activeStage} canManage={canManage} />
       <StageHistory events={events.data ?? []} />
     </div>
   );
@@ -253,7 +246,7 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
 
   return (
     <>
-      <SectionHead label={title} meta={`${resolved.length}`} />
+      <SectionHead label="По приборам" meta={title} />
       <div className="stack">
         {reservations.isLoading || models.isLoading || units.isLoading || warehouses.isLoading || marks.isLoading ? (
           <Loading />
@@ -329,27 +322,30 @@ function UnitStageRow({
   onMark: (status: Projects.OperationUnitMarkStatus) => void;
 }) {
   return (
-    <div className="row row--between" style={{ width: "100%", gap: 8 }}>
-      <button
-        style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: unit ? "pointer" : "default" }}
-        disabled={!unit}
-        onClick={onOpen}
-      >
-        <p className="card__title" style={{ fontSize: 16 }}>{unit?.assetTag ?? "Не найдено"}</p>
-        <p className="card__subtitle">{modelName}</p>
-      </button>
-      <div className="row" style={{ gap: 4, flex: "0 0 auto" }}>
-        <Chip label={mark ? markLabel[mark.status] : unit?.status ?? "—"} tone={mark ? (mark.status === "lost" || mark.status === "broken" ? "warn" : "ok") : "neutral"} />
+    <div className="stack" style={{ gap: 8 }}>
+      <div className="row row--between" style={{ width: "100%", gap: 8 }}>
+        <button
+          style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: unit ? "pointer" : "default" }}
+          disabled={!unit}
+          onClick={onOpen}
+        >
+          <p className="card__title" style={{ fontSize: 16 }}>{unit?.assetTag ?? "Не найдено"}</p>
+          <p className="card__subtitle">{modelName}</p>
+        </button>
+        <Chip label={mark ? markLabel[mark.status] : "не отмечено"} tone={mark ? (mark.status === "lost" || mark.status === "broken" ? "warn" : "ok") : "neutral"} />
+      </div>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
         {unit && actions.map((action) => (
           <button
             key={action.status}
-            className={`icon-btn ${action.tone === "ok" ? "icon-btn--ok" : ""} ${action.tone === "danger" ? "icon-btn--danger" : ""}`}
+            className={`chip ${mark?.status === action.status ? "chip--accent chip--solid" : action.tone === "danger" ? "chip--danger" : action.tone === "ok" ? "chip--ok" : "chip--neutral"}`}
+            style={{ border: "none", cursor: "pointer" }}
             aria-label={markLabel[action.status]}
             title={markLabel[action.status]}
             disabled={disabled}
             onClick={() => onMark(action.status)}
           >
-            {action.label}
+            {action.label} {markLabel[action.status]}
           </button>
         ))}
       </div>
