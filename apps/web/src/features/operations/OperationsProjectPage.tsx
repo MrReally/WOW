@@ -4,7 +4,8 @@ import type { Projects } from "@sever/contracts";
 import { Button, Card, Chip, EmptyState, ErrorState, Input, Loading, SectionHead, Select, WSGlyph } from "../../ui-kit/index.ts";
 import { dateRange, dateTime, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
-import { usePeople, useProject } from "../projects/hooks.ts";
+import { useAllUnits, useEquipmentModels, usePeople, useProject, useReservations } from "../projects/hooks.ts";
+import { useWarehouses } from "../warehouse/hooks.ts";
 import {
   useCreateChecklistItem,
   useCreateProjectTask,
@@ -124,6 +125,7 @@ export function OperationsProjectPage() {
         )}
       </Card>
 
+      <StageEquipmentPanel projectId={id} stage={shownStage} />
       <TaskBoard projectId={id} canManage={canManage} canListPeople={canListPeople} userId={user?.id ?? null} />
       <Checklist projectId={id} activeStage={shownStage} canManage={canManage} />
       <StageHistory events={events.data ?? []} />
@@ -151,6 +153,92 @@ function StageHistory({ events }: { events: Projects.ProjectOperationEventDTO[] 
           ))}
         </div>
       </Card>
+    </>
+  );
+}
+
+function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: Projects.ProjectChecklistGroup }) {
+  const navigate = useNavigate();
+  const reservations = useReservations(projectId);
+  const models = useEquipmentModels();
+  const units = useAllUnits();
+  const warehouses = useWarehouses();
+  const shouldShow = stage === "prep" || stage === "pickup" || stage === "dismantle" || stage === "return";
+  if (!shouldShow) return null;
+
+  const modelName = (modelId: string) => models.data?.find((m) => m.id === modelId)?.name ?? modelId;
+  const unitById = new Map((units.data ?? []).map((unit) => [unit.id, unit]));
+  const warehouseName = (warehouseId: string | null | undefined) =>
+    (warehouses.data ?? []).find((w) => w.id === warehouseId)?.name ?? "Склад ?";
+  const resolved = (reservations.data ?? []).flatMap((reservation) =>
+    reservation.resolvedUnitIds.map((unitId) => ({ reservation, unit: unitById.get(unitId) }))
+  );
+  const byWarehouse = new Map<string, { warehouseId: string | null; rows: typeof resolved }>();
+  for (const row of resolved) {
+    const key = row.unit?.warehouseId ?? "none";
+    if (!byWarehouse.has(key)) byWarehouse.set(key, { warehouseId: row.unit?.warehouseId ?? null, rows: [] });
+    byWarehouse.get(key)!.rows.push(row);
+  }
+  const unresolved = (reservations.data ?? []).filter((reservation) => reservation.resolvedUnitIds.length < reservation.qty);
+  const title = stage === "return" ? "Вернуть" : stage === "dismantle" ? "Собрать" : stage === "pickup" ? "Забрать" : "Подготовить";
+
+  return (
+    <>
+      <SectionHead label={title} meta={`${resolved.length}`} />
+      <div className="stack">
+        {reservations.isLoading || models.isLoading || units.isLoading || warehouses.isLoading ? (
+          <Loading />
+        ) : resolved.length === 0 && unresolved.length === 0 ? (
+          <EmptyState title="Список пуст" />
+        ) : (
+          <>
+            {[...byWarehouse.values()].map((group) => (
+              <Card key={group.warehouseId ?? "none"}>
+                <div className="row row--between">
+                  <p className="card__title">{warehouseName(group.warehouseId)}</p>
+                  <Chip label={`${group.rows.length}`} tone="neutral" />
+                </div>
+                <div className="stack" style={{ marginTop: 10 }}>
+                  {group.rows.map(({ reservation, unit }) => (
+                    <button
+                      key={`${reservation.id}:${unit?.id ?? "missing"}`}
+                      className="row row--between"
+                      style={{ width: "100%", border: "none", background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: unit ? "pointer" : "default" }}
+                      disabled={!unit}
+                      onClick={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <p className="card__title" style={{ fontSize: 16 }}>{unit?.assetTag ?? "Не найдено"}</p>
+                        <p className="card__subtitle">{modelName(reservation.modelId)}</p>
+                      </div>
+                      <Chip label={unit?.status ?? "—"} tone="neutral" />
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            ))}
+            {unresolved.length > 0 && (
+              <Card>
+                <div className="row row--between">
+                  <p className="card__title">Не распределено</p>
+                  <Chip label={`${unresolved.length}`} tone="warn" />
+                </div>
+                <div className="stack" style={{ marginTop: 10 }}>
+                  {unresolved.map((reservation) => (
+                    <div key={reservation.id} className="row row--between">
+                      <div style={{ minWidth: 0 }}>
+                        <p className="card__title" style={{ fontSize: 16 }}>{modelName(reservation.modelId)}</p>
+                        <p className="card__subtitle">{reservation.resolvedUnitIds.length}/{reservation.qty}</p>
+                      </div>
+                      <Chip label="резерв" tone="warn" />
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </>
+        )}
+      </div>
     </>
   );
 }
