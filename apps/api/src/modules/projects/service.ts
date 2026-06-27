@@ -473,7 +473,15 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         db,
         `SELECT * FROM projects.project_checklist WHERE project_id=$1
          ORDER BY
-           CASE group_key WHEN 'mount' THEN 0 WHEN 'show' THEN 1 WHEN 'dismantle' THEN 2 ELSE 3 END,
+           CASE group_key
+             WHEN 'prep' THEN 0
+             WHEN 'pickup' THEN 1
+             WHEN 'delivery' THEN 2
+             WHEN 'mount' THEN 3
+             WHEN 'show' THEN 4
+             WHEN 'dismantle' THEN 5
+             ELSE 6
+           END,
            created_at`,
         [projectId]
       );

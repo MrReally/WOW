@@ -135,9 +135,9 @@ export interface UpdateProjectTaskInput {
   timingId?: ID | null;
 }
 
-export type ProjectChecklistGroup = "mount" | "show" | "dismantle" | "return";
+export type ProjectChecklistGroup = "prep" | "pickup" | "delivery" | "mount" | "show" | "dismantle" | "return";
 
-export const PROJECT_CHECKLIST_GROUPS: ProjectChecklistGroup[] = ["mount", "show", "dismantle", "return"];
+export const PROJECT_CHECKLIST_GROUPS: ProjectChecklistGroup[] = ["prep", "pickup", "delivery", "mount", "show", "dismantle", "return"];
 
 export interface ProjectChecklistItemDTO {
   id: ID;

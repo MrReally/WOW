@@ -69,13 +69,15 @@ CREATE INDEX IF NOT EXISTS project_tasks_timing_idx ON projects.project_tasks(ti
 CREATE TABLE IF NOT EXISTS projects.project_checklist (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id      uuid NOT NULL REFERENCES projects.projects(id) ON DELETE CASCADE,
-  group_key       text NOT NULL CHECK (group_key IN ('mount','show','dismantle','return')),
+  group_key       text NOT NULL CHECK (group_key IN ('prep','pickup','delivery','mount','show','dismantle','return')),
   title           text NOT NULL,
   done            boolean NOT NULL DEFAULT false,
   done_by_user_id uuid,
   done_at         timestamptz,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE projects.project_checklist DROP CONSTRAINT IF EXISTS project_checklist_group_key_check;
+ALTER TABLE projects.project_checklist ADD CONSTRAINT project_checklist_group_key_check CHECK (group_key IN ('prep','pickup','delivery','mount','show','dismantle','return'));
 CREATE INDEX IF NOT EXISTS project_checklist_project_idx ON projects.project_checklist(project_id, group_key, created_at);
 
 CREATE TABLE IF NOT EXISTS projects.assignments (
