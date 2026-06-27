@@ -10,6 +10,7 @@ import {
   useCreateProjectTask,
   useDeleteChecklistItem,
   useDeleteProjectTask,
+  useOperationEvents,
   useProjectChecklist,
   useProjectTasks,
   useProjectTimings,
@@ -52,6 +53,7 @@ export function OperationsProjectPage() {
   const { can, user } = useSession();
   const project = useProject(id);
   const timings = useProjectTimings(id);
+  const events = useOperationEvents(id);
   const setStage = useSetOperationStage(id);
   const [viewStage, setViewStage] = useState<Projects.ProjectChecklistGroup | null>(null);
   const canManage = can("projects.timing.manage", "projects.manage");
@@ -124,7 +126,32 @@ export function OperationsProjectPage() {
 
       <TaskBoard projectId={id} canManage={canManage} canListPeople={canListPeople} userId={user?.id ?? null} />
       <Checklist projectId={id} activeStage={shownStage} canManage={canManage} />
+      <StageHistory events={events.data ?? []} />
     </div>
+  );
+}
+
+function StageHistory({ events }: { events: Projects.ProjectOperationEventDTO[] }) {
+  if (events.length === 0) return null;
+  return (
+    <>
+      <SectionHead label="История" meta={`${events.length}`} />
+      <Card>
+        <div className="stack">
+          {events.slice(0, 5).map((event) => (
+            <div key={event.id} className="row row--between">
+              <div style={{ minWidth: 0 }}>
+                <p className="card__title" style={{ fontSize: 15 }}>
+                  {event.fromStage ? `${stageLabel[event.fromStage]} → ${stageLabel[event.toStage]}` : stageLabel[event.toStage]}
+                </p>
+                <p className="card__subtitle">{dateTime(event.createdAt)}</p>
+              </div>
+              <Chip label="этап" tone="neutral" />
+            </div>
+          ))}
+        </div>
+      </Card>
+    </>
   );
 }
 

@@ -32,6 +32,14 @@ export function useProjectChecklist(projectId: string | null) {
   });
 }
 
+export function useOperationEvents(projectId: string | null) {
+  return useQuery({
+    enabled: !!projectId,
+    queryKey: ["projects", "operation-events", projectId],
+    queryFn: () => api.get<Projects.ProjectOperationEventDTO[]>(`/api/projects/${projectId}/operation-events`),
+  });
+}
+
 export function useSetOperationStage(projectId: string | null) {
   const qc = useQueryClient();
   return useMutation({
@@ -41,6 +49,7 @@ export function useSetOperationStage(projectId: string | null) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["projects", "one", projectId] });
       qc.invalidateQueries({ queryKey: ["projects", "mine"] });
+      qc.invalidateQueries({ queryKey: ["projects", "operation-events", projectId] });
     },
   });
 }

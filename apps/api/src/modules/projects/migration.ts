@@ -27,6 +27,16 @@ ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS operation_stage text NOT 
 ALTER TABLE projects.projects DROP CONSTRAINT IF EXISTS projects_operation_stage_check;
 ALTER TABLE projects.projects ADD CONSTRAINT projects_operation_stage_check CHECK (operation_stage IN ('prep','pickup','delivery','mount','show','dismantle','return'));
 
+CREATE TABLE IF NOT EXISTS projects.operation_events (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id  uuid NOT NULL REFERENCES projects.projects(id) ON DELETE CASCADE,
+  from_stage  text CHECK (from_stage IN ('prep','pickup','delivery','mount','show','dismantle','return')),
+  to_stage    text NOT NULL CHECK (to_stage IN ('prep','pickup','delivery','mount','show','dismantle','return')),
+  actor_id    uuid,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS operation_events_project_idx ON projects.operation_events(project_id, created_at);
+
 -- Hourly reservations. model_id is an opaque equipment id (no cross-schema FK).
 CREATE TABLE IF NOT EXISTS projects.reservations (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),

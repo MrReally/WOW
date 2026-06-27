@@ -65,6 +65,14 @@ interface ProjectChecklistRow {
   done_at: Date | null;
   created_at: Date;
 }
+interface OperationEventRow {
+  id: string;
+  project_id: string;
+  from_stage: Projects.ProjectChecklistGroup | null;
+  to_stage: Projects.ProjectChecklistGroup;
+  actor_id: string | null;
+  created_at: Date;
+}
 interface AssignmentRow {
   id: string;
   project_id: string;
@@ -155,6 +163,14 @@ const checklistDTO = (r: ProjectChecklistRow): Projects.ProjectChecklistItemDTO 
   done: r.done,
   doneByUserId: r.done_by_user_id,
   doneAt: r.done_at ? r.done_at.toISOString() : null,
+  createdAt: r.created_at.toISOString(),
+});
+const operationEventDTO = (r: OperationEventRow): Projects.ProjectOperationEventDTO => ({
+  id: r.id,
+  projectId: r.project_id,
+  fromStage: r.from_stage,
+  toStage: r.to_stage,
+  actorId: r.actor_id,
   createdAt: r.created_at.toISOString(),
 });
 const assignmentDTO = (r: AssignmentRow): Projects.AssignmentDTO => ({
@@ -298,14 +314,41 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       }
       return projectDTO(row);
     },
-    async setOperationStage(id, stage) {
-      const row = await one<ProjectRow>(
+    async setOperationStage(id, stage, actorId) {
+      const existing = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("project", id);
+      if (existing.operation_stage === stage) return projectDTO(existing);
+      const currentItems = await query<ProjectChecklistRow>(
         db,
-        `UPDATE projects.projects SET operation_stage=$2 WHERE id=$1 RETURNING *`,
-        [id, stage]
+        `SELECT * FROM projects.project_checklist WHERE project_id=$1 AND group_key=$2`,
+        [id, existing.operation_stage]
       );
-      if (!row) throw NotFound("project", id);
-      return projectDTO(row);
+      if (currentItems.length > 0 && currentItems.some((item) => !item.done)) {
+        throw BadRequest("сначала закройте чек-лист текущего этапа");
+      }
+      let row: ProjectRow | null = null;
+      await tx(async (client) => {
+        row = await one<ProjectRow>(
+          client,
+          `UPDATE projects.projects SET operation_stage=$2 WHERE id=$1 RETURNING *`,
+          [id, stage]
+        );
+        await query(
+          client,
+          `INSERT INTO projects.operation_events (project_id, from_stage, to_stage, actor_id)
+           VALUES ($1,$2,$3,$4)`,
+          [id, existing.operation_stage, stage, actorId ?? null]
+        );
+      });
+      return projectDTO(row!);
+    },
+    async listOperationEvents(projectId) {
+      const rows = await query<OperationEventRow>(
+        db,
+        `SELECT * FROM projects.operation_events WHERE project_id=$1 ORDER BY created_at DESC LIMIT 50`,
+        [projectId]
+      );
+      return rows.map(operationEventDTO);
     },
 
     // ── Reservations ──

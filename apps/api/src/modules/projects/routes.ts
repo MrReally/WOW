@@ -133,7 +133,7 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "operations.view", "projects.timing.manage", "projects.manage");
     const body = operationStageSchema.parse(req.body);
-    return service.setOperationStage(req.params.id, body.stage as Projects.ProjectChecklistGroup);
+    return service.setOperationStage(req.params.id, body.stage as Projects.ProjectChecklistGroup, auth.userId);
   });
   app.patch<{ Params: { id: string } }>("/api/projects/:id", async (req) => {
     const auth = await ctx.auth(req);
@@ -224,6 +224,11 @@ export function registerProjectsRoutes(
   app.get<{ Params: { id: string } }>("/api/projects/:id/checklist", async (req) => {
     await ctx.auth(req);
     return service.listChecklist(req.params.id);
+  });
+  app.get<{ Params: { id: string } }>("/api/projects/:id/operation-events", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "operations.view", "projects.timing.viewAll", "projects.manage");
+    return service.listOperationEvents(req.params.id);
   });
   app.post<{ Params: { id: string } }>("/api/projects/:id/checklist", async (req) => {
     const auth = await ctx.auth(req);
