@@ -198,10 +198,10 @@ export function ProjectDetailPage() {
             </div>
           </Card>
           {canPlans && (
-            <ProjectActionButton icon="plan" label="План сцены" meta="схема" onClick={() => navigate(`/projects/${p.id}/plan`)} wide />
+            <ProjectActionButton icon="plan" label="План сцены" meta="схема" onClick={() => navigate(`/projects/${p.id}/plan`)} />
           )}
           {canFinance && invoice.data && (
-            <ProjectActionButton icon="invoice" label="Счёт" meta="PDF" onClick={() => navigate(`/projects/${p.id}/invoice`)} wide />
+            <ProjectActionButton icon="invoice" label="Счёт" meta="PDF" onClick={() => navigate(`/projects/${p.id}/invoice`)} />
           )}
         </div>
       )}
@@ -630,9 +630,9 @@ function FinanceTile({ icon, label, value, tone = "var(--text)", onClick }: { ic
   );
 }
 
-function ProjectActionButton({ icon, label, meta, onClick, wide = false }: { icon: ProjectTabIcon; label: string; meta?: string; onClick: () => void; wide?: boolean }) {
+function ProjectActionButton({ icon, label, meta, onClick }: { icon: ProjectTabIcon; label: string; meta?: string; onClick: () => void }) {
   return (
-    <button className={`project-action ${wide ? "project-action--wide" : ""}`} onClick={onClick} type="button">
+    <button className="project-action" onClick={onClick} type="button">
       <span className="project-action__icon"><ProjectGlyph type={icon} /></span>
       <span className="project-action__text">
         <span className="project-action__label">{label}</span>

@@ -129,7 +129,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
       const projects = await deps.projects.listProjects();
       const rows = await Promise.all(
         projects
-          .filter((p) => p.status !== "cancelled")
+          .filter((p) => p.status === "completed")
           .map(async (p) => ({ project: p, invoice: await projectInvoice(p.id) }))
       );
       return rows

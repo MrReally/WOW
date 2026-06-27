@@ -461,6 +461,7 @@
   height: 20px;
 }
 .project-action {
+  width: 100%;
   min-width: 0;
   min-height: 62px;
   display: flex;
@@ -478,9 +479,6 @@
 .project-action:active {
   transform: scale(0.985);
   border-color: var(--bdr-hi);
-}
-.project-action--wide {
-  grid-column: 1 / -1;
 }
 .project-action__text {
   min-width: 0;
