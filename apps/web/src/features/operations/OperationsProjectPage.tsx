@@ -7,18 +7,15 @@ import { useSession } from "../../app/session.ts";
 import { useAllUnits, useEquipmentModels, usePeople, useProject, useReservations } from "../projects/hooks.ts";
 import { useChangeStatus, useWarehouses } from "../warehouse/hooks.ts";
 import {
-  useCreateChecklistItem,
+  useClearOperationUnitMark,
   useCreateProjectTask,
-  useDeleteChecklistItem,
   useDeleteProjectTask,
   useOperationEvents,
   useOperationUnitMarks,
-  useProjectChecklist,
   useProjectTasks,
   useProjectTimings,
   useSetOperationStage,
   useSetOperationUnitMark,
-  useUpdateChecklistItem,
   useUpdateProjectTask,
 } from "./hooks.ts";
 
@@ -182,7 +179,6 @@ export function OperationsProjectPage() {
 
       <StageEquipmentPanel projectId={id} stage={activeStage} />
       <TaskBoard projectId={id} canManage={canManage} canListPeople={canListPeople} userId={user?.id ?? null} />
-      <Checklist projectId={id} activeStage={activeStage} canManage={canManage} />
       <StageHistory events={events.data ?? []} />
     </div>
   );
@@ -221,6 +217,7 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
   const warehouses = useWarehouses();
   const marks = useOperationUnitMarks(projectId);
   const setMark = useSetOperationUnitMark(projectId);
+  const clearMark = useClearOperationUnitMark(projectId);
   const changeStatus = useChangeStatus();
   const canMarkStatus = can("warehouse.unit.status");
   const shouldShow = stage !== "show";
@@ -228,7 +225,11 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
 
   const modelName = (modelId: string) => models.data?.find((m) => m.id === modelId)?.name ?? modelId;
   const unitById = new Map((units.data ?? []).map((unit) => [unit.id, unit]));
-  const markByUnit = new Map((marks.data ?? []).filter((mark) => mark.stage === stage).map((mark) => [mark.unitId, mark]));
+  const marksByUnit = new Map<string, Projects.OperationUnitMarkDTO[]>();
+  for (const mark of (marks.data ?? []).filter((item) => item.stage === stage)) {
+    if (!marksByUnit.has(mark.unitId)) marksByUnit.set(mark.unitId, []);
+    marksByUnit.get(mark.unitId)!.push(mark);
+  }
   const warehouseName = (warehouseId: string | null | undefined) =>
     (warehouses.data ?? []).find((w) => w.id === warehouseId)?.name ?? "Склад ?";
   const resolved = (reservations.data ?? []).flatMap((reservation) =>
@@ -254,7 +255,11 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
               ? "Забрать"
               : "Подготовить";
   const actions = stageMarkActions[stage] ?? [];
-  const markUnit = (unitId: string, status: Projects.OperationUnitMarkStatus) => {
+  const markUnit = (unitId: string, status: Projects.OperationUnitMarkStatus, active: boolean) => {
+    if (active) {
+      clearMark.mutate({ stage, unitId, status });
+      return;
+    }
     setMark.mutate({ stage, unitId, status });
     if (status === "broken" && canMarkStatus) {
       changeStatus.mutate({ id: unitId, status: "in_repair", note: `Демонтаж · ${projectId}` });
@@ -288,11 +293,11 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
                       key={`${reservation.id}:${unit?.id ?? "missing"}`}
                       unit={unit}
                       modelName={modelName(reservation.modelId)}
-                      mark={unit ? markByUnit.get(unit.id) : undefined}
+                      marks={unit ? (marksByUnit.get(unit.id) ?? []) : []}
                       actions={actions}
-                      disabled={setMark.isPending || changeStatus.isPending}
+                      disabled={setMark.isPending || clearMark.isPending || changeStatus.isPending}
                       onOpen={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
-                      onMark={(status) => unit && markUnit(unit.id, status)}
+                      onMark={(status, active) => unit && markUnit(unit.id, status, active)}
                     />
                   ))}
                 </div>
@@ -327,7 +332,7 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
 function UnitStageRow({
   unit,
   modelName,
-  mark,
+  marks,
   actions,
   disabled,
   onOpen,
@@ -335,12 +340,15 @@ function UnitStageRow({
 }: {
   unit: Equipment.EquipmentUnitDTO | undefined;
   modelName: string;
-  mark?: Projects.OperationUnitMarkDTO;
+  marks: Projects.OperationUnitMarkDTO[];
   actions: { status: Projects.OperationUnitMarkStatus; label: string; tone?: "ok" | "warn" | "danger" }[];
   disabled: boolean;
   onOpen: () => void;
-  onMark: (status: Projects.OperationUnitMarkStatus) => void;
+  onMark: (status: Projects.OperationUnitMarkStatus, active: boolean) => void;
 }) {
+  const activeStatuses = new Set(marks.map((mark) => mark.status));
+  const markText = marks.length > 0 ? marks.map((mark) => markLabel[mark.status]).join(" · ") : "не отмечено";
+  const hasProblem = marks.some((mark) => mark.status === "lost" || mark.status === "broken" || mark.status === "missing" || mark.status === "left");
   return (
     <div className="stack" style={{ gap: 8 }}>
       <div className="row row--between" style={{ width: "100%", gap: 8 }}>
@@ -352,22 +360,25 @@ function UnitStageRow({
           <p className="card__title" style={{ fontSize: 16 }}>{unit?.assetTag ?? "Не найдено"}</p>
           <p className="card__subtitle">{modelName}</p>
         </button>
-        <Chip label={mark ? markLabel[mark.status] : "не отмечено"} tone={mark ? (mark.status === "lost" || mark.status === "broken" ? "warn" : "ok") : "neutral"} />
+        <Chip label={markText} tone={marks.length > 0 ? (hasProblem ? "warn" : "ok") : "neutral"} />
       </div>
       <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-        {unit && actions.map((action) => (
-          <button
-            key={action.status}
-            className={`chip ${mark?.status === action.status ? "chip--accent chip--solid" : action.tone === "danger" ? "chip--danger" : action.tone === "ok" ? "chip--ok" : "chip--neutral"}`}
-            style={{ border: "none", cursor: "pointer" }}
-            aria-label={markLabel[action.status]}
-            title={markLabel[action.status]}
-            disabled={disabled}
-            onClick={() => onMark(action.status)}
-          >
-            {action.label} {markLabel[action.status]}
-          </button>
-        ))}
+        {unit && actions.map((action) => {
+          const active = activeStatuses.has(action.status);
+          return (
+            <button
+              key={action.status}
+              className={`chip ${active ? "chip--accent chip--solid" : action.tone === "danger" ? "chip--danger" : action.tone === "ok" ? "chip--ok" : "chip--neutral"}`}
+              style={{ border: "none", cursor: "pointer" }}
+              aria-label={active ? `Снять: ${markLabel[action.status]}` : markLabel[action.status]}
+              title={active ? `Снять: ${markLabel[action.status]}` : markLabel[action.status]}
+              disabled={disabled}
+              onClick={() => onMark(action.status, active)}
+            >
+              {action.label} {markLabel[action.status]}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -506,90 +517,6 @@ function TaskList({
         );
       })}
     </div>
-  );
-}
-
-function Checklist({
-  projectId,
-  activeStage,
-  canManage,
-}: {
-  projectId: string;
-  activeStage: Projects.ProjectChecklistGroup;
-  canManage: boolean;
-}) {
-  const checklist = useProjectChecklist(projectId);
-  const createItem = useCreateChecklistItem(projectId);
-  const updateItem = useUpdateChecklistItem(projectId);
-  const deleteItem = useDeleteChecklistItem(projectId);
-  const [titleByStage, setTitleByStage] = useState<Record<string, string>>({});
-  const list = checklist.data ?? [];
-  const activeItems = list.filter((i) => i.group === activeStage);
-  const activeDone = activeItems.filter((i) => i.done).length;
-
-  const add = (group: Projects.ProjectChecklistGroup) => {
-    const clean = (titleByStage[group] ?? "").trim();
-    if (!clean) return;
-    createItem.mutate({ group, title: clean }, { onSuccess: () => setTitleByStage((prev) => ({ ...prev, [group]: "" })) });
-  };
-
-  return (
-    <>
-      <SectionHead label="Чек-лист" meta={`${activeDone}/${activeItems.length}`} />
-      <div className="stack">
-        {checklist.isLoading ? (
-          <Loading />
-        ) : checklist.error ? (
-          <ErrorState error={checklist.error} onRetry={checklist.refetch} />
-        ) : (
-          [activeStage].map((group) => {
-            const items = activeItems;
-            const value = titleByStage[group] ?? "";
-            return (
-              <Card key={group}>
-                <div className="row row--between">
-                  <p className="card__title">{stageLabel[group]}</p>
-                  <Chip label={`${items.filter((i) => i.done).length}/${items.length}`} tone={items.length > 0 && items.every((i) => i.done) ? "ok" : "neutral"} />
-                </div>
-                <div className="stack" style={{ marginTop: 10 }}>
-                  {items.map((item) => (
-                    <div key={item.id} className="row row--between">
-                      <button
-                        className={`icon-btn ${item.done ? "icon-btn--ok" : ""}`}
-                        title={item.done ? "Готово" : "Отметить"}
-                        aria-label={item.done ? "Готово" : "Отметить"}
-                        disabled={updateItem.isPending}
-                        onClick={() => updateItem.mutate({ id: item.id, input: { done: !item.done } })}
-                      >
-                        {item.done ? "✓" : <WSGlyph type="rows" size={18} />}
-                      </button>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p className="card__title" style={{ fontSize: 16, textDecoration: item.done ? "line-through" : undefined }}>{item.title}</p>
-                        {item.doneAt && <p className="card__subtitle">{dateTime(item.doneAt)}</p>}
-                      </div>
-                      {canManage && (
-                        <button className="icon-btn icon-btn--danger" aria-label="Удалить" title="Удалить" disabled={deleteItem.isPending} onClick={() => deleteItem.mutate(item.id)}>
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  {canManage && (
-                    <CompactAdd
-                      value={value}
-                      placeholder="Новый пункт"
-                      disabled={!value.trim() || createItem.isPending}
-                      onValue={(next) => setTitleByStage((prev) => ({ ...prev, [group]: next }))}
-                      onAdd={() => add(group)}
-                    />
-                  )}
-                </div>
-              </Card>
-            );
-          })
-        )}
-      </div>
-    </>
   );
 }
 

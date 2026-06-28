@@ -225,6 +225,13 @@ export interface SetOperationUnitMarkInput {
   note?: string | null;
 }
 
+export interface ClearOperationUnitMarkInput {
+  projectId: ID;
+  stage: ProjectChecklistGroup;
+  unitId: ID;
+  status: OperationUnitMarkStatus;
+}
+
 // ── Project roles + assignments (people on a project) ────────────────────────
 // A project role is the staffing need: title, required seats, and per-person
 // rate. Assignments are candidates/confirmed people attached to that role.
@@ -346,6 +353,7 @@ export interface ProjectsService {
   listOperationEvents(projectId: ID): Promise<ProjectOperationEventDTO[]>;
   listOperationUnitMarks(projectId: ID): Promise<OperationUnitMarkDTO[]>;
   setOperationUnitMark(input: SetOperationUnitMarkInput): Promise<OperationUnitMarkDTO>;
+  clearOperationUnitMark(input: ClearOperationUnitMarkInput): Promise<void>;
 
   // Reservations
   listReservations(projectId: ID): Promise<ReservationDTO[]>;

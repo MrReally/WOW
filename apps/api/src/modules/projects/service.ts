@@ -261,6 +261,15 @@ const defaultChecklist: { group: Projects.ProjectChecklistGroup; title: string }
   { group: "return", title: "Вернули на склад" },
 ];
 
+const stageRequiredMarks: Partial<Record<Projects.ProjectChecklistGroup, Projects.OperationUnitMarkStatus[][]>> = {
+  prep: [["ready"], ["packed"]],
+  pickup: [["picked", "missing", "left"]],
+  delivery: [["delivered"]],
+  mount: [["mounted"]],
+  dismantle: [["collected", "broken", "lost"]],
+  return: [["returned"]],
+};
+
 export function createProjectsService(db: Sql, bus: EventBus): Projects.ProjectsService {
   async function loadChecklist(projectId: ID): Promise<ProjectChecklistRow[]> {
     return query<ProjectChecklistRow>(
@@ -381,13 +390,30 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       if (existing.operation_stage === stage) return projectDTO(existing);
       const isForward = PROJECT_CHECKLIST_GROUPS.indexOf(stage) > PROJECT_CHECKLIST_GROUPS.indexOf(existing.operation_stage);
       if (isForward) {
-        const currentItems = await query<ProjectChecklistRow>(
+        const requiredGroups = stageRequiredMarks[existing.operation_stage] ?? [];
+        const reservations = await query<ReservationRow>(
           db,
-          `SELECT * FROM projects.project_checklist WHERE project_id=$1 AND group_key=$2`,
-          [id, existing.operation_stage]
+          `SELECT * FROM projects.reservations WHERE project_id=$1`,
+          [id]
         );
-        if (currentItems.length > 0 && currentItems.some((item) => !item.done)) {
-          throw BadRequest("сначала закройте чек-лист текущего этапа");
+        const unitIds = [...new Set(reservations.flatMap((r) => r.resolved_unit_ids))];
+        if (requiredGroups.length > 0 && unitIds.length > 0) {
+          const marks = await query<OperationUnitMarkRow>(
+            db,
+            `SELECT * FROM projects.operation_unit_marks WHERE project_id=$1 AND stage=$2 AND unit_id = ANY($3::uuid[])`,
+            [id, existing.operation_stage, unitIds]
+          );
+          const markKey = new Set(marks.map((mark) => `${mark.unit_id}:${mark.status}`));
+          const missing = unitIds.some((unitId) =>
+            requiredGroups.some((allowedStatuses) => !allowedStatuses.some((status) => markKey.has(`${unitId}:${status}`)))
+          );
+          if (missing) {
+            throw BadRequest("сначала отметьте приборы текущего этапа");
+          }
+        }
+        const unresolved = reservations.some((r) => r.resolved_unit_ids.length < r.qty);
+        if (existing.operation_stage !== "return" && unresolved) {
+          throw BadRequest("сначала распределите оборудование проекта");
         }
       }
       let row: ProjectRow | null = null;
@@ -442,9 +468,8 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         db,
         `INSERT INTO projects.operation_unit_marks (project_id, stage, unit_id, status, actor_id, note)
          VALUES ($1,$2,$3,$4,$5,$6)
-         ON CONFLICT (project_id, stage, unit_id)
+         ON CONFLICT (project_id, stage, unit_id, status)
          DO UPDATE SET
-           status=EXCLUDED.status,
            actor_id=EXCLUDED.actor_id,
            note=EXCLUDED.note,
            updated_at=now()
@@ -452,6 +477,15 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         [input.projectId, input.stage, input.unitId, input.status, input.actorId ?? null, input.note ?? null]
       );
       return operationUnitMarkDTO(row!);
+    },
+    async clearOperationUnitMark(input) {
+      const project = await this.getProject(input.projectId);
+      if (!project) throw NotFound("project", input.projectId);
+      await query(
+        db,
+        `DELETE FROM projects.operation_unit_marks WHERE project_id=$1 AND stage=$2 AND unit_id=$3 AND status=$4`,
+        [input.projectId, input.stage, input.unitId, input.status]
+      );
     },
 
     // ── Reservations ──

@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS projects.operation_unit_marks (
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(project_id, stage, unit_id)
 );
+ALTER TABLE projects.operation_unit_marks DROP CONSTRAINT IF EXISTS operation_unit_marks_project_id_stage_unit_id_key;
+ALTER TABLE projects.operation_unit_marks DROP CONSTRAINT IF EXISTS operation_unit_marks_project_stage_unit_status_key;
+ALTER TABLE projects.operation_unit_marks ADD CONSTRAINT operation_unit_marks_project_stage_unit_status_key UNIQUE(project_id, stage, unit_id, status);
 ALTER TABLE projects.operation_unit_marks DROP CONSTRAINT IF EXISTS operation_unit_marks_stage_check;
 ALTER TABLE projects.operation_unit_marks ADD CONSTRAINT operation_unit_marks_stage_check CHECK (stage IN ('prep','pickup','delivery','mount','show','dismantle','return'));
 ALTER TABLE projects.operation_unit_marks DROP CONSTRAINT IF EXISTS operation_unit_marks_status_check;

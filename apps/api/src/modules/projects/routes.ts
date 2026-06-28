@@ -274,6 +274,18 @@ export function registerProjectsRoutes(
       note: body.note ?? null,
     });
   });
+  app.delete<{ Params: { id: string } }>("/api/projects/:id/operation-unit-marks", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "operations.view", "projects.timing.manage", "projects.manage");
+    const body = operationUnitMarkSchema.parse(req.body);
+    await service.clearOperationUnitMark({
+      projectId: req.params.id,
+      stage: body.stage as Projects.ProjectChecklistGroup,
+      unitId: body.unitId,
+      status: body.status as Projects.OperationUnitMarkStatus,
+    });
+    return { ok: true };
+  });
   app.post<{ Params: { id: string } }>("/api/projects/:id/checklist", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.timing.manage", "projects.manage");

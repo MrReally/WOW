@@ -80,6 +80,17 @@ export function useSetOperationUnitMark(projectId: string | null) {
   });
 }
 
+export function useClearOperationUnitMark(projectId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Omit<Projects.ClearOperationUnitMarkInput, "projectId">) =>
+      api.delete(`/api/projects/${projectId}/operation-unit-marks`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects", "operation-unit-marks", projectId] });
+    },
+  });
+}
+
 export function useCreateProjectTask(projectId: string | null) {
   const qc = useQueryClient();
   return useMutation({
