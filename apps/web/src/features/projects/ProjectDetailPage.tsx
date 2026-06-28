@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams, useNavigate, useSearchParams } from "react-router-dom";
-import type { People, Projects } from "@sever/contracts";
+import type { Equipment, People, Projects } from "@sever/contracts";
 import { PROJECT_STATUSES } from "@sever/contracts";
 import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
 import { projectStatusLabel, projectStatusTone, dateRange, dateTime, eur } from "../../lib/labels.ts";
@@ -112,6 +112,9 @@ export function ProjectDetailPage() {
   const issueResolved = useIssueResolvedUnits();
 
   const [resModel, setResModel] = useState("");
+  const [resModelQuery, setResModelQuery] = useState("");
+  const [debouncedResModelQuery, setDebouncedResModelQuery] = useState("");
+  const [resModelOpen, setResModelOpen] = useState(false);
   const [resQty, setResQty] = useState("1");
   const [timingTitle, setTimingTitle] = useState("");
   const [timingStart, setTimingStart] = useState("");
@@ -134,6 +137,11 @@ export function ProjectDetailPage() {
       setInvoiceVersions([]);
     }
   }, [id, activeTab]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedResModelQuery(resModelQuery), 500);
+    return () => window.clearTimeout(timer);
+  }, [resModelQuery]);
 
   const reopen = location.state as { reopenReservationId?: string; selectedUnitIds?: string[] } | null;
   useEffect(() => {
@@ -325,24 +333,38 @@ export function ProjectDetailPage() {
         <Card>
           <div className="row">
             <div style={{ flex: 2 }}>
-              <Select
-                value={resModel || (models.data ?? [])[0]?.id || ""}
-                onChange={(e) => setResModel(e.target.value)}
-                options={(models.data ?? []).map((m) => ({ value: m.id, label: m.name }))}
+              <ModelAutocomplete
+                models={models.data ?? []}
+                value={resModel}
+                query={resModelQuery}
+                debouncedQuery={debouncedResModelQuery}
+                open={resModelOpen}
+                onOpen={setResModelOpen}
+                onQuery={(value) => {
+                  setResModelQuery(value);
+                  setResModel("");
+                  setResModelOpen(true);
+                }}
+                onSelect={(model) => {
+                  setResModel(model.id);
+                  setResModelQuery(model.name);
+                  setResModelOpen(false);
+                }}
               />
             </div>
             <div style={{ width: 80 }}>
               <Input type="number" value={resQty} onChange={(e) => setResQty(e.target.value)} />
             </div>
             <Button
+              disabled={!resModel || addReservation.isPending}
               onClick={() =>
                 addReservation.mutate({
                   projectId: p.id,
-                  modelId: resModel || (models.data ?? [])[0]!.id,
+                  modelId: resModel,
                   qty: Number(resQty),
                   startsAt: p.startsAt,
                   endsAt: p.endsAt,
-                })
+                }, { onSuccess: () => { setResModel(""); setResModelQuery(""); setResModelOpen(false); } })
               }
             >
               + Бронь
@@ -845,6 +867,111 @@ function CandidatePicker({
         ))}
         {results.length === 0 && <span className="card__subtitle">Никого не найдено</span>}
       </div>
+    </div>
+  );
+}
+
+function normalizeSearch(value: string): string {
+  return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+function modelMatches(model: Equipment.EquipmentModelDTO, query: string): boolean {
+  const q = normalizeSearch(query);
+  if (!q) return false;
+  const hay = normalizeSearch(model.name);
+  const compactHay = hay.replace(/\s+/g, "");
+  const compactQ = q.replace(/\s+/g, "");
+  if (compactQ && compactHay.includes(compactQ)) return true;
+  return q.split(/\s+/).every((part) => hay.includes(part));
+}
+
+function ModelAutocomplete({
+  models,
+  value,
+  query,
+  debouncedQuery,
+  open,
+  onOpen,
+  onQuery,
+  onSelect,
+}: {
+  models: Equipment.EquipmentModelDTO[];
+  value: string;
+  query: string;
+  debouncedQuery: string;
+  open: boolean;
+  onOpen: (open: boolean) => void;
+  onQuery: (value: string) => void;
+  onSelect: (model: Equipment.EquipmentModelDTO) => void;
+}) {
+  const selected = models.find((model) => model.id === value) ?? null;
+  const results = useMemo(
+    () => models.filter((model) => modelMatches(model, debouncedQuery)).slice(0, 8),
+    [debouncedQuery, models]
+  );
+  const searching = query.trim() !== debouncedQuery.trim();
+  const showList = open && query.trim().length > 0;
+
+  return (
+    <div style={{ position: "relative" }}>
+      <Input
+        value={query}
+        onFocus={() => onOpen(true)}
+        onChange={(e) => onQuery(e.target.value)}
+        placeholder="Найти модель"
+      />
+      {selected && (
+        <div className="row" style={{ gap: 6, marginTop: 6 }}>
+          <Chip label={selected.name} tone="ok" />
+        </div>
+      )}
+      {showList && (
+        <div
+          className="stack"
+          style={{
+            position: "absolute",
+            zIndex: 40,
+            top: "calc(100% + 6px)",
+            left: 0,
+            right: 0,
+            gap: 4,
+            maxHeight: 280,
+            overflow: "auto",
+            padding: 6,
+            border: "1px solid var(--bdr)",
+            borderRadius: 10,
+            background: "var(--panel)",
+            boxShadow: "0 18px 36px rgba(0,0,0,.32)",
+          }}
+        >
+          {searching ? (
+            <span className="card__subtitle" style={{ padding: 8 }}>Ищу…</span>
+          ) : results.length === 0 ? (
+            <span className="card__subtitle" style={{ padding: 8 }}>Модель не найдена</span>
+          ) : (
+            results.map((model) => (
+              <button
+                key={model.id}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => onSelect(model)}
+                style={{
+                  border: "none",
+                  borderRadius: 8,
+                  background: model.id === value ? "var(--accent)" : "transparent",
+                  color: model.id === value ? "#fff" : "var(--text)",
+                  padding: "10px 12px",
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ display: "block", fontWeight: 800 }}>{model.name}</span>
+                <span className="card__subtitle">{model.trackingMode === "quantity" ? "quantity" : "serial"} · {eur(model.dailyPriceEUR)}/сут</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
