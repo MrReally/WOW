@@ -63,6 +63,7 @@ export function MySettingsPage() {
 
   const kindLabel: Record<Notifications.NotificationKind, string> = {
     assigned: t("notifications.assigned"),
+    stage: t("notifications.stage"),
     issued: t("notifications.issued"),
     returned: t("notifications.returned"),
     problem: t("notifications.problem"),
@@ -73,6 +74,7 @@ export function MySettingsPage() {
     "project.unassigned": "Сняли с проекта",
     "project.invited": "Отправили приглашение",
     "project.invite.responded": "Ответили на приглашение",
+    "project.operation_stage.changed": "Сменили этап проекта",
     "equipment.units.issued": "Выдали оборудование",
     "equipment.unit.returned": "Вернули оборудование",
     "equipment.return.incomplete": "Некомплект при возврате",

@@ -66,6 +66,16 @@ export function createModules(bus: EventBus = new EventBus()) {
     return actor?.isSystem ? "Система" : publicName(actor, "Неизвестно");
   };
 
+  const stageLabel: Record<string, string> = {
+    prep: "Подготовка",
+    pickup: "Забор",
+    delivery: "Доставка",
+    mount: "Монтаж",
+    show: "Событие",
+    dismantle: "Демонтаж",
+    return: "Возврат",
+  };
+
   async function advancedMessage(event: DomainEvent): Promise<{ title: string; body: string; link?: string | null } | null> {
     switch (event.type) {
       case "project.assigned": {
@@ -87,6 +97,14 @@ export function createModules(bus: EventBus = new EventBus()) {
       case "project.invite.cancelled": {
         const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
         return { title: "Приглашение отменено", body: `${publicName(user)} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+      }
+      case "project.operation_stage.changed": {
+        const project = await projects.service.getProject(event.projectId);
+        return {
+          title: "Этап проекта",
+          body: `${project?.name ?? event.projectId} · ${event.fromStage ? `${stageLabel[event.fromStage]} → ` : ""}${stageLabel[event.toStage]} · ${await fmtActor(event.actorId)}`,
+          link: `/operations/projects/${event.projectId}`,
+        };
       }
       case "equipment.units.issued": {
         const project = await projects.service.getProject(event.projectId);
@@ -218,6 +236,31 @@ export function createModules(bus: EventBus = new EventBus()) {
         ? `Роль ${role} в проекте «${project?.name ?? ""}» удалена. Это приглашение отменено.`
         : `На роль ${role} в проекте «${project?.name ?? ""}» уже найдено нужное количество людей. Это приглашение отменено.`;
     await editTelegramMessage(assignment?.telegramChatId ?? e.telegramChatId ?? null, assignment?.telegramMessageId ?? e.telegramMessageId ?? null, body);
+  });
+
+  bus.on("project.operation_stage.changed", async (e) => {
+    const [project, assignees, actor] = await Promise.all([
+      projects.service.getProject(e.projectId),
+      projects.service.listAssignments(e.projectId),
+      e.actorId ? people.service.getById(e.actorId) : Promise.resolve(null),
+    ]);
+    if (!project) return;
+    const actorName = actor?.isSystem ? "Система" : publicName(actor, "Система");
+    const body = `${e.fromStage ? `${stageLabel[e.fromStage]} → ` : ""}${stageLabel[e.toStage]} · ${actorName}`;
+    const recipientIds = [...new Set(
+      assignees
+        .filter((a) => a.status === "added" || a.status === "accepted")
+        .map((a) => a.userId)
+        .filter((id) => id !== e.actorId)
+    )];
+    for (const userId of recipientIds) {
+      await notify(userId, {
+        kind: "stage",
+        title: project.name,
+        body,
+        link: `/operations/projects/${e.projectId}`,
+      });
+    }
   });
 
   bus.on("equipment.units.issued", async (e) => {

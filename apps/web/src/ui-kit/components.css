@@ -101,6 +101,16 @@
 .icon-btn--ok {
   color: var(--ok);
 }
+.icon-btn--warn {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 13%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 28%, transparent);
+}
+.icon-btn--active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+}
 .icon-btn svg {
   width: 19px;
   height: 19px;

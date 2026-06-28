@@ -472,6 +472,15 @@ export interface InviteCancelledEvent {
   at: ISODateTime;
 }
 
+export interface ProjectOperationStageChangedEvent {
+  type: "project.operation_stage.changed";
+  projectId: ID;
+  fromStage: ProjectChecklistGroup | null;
+  toStage: ProjectChecklistGroup;
+  actorId: ID | null;
+  at: ISODateTime;
+}
+
 export type ProjectsEvent =
   | ProjectConfirmedEvent
   | ReservationConflictEvent
@@ -479,4 +488,5 @@ export type ProjectsEvent =
   | ProjectUnassignedEvent
   | ProjectInvitedEvent
   | InviteRespondedEvent
-  | InviteCancelledEvent;
+  | InviteCancelledEvent
+  | ProjectOperationStageChangedEvent;

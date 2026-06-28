@@ -466,6 +466,14 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
           [id, existing.operation_stage, stage, actorId ?? null]
         );
       });
+      await bus.publish({
+        type: "project.operation_stage.changed",
+        projectId: id,
+        fromStage: existing.operation_stage,
+        toStage: stage,
+        actorId: actorId ?? null,
+        at: new Date().toISOString(),
+      });
       return projectDTO(row!);
     },
     async listOperationEvents(projectId) {

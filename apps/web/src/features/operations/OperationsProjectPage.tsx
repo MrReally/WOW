@@ -1,8 +1,9 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { Equipment, Projects } from "@sever/contracts";
-import { Button, Card, Chip, EmptyState, ErrorState, Input, Loading, SectionHead, Select, WSGlyph } from "../../ui-kit/index.ts";
+import type { Equipment, People, Projects } from "@sever/contracts";
+import { Avatar, Button, Card, Chip, EmptyState, ErrorState, Input, Loading, SectionHead, Select, WSGlyph } from "../../ui-kit/index.ts";
 import { dateRange, dateTime, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
+import { personInitials, personName } from "../../lib/people.ts";
 import { useSession } from "../../app/session.ts";
 import { useAllUnits, useEquipmentModels, usePeople, useProject, useReservations } from "../projects/hooks.ts";
 import { useChangeStatus, useWarehouses } from "../warehouse/hooks.ts";
@@ -103,6 +104,7 @@ export function OperationsProjectPage() {
   const canManage = can("projects.timing.manage", "projects.manage");
   const canStepBack = can("operations.stage.back", "projects.timing.manage", "projects.manage");
   const canListPeople = can("people.view");
+  const people = usePeople(canListPeople);
 
   if (project.isLoading) return <Loading />;
   if (project.error) return <ErrorState error={project.error} onRetry={project.refetch} />;
@@ -178,14 +180,32 @@ export function OperationsProjectPage() {
       </Card>
 
       <StageEquipmentPanel projectId={id} stage={activeStage} />
-      <TaskBoard projectId={id} canManage={canManage} canListPeople={canListPeople} userId={user?.id ?? null} />
-      <StageHistory events={events.data ?? []} />
+      <TaskBoard projectId={id} canManage={canManage} canListPeople={canListPeople} currentUser={user ?? null} />
+      <StageHistory events={events.data ?? []} people={people.data ?? []} currentUser={user ?? null} />
     </div>
   );
 }
 
-function StageHistory({ events }: { events: Projects.ProjectOperationEventDTO[] }) {
+function avatarUrl(user: People.UserDTO | null | undefined): string | null {
+  return user?.usePhotoAsAvatar ? user.photoUrl : null;
+}
+
+function StageHistory({
+  events,
+  people,
+  currentUser,
+}: {
+  events: Projects.ProjectOperationEventDTO[];
+  people: People.UserDTO[];
+  currentUser: People.UserDTO | null;
+}) {
   if (events.length === 0) return null;
+  const peopleById = new Map(people.map((person) => [person.id, person]));
+  const actorName = (actorId: string | null) => {
+    if (!actorId) return "Система";
+    if (actorId === currentUser?.id) return personName(currentUser, "Вы");
+    return personName(peopleById.get(actorId), "Кто-то");
+  };
   return (
     <>
       <SectionHead label="История" meta={`${events.length}`} />
@@ -197,7 +217,7 @@ function StageHistory({ events }: { events: Projects.ProjectOperationEventDTO[] 
                 <p className="card__title" style={{ fontSize: 15 }}>
                   {event.fromStage ? `${stageLabel[event.fromStage]} → ${stageLabel[event.toStage]}` : stageLabel[event.toStage]}
                 </p>
-                <p className="card__subtitle">{dateTime(event.createdAt)}</p>
+                <p className="card__subtitle">{dateTime(event.createdAt)} · {actorName(event.actorId)}</p>
               </div>
               <Chip label="этап" tone="neutral" />
             </div>
@@ -388,16 +408,16 @@ function TaskBoard({
   projectId,
   canManage,
   canListPeople,
-  userId,
+  currentUser,
 }: {
   projectId: string;
   canManage: boolean;
   canListPeople: boolean;
-  userId: string | null;
+  currentUser: People.UserDTO | null;
 }) {
   const timings = useProjectTimings(projectId);
   const tasks = useProjectTasks(projectId);
-  const people = usePeople(canManage && canListPeople);
+  const people = usePeople(canListPeople);
   const createTask = useCreateProjectTask(projectId);
   const updateTask = useUpdateProjectTask(projectId);
   const deleteTask = useDeleteProjectTask(projectId);
@@ -406,7 +426,14 @@ function TaskBoard({
   const [timingId, setTimingId] = useState("");
   const [pick, setPick] = useState<"person" | "time" | null>(null);
   const timingMap = useMemo(() => new Map((timings.data ?? []).map((t) => [t.id, t])), [timings.data]);
-  const list = tasks.data ?? [];
+  const userId = currentUser?.id ?? null;
+  const peopleById = useMemo(() => new Map((people.data ?? []).map((person) => [person.id, person])), [people.data]);
+  const selectedAssignee = assigneeId ? (assigneeId === userId ? currentUser : peopleById.get(assigneeId)) : null;
+  const taskRank = (task: Projects.ProjectTaskDTO) => task.assigneeId === userId ? 0 : task.assigneeId ? 2 : 1;
+  const list = [...(tasks.data ?? [])].sort((a, b) =>
+    taskRank(a) - taskRank(b) ||
+    Date.parse(a.createdAt) - Date.parse(b.createdAt)
+  );
   const open = list.filter((t) => t.status !== "done");
   const done = list.filter((t) => t.status === "done");
 
@@ -432,6 +459,11 @@ function TaskBoard({
             onPick={setPick}
             onValue={setTitle}
             onAdd={add}
+            personActive={!!assigneeId}
+            timeActive={!!timingId}
+            personIcon={selectedAssignee ? (
+              <Avatar initials={personInitials(selectedAssignee)} src={avatarUrl(selectedAssignee)} size={24} />
+            ) : undefined}
             personSlot={
               <Select
                 value={assigneeId}
@@ -439,7 +471,7 @@ function TaskBoard({
                 options={[
                   { value: "", label: "Любой" },
                   ...(userId ? [{ value: userId, label: "Я" }] : []),
-                  ...((people.data ?? []).filter((p) => p.id !== userId).map((p) => ({ value: p.id, label: p.nickname || p.displayName }))),
+                  ...((canListPeople ? (people.data ?? []) : []).filter((p) => p.id !== userId).map((p) => ({ value: p.id, label: p.nickname || p.displayName }))),
                 ]}
               />
             }
@@ -463,8 +495,8 @@ function TaskBoard({
           <EmptyState title="Задач нет" />
         ) : (
           <>
-            <TaskList items={open} timingMap={timingMap} canManage={canManage} updateTask={updateTask} deleteTask={deleteTask} />
-            {done.length > 0 && <TaskList items={done.slice(0, 4)} timingMap={timingMap} canManage={canManage} updateTask={updateTask} deleteTask={deleteTask} />}
+            <TaskList items={open} timingMap={timingMap} peopleById={peopleById} currentUser={currentUser} canManage={canManage} updateTask={updateTask} deleteTask={deleteTask} />
+            {done.length > 0 && <TaskList items={done.slice(0, 4)} timingMap={timingMap} peopleById={peopleById} currentUser={currentUser} canManage={canManage} updateTask={updateTask} deleteTask={deleteTask} />}
           </>
         )}
       </div>
@@ -475,12 +507,16 @@ function TaskBoard({
 function TaskList({
   items,
   timingMap,
+  peopleById,
+  currentUser,
   canManage,
   updateTask,
   deleteTask,
 }: {
   items: Projects.ProjectTaskDTO[];
   timingMap: Map<string, Projects.TimingDTO>;
+  peopleById: Map<string, People.UserDTO>;
+  currentUser: People.UserDTO | null;
   canManage: boolean;
   updateTask: ReturnType<typeof useUpdateProjectTask>;
   deleteTask: ReturnType<typeof useDeleteProjectTask>;
@@ -491,8 +527,13 @@ function TaskList({
     <div className="stack">
       {items.map((task) => {
         const timing = task.timingId ? timingMap.get(task.timingId) : null;
+        const assignee = task.assigneeId === currentUser?.id ? currentUser : task.assigneeId ? peopleById.get(task.assigneeId) : null;
+        const isMine = !!task.assigneeId && task.assigneeId === currentUser?.id;
         return (
-          <Card key={task.id}>
+          <Card
+            key={task.id}
+            style={isMine ? { borderColor: "color-mix(in srgb, var(--accent) 55%, var(--bdr))", background: "color-mix(in srgb, var(--accent) 10%, var(--s1))" } : undefined}
+          >
             <div className="row row--between" style={{ alignItems: "flex-start" }}>
               <button
                 className={`icon-btn ${task.status === "done" ? "icon-btn--ok" : ""}`}
@@ -505,7 +546,10 @@ function TaskList({
               </button>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p className="card__title" style={{ textDecoration: task.status === "done" ? "line-through" : undefined }}>{task.title}</p>
-                <p className="card__subtitle">{timing ? timing.title : "Без события"}</p>
+                <p className="card__subtitle" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {assignee && <Avatar initials={personInitials(assignee)} src={avatarUrl(assignee)} size={20} />}
+                  <span>{timing ? timing.title : "Без события"}</span>
+                </p>
               </div>
               {canManage && (
                 <button className="icon-btn icon-btn--danger" aria-label="Удалить" title="Удалить" disabled={deleteTask.isPending} onClick={() => deleteTask.mutate(task.id)}>
@@ -527,6 +571,9 @@ function CompactAdd({
   pick,
   personSlot,
   timeSlot,
+  personIcon,
+  personActive,
+  timeActive,
   onPick,
   onValue,
   onAdd,
@@ -537,6 +584,9 @@ function CompactAdd({
   pick?: "person" | "time" | null;
   personSlot?: ReactNode;
   timeSlot?: ReactNode;
+  personIcon?: ReactNode;
+  personActive?: boolean;
+  timeActive?: boolean;
   onPick?: (pick: "person" | "time" | null) => void;
   onValue: (value: string) => void;
   onAdd: () => void;
@@ -552,12 +602,12 @@ function CompactAdd({
           style={{ height: 42 }}
         />
         {personSlot && (
-          <button className="icon-btn" aria-label="Назначить" title="Назначить" onClick={() => onPick?.(pick === "person" ? null : "person")}>
-            <WSGlyph type="person" size={18} />
+          <button className={`icon-btn ${personActive ? "icon-btn--active" : ""}`} aria-label="Назначить" title="Назначить" onClick={() => onPick?.(pick === "person" ? null : "person")}>
+            {personIcon ?? <WSGlyph type="person" size={18} />}
           </button>
         )}
         {timeSlot && (
-          <button className="icon-btn" aria-label="Событие" title="Событие" onClick={() => onPick?.(pick === "time" ? null : "time")}>
+          <button className={`icon-btn ${timeActive ? "icon-btn--warn" : ""}`} aria-label="Событие" title="Событие" onClick={() => onPick?.(pick === "time" ? null : "time")}>
             <WSGlyph type="rows" size={18} />
           </button>
         )}

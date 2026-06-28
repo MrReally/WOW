@@ -1,14 +1,15 @@
 import type { ID, ISODateTime } from "./common.js";
 
-export type NotificationKind = "issued" | "returned" | "assigned" | "problem" | "info";
+export type NotificationKind = "issued" | "returned" | "assigned" | "stage" | "problem" | "info";
 
-export const NOTIFICATION_KINDS: NotificationKind[] = ["assigned", "issued", "returned", "problem", "info"];
+export const NOTIFICATION_KINDS: NotificationKind[] = ["assigned", "stage", "issued", "returned", "problem", "info"];
 
 export type AdvancedNotificationEvent =
   | "project.assigned"
   | "project.unassigned"
   | "project.invited"
   | "project.invite.responded"
+  | "project.operation_stage.changed"
   | "equipment.units.issued"
   | "equipment.unit.returned"
   | "equipment.return.incomplete"
@@ -20,6 +21,7 @@ export const ADVANCED_NOTIFICATION_EVENTS: AdvancedNotificationEvent[] = [
   "project.unassigned",
   "project.invited",
   "project.invite.responded",
+  "project.operation_stage.changed",
   "equipment.units.issued",
   "equipment.unit.returned",
   "equipment.return.incomplete",
