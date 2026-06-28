@@ -42,6 +42,7 @@ const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "o
   invited: { label: "приглашён", tone: "info" },
   accepted: { label: "принял", tone: "ok" },
   declined: { label: "отклонил", tone: "warn" },
+  cancelled: { label: "отменён", tone: "neutral" },
 };
 
 type ProjectTab = "overview" | "reservations" | "timing" | "team" | "contractors" | "finance";
@@ -459,6 +460,7 @@ export function ProjectDetailPage() {
             const roleAssignments = (assignments.data ?? []).filter((a) => a.roleId === role.id);
             const filled = roleAssignments.filter((a) => a.status === "added" || a.status === "accepted").length;
             const pending = roleAssignments.filter((a) => a.status === "invited").length;
+            const closed = filled >= role.requiredCount;
             const draft = roleDrafts[role.id] ?? {
               title: role.title,
               requiredCount: String(role.requiredCount),
@@ -467,9 +469,10 @@ export function ProjectDetailPage() {
             const activeIds = new Set(
               (assignments.data ?? [])
                 .filter((a) => a.status !== "declined")
+                .filter((a) => a.status !== "cancelled")
                 .map((a) => a.userId)
             );
-            const available = (people.data ?? []).filter((u) => !activeIds.has(u.id));
+            const available = closed ? [] : (people.data ?? []).filter((u) => !activeIds.has(u.id));
             const selected = (assignCandidates[role.id] ?? []).filter((uid) => available.some((u) => u.id === uid));
             const toggleCandidate = (uid: string) =>
               setAssignCandidates((prev) => {
@@ -499,6 +502,7 @@ export function ProjectDetailPage() {
                     <p className="card__subtitle">
                       {filled}/{role.requiredCount} мест
                       {pending > 0 ? ` · ${pending} ждут` : ""}
+                      {closed ? " · закрыто" : ""}
                       {role.rateEUR != null ? ` · ${role.rateEUR} €` : ""}
                     </p>
                   </div>
@@ -523,7 +527,7 @@ export function ProjectDetailPage() {
                       return (
                         <div key={a.id} className="row row--between" style={{ gap: 8 }}>
                           <div className="row" style={{ gap: 6, minWidth: 0 }}>
-                            <Chip label={userName(a.userId)} tone={a.status === "declined" ? "neutral" : "ok"} />
+                            <Chip label={userName(a.userId)} tone={a.status === "declined" || a.status === "cancelled" ? "neutral" : "ok"} />
                             <Chip label={st.label} tone={st.tone} />
                           </div>
                           {canAssign && (

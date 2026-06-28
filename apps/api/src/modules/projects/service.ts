@@ -100,6 +100,8 @@ interface AssignmentRow {
   role_note: string | null;
   status: Projects.AssignmentStatus;
   rate_eur: string | null;
+  telegram_chat_id: string | null;
+  telegram_message_id: number | null;
   invited_by: string | null;
   responded_at: Date | null;
   created_at: Date;
@@ -220,6 +222,8 @@ const assignmentDTO = (r: AssignmentRow): Projects.AssignmentDTO => ({
   roleNote: r.role_note,
   status: r.status,
   rateEUR: r.rate_eur === null ? null : Number(r.rate_eur),
+  telegramChatId: r.telegram_chat_id,
+  telegramMessageId: r.telegram_message_id,
   invitedByUserId: r.invited_by,
   respondedAt: r.responded_at ? r.responded_at.toISOString() : null,
   createdAt: r.created_at.toISOString(),
@@ -290,25 +294,54 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
     );
   }
 
-  async function closeOverflowInvites(client: Sql, roleId: ID, exceptAssignmentId?: ID): Promise<void> {
+  async function roleFilled(client: Sql, roleId: ID, exceptAssignmentId?: ID): Promise<boolean> {
     const role = await one<ProjectRoleRow>(client, `SELECT * FROM projects.project_roles WHERE id=$1`, [roleId]);
-    if (!role) return;
+    if (!role) return false;
     const filled = await one<{ count: string }>(
       client,
       `SELECT COUNT(*)::text AS count FROM projects.assignments
-       WHERE role_id=$1 AND status IN ('added','accepted')`,
-      [roleId]
-    );
-    if (Number(filled?.count ?? 0) < role.required_count) return;
-    await query(
-      client,
-      `UPDATE projects.assignments
-       SET status='declined', responded_at=now()
-       WHERE role_id=$1
-         AND status='invited'
-         AND ($2::uuid IS NULL OR id <> $2::uuid)`,
+       WHERE role_id=$1 AND status IN ('added','accepted') AND ($2::uuid IS NULL OR id <> $2::uuid)`,
       [roleId, exceptAssignmentId ?? null]
     );
+    return Number(filled?.count ?? 0) >= role.required_count;
+  }
+
+  async function cancelOverflowInvites(client: Sql, roleId: ID, exceptAssignmentId?: ID): Promise<AssignmentRow[]> {
+    if (!(await roleFilled(client, roleId))) return [];
+    return query<AssignmentRow>(
+      client,
+      `UPDATE projects.assignments
+       SET status='cancelled', responded_at=now()
+       WHERE role_id=$1
+         AND status='invited'
+         AND ($2::uuid IS NULL OR id <> $2::uuid)
+       RETURNING *`,
+      [roleId, exceptAssignmentId ?? null]
+    );
+  }
+
+  async function cancelOtherUserInvites(client: Sql, projectId: ID, userId: ID, exceptAssignmentId: ID): Promise<AssignmentRow[]> {
+    return query<AssignmentRow>(
+      client,
+      `UPDATE projects.assignments
+       SET status='cancelled', responded_at=now()
+       WHERE project_id=$1 AND user_id=$2 AND id <> $3 AND status='invited'
+       RETURNING *`,
+      [projectId, userId, exceptAssignmentId]
+    );
+  }
+
+  async function publishCancelled(rows: AssignmentRow[], reason: Projects.InviteCancelledEvent["reason"]) {
+    for (const row of rows) {
+      await bus.publish({
+        type: "project.invite.cancelled",
+        projectId: row.project_id,
+        userId: row.user_id,
+        assignmentId: row.id,
+        reason,
+        at: new Date().toISOString(),
+      });
+    }
   }
 
   return {
@@ -793,7 +826,8 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
           `UPDATE projects.assignments SET role_note=$2, rate_eur=$3 WHERE role_id=$1`,
           [id, nextTitle, nextRateEUR]
         );
-        await closeOverflowInvites(client, id);
+        const cancelled = await cancelOverflowInvites(client, id);
+        await publishCancelled(cancelled, "role_filled");
       });
       return projectRoleDTO(row!);
     },
@@ -831,13 +865,22 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       if (input.roleId) {
         role = await one<ProjectRoleRow>(db, `SELECT * FROM projects.project_roles WHERE id=$1 AND project_id=$2`, [input.roleId, input.projectId]);
         if (!role) throw NotFound("project role", input.roleId);
+        if (await roleFilled(db, role.id)) throw Conflict("роль уже закрыта");
       }
-      const dup = await one<AssignmentRow>(
+      const existingConfirmed = await one<AssignmentRow>(
         db,
-        `SELECT id FROM projects.assignments WHERE project_id=$1 AND user_id=$2`,
+        `SELECT id FROM projects.assignments WHERE project_id=$1 AND user_id=$2 AND status IN ('added','accepted')`,
         [input.projectId, input.userId]
       );
-      if (dup) throw Conflict("этот человек уже назначен на проект");
+      if (existingConfirmed) throw Conflict("этот человек уже участвует в проекте");
+      if (input.roleId) {
+        const duplicateRoleInvite = await one<AssignmentRow>(
+          db,
+          `SELECT id FROM projects.assignments WHERE project_id=$1 AND user_id=$2 AND role_id=$3 AND status='invited'`,
+          [input.projectId, input.userId, input.roleId]
+        );
+        if (duplicateRoleInvite) throw Conflict("этому человеку уже отправлено приглашение на эту роль");
+      }
       const status: Projects.AssignmentStatus = input.invite ? "invited" : "added";
       const roleNote = role?.title ?? input.roleNote ?? null;
       const rateEUR = role?.rate_eur === undefined ? (input.rateEUR ?? null) : role.rate_eur;
@@ -848,9 +891,11 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         [input.projectId, input.roleId ?? null, input.userId, roleNote, status, rateEUR, input.invitedByUserId ?? null]
       );
       if (row?.role_id && status === "added") {
+        let cancelled: AssignmentRow[] = [];
         await tx(async (client) => {
-          await closeOverflowInvites(client, row!.role_id!, row!.id);
+          cancelled = await cancelOverflowInvites(client, row!.role_id!, row!.id);
         });
+        await publishCancelled(cancelled, "role_filled");
       }
       const at = new Date().toISOString();
       if (input.invite) {
@@ -860,6 +905,13 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         await bus.publish({ type: "project.assigned", projectId: input.projectId, userId: input.userId, at });
       }
       return assignmentDTO(row!);
+    },
+    async recordAssignmentTelegramMessage(id, chatId, messageId) {
+      await query(
+        db,
+        `UPDATE projects.assignments SET telegram_chat_id=$2, telegram_message_id=$3 WHERE id=$1`,
+        [id, chatId, messageId]
+      );
     },
     async removeAssignment(id) {
       const row = await one<AssignmentRow>(db, `SELECT * FROM projects.assignments WHERE id=$1`, [id]);
@@ -880,17 +932,46 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       const row = await one<AssignmentRow>(db, `SELECT * FROM projects.assignments WHERE id=$1`, [assignmentId]);
       if (!row) throw NotFound("assignment", assignmentId);
       if (row.user_id !== byUserId) throw BadRequest("это приглашение адресовано не вам");
-      const status: Projects.AssignmentStatus = accept ? "accepted" : "declined";
-      let updated: AssignmentRow | null = null;
+      let updated: AssignmentRow | undefined;
+      let cancelledRoleRows: AssignmentRow[] = [];
+      let cancelledUserRows: AssignmentRow[] = [];
+      let ownCancelReason: Projects.InviteCancelledEvent["reason"] = "role_filled";
       await tx(async (client) => {
-        updated = await one<AssignmentRow>(
+        if (accept) {
+          const alreadyInProject = await one<AssignmentRow>(
+            client,
+            `SELECT * FROM projects.assignments
+             WHERE project_id=$1 AND user_id=$2 AND id <> $3 AND status IN ('added','accepted')
+             LIMIT 1`,
+            [row.project_id, row.user_id, assignmentId]
+          );
+          if (alreadyInProject) {
+            updated = (await one<AssignmentRow>(
+              client,
+              `UPDATE projects.assignments SET status='cancelled', responded_at=now() WHERE id=$1 RETURNING *`,
+              [assignmentId]
+            )) ?? undefined;
+            ownCancelReason = "already_assigned";
+            return;
+          }
+          if (row.role_id && await roleFilled(client, row.role_id, assignmentId)) {
+            updated = (await one<AssignmentRow>(
+              client,
+              `UPDATE projects.assignments SET status='cancelled', responded_at=now() WHERE id=$1 RETURNING *`,
+              [assignmentId]
+            )) ?? undefined;
+            return;
+          }
+        }
+        const status: Projects.AssignmentStatus = accept ? "accepted" : "declined";
+        updated = (await one<AssignmentRow>(
           client,
           `UPDATE projects.assignments SET status=$2, responded_at=now() WHERE id=$1 RETURNING *`,
           [assignmentId, status]
-        );
+        )) ?? undefined;
         if (accept) {
           if (row.role_id) {
-            await closeOverflowInvites(client, row.role_id, assignmentId);
+            cancelledRoleRows = await cancelOverflowInvites(client, row.role_id, assignmentId);
           } else {
             await query(
               client,
@@ -903,17 +984,26 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
               [row.project_id, assignmentId, row.role_note]
             );
           }
+          cancelledUserRows = await cancelOtherUserInvites(client, row.project_id, row.user_id, assignmentId);
         }
       });
-      await bus.publish({
-        type: "project.invite.responded",
-        projectId: row.project_id,
-        userId: row.user_id,
-        assignmentId,
-        accepted: accept,
-        at: new Date().toISOString(),
-      });
-      return assignmentDTO(updated!);
+      if (!updated) throw NotFound("assignment", assignmentId);
+      const finalAssignment = updated;
+      if (finalAssignment.status === "cancelled") {
+        await publishCancelled([finalAssignment], ownCancelReason);
+      } else {
+        await bus.publish({
+          type: "project.invite.responded",
+          projectId: row.project_id,
+          userId: row.user_id,
+          assignmentId,
+          accepted: accept,
+          at: new Date().toISOString(),
+        });
+      }
+      await publishCancelled(cancelledRoleRows, "role_filled");
+      await publishCancelled(cancelledUserRows, "already_assigned");
+      return assignmentDTO(finalAssignment);
     },
     async listProjectsForUser(userId) {
       // "My projects" = directly added or accepted invites (not pending/declined).

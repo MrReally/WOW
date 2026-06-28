@@ -14,11 +14,11 @@ export async function sendTelegramMessage(
   chatId: string | null,
   text: string,
   opts?: { inlineKeyboard?: InlineButton[][] }
-): Promise<void> {
+): Promise<{ chatId: string; messageId: number } | null> {
   const token = env.auth.telegramBotToken;
-  if (!token || !chatId) return;
+  if (!token || !chatId) return null;
   // A telegram id is numeric; usernames won't work as chat_id, skip those.
-  if (!/^\d+$/.test(chatId)) return;
+  if (!/^\d+$/.test(chatId)) return null;
   const body: Record<string, unknown> = { chat_id: chatId, text, parse_mode: "HTML" };
   if (opts?.inlineKeyboard) {
     body.reply_markup = {
@@ -26,12 +26,35 @@ export async function sendTelegramMessage(
     };
   }
   try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    const json = await res.json() as { ok?: boolean; result?: { message_id?: number } };
+    const messageId = json.result?.message_id;
+    return json.ok && typeof messageId === "number" ? { chatId, messageId } : null;
   } catch {
     // Telegram delivery is best-effort; never break the publisher.
+    return null;
+  }
+}
+
+export async function editTelegramMessage(
+  chatId: string | null,
+  messageId: number | null,
+  text: string
+): Promise<void> {
+  const token = env.auth.telegramBotToken;
+  if (!token || !chatId || !messageId) return;
+  if (!/^\d+$/.test(chatId)) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, text, parse_mode: "HTML" }),
+    });
+  } catch {
+    // Best-effort.
   }
 }

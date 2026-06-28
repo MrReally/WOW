@@ -19,7 +19,7 @@ import { createApexService } from "./modules/apex/service.js";
 import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
-import { sendTelegramMessage } from "./core/telegram.js";
+import { editTelegramMessage, sendTelegramMessage } from "./core/telegram.js";
 import type { Notifications } from "@sever/contracts";
 import type { DomainEvent } from "./core/eventBus.js";
 
@@ -83,6 +83,10 @@ export function createModules(bus: EventBus = new EventBus()) {
       case "project.invite.responded": {
         const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
         return { title: event.accepted ? "Приглашение принято" : "Приглашение отклонено", body: `${publicName(user)} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+      }
+      case "project.invite.cancelled": {
+        const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
+        return { title: "Приглашение отменено", body: `${publicName(user)} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
       }
       case "equipment.units.issued": {
         const project = await projects.service.getProject(event.projectId);
@@ -175,7 +179,7 @@ export function createModules(bus: EventBus = new EventBus()) {
       `🎚 Роль: ${assignment.roleNote ?? "—"}`,
       `💶 Ставка: ${rate}`,
     ];
-    await sendTelegramMessage(user?.telegramId ?? null, lines.join("\n"), {
+    const sent = await sendTelegramMessage(user?.telegramId ?? null, lines.join("\n"), {
       inlineKeyboard: [
         [
           { text: "✅ Принять", callbackData: `inv:accept:${e.assignmentId}` },
@@ -183,6 +187,7 @@ export function createModules(bus: EventBus = new EventBus()) {
         ],
       ],
     });
+    if (sent) await projects.service.recordAssignmentTelegramMessage(e.assignmentId, sent.chatId, sent.messageId);
   });
 
   bus.on("project.invite.responded", async (e) => {
@@ -198,6 +203,19 @@ export function createModules(bus: EventBus = new EventBus()) {
       body: `${publicName(who)} ${e.accepted ? "принял" : "отклонил"} участие в «${project?.name ?? ""}»`,
       link: `/projects/${e.projectId}`,
     });
+  });
+
+  bus.on("project.invite.cancelled", async (e) => {
+    const [project, assignment] = await Promise.all([
+      projects.service.getProject(e.projectId),
+      projects.service.getAssignment(e.assignmentId),
+    ]);
+    if (!assignment) return;
+    const role = assignment.roleNote ? `«${assignment.roleNote}»` : "эта роль";
+    const body = e.reason === "already_assigned"
+      ? `Вы уже участвуете в проекте «${project?.name ?? ""}» в другой роли. Это приглашение отменено.`
+      : `На роль ${role} в проекте «${project?.name ?? ""}» уже найдено нужное количество людей. Это приглашение отменено.`;
+    await editTelegramMessage(assignment.telegramChatId, assignment.telegramMessageId, body);
   });
 
   bus.on("equipment.units.issued", async (e) => {
@@ -244,11 +262,24 @@ export function createModules(bus: EventBus = new EventBus()) {
     if (!assignment) return "Приглашение не найдено.";
     const user = await people.service.getById(assignment.userId);
     if (!user || user.telegramId !== fromChatId) return "Это приглашение адресовано не вам.";
-    if (assignment.status === "accepted" || assignment.status === "declined") {
-      return assignment.status === "accepted" ? "✅ Вы уже приняли это приглашение." : "❌ Вы уже отклонили это приглашение.";
+    if (assignment.status === "accepted" || assignment.status === "declined" || assignment.status === "cancelled") {
+      if (assignment.status === "accepted") return "✅ Вы уже приняли это приглашение.";
+      if (assignment.status === "declined") return "❌ Вы уже отклонили участие.";
+      const project = await projects.service.getProject(assignment.projectId);
+      const role = assignment.roleNote ? `«${assignment.roleNote}»` : "эту роль";
+      return `Приглашение отменено: на ${role} в проекте «${project?.name ?? ""}» уже найден человек.`;
     }
-    await projects.service.respondToInvite(assignmentId, accept, assignment.userId);
+    const updated = await projects.service.respondToInvite(assignmentId, accept, assignment.userId);
     const project = await projects.service.getProject(assignment.projectId);
+    if (updated.status === "cancelled") {
+      const assignments = await projects.service.listAssignments(assignment.projectId);
+      const alreadyInProject = assignments.some((a) => a.userId === assignment.userId && a.id !== assignment.id && (a.status === "added" || a.status === "accepted"));
+      if (alreadyInProject) {
+        return `Приглашение отменено: вы уже участвуете в проекте «${project?.name ?? ""}» в другой роли.`;
+      }
+      const role = updated.roleNote ? `«${updated.roleNote}»` : "эту роль";
+      return `Приглашение отменено: на ${role} в проекте «${project?.name ?? ""}» уже найден человек.`;
+    }
     return accept
       ? `✅ Вы приняли участие в проекте «${project?.name ?? ""}». Детали — в приложении.`
       : `❌ Вы отклонили участие в проекте «${project?.name ?? ""}».`;

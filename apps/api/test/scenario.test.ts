@@ -544,8 +544,28 @@ describe("Tech pickup/return → некомплект", () => {
     expect((await billing.projectInvoice(project.id)).laborEUR).toBe(200);
 
     await projects.service.respondToInvite(a.id, true, first.id);
-    expect((await projects.service.getAssignment(b.id))?.status).toBe("declined");
+    expect((await projects.service.getAssignment(b.id))?.status).toBe("cancelled");
     expect((await billing.projectInvoice(project.id)).laborEUR).toBe(200);
+    await expect(projects.service.addAssignment({ projectId: project.id, roleId: role.id, userId: second.id, invite: true, invitedByUserId: inviter.id })).rejects.toThrow();
+  });
+
+  it("project roles: a person can be invited to several roles but accept only one", async () => {
+    const { projects } = wiring;
+    const inviter = await makeTech("Multi Role Inviter");
+    const person = await makeTech("Multi Role Person");
+    const client = await projects.service.createClient({ name: `Multi Role ${Date.now()}` });
+    const project = await projects.service.createProject({
+      name: "Multi Role Project", clientId: client.id,
+      startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    const chief = await projects.service.createProjectRole({ projectId: project.id, title: "Шеф монтажа", requiredCount: 1, rateEUR: 200 });
+    const tech = await projects.service.createProjectRole({ projectId: project.id, title: "Монтажник", requiredCount: 1, rateEUR: 100 });
+    const a = await projects.service.addAssignment({ projectId: project.id, roleId: chief.id, userId: person.id, invite: true, invitedByUserId: inviter.id });
+    const b = await projects.service.addAssignment({ projectId: project.id, roleId: tech.id, userId: person.id, invite: true, invitedByUserId: inviter.id });
+
+    await projects.service.respondToInvite(a.id, true, person.id);
+    expect((await projects.service.getAssignment(a.id))?.status).toBe("accepted");
+    expect((await projects.service.getAssignment(b.id))?.status).toBe("cancelled");
   });
 
   it("project invoice: rental billed from reservations, costs from crew rates", async () => {

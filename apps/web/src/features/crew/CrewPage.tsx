@@ -266,7 +266,7 @@ export function CrewPage() {
                     <p className="card__title">{project.name}</p>
                     <p className="card__subtitle">{dateRange(project.startsAt, project.endsAt)}</p>
                   </div>
-                  <Chip label={assignment.status} tone={assignment.status === "declined" ? "warn" : "ok"} />
+                  <Chip label={assignment.status} tone={assignment.status === "declined" ? "warn" : assignment.status === "cancelled" ? "neutral" : "ok"} />
                 </div>
                 <p className="card__subtitle" style={{ marginTop: 6 }}>
                   {assignment.roleNote || "роль не указана"}{assignment.rateEUR != null ? ` · ${assignment.rateEUR} €` : ""}

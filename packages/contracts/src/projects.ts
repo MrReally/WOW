@@ -261,11 +261,12 @@ export interface UpdateProjectRoleInput {
 
 // A person is either added directly (status "added") or invited (status
 // "invited") — an invite is delivered to Telegram and the person accepts or
-// declines, moving it to "accepted" / "declined".
+// declines. "cancelled" means the system closed the invite, usually because the
+// role was filled before the person answered.
 
-export type AssignmentStatus = "added" | "invited" | "accepted" | "declined";
+export type AssignmentStatus = "added" | "invited" | "accepted" | "declined" | "cancelled";
 
-export const ASSIGNMENT_STATUSES: AssignmentStatus[] = ["added", "invited", "accepted", "declined"];
+export const ASSIGNMENT_STATUSES: AssignmentStatus[] = ["added", "invited", "accepted", "declined", "cancelled"];
 
 export interface AssignmentDTO {
   id: ID;
@@ -276,6 +277,8 @@ export interface AssignmentDTO {
   status: AssignmentStatus;
   /** Agreed rate in EUR for this engagement; null = unset / by agreement. */
   rateEUR: number | null;
+  telegramChatId: string | null;
+  telegramMessageId: number | null;
   /** Who sent the invite (people id), null for a direct add. */
   invitedByUserId: ID | null;
   respondedAt: ISODateTime | null;
@@ -384,6 +387,7 @@ export interface ProjectsService {
   listAssignments(projectId: ID): Promise<AssignmentDTO[]>;
   getAssignment(id: ID): Promise<AssignmentDTO | null>;
   addAssignment(input: AddAssignmentInput): Promise<AssignmentDTO>;
+  recordAssignmentTelegramMessage(id: ID, chatId: string, messageId: number): Promise<void>;
   /** Remove a person from the project (also drops them from its timing blocks). */
   removeAssignment(id: ID): Promise<void>;
   /** Accept or decline an invite (called from the Telegram bot). Verifies the
@@ -456,10 +460,20 @@ export interface InviteRespondedEvent {
   at: ISODateTime;
 }
 
+export interface InviteCancelledEvent {
+  type: "project.invite.cancelled";
+  projectId: ID;
+  userId: ID;
+  assignmentId: ID;
+  reason: "role_filled" | "already_assigned";
+  at: ISODateTime;
+}
+
 export type ProjectsEvent =
   | ProjectConfirmedEvent
   | ReservationConflictEvent
   | ProjectAssignedEvent
   | ProjectUnassignedEvent
   | ProjectInvitedEvent
-  | InviteRespondedEvent;
+  | InviteRespondedEvent
+  | InviteCancelledEvent;

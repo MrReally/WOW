@@ -135,11 +135,13 @@ CREATE TABLE IF NOT EXISTS projects.assignments (
 );
 CREATE INDEX IF NOT EXISTS assignments_user_idx ON projects.assignments(user_id);
 
--- Invitation flow: added directly, or invited → accepted / declined.
+-- Invitation flow: added directly, or invited → accepted / declined / cancelled.
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS status       text NOT NULL DEFAULT 'added';
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS rate_eur     numeric(12,2);
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS invited_by   uuid;
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS responded_at timestamptz;
+ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS telegram_chat_id text;
+ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS telegram_message_id integer;
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS role_id      uuid REFERENCES projects.project_roles(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS assignments_role_idx ON projects.assignments(role_id);
 
