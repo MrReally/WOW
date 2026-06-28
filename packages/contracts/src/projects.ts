@@ -225,7 +225,33 @@ export interface SetOperationUnitMarkInput {
   note?: string | null;
 }
 
-// ── Assignments (people on a project) ────────────────────────────────────────
+// ── Project roles + assignments (people on a project) ────────────────────────
+// A project role is the staffing need: title, required seats, and per-person
+// rate. Assignments are candidates/confirmed people attached to that role.
+
+export interface ProjectRoleDTO {
+  id: ID;
+  projectId: ID;
+  title: string;
+  requiredCount: number;
+  /** Planned per-person rate in EUR; null = unset / by agreement. */
+  rateEUR: number | null;
+  createdAt: ISODateTime;
+}
+
+export interface CreateProjectRoleInput {
+  projectId: ID;
+  title: string;
+  requiredCount: number;
+  rateEUR?: number | null;
+}
+
+export interface UpdateProjectRoleInput {
+  title?: string;
+  requiredCount?: number;
+  rateEUR?: number | null;
+}
+
 // A person is either added directly (status "added") or invited (status
 // "invited") — an invite is delivered to Telegram and the person accepts or
 // declines, moving it to "accepted" / "declined".
@@ -237,6 +263,7 @@ export const ASSIGNMENT_STATUSES: AssignmentStatus[] = ["added", "invited", "acc
 export interface AssignmentDTO {
   id: ID;
   projectId: ID;
+  roleId: ID | null;
   userId: ID; // people.userId, opaque
   roleNote: string | null;
   status: AssignmentStatus;
@@ -250,6 +277,7 @@ export interface AssignmentDTO {
 
 export interface AddAssignmentInput {
   projectId: ID;
+  roleId?: ID | null;
   userId: ID;
   roleNote?: string | null;
   rateEUR?: number | null;
@@ -341,6 +369,10 @@ export interface ProjectsService {
   createChecklistItem(input: CreateProjectChecklistItemInput): Promise<ProjectChecklistItemDTO>;
   updateChecklistItem(id: ID, input: UpdateProjectChecklistItemInput): Promise<ProjectChecklistItemDTO>;
   deleteChecklistItem(id: ID): Promise<void>;
+  listProjectRoles(projectId: ID): Promise<ProjectRoleDTO[]>;
+  createProjectRole(input: CreateProjectRoleInput): Promise<ProjectRoleDTO>;
+  updateProjectRole(id: ID, input: UpdateProjectRoleInput): Promise<ProjectRoleDTO>;
+  deleteProjectRole(id: ID): Promise<void>;
   listAssignments(projectId: ID): Promise<AssignmentDTO[]>;
   getAssignment(id: ID): Promise<AssignmentDTO | null>;
   addAssignment(input: AddAssignmentInput): Promise<AssignmentDTO>;

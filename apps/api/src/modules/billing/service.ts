@@ -27,9 +27,10 @@ export function createBillingService(deps: BillingDeps): BillingService {
     const project = await deps.projects.getProject(projectId);
     if (!project) throw NotFound("project", projectId);
 
-    const [reservations, assignments, models, types, txs, contractorItems, contractors] = await Promise.all([
+    const [reservations, assignments, projectRoles, models, types, txs, contractorItems, contractors] = await Promise.all([
       deps.projects.listReservations(projectId),
       deps.projects.listAssignments(projectId),
+      deps.projects.listProjectRoles(projectId),
       deps.equipment.listModels(),
       deps.equipment.listTypes(),
       deps.finance.listTransactions({ projectId }),
@@ -73,19 +74,36 @@ export function createBillingService(deps: BillingDeps): BillingService {
     const rentalEUR = round2(rentalLines.reduce((s, l) => s + l.amountEUR, 0));
     const contractorCostEUR = round2(contractorLines.reduce((s, l) => s + l.costEUR, 0));
 
-    const crew = assignments.filter((a) => (a.status === "added" || a.status === "accepted") && a.rateEUR != null);
-    const names = await Promise.all(crew.map((a) => deps.people.getById(a.userId)));
-    const laborLines: Finance.InvoiceLineDTO[] = crew.map((a, i) => ({
-      refId: a.id,
-      section: "Crew",
-      label: names[i]?.nickname || names[i]?.displayName || "—",
-      detail: [a.roleNote || "crew", a.status === "invited" ? "invited" : null].filter(Boolean).join(" · "),
-      qty: 1,
-      unitEUR: round2(a.rateEUR ?? 0),
-      periods: 1,
-      amountEUR: round2(a.rateEUR ?? 0),
-      costEUR: round2(a.rateEUR ?? 0),
-    }));
+    const laborLines: Finance.InvoiceLineDTO[] = projectRoles.length > 0
+      ? projectRoles
+          .filter((role) => role.rateEUR != null)
+          .map((role) => {
+            const filled = assignments.filter((a) => a.roleId === role.id && (a.status === "added" || a.status === "accepted")).length;
+            return {
+              refId: role.id,
+              section: "Crew",
+              label: role.title,
+              detail: `${filled}/${role.requiredCount} confirmed`,
+              qty: role.requiredCount,
+              unitEUR: round2(role.rateEUR ?? 0),
+              periods: 1,
+              amountEUR: round2((role.rateEUR ?? 0) * role.requiredCount),
+              costEUR: round2((role.rateEUR ?? 0) * role.requiredCount),
+            };
+          })
+      : assignments
+          .filter((a) => (a.status === "added" || a.status === "accepted") && a.rateEUR != null)
+          .map((a) => ({
+            refId: a.id,
+            section: "Crew",
+            label: a.roleNote || "crew",
+            detail: a.status,
+            qty: 1,
+            unitEUR: round2(a.rateEUR ?? 0),
+            periods: 1,
+            amountEUR: round2(a.rateEUR ?? 0),
+            costEUR: round2(a.rateEUR ?? 0),
+          }));
     const laborEUR = round2(laborLines.reduce((s, l) => s + l.amountEUR, 0));
 
     let paidEUR = 0;

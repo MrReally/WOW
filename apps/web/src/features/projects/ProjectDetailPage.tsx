@@ -12,6 +12,7 @@ import {
   useReservations,
   useTimings,
   useAssignments,
+  useProjectRoles,
   usePeople,
   useEquipmentModels,
   useSetProjectStatus,
@@ -22,6 +23,9 @@ import {
   useDeleteTiming,
   useAddAssignment,
   useRemoveAssignment,
+  useCreateProjectRole,
+  useUpdateProjectRole,
+  useDeleteProjectRole,
   useIssueResolvedUnits,
   useAllUnits,
   useProjectInvoice,
@@ -87,6 +91,7 @@ export function ProjectDetailPage() {
   const reservations = useReservations(id);
   const timings = useTimings(id);
   const assignments = useAssignments(id);
+  const projectRoles = useProjectRoles(id);
   const people = usePeople(canViewPeople);
   const models = useEquipmentModels();
   const allUnits = useAllUnits();
@@ -100,6 +105,9 @@ export function ProjectDetailPage() {
   const deleteTiming = useDeleteTiming();
   const addAssignment = useAddAssignment();
   const removeAssignment = useRemoveAssignment();
+  const createProjectRole = useCreateProjectRole();
+  const updateProjectRole = useUpdateProjectRole();
+  const deleteProjectRole = useDeleteProjectRole();
   const issueResolved = useIssueResolvedUnits();
 
   const [resModel, setResModel] = useState("");
@@ -107,9 +115,11 @@ export function ProjectDetailPage() {
   const [timingTitle, setTimingTitle] = useState("");
   const [timingStart, setTimingStart] = useState("");
   const [timingEnd, setTimingEnd] = useState("");
-  const [assignRole, setAssignRole] = useState("");
-  const [assignRate, setAssignRate] = useState("");
-  const [assignCandidates, setAssignCandidates] = useState<string[]>([]);
+  const [roleTitle, setRoleTitle] = useState("");
+  const [roleCount, setRoleCount] = useState("1");
+  const [roleRate, setRoleRate] = useState("");
+  const [roleDrafts, setRoleDrafts] = useState<Record<string, { title: string; requiredCount: string; rateEUR: string }>>({});
+  const [assignCandidates, setAssignCandidates] = useState<Record<string, string[]>>({});
   const [resolving, setResolving] = useState<Projects.ReservationDTO | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [invoiceVersions, setInvoiceVersions] = useState<StoredInvoiceVersion[]>([]);
@@ -156,7 +166,9 @@ export function ProjectDetailPage() {
     return model?.trackingMode === "quantity" ? sum : sum + r.qty;
   }, 0);
   const timingCount = (timings.data ?? []).length;
-  const teamCount = (assignments.data ?? []).length;
+  const teamCount = (projectRoles.data ?? []).length > 0
+    ? (projectRoles.data ?? []).reduce((sum, role) => sum + role.requiredCount, 0)
+    : (assignments.data ?? []).filter((a) => a.status === "added" || a.status === "accepted").length;
   const contractorCost = invoice.data?.contractorCostEUR ?? 0;
   const projectPayableCost = (invoice.data?.contractorCostEUR ?? 0) + (invoice.data?.laborEUR ?? 0);
   const contractorCount = new Set(
@@ -355,7 +367,9 @@ export function ProjectDetailPage() {
       {/* Per-block people editing (for those who manage timings) */}
       {canTiming &&
         (timings.data ?? []).map((t) => {
-          const onProject = (assignments.data ?? []).map((a) => a.userId);
+          const onProject = (assignments.data ?? [])
+            .filter((a) => a.status === "added" || a.status === "accepted")
+            .map((a) => a.userId);
           const candidates = onProject.filter((uid) => !t.assigneeIds.includes(uid));
           return (
             <Card key={t.id}>
@@ -437,28 +451,169 @@ export function ProjectDetailPage() {
       {currentTab === "team" && canViewPeople && (
         <>
       <SectionTitle>Команда</SectionTitle>
-      {(assignments.data ?? []).length === 0 ? (
-        <EmptyState title="Никто не назначен" />
+      {(projectRoles.data ?? []).length === 0 && (assignments.data ?? []).length === 0 ? (
+        <EmptyState title="Ролей пока нет" />
       ) : (
         <div className="stack">
-          {(assignments.data ?? []).map((a) => {
+          {(projectRoles.data ?? []).map((role) => {
+            const roleAssignments = (assignments.data ?? []).filter((a) => a.roleId === role.id);
+            const filled = roleAssignments.filter((a) => a.status === "added" || a.status === "accepted").length;
+            const pending = roleAssignments.filter((a) => a.status === "invited").length;
+            const draft = roleDrafts[role.id] ?? {
+              title: role.title,
+              requiredCount: String(role.requiredCount),
+              rateEUR: role.rateEUR == null ? "" : String(role.rateEUR),
+            };
+            const activeIds = new Set(
+              (assignments.data ?? [])
+                .filter((a) => a.status !== "declined")
+                .map((a) => a.userId)
+            );
+            const available = (people.data ?? []).filter((u) => !activeIds.has(u.id));
+            const selected = (assignCandidates[role.id] ?? []).filter((uid) => available.some((u) => u.id === uid));
+            const toggleCandidate = (uid: string) =>
+              setAssignCandidates((prev) => {
+                const current = prev[role.id] ?? [];
+                return {
+                  ...prev,
+                  [role.id]: current.includes(uid) ? current.filter((x) => x !== uid) : [...current, uid],
+                };
+              });
+            const submit = async (invite: boolean) => {
+              if (selected.length === 0) return;
+              for (const userId of selected) {
+                await addAssignment.mutateAsync({ projectId: p.id, roleId: role.id, userId, invite });
+              }
+              setAssignCandidates((prev) => ({ ...prev, [role.id]: [] }));
+            };
+            const saveRole = () => {
+              const requiredCount = Math.max(1, Number(draft.requiredCount) || 1);
+              const rateEUR = draft.rateEUR.trim() ? Number(draft.rateEUR) : null;
+              updateProjectRole.mutate({ id: role.id, input: { title: draft.title.trim(), requiredCount, rateEUR } });
+            };
+            return (
+              <Card key={role.id}>
+                <div className="row row--between">
+                  <div style={{ minWidth: 0 }}>
+                    <p className="card__title">{role.title}</p>
+                    <p className="card__subtitle">
+                      {filled}/{role.requiredCount} мест
+                      {pending > 0 ? ` · ${pending} ждут` : ""}
+                      {role.rateEUR != null ? ` · ${role.rateEUR} €` : ""}
+                    </p>
+                  </div>
+                  <div className="row" style={{ gap: 8 }}>
+                    {canAssign && (
+                      <button
+                        className="icon-btn icon-btn--danger"
+                        aria-label="Удалить роль"
+                        title="Удалить роль"
+                        disabled={deleteProjectRole.isPending}
+                        onClick={() => confirm("Удалить роль вместе с кандидатами?") && deleteProjectRole.mutate(role.id)}
+                      >
+                        <ProjectGlyph type="close" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {roleAssignments.length > 0 && (
+                  <div className="stack" style={{ gap: 6, marginTop: 10 }}>
+                    {roleAssignments.map((a) => {
+                      const st = ASSIGN_STATUS[a.status];
+                      return (
+                        <div key={a.id} className="row row--between" style={{ gap: 8 }}>
+                          <div className="row" style={{ gap: 6, minWidth: 0 }}>
+                            <Chip label={userName(a.userId)} tone={a.status === "declined" ? "neutral" : "ok"} />
+                            <Chip label={st.label} tone={st.tone} />
+                          </div>
+                          {canAssign && (
+                            <button
+                              className="icon-btn"
+                              aria-label="Снять кандидата"
+                              title="Снять"
+                              disabled={removeAssignment.isPending}
+                              onClick={() => removeAssignment.mutate(a.id)}
+                            >
+                              <ProjectGlyph type="close" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {canAssign && (
+                  <div className="stack" style={{ gap: 8, marginTop: 10 }}>
+                    <div className="row">
+                      <Field label="Роль">
+                        <Input
+                          value={draft.title}
+                          onChange={(e) => setRoleDrafts((prev) => ({ ...prev, [role.id]: { ...draft, title: e.target.value } }))}
+                        />
+                      </Field>
+                      <Field label="Нужно">
+                        <Input
+                          type="number"
+                          min="1"
+                          value={draft.requiredCount}
+                          onChange={(e) => setRoleDrafts((prev) => ({ ...prev, [role.id]: { ...draft, requiredCount: e.target.value } }))}
+                        />
+                      </Field>
+                      <Field label="€">
+                        <Input
+                          type="number"
+                          min="0"
+                          value={draft.rateEUR}
+                          onChange={(e) => setRoleDrafts((prev) => ({ ...prev, [role.id]: { ...draft, rateEUR: e.target.value } }))}
+                        />
+                      </Field>
+                      <Button variant="secondary" disabled={updateProjectRole.isPending || !draft.title.trim()} onClick={saveRole}>
+                        ✓
+                      </Button>
+                    </div>
+                    {available.length > 0 && (
+                      <>
+                        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+                          {available.map((u) => {
+                            const picked = selected.includes(u.id);
+                            return (
+                              <button
+                                key={u.id}
+                                className={`chip ${picked ? "chip--accent chip--solid" : "chip--neutral"}`}
+                                style={{ border: "none", cursor: "pointer" }}
+                                onClick={() => toggleCandidate(u.id)}
+                                type="button"
+                              >
+                                {personName(u)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="row">
+                          <Button variant="secondary" block disabled={selected.length === 0 || addAssignment.isPending} onClick={() => void submit(false)}>
+                            Добавить
+                          </Button>
+                          <Button block disabled={selected.length === 0 || addAssignment.isPending} onClick={() => void submit(true)}>
+                            TG
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+          {(projectRoles.data ?? []).length === 0 && (assignments.data ?? []).map((a) => {
             const st = ASSIGN_STATUS[a.status];
             return (
               <Card key={a.id}>
                 <div className="row row--between">
-                  <p className="card__title">{userName(a.userId)}</p>
-                  <div className="row" style={{ gap: 8 }}>
-                    <Chip label={st.label} tone={st.tone} />
-                    {canAssign && (
-                      <Button variant="ghost" disabled={removeAssignment.isPending} onClick={() => removeAssignment.mutate(a.id)}>
-                        Снять
-                      </Button>
-                    )}
-                  </div>
+                  <p className="card__title">{a.roleNote || "Роль"}</p>
+                  <Chip label={st.label} tone={st.tone} />
                 </div>
                 <p className="card__subtitle" style={{ marginTop: 2 }}>
-                  {a.roleNote || "роль не указана"}
-                  {a.rateEUR != null ? ` · ${a.rateEUR} €` : ""}
+                  {userName(a.userId)}{a.rateEUR != null ? ` · ${a.rateEUR} €` : ""}
                 </p>
               </Card>
             );
@@ -466,56 +621,30 @@ export function ProjectDetailPage() {
         </div>
       )}
       {canAssign && (() => {
-        const assignedIds = new Set((assignments.data ?? []).map((a) => a.userId));
-        const available = (people.data ?? []).filter((u) => !assignedIds.has(u.id));
-        if (available.length === 0) {
-          return <p className="card__subtitle" style={{ textAlign: "center", padding: 12 }}>Все доступные люди назначены</p>;
-        }
-        const selected = assignCandidates.filter((uid) => available.some((u) => u.id === uid));
-        const rateNum = assignRate ? Number(assignRate) : null;
-        const toggleCandidate = (uid: string) =>
-          setAssignCandidates((prev) => prev.includes(uid) ? prev.filter((x) => x !== uid) : [...prev, uid]);
-        const submit = async (invite: boolean) => {
-          if (selected.length === 0) return;
-          for (const userId of selected) {
-            await addAssignment.mutateAsync({ projectId: p.id, userId, roleNote: assignRole.trim() || null, rateEUR: rateNum, invite });
-          }
-          setAssignCandidates([]);
-          setAssignRole("");
-          setAssignRate("");
-        };
+        const count = Math.max(1, Number(roleCount) || 1);
+        const rateNum = roleRate.trim() ? Number(roleRate) : null;
         return (
           <Card>
             <div className="row">
               <Field label="Роль">
-                <Input value={assignRole} onChange={(e) => setAssignRole(e.target.value)} placeholder="Световик / шеф монтажа…" />
+                <Input value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder="Шеф монтажа" />
               </Field>
-              <Field label="Ставка, €">
-                <Input type="number" value={assignRate} onChange={(e) => setAssignRate(e.target.value)} placeholder="напр. 150" />
+              <Field label="Нужно">
+                <Input type="number" min="1" value={roleCount} onChange={(e) => setRoleCount(e.target.value)} />
               </Field>
-            </div>
-            <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-              {available.map((u) => {
-                const picked = selected.includes(u.id);
-                return (
-                  <button
-                    key={u.id}
-                    className={`chip ${picked ? "chip--accent chip--solid" : "chip--neutral"}`}
-                    style={{ border: "none", cursor: "pointer" }}
-                    onClick={() => toggleCandidate(u.id)}
-                    type="button"
-                  >
-                    {personName(u)}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="row" style={{ marginTop: 4 }}>
-              <Button variant="secondary" block disabled={selected.length === 0 || addAssignment.isPending} onClick={() => void submit(false)}>
-                Добавить
-              </Button>
-              <Button block disabled={selected.length === 0 || addAssignment.isPending} onClick={() => void submit(true)}>
-                TG
+              <Field label="€">
+                <Input type="number" min="0" value={roleRate} onChange={(e) => setRoleRate(e.target.value)} placeholder="150" />
+              </Field>
+              <Button
+                disabled={!roleTitle.trim() || createProjectRole.isPending}
+                onClick={() =>
+                  createProjectRole.mutate(
+                    { projectId: p.id, input: { title: roleTitle.trim(), requiredCount: count, rateEUR: rateNum } },
+                    { onSuccess: () => { setRoleTitle(""); setRoleCount("1"); setRoleRate(""); } }
+                  )
+                }
+              >
+                +
               </Button>
             </div>
           </Card>

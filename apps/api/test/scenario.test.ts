@@ -507,10 +507,12 @@ describe("Tech pickup/return → некомплект", () => {
       startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString(),
     });
 
+    const role = await projects.service.createProjectRole({ projectId: project.id, title: "Световик", requiredCount: 1, rateEUR: 150 });
     const invited = await projects.service.addAssignment({
-      projectId: project.id, userId: guest.id, roleNote: "Световик", rateEUR: 150, invite: true, invitedByUserId: inviter.id,
+      projectId: project.id, roleId: role.id, userId: guest.id, invite: true, invitedByUserId: inviter.id,
     });
     expect(invited.status).toBe("invited");
+    expect(invited.roleId).toBe(role.id);
     expect(invited.rateEUR).toBe(150);
     // Pending invite isn't "my project" yet.
     expect((await projects.service.listProjectsForUser(guest.id)).some((p) => p.id === project.id)).toBe(false);
@@ -525,6 +527,27 @@ describe("Tech pickup/return → некомплект", () => {
     expect((await projects.service.listProjectsForUser(guest.id)).some((p) => p.id === project.id)).toBe(true);
   });
 
+  it("project roles: one staffing slot can have several candidates and one planned cost", async () => {
+    const { projects, billing } = wiring;
+    const inviter = await makeTech("Role Inviter");
+    const first = await makeTech("Role First");
+    const second = await makeTech("Role Second");
+    const client = await projects.service.createClient({ name: `Role ${Date.now()}` });
+    const project = await projects.service.createProject({
+      name: "Role Project", clientId: client.id,
+      startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    const role = await projects.service.createProjectRole({ projectId: project.id, title: "Шеф монтажа", requiredCount: 1, rateEUR: 200 });
+
+    const a = await projects.service.addAssignment({ projectId: project.id, roleId: role.id, userId: first.id, invite: true, invitedByUserId: inviter.id });
+    const b = await projects.service.addAssignment({ projectId: project.id, roleId: role.id, userId: second.id, invite: true, invitedByUserId: inviter.id });
+    expect((await billing.projectInvoice(project.id)).laborEUR).toBe(200);
+
+    await projects.service.respondToInvite(a.id, true, first.id);
+    expect((await projects.service.getAssignment(b.id))?.status).toBe("declined");
+    expect((await billing.projectInvoice(project.id)).laborEUR).toBe(200);
+  });
+
   it("project invoice: rental billed from reservations, costs from crew rates", async () => {
     const { projects, equipment, billing } = wiring;
     const guest = await makeTech("Invoice Crew");
@@ -536,7 +559,8 @@ describe("Tech pickup/return → некомплект", () => {
     const type = await equipment.service.createType({ name: `INV-${Date.now()}`, trackingMode: "serial" });
     const model = await equipment.service.createModel({ typeId: type.id, name: "Inv Fixture", unitCostEUR: 500, dailyPriceEUR: 100 });
     await projects.service.createReservation({ projectId: project.id, modelId: model.id, qty: 2, startsAt: start, endsAt: end });
-    await projects.service.addAssignment({ projectId: project.id, userId: guest.id, roleNote: "Свет", rateEUR: 150 });
+    const role = await projects.service.createProjectRole({ projectId: project.id, title: "Свет", requiredCount: 1, rateEUR: 150 });
+    await projects.service.addAssignment({ projectId: project.id, roleId: role.id, userId: guest.id });
 
     const inv = await billing.projectInvoice(project.id);
     expect(inv.days).toBe(2);

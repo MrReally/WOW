@@ -57,6 +57,13 @@ export function useAssignments(projectId: string) {
   });
 }
 
+export function useProjectRoles(projectId: string) {
+  return useQuery({
+    queryKey: ["projects", "roles", projectId],
+    queryFn: () => api.get<Projects.ProjectRoleDTO[]>(`/api/projects/${projectId}/roles`),
+  });
+}
+
 function invalidateProjects(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["projects"] });
   qc.invalidateQueries({ queryKey: ["apex"] });
@@ -144,9 +151,37 @@ export function useDeleteTiming() {
 export function useAddAssignment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { projectId: string; userId: string; roleNote?: string | null; rateEUR?: number | null; invite?: boolean }) =>
+    mutationFn: (input: { projectId: string; roleId?: string | null; userId: string; roleNote?: string | null; rateEUR?: number | null; invite?: boolean }) =>
       api.post("/api/assignments", input),
     meta: { successMessage: "Готово" },
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
+export function useCreateProjectRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, input }: { projectId: string; input: Omit<Projects.CreateProjectRoleInput, "projectId"> }) =>
+      api.post<Projects.ProjectRoleDTO>(`/api/projects/${projectId}/roles`, input),
+    meta: { successMessage: "Роль добавлена" },
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
+export function useUpdateProjectRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Projects.UpdateProjectRoleInput }) =>
+      api.patch<Projects.ProjectRoleDTO>(`/api/project-roles/${id}`, input),
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
+export function useDeleteProjectRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/project-roles/${id}`),
+    meta: { successMessage: "Роль удалена" },
     onSuccess: () => invalidateProjects(qc),
   });
 }

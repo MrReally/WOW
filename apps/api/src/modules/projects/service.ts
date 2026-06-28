@@ -84,9 +84,18 @@ interface OperationUnitMarkRow {
   created_at: Date;
   updated_at: Date;
 }
+interface ProjectRoleRow {
+  id: string;
+  project_id: string;
+  title: string;
+  required_count: number;
+  rate_eur: string | null;
+  created_at: Date;
+}
 interface AssignmentRow {
   id: string;
   project_id: string;
+  role_id: string | null;
   user_id: string;
   role_note: string | null;
   status: Projects.AssignmentStatus;
@@ -195,9 +204,18 @@ const operationUnitMarkDTO = (r: OperationUnitMarkRow): Projects.OperationUnitMa
   createdAt: r.created_at.toISOString(),
   updatedAt: r.updated_at.toISOString(),
 });
+const projectRoleDTO = (r: ProjectRoleRow): Projects.ProjectRoleDTO => ({
+  id: r.id,
+  projectId: r.project_id,
+  title: r.title,
+  requiredCount: r.required_count,
+  rateEUR: r.rate_eur === null ? null : Number(r.rate_eur),
+  createdAt: r.created_at.toISOString(),
+});
 const assignmentDTO = (r: AssignmentRow): Projects.AssignmentDTO => ({
   id: r.id,
   projectId: r.project_id,
+  roleId: r.role_id,
   userId: r.user_id,
   roleNote: r.role_note,
   status: r.status,
@@ -260,6 +278,27 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
          END,
          created_at`,
       [projectId]
+    );
+  }
+
+  async function closeOverflowInvites(client: Sql, roleId: ID, exceptAssignmentId?: ID): Promise<void> {
+    const role = await one<ProjectRoleRow>(client, `SELECT * FROM projects.project_roles WHERE id=$1`, [roleId]);
+    if (!role) return;
+    const filled = await one<{ count: string }>(
+      client,
+      `SELECT COUNT(*)::text AS count FROM projects.assignments
+       WHERE role_id=$1 AND status IN ('added','accepted')`,
+      [roleId]
+    );
+    if (Number(filled?.count ?? 0) < role.required_count) return;
+    await query(
+      client,
+      `UPDATE projects.assignments
+       SET status='declined', responded_at=now()
+       WHERE role_id=$1
+         AND status='invited'
+         AND ($2::uuid IS NULL OR id <> $2::uuid)`,
+      [roleId, exceptAssignmentId ?? null]
     );
   }
 
@@ -677,6 +716,70 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       const row = await one<{ id: string }>(db, `DELETE FROM projects.project_checklist WHERE id=$1 RETURNING id`, [id]);
       if (!row) throw NotFound("project checklist item", id);
     },
+    async listProjectRoles(projectId) {
+      const project = await this.getProject(projectId);
+      if (!project) throw NotFound("project", projectId);
+      const rows = await query<ProjectRoleRow>(
+        db,
+        `SELECT * FROM projects.project_roles WHERE project_id=$1 ORDER BY created_at`,
+        [projectId]
+      );
+      return rows.map(projectRoleDTO);
+    },
+    async createProjectRole(input) {
+      const project = await this.getProject(input.projectId);
+      if (!project) throw NotFound("project", input.projectId);
+      const row = await one<ProjectRoleRow>(
+        db,
+        `INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur)
+         VALUES ($1,$2,$3,$4) RETURNING *`,
+        [input.projectId, input.title.trim(), input.requiredCount, input.rateEUR ?? null]
+      );
+      return projectRoleDTO(row!);
+    },
+    async updateProjectRole(id, input) {
+      const existing = await one<ProjectRoleRow>(db, `SELECT * FROM projects.project_roles WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("project role", id);
+      const nextTitle = input.title === undefined ? existing.title : input.title.trim();
+      const nextRequiredCount = input.requiredCount ?? existing.required_count;
+      const nextRateEUR = input.rateEUR === undefined ? existing.rate_eur : input.rateEUR;
+      let row: ProjectRoleRow | null = null;
+      await tx(async (client) => {
+        row = await one<ProjectRoleRow>(
+          client,
+          `UPDATE projects.project_roles SET
+             title=$2,
+             required_count=$3,
+             rate_eur=$4
+           WHERE id=$1 RETURNING *`,
+          [id, nextTitle, nextRequiredCount, nextRateEUR]
+        );
+        await query(
+          client,
+          `UPDATE projects.assignments SET role_note=$2, rate_eur=$3 WHERE role_id=$1`,
+          [id, nextTitle, nextRateEUR]
+        );
+        await closeOverflowInvites(client, id);
+      });
+      return projectRoleDTO(row!);
+    },
+    async deleteProjectRole(id) {
+      const existing = await one<ProjectRoleRow>(db, `SELECT * FROM projects.project_roles WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("project role", id);
+      await tx(async (client) => {
+        const assignments = await query<AssignmentRow>(client, `SELECT * FROM projects.assignments WHERE role_id=$1`, [id]);
+        for (const assignment of assignments) {
+          await query(
+            client,
+            `DELETE FROM projects.timing_assignees
+             WHERE user_id=$1 AND timing_id IN (SELECT id FROM projects.timings WHERE project_id=$2)`,
+            [assignment.user_id, assignment.project_id]
+          );
+        }
+        await query(client, `DELETE FROM projects.assignments WHERE role_id=$1`, [id]);
+        await query(client, `DELETE FROM projects.project_roles WHERE id=$1`, [id]);
+      });
+    },
     async listAssignments(projectId) {
       const rows = await query<AssignmentRow>(
         db,
@@ -690,6 +793,11 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       return row ? assignmentDTO(row) : null;
     },
     async addAssignment(input) {
+      let role: ProjectRoleRow | null = null;
+      if (input.roleId) {
+        role = await one<ProjectRoleRow>(db, `SELECT * FROM projects.project_roles WHERE id=$1 AND project_id=$2`, [input.roleId, input.projectId]);
+        if (!role) throw NotFound("project role", input.roleId);
+      }
       const dup = await one<AssignmentRow>(
         db,
         `SELECT id FROM projects.assignments WHERE project_id=$1 AND user_id=$2`,
@@ -697,12 +805,19 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       );
       if (dup) throw Conflict("этот человек уже назначен на проект");
       const status: Projects.AssignmentStatus = input.invite ? "invited" : "added";
+      const roleNote = role?.title ?? input.roleNote ?? null;
+      const rateEUR = role?.rate_eur === undefined ? (input.rateEUR ?? null) : role.rate_eur;
       const row = await one<AssignmentRow>(
         db,
-        `INSERT INTO projects.assignments (project_id, user_id, role_note, status, rate_eur, invited_by)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [input.projectId, input.userId, input.roleNote ?? null, status, input.rateEUR ?? null, input.invitedByUserId ?? null]
+        `INSERT INTO projects.assignments (project_id, role_id, user_id, role_note, status, rate_eur, invited_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [input.projectId, input.roleId ?? null, input.userId, roleNote, status, rateEUR, input.invitedByUserId ?? null]
       );
+      if (row?.role_id && status === "added") {
+        await tx(async (client) => {
+          await closeOverflowInvites(client, row!.role_id!, row!.id);
+        });
+      }
       const at = new Date().toISOString();
       if (input.invite) {
         // Invited: a Telegram invite goes out; no "assigned" notice yet.
@@ -740,16 +855,20 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
           [assignmentId, status]
         );
         if (accept) {
-          await query(
-            client,
-            `UPDATE projects.assignments
-             SET status='declined', responded_at=now()
-             WHERE project_id=$1
-               AND id <> $2
-               AND status='invited'
-               AND COALESCE(role_note, '') = COALESCE($3, '')`,
-            [row.project_id, assignmentId, row.role_note]
-          );
+          if (row.role_id) {
+            await closeOverflowInvites(client, row.role_id, assignmentId);
+          } else {
+            await query(
+              client,
+              `UPDATE projects.assignments
+               SET status='declined', responded_at=now()
+               WHERE project_id=$1
+                 AND id <> $2
+                 AND status='invited'
+                 AND COALESCE(role_note, '') = COALESCE($3, '')`,
+              [row.project_id, assignmentId, row.role_note]
+            );
+          }
         }
       });
       await bus.publish({

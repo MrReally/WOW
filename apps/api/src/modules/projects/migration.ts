@@ -113,6 +113,16 @@ ALTER TABLE projects.project_checklist DROP CONSTRAINT IF EXISTS project_checkli
 ALTER TABLE projects.project_checklist ADD CONSTRAINT project_checklist_group_key_check CHECK (group_key IN ('prep','pickup','delivery','mount','show','dismantle','return'));
 CREATE INDEX IF NOT EXISTS project_checklist_project_idx ON projects.project_checklist(project_id, group_key, created_at);
 
+CREATE TABLE IF NOT EXISTS projects.project_roles (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id     uuid NOT NULL REFERENCES projects.projects(id) ON DELETE CASCADE,
+  title          text NOT NULL,
+  required_count integer NOT NULL DEFAULT 1 CHECK (required_count > 0),
+  rate_eur       numeric(12,2),
+  created_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS project_roles_project_idx ON projects.project_roles(project_id, created_at);
+
 CREATE TABLE IF NOT EXISTS projects.assignments (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL REFERENCES projects.projects(id),
@@ -127,6 +137,30 @@ ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS status       text NOT 
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS rate_eur     numeric(12,2);
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS invited_by   uuid;
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS responded_at timestamptz;
+ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS role_id      uuid REFERENCES projects.project_roles(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS assignments_role_idx ON projects.assignments(role_id);
+
+-- Backfill staffing roles for legacy assignments. Keep this conservative:
+-- one role per legacy assignment, so old costs and project membership survive.
+INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur, created_at)
+SELECT a.project_id, COALESCE(NULLIF(a.role_note, ''), 'Роль'), 1, a.rate_eur, a.created_at
+FROM projects.assignments a
+WHERE a.role_id IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM projects.project_roles pr
+    WHERE pr.project_id = a.project_id
+      AND pr.title = COALESCE(NULLIF(a.role_note, ''), 'Роль')
+      AND pr.required_count = 1
+      AND pr.created_at = a.created_at
+  );
+UPDATE projects.assignments a
+SET role_id = pr.id
+FROM projects.project_roles pr
+WHERE a.role_id IS NULL
+  AND pr.project_id = a.project_id
+  AND pr.title = COALESCE(NULLIF(a.role_note, ''), 'Роль')
+  AND pr.required_count = 1
+  AND pr.created_at = a.created_at;
 
 -- Contractor (subrent) equipment used on a project. Not in our warehouse.
 CREATE TABLE IF NOT EXISTS projects.contractor_items (

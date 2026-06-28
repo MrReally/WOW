@@ -79,8 +79,20 @@ const contractorItemSchema = z.object({
   costEUR: z.number().nonnegative(),
   note: z.string().nullable().optional(),
 });
+const projectRoleSchema = z.object({
+  projectId: z.string().uuid(),
+  title: z.string().trim().min(1),
+  requiredCount: z.number().int().positive(),
+  rateEUR: z.number().nonnegative().nullable().optional(),
+});
+const updateProjectRoleSchema = z.object({
+  title: z.string().trim().min(1).optional(),
+  requiredCount: z.number().int().positive().optional(),
+  rateEUR: z.number().nonnegative().nullable().optional(),
+});
 const assignmentSchema = z.object({
   projectId: z.string().uuid(),
+  roleId: z.string().uuid().nullable().optional(),
   userId: z.string().uuid(),
   roleNote: z.string().nullable().optional(),
   rateEUR: z.number().nonnegative().nullable().optional(),
@@ -289,6 +301,28 @@ export function registerProjectsRoutes(
   app.get<{ Params: { id: string } }>("/api/projects/:id/assignments", async (req) => {
     await ctx.auth(req);
     return service.listAssignments(req.params.id);
+  });
+  app.get<{ Params: { id: string } }>("/api/projects/:id/roles", async (req) => {
+    await ctx.auth(req);
+    return service.listProjectRoles(req.params.id);
+  });
+  app.post<{ Params: { id: string } }>("/api/projects/:id/roles", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.assignment.manage");
+    const raw = req.body && typeof req.body === "object" ? req.body : {};
+    const body = projectRoleSchema.parse({ ...raw, projectId: req.params.id });
+    return service.createProjectRole(body as Projects.CreateProjectRoleInput);
+  });
+  app.patch<{ Params: { id: string } }>("/api/project-roles/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.assignment.manage");
+    return service.updateProjectRole(req.params.id, updateProjectRoleSchema.parse(req.body) as Projects.UpdateProjectRoleInput);
+  });
+  app.delete<{ Params: { id: string } }>("/api/project-roles/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.assignment.manage");
+    await service.deleteProjectRole(req.params.id);
+    return { ok: true };
   });
   app.post("/api/assignments", async (req) => {
     const auth = await ctx.auth(req);
