@@ -137,6 +137,39 @@ export interface ProjectInvoiceDTO {
   dueEUR: number;
 }
 
+export type InvoiceLang = "EN" | "RU" | "RS";
+
+export interface EstimatePdfLineDTO {
+  id: string;
+  section: string;
+  name: string;
+  count: string;
+  /** Client-facing amount in EUR. */
+  priceEUR: number;
+  /** Internal cost, never printed to the client PDF. */
+  costEUR: number;
+  comment: string;
+}
+
+export interface EstimatePdfRequestDTO {
+  number: string;
+  date: string;
+  place: string;
+  clientName: string;
+  company: {
+    name: string;
+    requisites: string;
+    phone: string;
+    email: string;
+    telegram: string;
+  };
+  lang: InvoiceLang;
+  currency: Currency;
+  rateToEUR: number | null;
+  note: string;
+  lines: EstimatePdfLineDTO[];
+}
+
 // ── Public service contract ──────────────────────────────────────────────────
 
 export interface FinanceService {
