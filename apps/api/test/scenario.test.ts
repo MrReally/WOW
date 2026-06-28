@@ -568,6 +568,34 @@ describe("Tech pickup/return → некомплект", () => {
     expect((await projects.service.getAssignment(b.id))?.status).toBe("cancelled");
   });
 
+  it("project roles: direct additions cannot overfill and reducing seats cancels pending invites", async () => {
+    const { projects, billing } = wiring;
+    const inviter = await makeTech("Seats Inviter");
+    const first = await makeTech("Seats First");
+    const second = await makeTech("Seats Second");
+    const third = await makeTech("Seats Third");
+    const client = await projects.service.createClient({ name: `Seats ${Date.now()}` });
+    const project = await projects.service.createProject({
+      name: "Seats Project", clientId: client.id,
+      startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    const role = await projects.service.createProjectRole({ projectId: project.id, title: "Монтажник", requiredCount: 2, rateEUR: 100 });
+
+    await projects.service.addAssignment({ projectId: project.id, roleId: role.id, userId: first.id });
+    await projects.service.addAssignment({ projectId: project.id, roleId: role.id, userId: second.id });
+    await expect(projects.service.addAssignment({ projectId: project.id, roleId: role.id, userId: third.id })).rejects.toThrow();
+    expect((await billing.projectInvoice(project.id)).laborEUR).toBe(200);
+
+    const reserve = await projects.service.createProjectRole({ projectId: project.id, title: "Резерв", requiredCount: 2, rateEUR: 80 });
+    const pending = await projects.service.addAssignment({ projectId: project.id, roleId: reserve.id, userId: third.id, invite: true, invitedByUserId: inviter.id });
+    await projects.service.updateProjectRole(reserve.id, { requiredCount: 1 });
+    expect((await projects.service.getAssignment(pending.id))?.status).toBe("invited");
+
+    await projects.service.addAssignment({ projectId: project.id, roleId: reserve.id, userId: inviter.id });
+    expect((await projects.service.getAssignment(pending.id))?.status).toBe("cancelled");
+    expect((await billing.projectInvoice(project.id)).laborEUR).toBe(280);
+  });
+
   it("project invoice: rental billed from reservations, costs from crew rates", async () => {
     const { projects, equipment, billing } = wiring;
     const guest = await makeTech("Invoice Crew");

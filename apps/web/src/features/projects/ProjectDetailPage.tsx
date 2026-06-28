@@ -45,6 +45,9 @@ const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "o
   cancelled: { label: "отменён", tone: "neutral" },
 };
 
+const assignmentRank = (status: Projects.AssignmentStatus) =>
+  status === "added" || status === "accepted" ? 0 : status === "invited" ? 1 : status === "declined" ? 2 : 3;
+
 type ProjectTab = "overview" | "reservations" | "timing" | "team" | "contractors" | "finance";
 type ProjectTabIcon = ProjectTab | "plan" | "invoice" | "back" | "close";
 
@@ -483,6 +486,9 @@ export function ProjectDetailPage() {
             const roleAssignments = (assignments.data ?? []).filter((a) => a.roleId === role.id);
             const filled = roleAssignments.filter((a) => a.status === "added" || a.status === "accepted").length;
             const pending = roleAssignments.filter((a) => a.status === "invited").length;
+            const declined = roleAssignments.filter((a) => a.status === "declined").length;
+            const cancelled = roleAssignments.filter((a) => a.status === "cancelled").length;
+            const openSeats = Math.max(0, role.requiredCount - filled);
             const closed = filled >= role.requiredCount;
             const draft = roleDrafts[role.id] ?? {
               title: role.title,
@@ -497,6 +503,7 @@ export function ProjectDetailPage() {
             const roleActiveIds = new Set(roleAssignments.filter((a) => a.status !== "declined" && a.status !== "cancelled").map((a) => a.userId));
             const available = closed ? [] : (people.data ?? []).filter((u) => !confirmedIds.has(u.id) && !roleActiveIds.has(u.id));
             const selected = (assignCandidates[role.id] ?? []).filter((uid) => available.some((u) => u.id === uid));
+            const directAddAllowed = selected.length > 0 && selected.length <= openSeats;
             const toggleCandidate = (uid: string) =>
               setAssignCandidates((prev) => {
                 const current = prev[role.id] ?? [];
@@ -522,12 +529,13 @@ export function ProjectDetailPage() {
                 <div className="row row--between">
                   <div style={{ minWidth: 0 }}>
                     <p className="card__title">{role.title}</p>
-                    <p className="card__subtitle">
-                      {filled}/{role.requiredCount} мест
-                      {pending > 0 ? ` · ${pending} ждут` : ""}
-                      {closed ? " · закрыто" : ""}
-                      {role.rateEUR != null ? ` · ${role.rateEUR} €` : ""}
-                    </p>
+                    <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                      <Chip label={`${filled}/${role.requiredCount}`} tone={closed ? "ok" : "warn"} />
+                      {pending > 0 && <Chip label={`ждут ${pending}`} tone="info" />}
+                      {openSeats > 0 && <Chip label={`мест ${openSeats}`} tone="neutral" />}
+                      {closed && <Chip label="закрыто" tone="ok" />}
+                      {role.rateEUR != null && <Chip label={`${role.requiredCount * role.rateEUR} €`} tone="neutral" />}
+                    </div>
                   </div>
                   <div className="row" style={{ gap: 8 }}>
                     {canAssign && (
@@ -545,7 +553,7 @@ export function ProjectDetailPage() {
                 </div>
                 {roleAssignments.length > 0 && (
                   <div className="stack" style={{ gap: 6, marginTop: 10 }}>
-                    {roleAssignments.map((a) => {
+                    {[...roleAssignments].sort((a, b) => assignmentRank(a.status) - assignmentRank(b.status)).map((a) => {
                       const st = ASSIGN_STATUS[a.status];
                       return (
                         <div key={a.id} className="row row--between" style={{ gap: 8 }}>
@@ -608,14 +616,25 @@ export function ProjectDetailPage() {
                           onToggle={toggleCandidate}
                         />
                         <div className="row">
-                          <Button variant="secondary" block disabled={selected.length === 0 || addAssignment.isPending} onClick={() => void submit(false)}>
-                            Добавить
+                          <Button
+                            variant="secondary"
+                            block
+                            disabled={!directAddAllowed || addAssignment.isPending}
+                            title={selected.length > openSeats ? `Свободно мест: ${openSeats}` : "Добавить без Telegram"}
+                            onClick={() => void submit(false)}
+                          >
+                            ✓
                           </Button>
                           <Button block disabled={selected.length === 0 || addAssignment.isPending} onClick={() => void submit(true)}>
                             TG
                           </Button>
                         </div>
                       </>
+                    )}
+                    {(declined > 0 || cancelled > 0) && (
+                      <p className="card__subtitle">
+                        {declined > 0 ? `отклонено ${declined}` : ""}{declined > 0 && cancelled > 0 ? " · " : ""}{cancelled > 0 ? `отменено ${cancelled}` : ""}
+                      </p>
                     )}
                   </div>
                 )}
