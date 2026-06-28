@@ -339,6 +339,9 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         userId: row.user_id,
         assignmentId: row.id,
         reason,
+        roleNote: row.role_note,
+        telegramChatId: row.telegram_chat_id,
+        telegramMessageId: row.telegram_message_id,
         at: new Date().toISOString(),
       });
     }
@@ -834,9 +837,10 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
     async deleteProjectRole(id) {
       const existing = await one<ProjectRoleRow>(db, `SELECT * FROM projects.project_roles WHERE id=$1`, [id]);
       if (!existing) throw NotFound("project role", id);
+      let removedAssignments: AssignmentRow[] = [];
       await tx(async (client) => {
-        const assignments = await query<AssignmentRow>(client, `SELECT * FROM projects.assignments WHERE role_id=$1`, [id]);
-        for (const assignment of assignments) {
+        removedAssignments = await query<AssignmentRow>(client, `SELECT * FROM projects.assignments WHERE role_id=$1`, [id]);
+        for (const assignment of removedAssignments) {
           await query(
             client,
             `DELETE FROM projects.timing_assignees
@@ -847,6 +851,10 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         await query(client, `DELETE FROM projects.assignments WHERE role_id=$1`, [id]);
         await query(client, `DELETE FROM projects.project_roles WHERE id=$1`, [id]);
       });
+      await publishCancelled(removedAssignments.filter((a) => a.status === "invited"), "role_removed");
+      for (const assignment of removedAssignments.filter((a) => a.status === "added" || a.status === "accepted")) {
+        await bus.publish({ type: "project.unassigned", projectId: assignment.project_id, userId: assignment.user_id, at: new Date().toISOString() });
+      }
     },
     async listAssignments(projectId) {
       const rows = await query<AssignmentRow>(

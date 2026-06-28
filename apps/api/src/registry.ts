@@ -210,12 +210,14 @@ export function createModules(bus: EventBus = new EventBus()) {
       projects.service.getProject(e.projectId),
       projects.service.getAssignment(e.assignmentId),
     ]);
-    if (!assignment) return;
-    const role = assignment.roleNote ? `«${assignment.roleNote}»` : "эта роль";
+    const roleNote = assignment?.roleNote ?? e.roleNote;
+    const role = roleNote ? `«${roleNote}»` : "эта роль";
     const body = e.reason === "already_assigned"
       ? `Вы уже участвуете в проекте «${project?.name ?? ""}» в другой роли. Это приглашение отменено.`
-      : `На роль ${role} в проекте «${project?.name ?? ""}» уже найдено нужное количество людей. Это приглашение отменено.`;
-    await editTelegramMessage(assignment.telegramChatId, assignment.telegramMessageId, body);
+      : e.reason === "role_removed"
+        ? `Роль ${role} в проекте «${project?.name ?? ""}» удалена. Это приглашение отменено.`
+        : `На роль ${role} в проекте «${project?.name ?? ""}» уже найдено нужное количество людей. Это приглашение отменено.`;
+    await editTelegramMessage(assignment?.telegramChatId ?? e.telegramChatId ?? null, assignment?.telegramMessageId ?? e.telegramMessageId ?? null, body);
   });
 
   bus.on("equipment.units.issued", async (e) => {

@@ -465,7 +465,10 @@ export interface InviteCancelledEvent {
   projectId: ID;
   userId: ID;
   assignmentId: ID;
-  reason: "role_filled" | "already_assigned";
+  reason: "role_filled" | "already_assigned" | "role_removed";
+  roleNote?: string | null;
+  telegramChatId?: string | null;
+  telegramMessageId?: number | null;
   at: ISODateTime;
 }
 

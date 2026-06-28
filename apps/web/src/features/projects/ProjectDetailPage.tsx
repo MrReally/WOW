@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams, useNavigate, useSearchParams } from "react-router-dom";
-import type { Projects } from "@sever/contracts";
+import type { People, Projects } from "@sever/contracts";
 import { PROJECT_STATUSES } from "@sever/contracts";
 import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
 import { projectStatusLabel, projectStatusTone, dateRange, dateTime, eur } from "../../lib/labels.ts";
@@ -121,6 +121,7 @@ export function ProjectDetailPage() {
   const [roleRate, setRoleRate] = useState("");
   const [roleDrafts, setRoleDrafts] = useState<Record<string, { title: string; requiredCount: string; rateEUR: string }>>({});
   const [assignCandidates, setAssignCandidates] = useState<Record<string, string[]>>({});
+  const [candidateQueries, setCandidateQueries] = useState<Record<string, string>>({});
   const [resolving, setResolving] = useState<Projects.ReservationDTO | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [invoiceVersions, setInvoiceVersions] = useState<StoredInvoiceVersion[]>([]);
@@ -466,13 +467,13 @@ export function ProjectDetailPage() {
               requiredCount: String(role.requiredCount),
               rateEUR: role.rateEUR == null ? "" : String(role.rateEUR),
             };
-            const activeIds = new Set(
+            const confirmedIds = new Set(
               (assignments.data ?? [])
-                .filter((a) => a.status !== "declined")
-                .filter((a) => a.status !== "cancelled")
+                .filter((a) => a.status === "added" || a.status === "accepted")
                 .map((a) => a.userId)
             );
-            const available = closed ? [] : (people.data ?? []).filter((u) => !activeIds.has(u.id));
+            const roleActiveIds = new Set(roleAssignments.filter((a) => a.status !== "declined" && a.status !== "cancelled").map((a) => a.userId));
+            const available = closed ? [] : (people.data ?? []).filter((u) => !confirmedIds.has(u.id) && !roleActiveIds.has(u.id));
             const selected = (assignCandidates[role.id] ?? []).filter((uid) => available.some((u) => u.id === uid));
             const toggleCandidate = (uid: string) =>
               setAssignCandidates((prev) => {
@@ -577,22 +578,13 @@ export function ProjectDetailPage() {
                     </div>
                     {available.length > 0 && (
                       <>
-                        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
-                          {available.map((u) => {
-                            const picked = selected.includes(u.id);
-                            return (
-                              <button
-                                key={u.id}
-                                className={`chip ${picked ? "chip--accent chip--solid" : "chip--neutral"}`}
-                                style={{ border: "none", cursor: "pointer" }}
-                                onClick={() => toggleCandidate(u.id)}
-                                type="button"
-                              >
-                                {personName(u)}
-                              </button>
-                            );
-                          })}
-                        </div>
+                        <CandidatePicker
+                          people={available}
+                          selectedIds={selected}
+                          query={candidateQueries[role.id] ?? ""}
+                          onQuery={(value) => setCandidateQueries((prev) => ({ ...prev, [role.id]: value }))}
+                          onToggle={toggleCandidate}
+                        />
                         <div className="row">
                           <Button variant="secondary" block disabled={selected.length === 0 || addAssignment.isPending} onClick={() => void submit(false)}>
                             Добавить
@@ -791,6 +783,67 @@ export function ProjectDetailPage() {
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function CandidatePicker({
+  people,
+  selectedIds,
+  query,
+  onQuery,
+  onToggle,
+}: {
+  people: People.UserDTO[];
+  selectedIds: string[];
+  query: string;
+  onQuery: (value: string) => void;
+  onToggle: (userId: string) => void;
+}) {
+  const selected = selectedIds.map((id) => people.find((p) => p.id === id)).filter(Boolean) as People.UserDTO[];
+  const q = query.trim().toLowerCase();
+  const results = people
+    .filter((p) => !selectedIds.includes(p.id))
+    .filter((p) => {
+      if (!q) return true;
+      const hay = [p.nickname, p.displayName, p.email, p.telegramId].filter(Boolean).join(" ").toLowerCase();
+      return hay.includes(q);
+    })
+    .slice(0, 8);
+
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      {selected.length > 0 && (
+        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+          {selected.map((u) => (
+            <button
+              key={u.id}
+              className="chip chip--accent chip--solid"
+              style={{ border: "none", cursor: "pointer" }}
+              onClick={() => onToggle(u.id)}
+              type="button"
+              title="Убрать из выбора"
+            >
+              {personName(u)} ×
+            </button>
+          ))}
+        </div>
+      )}
+      <Input value={query} onChange={(e) => onQuery(e.target.value)} placeholder="Найти человека" />
+      <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+        {results.map((u) => (
+          <button
+            key={u.id}
+            className="chip chip--neutral"
+            style={{ border: "none", cursor: "pointer" }}
+            onClick={() => onToggle(u.id)}
+            type="button"
+          >
+            {personName(u)}
+          </button>
+        ))}
+        {results.length === 0 && <span className="card__subtitle">Никого не найдено</span>}
       </div>
     </div>
   );
