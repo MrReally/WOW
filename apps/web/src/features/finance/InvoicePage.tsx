@@ -5,7 +5,7 @@ import { Card, Button, Field, Input, Textarea, Select, Loading, ErrorState, Bran
 import { getToken } from "../../lib/api.ts";
 import { useProject, useClients, useProjectInvoice } from "../projects/hooks.ts";
 import { useVenues } from "../plans/hooks.ts";
-import { useFxRates } from "./hooks.ts";
+import { useCreateInvoiceVersion, useFxRates, useInvoiceCompanySettings, useInvoiceVersions, useSetInvoiceCompanySettings } from "./hooks.ts";
 import "./invoice.css";
 
 interface Line {
@@ -77,12 +77,17 @@ export function InvoicePage() {
   const invoice = useProjectInvoice(id, true);
   const venues = useVenues();
   const fx = useFxRates();
+  const companySettings = useInvoiceCompanySettings();
+  const setCompanySettings = useSetInvoiceCompanySettings();
+  const serverVersions = useInvoiceVersions(id);
+  const createVersion = useCreateInvoiceVersion(id);
 
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [panel, setPanel] = useState<Panel>("lines");
   const [lines, setLines] = useState<Line[]>([]);
   const [seeded, setSeeded] = useState(false);
   const [company, setCompany] = useState<Company>(loadCompany);
+  const [companyTouched, setCompanyTouched] = useState(false);
   const [currency, setCurrency] = useState<Currency>("EUR");
   const [lang, setLang] = useState<InvoiceLang>("EN");
   const [number, setNumber] = useState("");
@@ -102,6 +107,16 @@ export function InvoicePage() {
       setVersions([]);
     }
   }, [id]);
+
+  useEffect(() => {
+    if (!companySettings.data || companyTouched) return;
+    setCompany(companySettings.data);
+  }, [companySettings.data, companyTouched]);
+
+  useEffect(() => {
+    if (!serverVersions.data) return;
+    setVersions(serverVersions.data.map(versionFromDTO));
+  }, [serverVersions.data]);
 
   useEffect(() => {
     if (!seeded && invoice.data) {
@@ -164,6 +179,12 @@ export function InvoicePage() {
       return [...prev, ...crew];
     });
   };
+  const saveCompany = (patch: Partial<Company>) => {
+    const next = { ...company, ...patch };
+    setCompanyTouched(true);
+    setCompany(next);
+    setCompanySettings.mutate(next);
+  };
   const payload = (): Finance.EstimatePdfRequestDTO => ({
     number: number.trim(),
     date: dateStr,
@@ -176,7 +197,7 @@ export function InvoicePage() {
     note,
     lines: normalizedLines.map((l) => ({ id: l.id, section: l.section, name: l.name, count: l.count, priceEUR: l.price, costEUR: l.cost, comment: l.comment })),
   });
-  const saveVersion = () => {
+  const saveVersion = async () => {
     const version: StoredInvoiceVersion = {
       id: uid(),
       projectId: id,
@@ -194,11 +215,30 @@ export function InvoicePage() {
     const next = [version, ...versions].slice(0, 20);
     setVersions(next);
     localStorage.setItem(`sever.invoice.versions.${id}`, JSON.stringify(next));
+    createVersion.mutate({
+      number: version.number,
+      date: version.date,
+      place: version.place,
+      clientName: version.clientName,
+      totalEUR: version.totalEUR,
+      currency: version.currency,
+      lang: version.lang,
+      lines: normalizedLines.map((l) => ({
+        id: l.id,
+        section: l.section,
+        name: l.name,
+        count: l.count,
+        priceEUR: l.price,
+        costEUR: l.cost,
+        comment: l.comment,
+      })),
+      note: version.note ?? "",
+    });
     return version;
   };
-  const preview = () => {
+  const preview = async () => {
     setLines(normalizedLines);
-    saveVersion();
+    await saveVersion();
     setMode("preview");
   };
   const restoreVersion = (v: StoredInvoiceVersion) => {
@@ -214,10 +254,14 @@ export function InvoicePage() {
     setPanel("lines");
   };
   const downloadPdf = async () => {
+    if (fxRateToEUR === null) {
+      setPdfError(`Для ${currency} не задан курс в Settings.`);
+      return;
+    }
     setPdfBusy(true);
     setPdfError("");
     try {
-      saveVersion();
+      await saveVersion();
       const token = getToken();
       const res = await fetch(`/api/projects/${id}/invoice/pdf`, {
         method: "POST",
@@ -259,6 +303,7 @@ export function InvoicePage() {
           onBack={() => setMode("edit")}
           onPdf={downloadPdf}
           pdfBusy={pdfBusy}
+          canConvert={canConvert}
         />
         {!canConvert && <p className="card__subtitle no-print" style={{ color: "var(--warn)" }}>Для {currency} не задан курс в Settings.</p>}
         {pdfError && <p className="card__subtitle no-print" style={{ color: "var(--alert)" }}>{pdfError}</p>}
@@ -309,10 +354,10 @@ export function InvoicePage() {
           <Field label="Заказчик"><Input value={clientName} onChange={(e) => setClientName(e.target.value)} /></Field>
           <Field label="Place"><Input value={place} onChange={(e) => { setPlaceTouched(true); setPlace(e.target.value); }} placeholder="Villa Viko" /></Field>
           <div className="row">
-            <Field label="Phone"><Input value={company.phone} onChange={(e) => setCompany({ ...company, phone: e.target.value })} /></Field>
-            <Field label="Email"><Input value={company.email} onChange={(e) => setCompany({ ...company, email: e.target.value })} /></Field>
+            <Field label="Phone"><Input value={company.phone} onChange={(e) => saveCompany({ phone: e.target.value })} /></Field>
+            <Field label="Email"><Input value={company.email} onChange={(e) => saveCompany({ email: e.target.value })} /></Field>
           </div>
-          <Field label="Telegram"><Input value={company.telegram} onChange={(e) => setCompany({ ...company, telegram: e.target.value })} /></Field>
+          <Field label="Telegram"><Input value={company.telegram} onChange={(e) => saveCompany({ telegram: e.target.value })} /></Field>
         </Card>
       )}
 
@@ -364,8 +409,8 @@ export function InvoicePage() {
       )}
 
       <div className="invoice-bottom-actions">
-        <Button block variant="secondary" disabled={lines.length === 0} onClick={preview}>Preview</Button>
-        <Button block disabled={lines.length === 0 || pdfBusy} onClick={downloadPdf}>{pdfBusy ? "PDF…" : "PDF"}</Button>
+        <Button block variant="secondary" disabled={lines.length === 0} onClick={() => void preview()}>Preview</Button>
+        <Button block disabled={lines.length === 0 || pdfBusy || fxRateToEUR === null} onClick={downloadPdf}>{pdfBusy ? "PDF…" : "PDF"}</Button>
       </div>
     </div>
   );
@@ -373,6 +418,31 @@ export function InvoicePage() {
 
 const langOptions = [{ value: "EN", label: "EN" }, { value: "RU", label: "RU" }, { value: "RS", label: "RS" }];
 const currencyOptions = [{ value: "EUR", label: "EUR" }, { value: "RSD", label: "RSD" }, { value: "RUB", label: "RUB" }];
+
+function versionFromDTO(v: Finance.InvoiceVersionDTO): StoredInvoiceVersion {
+  return {
+    id: v.id,
+    projectId: v.projectId,
+    number: v.number,
+    date: v.date,
+    place: v.place,
+    clientName: v.clientName,
+    totalEUR: v.totalEUR,
+    currency: v.currency,
+    lang: v.lang,
+    createdAt: v.createdAt,
+    lines: v.lines.map((line) => ({
+      id: line.id,
+      section: line.section,
+      name: line.name,
+      count: line.count,
+      price: line.priceEUR,
+      cost: line.costEUR,
+      comment: line.comment,
+    })),
+    note: v.note,
+  };
+}
 
 function groupLines(lines: Line[]) {
   const order: string[] = [];
@@ -407,13 +477,13 @@ function LineEditor({ line, setLine, removeLine }: { line: Line; setLine: (id: s
   );
 }
 
-function InvoiceTopbar({ lang, currency, onLang, onCurrency, onBack, onPdf, pdfBusy }: { lang: InvoiceLang; currency: Currency; onLang: (v: InvoiceLang) => void; onCurrency: (v: Currency) => void; onBack: () => void; onPdf: () => void; pdfBusy: boolean }) {
+function InvoiceTopbar({ lang, currency, onLang, onCurrency, onBack, onPdf, pdfBusy, canConvert }: { lang: InvoiceLang; currency: Currency; onLang: (v: InvoiceLang) => void; onCurrency: (v: Currency) => void; onBack: () => void; onPdf: () => void; pdfBusy: boolean; canConvert: boolean }) {
   return (
     <div className="row no-print invoice-preview-topbar">
       <button className="icon-btn" onClick={onBack} aria-label="Редактировать" title="Редактировать">✎</button>
       <Select value={lang} onChange={(e) => onLang(e.target.value as InvoiceLang)} options={langOptions} />
       <Select value={currency} onChange={(e) => onCurrency(e.target.value as Currency)} options={currencyOptions} />
-      <Button onClick={onPdf} disabled={pdfBusy}>{pdfBusy ? "PDF…" : "PDF"}</Button>
+      <Button onClick={onPdf} disabled={pdfBusy || !canConvert}>{pdfBusy ? "PDF…" : "PDF"}</Button>
     </div>
   );
 }

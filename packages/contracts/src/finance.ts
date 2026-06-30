@@ -170,6 +170,42 @@ export interface EstimatePdfRequestDTO {
   lines: EstimatePdfLineDTO[];
 }
 
+export interface InvoiceCompanySettingsDTO {
+  name: string;
+  requisites: string;
+  phone: string;
+  email: string;
+  telegram: string;
+}
+
+export interface InvoiceVersionDTO {
+  id: ID;
+  projectId: ID;
+  number: string;
+  date: string;
+  place: string;
+  clientName: string;
+  totalEUR: number;
+  currency: Currency;
+  lang: InvoiceLang;
+  lines: EstimatePdfLineDTO[];
+  note: string;
+  createdAt: ISODateTime;
+}
+
+export interface CreateInvoiceVersionInput {
+  projectId: ID;
+  number: string;
+  date: string;
+  place: string;
+  clientName: string;
+  totalEUR: number;
+  currency: Currency;
+  lang: InvoiceLang;
+  lines: EstimatePdfLineDTO[];
+  note?: string;
+}
+
 // ── Public service contract ──────────────────────────────────────────────────
 
 export interface FinanceService {
@@ -190,6 +226,12 @@ export interface FinanceService {
   projectFinance(projectId: ID): Promise<ProjectFinanceDTO>;
   /** Projects with outstanding client debt, for Apex. */
   outstandingDebts(): Promise<ProjectFinanceDTO[]>;
+
+  // Estimate document settings + versions
+  getInvoiceCompanySettings(): Promise<InvoiceCompanySettingsDTO>;
+  setInvoiceCompanySettings(input: InvoiceCompanySettingsDTO): Promise<InvoiceCompanySettingsDTO>;
+  listInvoiceVersions(projectId: ID): Promise<InvoiceVersionDTO[]>;
+  createInvoiceVersion(input: CreateInvoiceVersionInput): Promise<InvoiceVersionDTO>;
 }
 
 // ── Amortization config (configurable formula, by project count) ─────────────

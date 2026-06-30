@@ -36,6 +36,7 @@ import { TimingTimeline } from "./components/TimingTimeline.tsx";
 import { ContractorEquipment } from "./components/ContractorEquipment.tsx";
 import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
 import { personName } from "../../lib/people.ts";
+import { useInvoiceVersions } from "../finance/hooks.ts";
 
 const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "ok" | "info" | "warn" | "neutral" }> = {
   added: { label: "в команде", tone: "ok" },
@@ -100,6 +101,7 @@ export function ProjectDetailPage() {
   const models = useEquipmentModels();
   const allUnits = useAllUnits();
   const invoice = useProjectInvoice(id, canFinance);
+  const serverInvoiceVersions = useInvoiceVersions(id, canFinance);
 
   const setStatus = useSetProjectStatus();
   const addReservation = useCreateReservation();
@@ -140,6 +142,11 @@ export function ProjectDetailPage() {
       setInvoiceVersions([]);
     }
   }, [id, activeTab]);
+
+  useEffect(() => {
+    if (!serverInvoiceVersions.data) return;
+    setInvoiceVersions(serverInvoiceVersions.data);
+  }, [serverInvoiceVersions.data]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedResModelQuery(resModelQuery), 500);

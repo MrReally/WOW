@@ -8,6 +8,7 @@ import { LOCALE_OPTIONS, useI18n } from "../../app/i18n.tsx";
 import { useAdvancedNotifPrefs, useNotifPrefs, useSetAdvancedNotifPrefs, useSetNotifPrefs } from "../notifications/hooks.ts";
 import { useCalendarFeed, useSetMyPreferences } from "./hooks.ts";
 import { personName } from "../../lib/people.ts";
+import { useInvoiceCompanySettings, useSetInvoiceCompanySettings } from "../finance/hooks.ts";
 
 interface InvoiceCompanySettings {
   name: string;
@@ -49,12 +50,27 @@ export function MySettingsPage() {
   const setAdvancedPrefs = useSetAdvancedNotifPrefs();
   const calendar = useCalendarFeed();
   const setMyPreferences = useSetMyPreferences();
+  const serverInvoiceCompany = useInvoiceCompanySettings();
+  const setServerInvoiceCompany = useSetInvoiceCompanySettings();
   const current = prefs.data;
   const [invoiceCompany, setInvoiceCompany] = useState<InvoiceCompanySettings>(loadInvoiceCompany);
+  const [invoiceCompanyTouched, setInvoiceCompanyTouched] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("sever.invoice.company", JSON.stringify(invoiceCompany));
   }, [invoiceCompany]);
+
+  useEffect(() => {
+    if (!serverInvoiceCompany.data || invoiceCompanyTouched) return;
+    setInvoiceCompany(serverInvoiceCompany.data);
+  }, [serverInvoiceCompany.data, invoiceCompanyTouched]);
+
+  const saveInvoiceCompany = (patch: Partial<InvoiceCompanySettings>) => {
+    const next = { ...invoiceCompany, ...patch };
+    setInvoiceCompanyTouched(true);
+    setInvoiceCompany(next);
+    setServerInvoiceCompany.mutate(next);
+  };
 
   const togglePref = (kind: Notifications.NotificationKind) => {
     if (!current) return;
@@ -148,18 +164,18 @@ export function MySettingsPage() {
           <SectionTitle>Смета</SectionTitle>
           <Card>
             <Field label="Исполнитель">
-              <Input value={invoiceCompany.name} onChange={(e) => setInvoiceCompany({ ...invoiceCompany, name: e.target.value })} />
+              <Input value={invoiceCompany.name} onChange={(e) => saveInvoiceCompany({ name: e.target.value })} />
             </Field>
             <div className="row">
               <Field label="Phone">
-                <Input value={invoiceCompany.phone} onChange={(e) => setInvoiceCompany({ ...invoiceCompany, phone: e.target.value })} />
+                <Input value={invoiceCompany.phone} onChange={(e) => saveInvoiceCompany({ phone: e.target.value })} />
               </Field>
               <Field label="Email">
-                <Input value={invoiceCompany.email} onChange={(e) => setInvoiceCompany({ ...invoiceCompany, email: e.target.value })} />
+                <Input value={invoiceCompany.email} onChange={(e) => saveInvoiceCompany({ email: e.target.value })} />
               </Field>
             </div>
             <Field label="Telegram">
-              <Input value={invoiceCompany.telegram} onChange={(e) => setInvoiceCompany({ ...invoiceCompany, telegram: e.target.value })} />
+              <Input value={invoiceCompany.telegram} onChange={(e) => saveInvoiceCompany({ telegram: e.target.value })} />
             </Field>
           </Card>
         </>

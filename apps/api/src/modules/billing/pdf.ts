@@ -6,10 +6,10 @@ const M = 46;
 const FONT = "F1";
 const FONT_BOLD = "F2";
 
-const labels: Record<Finance.InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
-  EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
-  RU: { title: "Смета", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
-  RS: { title: "Ponuda", date: "Datum", place: "Mesto", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
+const labels: Record<Finance.InvoiceLang, { title: string; date: string; place: string; client: string; name: string; count: string; price: string; comment: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
+  EN: { title: "Purchase Order", date: "Date", place: "Place", client: "Client", name: "Name", count: "Count", price: "Price", comment: "Comment", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
+  RU: { title: "Смета", date: "Дата", place: "Место", client: "Заказчик", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
+  RS: { title: "Ponuda", date: "Datum", place: "Mesto", client: "Klijent", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -81,6 +81,21 @@ function sectionClass(section: string): string {
   return "0.93 0.93 0.93";
 }
 
+function drawBrand(c: PdfCanvas, x: number, y: number, w: number) {
+  const cx = x + w / 2;
+  const cy = y - 42;
+  const s = 22;
+  const pts: [number, number][] = [
+    [0, -2.15], [0.35, -0.35], [2.15, 0], [0.35, 0.35],
+    [0, 2.15], [-0.35, 0.35], [-2.15, 0], [-0.35, -0.35],
+  ];
+  c.raw(`${cx + pts[0]![0] * s} ${cy - pts[0]![1] * s} m `);
+  for (const [px, py] of pts.slice(1)) c.raw(`${cx + px * s} ${cy - py * s} l `);
+  c.raw("h f\n");
+  c.centered("SEVER", x, y - 104, w, 30, FONT_BOLD);
+  c.centered("EVENT RENTAL", x, y - 124, w, 10, FONT);
+}
+
 function drawHeader(c: PdfCanvas, req: Finance.EstimatePdfRequestDTO) {
   const l = labels[req.lang];
   const leftW = 260;
@@ -92,12 +107,14 @@ function drawHeader(c: PdfCanvas, req: Finance.EstimatePdfRequestDTO) {
   c.rect(M, topY - 58, leftW, 58);
   c.text(l.date, M + 18, topY - 24, 14, FONT_BOLD);
   c.text(req.date.split("-").reverse().join("/"), M + 150, topY - 24, 13, FONT_BOLD);
-  c.rect(M, topY - 132, leftW, 74);
-  c.text(l.place, M + 18, topY - 88, 14, FONT_BOLD);
-  for (const [i, line] of wrap(req.place || "—", 100, 12).entries()) c.text(line, M + 145, topY - 88 - i * 14, 12, FONT_BOLD);
+  c.rect(M, topY - 98, leftW, 40);
+  c.text(l.client, M + 18, topY - 82, 12, FONT_BOLD);
+  for (const [i, line] of wrap(req.clientName || "—", 112, 10.5).entries()) c.text(line, M + 130, topY - 82 - i * 12, 10.5, FONT_BOLD);
+  c.rect(M, topY - 150, leftW, 52);
+  c.text(l.place, M + 18, topY - 120, 12, FONT_BOLD);
+  for (const [i, line] of wrap(req.place || "—", 112, 11).entries()) c.text(line, M + 130, topY - 120 - i * 13, 11, FONT_BOLD);
   c.rect(logoX, topY - 132, PAGE_W - M - logoX, 190);
-  c.centered("SEVER", logoX, topY - 40, PAGE_W - M - logoX, 34, FONT_BOLD);
-  c.centered("EVENT RENTAL", logoX, topY - 62, PAGE_W - M - logoX, 10, FONT);
+  drawBrand(c, logoX, topY + 10, PAGE_W - M - logoX);
   c.y = topY - 170;
 }
 

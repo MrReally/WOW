@@ -31,6 +31,33 @@ const txSchema = z.object({
   currency: z.enum(CURRENCIES as [string, ...string[]]),
   note: z.string().nullable().optional(),
 });
+const invoiceCompanySchema = z.object({
+  name: z.string(),
+  requisites: z.string(),
+  phone: z.string(),
+  email: z.string(),
+  telegram: z.string(),
+});
+const invoiceVersionLineSchema = z.object({
+  id: z.string(),
+  section: z.string(),
+  name: z.string(),
+  count: z.string(),
+  priceEUR: z.number(),
+  costEUR: z.number(),
+  comment: z.string(),
+});
+const invoiceVersionSchema = z.object({
+  number: z.string(),
+  date: z.string(),
+  place: z.string(),
+  clientName: z.string(),
+  totalEUR: z.number(),
+  currency: z.enum(CURRENCIES as [string, ...string[]]),
+  lang: z.enum(["EN", "RU", "RS"]),
+  lines: z.array(invoiceVersionLineSchema),
+  note: z.string().optional(),
+});
 
 export function registerFinanceRoutes(
   app: FastifyInstance,
@@ -87,5 +114,27 @@ export function registerFinanceRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.view");
     return service.outstandingDebts();
+  });
+
+  app.get("/api/finance/invoice-company", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.view", "finance.manage");
+    return service.getInvoiceCompanySettings();
+  });
+  app.put("/api/finance/invoice-company", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.manage");
+    return service.setInvoiceCompanySettings(invoiceCompanySchema.parse(req.body) as Finance.InvoiceCompanySettingsDTO);
+  });
+  app.get<{ Params: { id: string } }>("/api/projects/:id/invoice/versions", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.view", "finance.manage");
+    return service.listInvoiceVersions(req.params.id);
+  });
+  app.post<{ Params: { id: string } }>("/api/projects/:id/invoice/versions", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.manage");
+    const body = invoiceVersionSchema.parse(req.body);
+    return service.createInvoiceVersion({ ...body, projectId: req.params.id } as Finance.CreateInvoiceVersionInput);
   });
 }

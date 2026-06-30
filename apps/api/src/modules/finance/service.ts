@@ -45,6 +45,27 @@ interface TxRow {
   created_by: string | null;
   created_at: Date;
 }
+interface InvoiceCompanySettingsRow {
+  name: string;
+  requisites: string;
+  phone: string;
+  email: string;
+  telegram: string;
+}
+interface InvoiceVersionRow {
+  id: string;
+  project_id: string;
+  number: string;
+  date: string;
+  place: string;
+  client_name: string;
+  total_eur: string;
+  currency: Currency;
+  lang: Finance.InvoiceLang;
+  lines: Finance.EstimatePdfLineDTO[];
+  note: string;
+  created_at: Date;
+}
 
 const fxDTO = (r: FxRow): Finance.FxRateDTO => ({
   currency: r.currency,
@@ -71,6 +92,27 @@ const txDTO = (r: TxRow): Finance.TransactionDTO => ({
   amountEUR: Number(r.amount_eur),
   note: r.note,
   createdByUserId: r.created_by,
+  createdAt: r.created_at.toISOString(),
+});
+const invoiceCompanyDTO = (r: InvoiceCompanySettingsRow): Finance.InvoiceCompanySettingsDTO => ({
+  name: r.name,
+  requisites: r.requisites,
+  phone: r.phone,
+  email: r.email,
+  telegram: r.telegram,
+});
+const invoiceVersionDTO = (r: InvoiceVersionRow): Finance.InvoiceVersionDTO => ({
+  id: r.id,
+  projectId: r.project_id,
+  number: r.number,
+  date: r.date,
+  place: r.place,
+  clientName: r.client_name,
+  totalEUR: Number(r.total_eur),
+  currency: r.currency,
+  lang: r.lang,
+  lines: r.lines,
+  note: r.note,
   createdAt: r.created_at.toISOString(),
 });
 
@@ -249,6 +291,64 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
           };
         })
         .filter((f) => f.debtEUR > 0);
+    },
+
+    async getInvoiceCompanySettings() {
+      const row = await one<InvoiceCompanySettingsRow>(db, `SELECT * FROM finance.invoice_company_settings WHERE id=1`);
+      if (!row) {
+        return { name: "SEVER", requisites: "", phone: "+381 62 852 5240", email: "sever.beo.contact@gmail.com", telegram: "@sever_contact" };
+      }
+      return invoiceCompanyDTO(row);
+    },
+
+    async setInvoiceCompanySettings(input) {
+      const row = await one<InvoiceCompanySettingsRow>(
+        db,
+        `INSERT INTO finance.invoice_company_settings (id, name, requisites, phone, email, telegram, updated_at)
+         VALUES (1,$1,$2,$3,$4,$5,now())
+         ON CONFLICT (id) DO UPDATE SET
+           name=$1,
+           requisites=$2,
+           phone=$3,
+           email=$4,
+           telegram=$5,
+           updated_at=now()
+         RETURNING *`,
+        [input.name, input.requisites, input.phone, input.email, input.telegram]
+      );
+      return invoiceCompanyDTO(row!);
+    },
+
+    async listInvoiceVersions(projectId) {
+      const rows = await query<InvoiceVersionRow>(
+        db,
+        `SELECT * FROM finance.invoice_versions WHERE project_id=$1 ORDER BY created_at DESC LIMIT 20`,
+        [projectId]
+      );
+      return rows.map(invoiceVersionDTO);
+    },
+
+    async createInvoiceVersion(input) {
+      const row = await one<InvoiceVersionRow>(
+        db,
+        `INSERT INTO finance.invoice_versions
+           (project_id, number, date, place, client_name, total_eur, currency, lang, lines, note)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)
+         RETURNING *`,
+        [
+          input.projectId,
+          input.number,
+          input.date,
+          input.place,
+          input.clientName,
+          input.totalEUR,
+          input.currency,
+          input.lang,
+          JSON.stringify(input.lines),
+          input.note ?? "",
+        ]
+      );
+      return invoiceVersionDTO(row!);
     },
   };
 }

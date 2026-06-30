@@ -22,6 +22,38 @@ export function useFxRates() {
   return useQuery({ queryKey: ["finance", "fx"], queryFn: () => api.get<Finance.FxRateDTO[]>("/api/finance/fx") });
 }
 
+export function useInvoiceCompanySettings() {
+  return useQuery({
+    queryKey: ["finance", "invoice-company"],
+    queryFn: () => api.get<Finance.InvoiceCompanySettingsDTO>("/api/finance/invoice-company"),
+  });
+}
+
+export function useSetInvoiceCompanySettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Finance.InvoiceCompanySettingsDTO) => api.put<Finance.InvoiceCompanySettingsDTO>("/api/finance/invoice-company", input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "invoice-company"] }),
+  });
+}
+
+export function useInvoiceVersions(projectId: string, enabled = true) {
+  return useQuery({
+    enabled: enabled && !!projectId,
+    queryKey: ["projects", "invoice-versions", projectId],
+    queryFn: () => api.get<Finance.InvoiceVersionDTO[]>(`/api/projects/${projectId}/invoice/versions`),
+  });
+}
+
+export function useCreateInvoiceVersion(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Omit<Finance.CreateInvoiceVersionInput, "projectId">) =>
+      api.post<Finance.InvoiceVersionDTO>(`/api/projects/${projectId}/invoice/versions`, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects", "invoice-versions", projectId] }),
+  });
+}
+
 export function useTransactions() {
   return useQuery({ queryKey: ["finance", "transactions"], queryFn: () => api.get<Finance.TransactionDTO[]>("/api/finance/transactions") });
 }
