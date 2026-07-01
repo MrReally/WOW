@@ -59,6 +59,9 @@ interface ApplicationSession {
 }
 
 const LANG_LABELS: Record<BotLang, string> = { ru: "Русский", sr: "Srpski", en: "English" };
+const CHOOSE_LANGUAGE_TEXT = "<b>SEVER Crew</b>\nРусский · Srpski · English";
+const INACTIVE_TEXT = "No active application. /start";
+const CANCELLED_TEXT = "Cancelled / Otkazano / Отменено. /start";
 
 const COPY = {
   ru: {
@@ -83,6 +86,8 @@ const COPY = {
     photoAsImage: "Фото нужно отправить как изображение.",
     alreadyComplete: "Анкета уже заполнена. Можно отправить или отредактировать поле.",
     submitFailed: "Не удалось отправить анкету.",
+    duplicateApplication: "Анкета уже отправлена.",
+    userExists: "Такой пользователь уже есть.",
     submitted: "✅ Анкета отправлена. Мы вернёмся с ответом после просмотра.",
     fieldLabels: {
       firstName: "Имя",
@@ -130,10 +135,12 @@ const COPY = {
     inactive: "Prijava nije aktivna. Pritisnite /start.",
     emptyField: "Polje ne sme biti prazno.",
     invalidEmail: "Pošaljite ispravan email.",
-    invalidDate: "Ne razumem datum. Format: DD.MM.GGGG ili DD.MM.GG.",
+    invalidDate: "Ne razumem datum. Format: DD.MM.YYYY ili DD.MM.YY.",
     photoAsImage: "Fotografiju pošaljite kao sliku.",
     alreadyComplete: "Prijava je već popunjena. Možete je poslati ili izmeniti polje.",
     submitFailed: "Nije uspelo slanje prijave.",
+    duplicateApplication: "Prijava je već poslata.",
+    userExists: "Takav korisnik već postoji.",
     submitted: "✅ Prijava je poslata. Javićemo se posle pregleda.",
     fieldLabels: {
       firstName: "Ime",
@@ -153,7 +160,7 @@ const COPY = {
       patronymic: "Srednje ime, ako ga imate. Ako nemate, pošaljite „-“.",
       nickname: "Koji kratak nadimak da koristimo u rasporedima i listama?",
       email: "Na koji email možemo da vas kontaktiramo?",
-      birthDate: "Koji je vaš datum rođenja? Format: DD.MM.GGGG ili DD.MM.GG.",
+      birthDate: "Koji je vaš datum rođenja? Format: DD.MM.YYYY ili DD.MM.YY.",
       languages: "Koje jezike znate i na kom nivou?",
       about: "Ukratko napišite nešto o sebi i iskustvu.",
       source: "Kako ste saznali za SEVER? Ko vas je pozvao ili gde ste našli bota?",
@@ -185,6 +192,8 @@ const COPY = {
     photoAsImage: "Please send the photo as an image.",
     alreadyComplete: "The application is complete. You can send it or edit a field.",
     submitFailed: "Could not send the application.",
+    duplicateApplication: "The application has already been sent.",
+    userExists: "This user already exists.",
     submitted: "✅ Application sent. We will get back to you after review.",
     fieldLabels: {
       firstName: "First name",
@@ -236,6 +245,8 @@ const COPY = {
   photoAsImage: string;
   alreadyComplete: string;
   submitFailed: string;
+  duplicateApplication: string;
+  userExists: string;
   submitted: string;
   fieldLabels: Record<ApplicationField, string>;
   questions: Record<ApplicationField, string>;
@@ -297,6 +308,22 @@ export function startTelegramBot(deps: BotDeps): void {
     ]],
   };
   const escapeHtml = (value: string | null | undefined) => (value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const normalizeIntent = (value: string): string =>
+    value.trim().toLowerCase().replace(/[.!?,;:]+$/g, "").trim();
+  const languageFromText = (value: string): BotLang | null => {
+    const normalized = normalizeIntent(value);
+    if (["ru", "rus", "russian", "русский", "рус"].includes(normalized)) return "ru";
+    if (["sr", "serbian", "srpski", "српски", "serb"].includes(normalized)) return "sr";
+    if (["en", "eng", "english", "английский"].includes(normalized)) return "en";
+    return null;
+  };
+  const submitError = (session: ApplicationSession, err: unknown): string => {
+    const c = copy(session);
+    const message = err instanceof Error ? err.message : "";
+    if (message.includes("анкета уже отправлена")) return c.duplicateApplication;
+    if (message.includes("такой пользователь уже есть")) return c.userExists;
+    return message || c.submitFailed;
+  };
   const normalizeBirthYear = (year: number): number => {
     if (year >= 100) return year;
     return year >= 31 ? 1900 + year : 2000 + year;
@@ -372,7 +399,7 @@ export function startTelegramBot(deps: BotDeps): void {
     return out;
   };
   const isAffirmative = (session: ApplicationSession, text: string): boolean => {
-    const normalized = text.trim().toLowerCase();
+    const normalized = normalizeIntent(text);
     return copy(session).yes.includes(normalized);
   };
   const keyboard = (session: ApplicationSession, editMode = false) => {
@@ -470,7 +497,7 @@ export function startTelegramBot(deps: BotDeps): void {
       submitted: false,
     };
     sessions.set(chatId, session);
-    const sent = await send(chatId, COPY.ru.chooseLanguage, languageKeyboard);
+    const sent = await send(chatId, CHOOSE_LANGUAGE_TEXT, languageKeyboard);
     const messageId = (sent?.result as { message_id?: number } | undefined)?.message_id;
     if (typeof messageId === "number") session.summaryMessageId = messageId;
   };
@@ -483,6 +510,7 @@ export function startTelegramBot(deps: BotDeps): void {
       return false;
     }
     try {
+      session.draft.language = session.lang ?? "ru";
       await people.submitApplication(session.draft as People.SubmitCrewApplicationInput);
       session.submitted = true;
       session.lastError = null;
@@ -492,7 +520,7 @@ export function startTelegramBot(deps: BotDeps): void {
       sessions.delete(chatId);
       await send(chatId, c.submitted);
     } catch (err) {
-      session.lastError = err instanceof Error ? err.message : c.submitFailed;
+      session.lastError = submitError(session, err);
       await renderOrSendApplication(chatId, session);
     }
     return true;
@@ -501,18 +529,35 @@ export function startTelegramBot(deps: BotDeps): void {
     const session = sessions.get(chatId);
     if (!session) return false;
     const c = copy(session);
+    const incomingText = msg.text?.trim() ?? "";
+    const lowerText = normalizeIntent(incomingText);
     if (!session.lang) {
+      const chosen = languageFromText(incomingText);
+      if (chosen) {
+        session.lang = chosen;
+        session.draft.language = chosen;
+        session.lastError = null;
+        await del(chatId, msg.message_id);
+        await send(chatId, copy(session).intro);
+        await renderOrSendApplication(chatId, session);
+        await replaceQuestion(chatId, session);
+        return true;
+      }
+      if (lowerText === "/cancel" || COPY.ru.cancel.includes(lowerText) || COPY.sr.cancel.includes(lowerText) || COPY.en.cancel.includes(lowerText)) {
+        sessions.delete(chatId);
+        await del(chatId, msg.message_id);
+        if (session.summaryMessageId) await edit(chatId, session.summaryMessageId, CANCELLED_TEXT);
+        return true;
+      }
       await del(chatId, msg.message_id);
-      if (session.summaryMessageId) await edit(chatId, session.summaryMessageId, COPY.ru.chooseLanguage, languageKeyboard);
+      if (session.summaryMessageId) await edit(chatId, session.summaryMessageId, CHOOSE_LANGUAGE_TEXT, languageKeyboard);
       else {
-        const sent = await send(chatId, COPY.ru.chooseLanguage, languageKeyboard);
+        const sent = await send(chatId, CHOOSE_LANGUAGE_TEXT, languageKeyboard);
         const messageId = (sent?.result as { message_id?: number } | undefined)?.message_id;
         if (typeof messageId === "number") session.summaryMessageId = messageId;
       }
       return true;
     }
-    const incomingText = msg.text?.trim() ?? "";
-    const lowerText = incomingText.toLowerCase();
     if (lowerText === "/cancel" || c.cancel.includes(lowerText)) {
       sessions.delete(chatId);
       await del(chatId, msg.message_id);
@@ -571,12 +616,13 @@ export function startTelegramBot(deps: BotDeps): void {
     if (data.startsWith("app:")) {
       const session = sessions.get(fromChatId);
       if (!session) {
-        await tg("answerCallbackQuery", { callback_query_id: cb.id, text: COPY.ru.inactive });
+        await tg("answerCallbackQuery", { callback_query_id: cb.id, text: INACTIVE_TEXT });
         return;
       }
       const langMatch = data.match(/^app:lang:(ru|sr|en)$/);
       if (langMatch) {
         session.lang = langMatch[1] as BotLang;
+        session.draft.language = session.lang;
         session.lastError = null;
         await tg("answerCallbackQuery", { callback_query_id: cb.id });
         await send(fromChatId, copy(session).intro);
@@ -585,7 +631,7 @@ export function startTelegramBot(deps: BotDeps): void {
         return;
       }
       if (!session.lang) {
-        await tg("answerCallbackQuery", { callback_query_id: cb.id, text: COPY.ru.chooseLanguage.replace(/<[^>]+>/g, "") });
+        await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Choose language / Izaberite jezik / Выберите язык" });
         return;
       }
       if (data === "app:edit") {

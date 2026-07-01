@@ -114,11 +114,13 @@ export interface CalendarFeedDTO {
 // ── Telegram crew applications ───────────────────────────────────────────────
 
 export type CrewApplicationStatus = "pending" | "accepted" | "rejected";
+export type CrewApplicationLanguage = "ru" | "sr" | "en";
 
 export interface CrewApplicationDTO {
   id: ID;
   telegramId: string;
   telegramUsername: string | null;
+  language: CrewApplicationLanguage;
   firstName: string;
   lastName: string;
   patronymic: string | null;
@@ -139,6 +141,7 @@ export interface CrewApplicationDTO {
 export interface SubmitCrewApplicationInput {
   telegramId: string;
   telegramUsername?: string | null;
+  language?: CrewApplicationLanguage;
   firstName: string;
   lastName: string;
   patronymic?: string | null;

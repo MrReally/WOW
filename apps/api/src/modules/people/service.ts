@@ -48,6 +48,7 @@ interface CrewApplicationRow {
   id: string;
   telegram_id: string;
   telegram_username: string | null;
+  language: People.CrewApplicationLanguage;
   first_name: string;
   last_name: string;
   patronymic: string | null;
@@ -104,6 +105,7 @@ const applicationDTO = (r: CrewApplicationRow): People.CrewApplicationDTO => ({
   id: r.id,
   telegramId: r.telegram_id,
   telegramUsername: r.telegram_username,
+  language: r.language ?? "ru",
   firstName: r.first_name,
   lastName: r.last_name,
   patronymic: r.patronymic,
@@ -498,11 +500,12 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
       const row = await one<CrewApplicationRow>(
         db,
         `INSERT INTO people.crew_applications
-           (telegram_id, telegram_username, first_name, last_name, patronymic, nickname, email, birth_date, languages, about, source, photo_file_id)
-         VALUES ($1,$2,$3,$4,$5,$6,lower($7),$8,$9,$10,$11,$12) RETURNING *`,
+           (telegram_id, telegram_username, language, first_name, last_name, patronymic, nickname, email, birth_date, languages, about, source, photo_file_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,lower($8),$9,$10,$11,$12,$13) RETURNING *`,
         [
           input.telegramId,
           input.telegramUsername ?? null,
+          input.language ?? "ru",
           input.firstName.trim(),
           input.lastName.trim(),
           input.patronymic?.trim() || null,

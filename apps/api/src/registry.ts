@@ -20,7 +20,7 @@ import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
 import { editTelegramMessage, sendTelegramMessage, sendTelegramPhoto } from "./core/telegram.js";
-import type { Notifications } from "@sever/contracts";
+import type { Notifications, People } from "@sever/contracts";
 import type { DomainEvent } from "./core/eventBus.js";
 
 export function createModules(bus: EventBus = new EventBus()) {
@@ -64,6 +64,31 @@ export function createModules(bus: EventBus = new EventBus()) {
   const formatBirthDate = (value: string | null | undefined) => {
     const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     return match ? `${match[3]}.${match[2]}.${match[1]}` : (value ?? "");
+  };
+  const acceptedApplicationCopy: Record<People.CrewApplicationLanguage, {
+    title: string;
+    created: string;
+    tempPassword: string;
+    changePassword: string;
+  }> = {
+    ru: {
+      title: "Анкета SEVER Crew принята",
+      created: "Аккаунт создан, Telegram уже привязан.",
+      tempPassword: "Временный пароль",
+      changePassword: "После входа приложение попросит задать новый пароль.",
+    },
+    sr: {
+      title: "SEVER Crew prijava je prihvaćena",
+      created: "Nalog je kreiran, Telegram je već povezan.",
+      tempPassword: "Privremena lozinka",
+      changePassword: "Posle prijave aplikacija će tražiti da postavite novu lozinku.",
+    },
+    en: {
+      title: "SEVER Crew application accepted",
+      created: "Your account has been created and Telegram is already linked.",
+      tempPassword: "Temporary password",
+      changePassword: "After login, the app will ask you to set a new password.",
+    },
   };
 
   const fmtActor = async (actorId?: string | null) => {
@@ -316,15 +341,19 @@ export function createModules(bus: EventBus = new EventBus()) {
   });
 
   bus.on("people.application.accepted", async (e) => {
-    const user = await people.service.getById(e.userId);
+    const [user, application] = await Promise.all([
+      people.service.getById(e.userId),
+      people.service.getApplication(e.applicationId),
+    ]);
     if (!user?.telegramId) return;
+    const c = acceptedApplicationCopy[application?.language ?? "ru"];
     const lines = [
-      "<b>Анкета SEVER Crew принята</b>",
+      `<b>${c.title}</b>`,
       "",
-      "Аккаунт создан, Telegram уже привязан.",
+      c.created,
       user.email ? `Email: ${escapeHtml(user.email)}` : null,
-      e.temporaryPassword ? `Временный пароль: <code>${escapeHtml(e.temporaryPassword)}</code>` : null,
-      e.temporaryPassword ? "После входа приложение попросит задать новый пароль." : null,
+      e.temporaryPassword ? `${c.tempPassword}: <code>${escapeHtml(e.temporaryPassword)}</code>` : null,
+      e.temporaryPassword ? c.changePassword : null,
     ].filter(Boolean).join("\n");
     await sendTelegramMessage(user.telegramId, lines);
   });

@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS people.crew_applications (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   telegram_id         text NOT NULL,
   telegram_username   text,
+  language            text NOT NULL DEFAULT 'ru',
   first_name          text NOT NULL,
   last_name           text NOT NULL,
   patronymic          text,
@@ -86,6 +87,7 @@ CREATE TABLE IF NOT EXISTS people.crew_applications (
   created_user_id     uuid,
   created_at          timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE people.crew_applications ADD COLUMN IF NOT EXISTS language text NOT NULL DEFAULT 'ru';
 CREATE INDEX IF NOT EXISTS crew_applications_status_idx ON people.crew_applications(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS crew_applications_telegram_idx ON people.crew_applications(telegram_id, created_at DESC);
 `;
