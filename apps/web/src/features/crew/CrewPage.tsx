@@ -6,7 +6,7 @@ import { useSession } from "../../app/session.ts";
 import { api } from "../../lib/api.ts";
 import { getToken } from "../../lib/api.ts";
 import { dateRange, dateTime } from "../../lib/labels.ts";
-import { useArchiveUser, useDeleteUserPermanently, usePeople, useRoles, useUpdateUser } from "../settings/hooks.ts";
+import { useArchiveUser, useBotInfo, useCreateUser, useDeleteUserPermanently, usePeople, useResetPassword, useRoles, useUpdateUser } from "../settings/hooks.ts";
 import { useProjectsForFinance } from "../finance/hooks.ts";
 import { personName } from "../../lib/people.ts";
 
@@ -43,6 +43,10 @@ function fullName(draft: People.UpdateUserInput): string {
 function displayImageUrl(value: string | null | undefined): string | null {
   if (!value || value.startsWith("telegram-file:")) return null;
   return value;
+}
+
+function isTelegramLinked(telegramId: string | null): boolean {
+  return !!telegramId && /^\d+$/.test(telegramId);
 }
 
 function formatBirthDate(value: string | null | undefined): string {
@@ -193,12 +197,17 @@ export function CrewPage() {
   const people = usePeople();
   const deletedPeople = usePeople("deleted", canManagePeople);
   const roles = useRoles();
+  const botInfo = useBotInfo();
   const projects = useProjectsForFinance();
+  const createUser = useCreateUser();
   const updateUser = useUpdateUser();
+  const resetPassword = useResetPassword();
   const archiveUser = useArchiveUser();
   const deleteUserPermanently = useDeleteUserPermanently();
   const [selectedId, setSelectedId] = useState("");
   const [draft, setDraft] = useState<People.UpdateUserInput>({});
+  const [newPerson, setNewPerson] = useState({ name: "", email: "", telegram: "", roleId: "" });
+  const [revealedPassword, setRevealedPassword] = useState<{ who: string; pw: string } | null>(null);
   const [historyMode, setHistoryMode] = useState<"projects" | "actions">("projects");
   const [applicationRoleIds, setApplicationRoleIds] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<CrewTab>("people");
@@ -315,6 +324,8 @@ export function CrewPage() {
   const avatarSrc = displayImageUrl(draft.usePhotoAsAvatar ? draft.photoUrl : null);
   const pendingApplications = applications.data ?? [];
   const deletedList = deletedPeople.data ?? [];
+  const roleOptions = (roles.data ?? []).map((role) => ({ value: role.id, label: role.name }));
+  const newRoleId = newPerson.roleId || roleOptions.find((role) => role.label !== "Владелец")?.value || roleOptions[0]?.value || "";
   const currentTab =
     activeTab === "applications" && !canReviewApplications ? "people" :
     activeTab === "deleted" && !canManagePeople ? "people" :
@@ -401,6 +412,59 @@ export function CrewPage() {
         </>
       ) : (
         <>
+      {canManagePeople && (
+        <>
+          {revealedPassword && (
+            <Card style={{ borderColor: "var(--accent)" }}>
+              <div className="row row--between">
+                <div style={{ minWidth: 0 }}>
+                  <p className="card__title">Временный пароль</p>
+                  <p className="card__subtitle">{revealedPassword.who}</p>
+                </div>
+                <Button variant="ghost" onClick={() => setRevealedPassword(null)}>×</Button>
+              </div>
+              <div className="t-mono" style={{ fontSize: 22, fontWeight: 700, color: "var(--accent)", marginTop: 8, letterSpacing: "0.04em" }}>
+                {revealedPassword.pw}
+              </div>
+            </Card>
+          )}
+          <Card>
+            <SectionHead label="+ человек" />
+            <Field label="Имя">
+              <Input value={newPerson.name} onChange={(e) => setNewPerson((p) => ({ ...p, name: e.target.value }))} placeholder="Имя Фамилия" />
+            </Field>
+            <div className="row">
+              <Field label="Email">
+                <Input type="email" value={newPerson.email} onChange={(e) => setNewPerson((p) => ({ ...p, email: e.target.value }))} placeholder="name@company.com" />
+              </Field>
+              <Field label="Telegram">
+                <Input value={newPerson.telegram} onChange={(e) => setNewPerson((p) => ({ ...p, telegram: e.target.value }))} placeholder="@username" />
+              </Field>
+            </div>
+            <Field label="Роль">
+              <Select value={newRoleId} onChange={(e) => setNewPerson((p) => ({ ...p, roleId: e.target.value }))} options={roleOptions} />
+            </Field>
+            <Button
+              block
+              disabled={!newPerson.name || (!newPerson.email && !newPerson.telegram) || !newRoleId || createUser.isPending}
+              onClick={() =>
+                createUser.mutate(
+                  { displayName: newPerson.name, roleId: newRoleId, email: newPerson.email || null, telegramId: newPerson.telegram || null } as People.CreateUserInput,
+                  {
+                    onSuccess: (res) => {
+                      setNewPerson({ name: "", email: "", telegram: "", roleId: "" });
+                      setSelectedId(res.user.id);
+                      if (res.temporaryPassword) setRevealedPassword({ who: personName(res.user), pw: res.temporaryPassword });
+                    },
+                  }
+                )
+              }
+            >
+              Создать
+            </Button>
+          </Card>
+        </>
+      )}
       {!selected && <EmptyState title="Crew пуст" />}
       {selected && (
         <>
@@ -433,13 +497,38 @@ export function CrewPage() {
           <div className="row" style={{ gap: 6, flexShrink: 0 }}>
             {!selected.active && <Chip label="выкл" tone="neutral" />}
             {canManagePeople && (
-              <Button
-                variant="ghost"
-                disabled={archiveUser.isPending}
-                onClick={() => confirm(`Переместить «${personName(selected)}» в удалённые?`) && archiveUser.mutate(selected.id, { onSuccess: () => setSelectedId("") })}
-              >
-                ×
-              </Button>
+              <>
+                {selected.email && (
+                  <Button
+                    variant="ghost"
+                    disabled={resetPassword.isPending}
+                    onClick={() => resetPassword.mutate(selected.id, { onSuccess: (r) => setRevealedPassword({ who: personName(selected), pw: r.temporaryPassword }) })}
+                  >
+                    ↻
+                  </Button>
+                )}
+                {isTelegramLinked(selected.telegramId) ? (
+                  <span className="icon-btn icon-btn--ok" title="Telegram привязан" aria-label="Telegram привязан">✓</span>
+                ) : botInfo.data?.username ? (
+                  <a
+                    className="icon-btn"
+                    href={`https://t.me/${botInfo.data.username}?start=${selected.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Привязать Telegram"
+                    aria-label="Привязать Telegram"
+                  >
+                    TG
+                  </a>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  disabled={archiveUser.isPending}
+                  onClick={() => confirm(`Переместить «${personName(selected)}» в удалённые?`) && archiveUser.mutate(selected.id, { onSuccess: () => setSelectedId("") })}
+                >
+                  ×
+                </Button>
+              </>
             )}
           </div>
         </div>

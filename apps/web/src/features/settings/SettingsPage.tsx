@@ -5,7 +5,6 @@ import { Card, Button, SectionTitle, Input, Select, Loading } from "../../ui-kit
 import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
 import { useFxRates, useSetFxRate, useResetData, useResetStatus } from "./hooks.ts";
-import { PeopleManager } from "./components/PeopleManager.tsx";
 import { RoleEditor } from "./components/RoleEditor.tsx";
 
 export function SettingsPage() {
@@ -26,8 +25,6 @@ export function SettingsPage() {
           <Button variant="secondary" onClick={toggle}>Переключить</Button>
         </div>
       </Card>
-
-      {can("people.manage") && <PeopleManager />}
 
       {can("roles.manage") && <RoleEditor />}
 
