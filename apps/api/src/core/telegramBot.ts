@@ -62,7 +62,7 @@ const APPLICATION_STEPS: { field: ApplicationField; label: string; question: str
   { field: "patronymic", label: "Отчество", question: "Отчество, если есть. Если нет — отправьте «-».", optional: true },
   { field: "nickname", label: "Ник", question: "Какой короткий ник использовать в таймингах и списках?" },
   { field: "email", label: "Email", question: "На какой email можно с вами связаться?" },
-  { field: "birthDate", label: "Дата рождения", question: "Какая у вас дата рождения? Формат: ДД.ММ.ГГГГ." },
+  { field: "birthDate", label: "Дата рождения", question: "Какая у вас дата рождения? Формат: ДД.ММ.ГГГГ или ДД.ММ.ГГ." },
   { field: "languages", label: "Языки", question: "Какие языки вы знаете и на каком уровне? Например: RU C2, EN B2, SR A2." },
   { field: "about", label: "О себе", question: "Коротко расскажите о себе и опыте." },
   { field: "source", label: "Источник", question: "Откуда вы узнали о SEVER? Кто пригласил или где нашли бота?" },
@@ -95,8 +95,12 @@ export function startTelegramBot(deps: BotDeps): void {
   let offset = 0;
 
   const escapeHtml = (value: string | null | undefined) => (value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const normalizeBirthYear = (year: number): number => {
+    if (year >= 100) return year;
+    return year >= 31 ? 1900 + year : 2000 + year;
+  };
   const finishDate = (day: number, month: number, year: number): string | null => {
-    const fullYear = year < 100 ? (year > 30 ? 1900 + year : 2000 + year) : year;
+    const fullYear = normalizeBirthYear(year);
     if (fullYear < 1900 || fullYear > new Date().getFullYear()) return null;
     const d = new Date(Date.UTC(fullYear, month - 1, day));
     if (d.getUTCFullYear() !== fullYear || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
@@ -135,7 +139,7 @@ export function startTelegramBot(deps: BotDeps): void {
     if (field === "patronymic" && (v === "-" || v.toLowerCase() === "нет")) return "";
     if (!v) return "Поле не должно быть пустым.";
     if (field === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "Пожалуйста, отправьте корректный email.";
-    if (field === "birthDate" && !parseDate(v)) return "Не понял дату. Формат: ДД.ММ.ГГГГ.";
+    if (field === "birthDate" && !parseDate(v)) return "Не понял дату. Формат: ДД.ММ.ГГГГ или ДД.ММ.ГГ.";
     return null;
   };
   const applyTextField = (session: ApplicationSession, field: ApplicationField, value: string): string | null => {
