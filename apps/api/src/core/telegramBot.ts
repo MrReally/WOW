@@ -278,7 +278,7 @@ interface Update {
     message_id: number;
     text?: string;
     photo?: { file_id: string; file_size?: number; width?: number; height?: number }[];
-    from?: { username?: string };
+    from?: { username?: string; first_name?: string; last_name?: string };
     chat: { id: number };
   };
   callback_query?: { id: string; data?: string; from: { id: number }; message?: { chat: { id: number }; message_id: number } };
@@ -559,8 +559,10 @@ export function startTelegramBot(deps: BotDeps): void {
     return !!settings.workUsername && normHandle(username) === normHandle(settings.workUsername);
   };
   const INBOX_PAGE_SIZE = 10;
+  const telegramDisplayName = (from: NonNullable<Update["message"]>["from"]): string | null =>
+    [from?.first_name, from?.last_name].filter(Boolean).join(" ").trim() || null;
   const participantLabel = (p: People.TelegramDialogParticipantDTO): string =>
-    p.displayName?.trim() || (p.telegramUsername ? `@${p.telegramUsername.replace(/^@/, "")}` : "Без имени");
+    p.displayName?.trim() || (p.telegramUsername ? `@${p.telegramUsername.replace(/^@/, "")}` : p.telegramDisplayName?.trim() || "Без имени");
   const operatorReplyKeyboard = {
     keyboard: [["☰ Диалоги", "↩ Выйти"]],
     resize_keyboard: true,
@@ -651,12 +653,12 @@ export function startTelegramBot(deps: BotDeps): void {
       { log: false }
     ));
   };
-  const notifyWorkAccount = async (fromChatId: string, username: string | null | undefined, text: string, type: People.TelegramMessageType) => {
+  const notifyWorkAccount = async (fromChatId: string, username: string | null | undefined, displayName: string | null, text: string, type: People.TelegramMessageType) => {
     const workChatId = await people.getTelegramInboxWorkChatId();
     if (!workChatId || workChatId === fromChatId) return;
     const users = await people.list("all");
     const user = users.find((item) => item.telegramId === fromChatId);
-    const name = user ? publicName(user) : username ? `@${username}` : "Без имени";
+    const name = user ? publicName(user) : username ? `@${username}` : displayName || "Без имени";
     const body = [
       `<b>Новое сообщение в бот</b>`,
       escapeHtml(name),
@@ -671,15 +673,17 @@ export function startTelegramBot(deps: BotDeps): void {
     const photo = [...(msg.photo ?? [])].sort((a, b) => (b.file_size ?? 0) - (a.file_size ?? 0))[0];
     const text = msg.text?.trim() ?? (photo ? "[photo]" : "");
     const type: People.TelegramMessageType = photo ? "photo" : "text";
+    const displayName = telegramDisplayName(msg.from);
     await people.logTelegramDialogMessage({
       telegramId: chatId,
       telegramUsername: msg.from?.username ? `@${msg.from.username}` : null,
+      telegramDisplayName: displayName,
       direction: "user",
       messageType: type,
       text,
       telegramMessageId: msg.message_id,
     });
-    return { text, type };
+    return { text, type, displayName };
   };
   const handleOperatorMessage = async (chatId: string, msg: NonNullable<Update["message"]>): Promise<boolean> => {
     if (!(await isWorkAccount(msg.from?.username))) return false;
@@ -920,7 +924,7 @@ export function startTelegramBot(deps: BotDeps): void {
             const users = await people.list();
             const already = users.find((p) => p.telegramId === chatId);
             if (already) {
-              if (incoming) await notifyWorkAccount(chatId, username, incoming.text, incoming.type);
+              if (incoming) await notifyWorkAccount(chatId, username, incoming.displayName, incoming.text, incoming.type);
               else await send(chatId, `Вы уже привязаны к аккаунту <b>${publicName(already)}</b>.`);
               continue;
             }

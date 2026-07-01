@@ -127,6 +127,7 @@ export interface UpdateTelegramInboxSettingsInput {
 export interface TelegramDialogParticipantDTO {
   telegramId: string;
   telegramUsername: string | null;
+  telegramDisplayName: string | null;
   displayName: string | null;
   lastMessageAt: ISODateTime;
 }
@@ -135,6 +136,7 @@ export interface TelegramDialogMessageDTO {
   id: ID;
   telegramId: string;
   telegramUsername: string | null;
+  telegramDisplayName: string | null;
   direction: TelegramDialogDirection;
   messageType: TelegramMessageType;
   text: string;
@@ -146,6 +148,7 @@ export interface TelegramDialogMessageDTO {
 export interface LogTelegramDialogMessageInput {
   telegramId: string;
   telegramUsername?: string | null;
+  telegramDisplayName?: string | null;
   direction: TelegramDialogDirection;
   messageType?: TelegramMessageType;
   text: string;

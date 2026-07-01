@@ -69,6 +69,7 @@ interface TelegramDialogMessageRow {
   id: string;
   telegram_id: string;
   telegram_username: string | null;
+  telegram_display_name: string | null;
   direction: People.TelegramDialogDirection;
   message_type: People.TelegramMessageType;
   text: string;
@@ -79,6 +80,7 @@ interface TelegramDialogMessageRow {
 interface TelegramDialogParticipantRow {
   telegram_id: string;
   telegram_username: string | null;
+  telegram_display_name: string | null;
   display_name: string | null;
   last_message_at: Date;
 }
@@ -143,6 +145,7 @@ const telegramDialogMessageDTO = (r: TelegramDialogMessageRow): People.TelegramD
   id: r.id,
   telegramId: r.telegram_id,
   telegramUsername: r.telegram_username,
+  telegramDisplayName: r.telegram_display_name,
   direction: r.direction,
   messageType: r.message_type,
   text: r.text,
@@ -153,6 +156,7 @@ const telegramDialogMessageDTO = (r: TelegramDialogMessageRow): People.TelegramD
 const telegramDialogParticipantDTO = (r: TelegramDialogParticipantRow): People.TelegramDialogParticipantDTO => ({
   telegramId: r.telegram_id,
   telegramUsername: r.telegram_username,
+  telegramDisplayName: r.telegram_display_name,
   displayName: r.display_name,
   lastMessageAt: r.last_message_at.toISOString(),
 });
@@ -394,6 +398,7 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
         `SELECT DISTINCT ON (m.telegram_id)
            m.telegram_id,
            m.telegram_username,
+           m.telegram_display_name,
            COALESCE(u.nickname, u.display_name) AS display_name,
            m.created_at AS last_message_at
          FROM people.telegram_dialog_messages m
@@ -422,12 +427,13 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
       const row = await one<TelegramDialogMessageRow>(
         db,
         `INSERT INTO people.telegram_dialog_messages
-           (telegram_id, telegram_username, direction, message_type, text, telegram_message_id, deleted_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
+           (telegram_id, telegram_username, telegram_display_name, direction, message_type, text, telegram_message_id, deleted_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
          RETURNING *`,
         [
           input.telegramId,
           input.telegramUsername ?? null,
+          input.telegramDisplayName ?? null,
           input.direction,
           input.messageType ?? "text",
           input.text,

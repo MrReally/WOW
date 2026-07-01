@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS people.telegram_dialog_messages (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   telegram_id         text NOT NULL,
   telegram_username   text,
+  telegram_display_name text,
   direction           text NOT NULL CHECK (direction IN ('user','bot','operator')),
   message_type        text NOT NULL DEFAULT 'text' CHECK (message_type IN ('text','photo','system')),
   text                text NOT NULL DEFAULT '',
@@ -108,6 +109,7 @@ CREATE TABLE IF NOT EXISTS people.telegram_dialog_messages (
   deleted_at          timestamptz,
   created_at          timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE people.telegram_dialog_messages ADD COLUMN IF NOT EXISTS telegram_display_name text;
 CREATE INDEX IF NOT EXISTS telegram_dialog_messages_chat_idx ON people.telegram_dialog_messages(telegram_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS telegram_dialog_messages_message_idx ON people.telegram_dialog_messages(telegram_id, telegram_message_id);
 `;
