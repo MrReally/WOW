@@ -525,6 +525,13 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
          WHERE id=$1`,
         [id, input.reviewedByUserId, created.user.id]
       );
+      await bus.publish({
+        type: "people.application.accepted",
+        applicationId: id,
+        userId: created.user.id,
+        temporaryPassword: created.temporaryPassword,
+        at: new Date().toISOString(),
+      });
       return created;
     },
     async rejectApplication(id, reviewedByUserId) {

@@ -222,4 +222,12 @@ export interface CrewApplicationSubmittedEvent {
   at: ISODateTime;
 }
 
-export type PeopleEvent = UserCreatedEvent | CrewApplicationSubmittedEvent;
+export interface CrewApplicationAcceptedEvent {
+  type: "people.application.accepted";
+  applicationId: ID;
+  userId: ID;
+  temporaryPassword: string | null;
+  at: ISODateTime;
+}
+
+export type PeopleEvent = UserCreatedEvent | CrewApplicationSubmittedEvent | CrewApplicationAcceptedEvent;

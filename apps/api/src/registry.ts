@@ -315,6 +315,20 @@ export function createModules(bus: EventBus = new EventBus()) {
     }
   });
 
+  bus.on("people.application.accepted", async (e) => {
+    const user = await people.service.getById(e.userId);
+    if (!user?.telegramId) return;
+    const lines = [
+      "<b>Анкета SEVER Crew принята</b>",
+      "",
+      "Аккаунт создан, Telegram уже привязан.",
+      user.email ? `Email: ${escapeHtml(user.email)}` : null,
+      e.temporaryPassword ? `Временный пароль: <code>${escapeHtml(e.temporaryPassword)}</code>` : null,
+      e.temporaryPassword ? "После входа приложение попросит задать новый пароль." : null,
+    ].filter(Boolean).join("\n");
+    await sendTelegramMessage(user.telegramId, lines);
+  });
+
   bus.on("equipment.units.issued", async (e) => {
     const [project, assignees] = await Promise.all([
       projects.service.getProject(e.projectId),
