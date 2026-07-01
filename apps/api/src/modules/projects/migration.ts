@@ -145,6 +145,34 @@ ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS telegram_message_id in
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS role_id      uuid REFERENCES projects.project_roles(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS assignments_role_idx ON projects.assignments(role_id);
 
+CREATE TABLE IF NOT EXISTS projects.project_reminders (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id         uuid NOT NULL REFERENCES projects.projects(id) ON DELETE CASCADE,
+  offset_minutes     integer NOT NULL CHECK (offset_minutes > 0),
+  recipient_mode     text NOT NULL DEFAULT 'project_team' CHECK (recipient_mode IN ('project_team','selected')),
+  user_ids           uuid[] NOT NULL DEFAULT '{}',
+  note               text,
+  sent_at            timestamptz,
+  created_by_user_id uuid,
+  created_at         timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS project_reminders_project_idx ON projects.project_reminders(project_id, created_at);
+CREATE INDEX IF NOT EXISTS project_reminders_due_idx ON projects.project_reminders(sent_at, offset_minutes);
+
+CREATE TABLE IF NOT EXISTS projects.project_pings (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id          uuid NOT NULL REFERENCES projects.projects(id) ON DELETE CASCADE,
+  user_id             uuid NOT NULL,
+  reminder_id         uuid REFERENCES projects.project_reminders(id) ON DELETE SET NULL,
+  message             text NOT NULL DEFAULT '',
+  status              text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','confirmed','declined')),
+  responded_at        timestamptz,
+  created_by_user_id  uuid,
+  created_at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS project_pings_project_idx ON projects.project_pings(project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS project_pings_user_idx ON projects.project_pings(user_id, status);
+
 -- Backfill staffing roles for legacy assignments. Keep this conservative:
 -- one role per legacy assignment, so old costs and project membership survive.
 INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur, created_at)

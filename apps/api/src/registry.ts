@@ -238,6 +238,27 @@ export function createModules(bus: EventBus = new EventBus()) {
     await editTelegramMessage(assignment?.telegramChatId ?? e.telegramChatId ?? null, assignment?.telegramMessageId ?? e.telegramMessageId ?? null, body);
   });
 
+  bus.on("project.ping.created", async (e) => {
+    const [project, user, pings] = await Promise.all([
+      projects.service.getProject(e.projectId),
+      people.service.getById(e.userId),
+      projects.service.listPings(e.projectId),
+    ]);
+    const ping = pings.find((item) => item.id === e.pingId);
+    if (!project || !user || !ping) return;
+    const extra = ping.message.trim() ? `\n${ping.message.trim()}` : "";
+    await sendTelegramMessage(
+      user.telegramId,
+      `<b>Пинг по проекту</b>\n«${project.name}»\n🗓 ${fmtDateTime(project.startsAt)} — ${fmtDateTime(project.endsAt)}${extra}\n\nПодтверди, пожалуйста, что помнишь и будешь.`,
+      {
+        inlineKeyboard: [[
+          { text: "✅ Буду", callbackData: `ping:yes:${ping.id}` },
+          { text: "❌ Не буду", callbackData: `ping:no:${ping.id}` },
+        ]],
+      }
+    );
+  });
+
   bus.on("project.operation_stage.changed", async (e) => {
     const [project, assignees, actor] = await Promise.all([
       projects.service.getProject(e.projectId),
@@ -299,6 +320,19 @@ export function createModules(bus: EventBus = new EventBus()) {
   // Telegram inline-button taps (invite accept/decline) route through here. The
   // bot stays decoupled — it knows nothing about assignments, just calls this.
   async function handleTelegramCallback(data: string, fromChatId: string): Promise<string | null> {
+    const pingMatch = data.match(/^ping:(yes|no):(.+)$/);
+    if (pingMatch) {
+      const yes = pingMatch[1] === "yes";
+      const pingId = pingMatch[2]!;
+      const users = await people.service.list();
+      const user = users.find((item) => item.telegramId === fromChatId);
+      if (!user) return "Этот Telegram не привязан к аккаунту.";
+      const updated = await projects.service.respondToPing(pingId, yes ? "confirmed" : "declined", user.id);
+      const project = await projects.service.getProject(updated.projectId);
+      return yes
+        ? `✅ Подтверждено: «${project?.name ?? "проект"}».`
+        : `❌ Отмечено: вы не будете на «${project?.name ?? "проект"}».`;
+    }
     const m = data.match(/^inv:(accept|decline):(.+)$/);
     if (!m) return null;
     const accept = m[1] === "accept";
@@ -330,9 +364,42 @@ export function createModules(bus: EventBus = new EventBus()) {
       : `❌ Вы отклонили участие в проекте «${project?.name ?? ""}».`;
   }
 
+  async function dispatchDueReminders() {
+    const due = await projects.service.listDueReminders(new Date().toISOString());
+    for (const reminder of due) {
+      const [project, assignments] = await Promise.all([
+        projects.service.getProject(reminder.projectId),
+        projects.service.listAssignments(reminder.projectId),
+      ]);
+      if (!project) {
+        await projects.service.markReminderSent(reminder.id);
+        continue;
+      }
+      const dynamicIds = assignments
+        .filter((a) => a.status === "added" || a.status === "accepted")
+        .map((a) => a.userId);
+      const recipientIds = reminder.recipientMode === "selected" ? reminder.userIds : dynamicIds;
+      for (const userId of [...new Set(recipientIds)]) {
+        await projects.service.createPing({
+          projectId: reminder.projectId,
+          userId,
+          reminderId: reminder.id,
+          message: reminder.note ?? null,
+          createdByUserId: reminder.createdByUserId,
+        });
+      }
+      await projects.service.markReminderSent(reminder.id);
+    }
+  }
+
+  function startReminderScheduler() {
+    void dispatchDueReminders();
+    return setInterval(() => void dispatchDueReminders(), 60_000);
+  }
+
   const modules = [people, equipment, projects, finance, venues, plans, notifications];
 
-  return { bus, people, equipment, projects, finance, venues, plans, notifications, apex, billing, modules, handleTelegramCallback };
+  return { bus, people, equipment, projects, finance, venues, plans, notifications, apex, billing, modules, handleTelegramCallback, startReminderScheduler };
 }
 
 export type Wiring = ReturnType<typeof createModules>;

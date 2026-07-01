@@ -34,6 +34,7 @@ async function main() {
 
   // Telegram notifications bot (long polling). No-op without a token.
   startTelegramBot({ people: wiring.people.service, onCallback: wiring.handleTelegramCallback });
+  wiring.startReminderScheduler();
 
   const shutdown = async () => {
     await app.close();

@@ -321,14 +321,14 @@ describe("Tech pickup/return → некомплект", () => {
     expect(await notifications.service.isEnabled(tech.id, "assigned")).toBe(true);
 
     // Mute "assigned" → being added to a project no longer notifies.
-    await notifications.service.setPrefs(tech.id, { assigned: false, issued: true, returned: true, problem: true, info: true });
+    await notifications.service.setPrefs(tech.id, { assigned: false, stage: true, issued: true, returned: true, problem: true, info: true });
     expect(await notifications.service.isEnabled(tech.id, "assigned")).toBe(false);
     const p1 = await mk("Pref P1");
     await projects.service.addAssignment({ projectId: p1.id, userId: tech.id });
     expect((await notifications.service.listForUser(tech.id)).some((n) => n.kind === "assigned")).toBe(false);
 
     // Re-enable → a new assignment notifies again.
-    await notifications.service.setPrefs(tech.id, { assigned: true, issued: true, returned: true, problem: true, info: true });
+    await notifications.service.setPrefs(tech.id, { assigned: true, stage: true, issued: true, returned: true, problem: true, info: true });
     const p2 = await mk("Pref P2");
     await projects.service.addAssignment({ projectId: p2.id, userId: tech.id });
     expect((await notifications.service.listForUser(tech.id)).some((n) => n.kind === "assigned")).toBe(true);
@@ -353,6 +353,7 @@ describe("Tech pickup/return → некомплект", () => {
       "project.unassigned": false,
       "project.invited": false,
       "project.invite.responded": false,
+      "project.operation_stage.changed": false,
       "equipment.units.issued": false,
       "equipment.unit.returned": false,
       "equipment.return.incomplete": false,

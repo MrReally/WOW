@@ -29,6 +29,11 @@ import {
   useIssueResolvedUnits,
   useAllUnits,
   useProjectInvoice,
+  useCreateProjectPing,
+  useCreateProjectReminder,
+  useDeleteProjectReminder,
+  useProjectPings,
+  useProjectReminders,
 } from "./hooks.ts";
 import { ResolveReservationSheet } from "./components/ResolveReservationSheet.tsx";
 import { EditProjectSheet } from "./components/EditProjectSheet.tsx";
@@ -48,6 +53,19 @@ const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "o
 
 const assignmentRank = (status: Projects.AssignmentStatus) =>
   status === "added" || status === "accepted" ? 0 : status === "invited" ? 1 : status === "declined" ? 2 : 3;
+
+const PING_STATUS: Record<Projects.ProjectPingStatus, { label: string; tone: "ok" | "warn" | "neutral" }> = {
+  pending: { label: "ждём", tone: "neutral" },
+  confirmed: { label: "будет", tone: "ok" },
+  declined: { label: "не будет", tone: "warn" },
+};
+
+const REMINDER_PRESETS = [
+  { label: "1д", minutes: 24 * 60 },
+  { label: "3д", minutes: 3 * 24 * 60 },
+  { label: "7д", minutes: 7 * 24 * 60 },
+  { label: "свой", minutes: 0 },
+];
 
 type ProjectTab = "overview" | "reservations" | "timing" | "team" | "contractors" | "finance";
 type ProjectTabIcon = ProjectTab | "plan" | "invoice" | "back" | "close";
@@ -102,6 +120,8 @@ export function ProjectDetailPage() {
   const allUnits = useAllUnits();
   const invoice = useProjectInvoice(id, canFinance);
   const serverInvoiceVersions = useInvoiceVersions(id, canFinance);
+  const pings = useProjectPings(id, canAssign);
+  const reminders = useProjectReminders(id, canAssign);
 
   const setStatus = useSetProjectStatus();
   const addReservation = useCreateReservation();
@@ -115,6 +135,9 @@ export function ProjectDetailPage() {
   const updateProjectRole = useUpdateProjectRole();
   const deleteProjectRole = useDeleteProjectRole();
   const issueResolved = useIssueResolvedUnits();
+  const createPing = useCreateProjectPing(id);
+  const createReminder = useCreateProjectReminder(id);
+  const deleteReminder = useDeleteProjectReminder(id);
 
   const [resModel, setResModel] = useState("");
   const [resModelQuery, setResModelQuery] = useState("");
@@ -130,6 +153,13 @@ export function ProjectDetailPage() {
   const [roleDrafts, setRoleDrafts] = useState<Record<string, { title: string; requiredCount: string; rateEUR: string }>>({});
   const [assignCandidates, setAssignCandidates] = useState<Record<string, string[]>>({});
   const [candidateQueries, setCandidateQueries] = useState<Record<string, string>>({});
+  const [pingMessage, setPingMessage] = useState("");
+  const [reminderPreset, setReminderPreset] = useState("1440");
+  const [reminderCustomHours, setReminderCustomHours] = useState("12");
+  const [reminderMode, setReminderMode] = useState<Projects.ProjectReminderRecipientMode>("project_team");
+  const [reminderUserIds, setReminderUserIds] = useState<string[]>([]);
+  const [reminderQuery, setReminderQuery] = useState("");
+  const [reminderNote, setReminderNote] = useState("");
   const [resolving, setResolving] = useState<Projects.ReservationDTO | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [invoiceVersions, setInvoiceVersions] = useState<StoredInvoiceVersion[]>([]);
@@ -210,6 +240,27 @@ export function ProjectDetailPage() {
     return true;
   });
   const currentTab = visibleTabs.some((tab) => tab.id === activeTab) ? activeTab : "overview";
+  const activeAssignments = (assignments.data ?? []).filter((a) => a.status === "added" || a.status === "accepted");
+  const projectPeople = [...new Map(activeAssignments
+    .map((a) => (people.data ?? []).find((u) => u.id === a.userId))
+    .filter(Boolean)
+    .map((person) => [person!.id, person!] as const)).values()];
+  const reminderOffsetMinutes = reminderPreset === "0"
+    ? Math.max(1, Math.round((Number(reminderCustomHours) || 1) * 60))
+    : Number(reminderPreset);
+  const createReminderFromForm = () => {
+    createReminder.mutate({
+      offsetMinutes: reminderOffsetMinutes,
+      recipientMode: reminderMode,
+      userIds: reminderMode === "selected" ? reminderUserIds : [],
+      note: reminderNote.trim() || null,
+    }, {
+      onSuccess: () => {
+        setReminderUserIds([]);
+        setReminderNote("");
+      },
+    });
+  };
 
   return (
     <div className="stack project-mobile-page">
@@ -694,6 +745,33 @@ export function ProjectDetailPage() {
           </Card>
         );
       })()}
+      {canAssign && (
+        <TeamPingPanel
+          people={projectPeople}
+          pings={pings.data ?? []}
+          reminders={reminders.data ?? []}
+          pingMessage={pingMessage}
+          onPingMessage={setPingMessage}
+          onPing={(userId) => createPing.mutate({ userId, message: pingMessage.trim() || null })}
+          pingPending={createPing.isPending}
+          reminderPreset={reminderPreset}
+          onReminderPreset={setReminderPreset}
+          reminderCustomHours={reminderCustomHours}
+          onReminderCustomHours={setReminderCustomHours}
+          reminderMode={reminderMode}
+          onReminderMode={setReminderMode}
+          reminderUserIds={reminderUserIds}
+          onReminderUserIds={setReminderUserIds}
+          reminderQuery={reminderQuery}
+          onReminderQuery={setReminderQuery}
+          reminderNote={reminderNote}
+          onReminderNote={setReminderNote}
+          onCreateReminder={createReminderFromForm}
+          createReminderPending={createReminder.isPending}
+          onDeleteReminder={(reminderId) => deleteReminder.mutate(reminderId)}
+          deleteReminderPending={deleteReminder.isPending}
+        />
+      )}
         </>
       )}
 
@@ -834,6 +912,182 @@ export function ProjectDetailPage() {
       </div>
     </div>
   );
+}
+
+function TeamPingPanel({
+  people,
+  pings,
+  reminders,
+  pingMessage,
+  onPingMessage,
+  onPing,
+  pingPending,
+  reminderPreset,
+  onReminderPreset,
+  reminderCustomHours,
+  onReminderCustomHours,
+  reminderMode,
+  onReminderMode,
+  reminderUserIds,
+  onReminderUserIds,
+  reminderQuery,
+  onReminderQuery,
+  reminderNote,
+  onReminderNote,
+  onCreateReminder,
+  createReminderPending,
+  onDeleteReminder,
+  deleteReminderPending,
+}: {
+  people: People.UserDTO[];
+  pings: Projects.ProjectPingDTO[];
+  reminders: Projects.ProjectReminderDTO[];
+  pingMessage: string;
+  onPingMessage: (value: string) => void;
+  onPing: (userId: string) => void;
+  pingPending: boolean;
+  reminderPreset: string;
+  onReminderPreset: (value: string) => void;
+  reminderCustomHours: string;
+  onReminderCustomHours: (value: string) => void;
+  reminderMode: Projects.ProjectReminderRecipientMode;
+  onReminderMode: (value: Projects.ProjectReminderRecipientMode) => void;
+  reminderUserIds: string[];
+  onReminderUserIds: (value: string[]) => void;
+  reminderQuery: string;
+  onReminderQuery: (value: string) => void;
+  reminderNote: string;
+  onReminderNote: (value: string) => void;
+  onCreateReminder: () => void;
+  createReminderPending: boolean;
+  onDeleteReminder: (reminderId: string) => void;
+  deleteReminderPending: boolean;
+}) {
+  const selectedModeHasPeople = reminderMode !== "selected" || reminderUserIds.length > 0;
+  const canCreateReminder = people.length > 0 && selectedModeHasPeople && !createReminderPending;
+  const toggleReminderUser = (userId: string) => {
+    onReminderUserIds(reminderUserIds.includes(userId) ? reminderUserIds.filter((id) => id !== userId) : [...reminderUserIds, userId]);
+  };
+  const nameById = (userId: string) => personName(people.find((person) => person.id === userId), "Человек");
+
+  return (
+    <Card>
+      <div className="row row--between" style={{ alignItems: "center" }}>
+        <p className="card__title">Пинги и напоминания</p>
+        <Chip label={String(people.length)} tone="info" />
+      </div>
+
+      <div className="stack" style={{ gap: 10, marginTop: 10 }}>
+        <Input value={pingMessage} onChange={(e) => onPingMessage(e.target.value)} placeholder="Текст пинга" />
+        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+          {people.map((person) => (
+            <button
+              key={person.id}
+              className="chip chip--neutral"
+              style={{ border: "none", cursor: pingPending ? "wait" : "pointer" }}
+              disabled={pingPending}
+              onClick={() => onPing(person.id)}
+              type="button"
+              title="Отправить пинг"
+            >
+              {personName(person)} · TG
+            </button>
+          ))}
+          {people.length === 0 && <span className="card__subtitle">В команде пока никого</span>}
+        </div>
+      </div>
+
+      <div className="stack" style={{ gap: 10, marginTop: 14 }}>
+        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+          {REMINDER_PRESETS.map((preset) => (
+            <button
+              key={preset.minutes}
+              type="button"
+              className={`chip ${reminderPreset === String(preset.minutes) ? "chip--accent chip--solid" : "chip--neutral"}`}
+              style={{ border: "none", cursor: "pointer" }}
+              onClick={() => onReminderPreset(String(preset.minutes))}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        {reminderPreset === "0" && (
+          <Field label="Часы до старта">
+            <Input type="number" min="1" value={reminderCustomHours} onChange={(e) => onReminderCustomHours(e.target.value)} placeholder="12" />
+          </Field>
+        )}
+        <div className="row">
+          <Field label="Кому">
+            <Select
+              value={reminderMode}
+              onChange={(e) => onReminderMode(e.target.value as Projects.ProjectReminderRecipientMode)}
+              options={[
+                { value: "project_team", label: "Вся команда" },
+                { value: "selected", label: "Выбрать" },
+              ]}
+            />
+          </Field>
+          <Button variant="secondary" disabled={!canCreateReminder} onClick={onCreateReminder}>
+            +
+          </Button>
+        </div>
+        {reminderMode === "selected" && (
+          <CandidatePicker
+            people={people}
+            selectedIds={reminderUserIds}
+            query={reminderQuery}
+            onQuery={onReminderQuery}
+            onToggle={toggleReminderUser}
+          />
+        )}
+        <Input value={reminderNote} onChange={(e) => onReminderNote(e.target.value)} placeholder="Текст напоминания" />
+      </div>
+
+      {reminders.length > 0 && (
+        <div className="stack" style={{ gap: 6, marginTop: 14 }}>
+          {reminders.map((reminder) => (
+            <div key={reminder.id} className="row row--between" style={{ gap: 8 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: "var(--text)", fontWeight: 800 }}>{reminderOffsetLabel(reminder.offsetMinutes)} до старта</div>
+                <div className="card__subtitle">
+                  {reminder.recipientMode === "project_team" ? "вся команда" : `${reminder.userIds.length} выбрано`}
+                  {reminder.sentAt ? ` · отправлено ${dateTime(reminder.sentAt)}` : ""}
+                </div>
+              </div>
+              {!reminder.sentAt && (
+                <Button variant="ghost" disabled={deleteReminderPending} onClick={() => onDeleteReminder(reminder.id)}>
+                  ×
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {pings.length > 0 && (
+        <div className="stack" style={{ gap: 6, marginTop: 14 }}>
+          {pings.slice(0, 6).map((ping) => {
+            const status = PING_STATUS[ping.status];
+            return (
+              <div key={ping.id} className="row row--between" style={{ gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: "var(--text)", fontWeight: 800 }}>{nameById(ping.userId)}</div>
+                  <div className="card__subtitle">{dateTime(ping.createdAt)}</div>
+                </div>
+                <Chip label={status.label} tone={status.tone} />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function reminderOffsetLabel(minutes: number): string {
+  if (minutes >= 24 * 60 && minutes % (24 * 60) === 0) return `${minutes / (24 * 60)}д`;
+  if (minutes >= 60 && minutes % 60 === 0) return `${minutes / 60}ч`;
+  return `${minutes}м`;
 }
 
 function CandidatePicker({

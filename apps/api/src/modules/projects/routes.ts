@@ -98,6 +98,16 @@ const assignmentSchema = z.object({
   rateEUR: z.number().nonnegative().nullable().optional(),
   invite: z.boolean().optional(),
 });
+const pingSchema = z.object({
+  userId: z.string().uuid(),
+  message: z.string().nullable().optional(),
+});
+const reminderSchema = z.object({
+  offsetMinutes: z.number().int().positive(),
+  recipientMode: z.enum(["project_team", "selected"]).optional(),
+  userIds: z.array(z.string().uuid()).optional(),
+  note: z.string().nullable().optional(),
+});
 
 export function registerProjectsRoutes(
   app: FastifyInstance,
@@ -346,6 +356,34 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.assignment.manage");
     await service.removeAssignment(req.params.id);
+    return { ok: true };
+  });
+  app.get<{ Params: { id: string } }>("/api/projects/:id/pings", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.assignment.manage", "projects.manage");
+    return service.listPings(req.params.id);
+  });
+  app.post<{ Params: { id: string } }>("/api/projects/:id/pings", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.assignment.manage", "projects.manage");
+    const body = pingSchema.parse(req.body);
+    return service.createPing({ projectId: req.params.id, userId: body.userId, message: body.message ?? null, createdByUserId: auth.userId });
+  });
+  app.get<{ Params: { id: string } }>("/api/projects/:id/reminders", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.assignment.manage", "projects.manage");
+    return service.listReminders(req.params.id);
+  });
+  app.post<{ Params: { id: string } }>("/api/projects/:id/reminders", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.assignment.manage", "projects.manage");
+    const body = reminderSchema.parse(req.body);
+    return service.createReminder({ ...body, projectId: req.params.id, createdByUserId: auth.userId } as Projects.CreateProjectReminderInput);
+  });
+  app.delete<{ Params: { id: string } }>("/api/project-reminders/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.assignment.manage", "projects.manage");
+    await service.deleteReminder(req.params.id);
     return { ok: true };
   });
 

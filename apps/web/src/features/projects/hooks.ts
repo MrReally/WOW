@@ -255,6 +255,49 @@ export function useRemoveAssignment() {
   });
 }
 
+export function useProjectPings(projectId: string, enabled = true) {
+  return useQuery({
+    enabled: enabled && !!projectId,
+    queryKey: ["projects", "pings", projectId],
+    queryFn: () => api.get<Projects.ProjectPingDTO[]>(`/api/projects/${projectId}/pings`),
+  });
+}
+
+export function useCreateProjectPing(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { userId: string; message?: string | null }) => api.post<Projects.ProjectPingDTO>(`/api/projects/${projectId}/pings`, input),
+    meta: { successMessage: "Пинг отправлен" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects", "pings", projectId] }),
+  });
+}
+
+export function useProjectReminders(projectId: string, enabled = true) {
+  return useQuery({
+    enabled: enabled && !!projectId,
+    queryKey: ["projects", "reminders", projectId],
+    queryFn: () => api.get<Projects.ProjectReminderDTO[]>(`/api/projects/${projectId}/reminders`),
+  });
+}
+
+export function useCreateProjectReminder(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Omit<Projects.CreateProjectReminderInput, "projectId">) => api.post<Projects.ProjectReminderDTO>(`/api/projects/${projectId}/reminders`, input),
+    meta: { successMessage: "Напоминание добавлено" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects", "reminders", projectId] }),
+  });
+}
+
+export function useDeleteProjectReminder(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/project-reminders/${id}`),
+    meta: { successMessage: "Напоминание удалено" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects", "reminders", projectId] }),
+  });
+}
+
 // In-stock serial units of a model — used to resolve a model-level reservation
 // into concrete units at warehouse prep.
 export function useInStockUnits(modelId: string) {

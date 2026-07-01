@@ -106,6 +106,28 @@ interface AssignmentRow {
   responded_at: Date | null;
   created_at: Date;
 }
+interface ProjectPingRow {
+  id: string;
+  project_id: string;
+  user_id: string;
+  reminder_id: string | null;
+  message: string;
+  status: Projects.ProjectPingStatus;
+  responded_at: Date | null;
+  created_by_user_id: string | null;
+  created_at: Date;
+}
+interface ProjectReminderRow {
+  id: string;
+  project_id: string;
+  offset_minutes: number;
+  recipient_mode: Projects.ProjectReminderRecipientMode;
+  user_ids: string[];
+  note: string | null;
+  sent_at: Date | null;
+  created_by_user_id: string | null;
+  created_at: Date;
+}
 interface ContractorItemRow {
   id: string;
   project_id: string;
@@ -226,6 +248,28 @@ const assignmentDTO = (r: AssignmentRow): Projects.AssignmentDTO => ({
   telegramMessageId: r.telegram_message_id,
   invitedByUserId: r.invited_by,
   respondedAt: r.responded_at ? r.responded_at.toISOString() : null,
+  createdAt: r.created_at.toISOString(),
+});
+const pingDTO = (r: ProjectPingRow): Projects.ProjectPingDTO => ({
+  id: r.id,
+  projectId: r.project_id,
+  userId: r.user_id,
+  reminderId: r.reminder_id,
+  message: r.message,
+  status: r.status,
+  respondedAt: r.responded_at ? r.responded_at.toISOString() : null,
+  createdByUserId: r.created_by_user_id,
+  createdAt: r.created_at.toISOString(),
+});
+const reminderDTO = (r: ProjectReminderRow): Projects.ProjectReminderDTO => ({
+  id: r.id,
+  projectId: r.project_id,
+  offsetMinutes: r.offset_minutes,
+  recipientMode: r.recipient_mode,
+  userIds: r.user_ids,
+  note: r.note,
+  sentAt: r.sent_at ? r.sent_at.toISOString() : null,
+  createdByUserId: r.created_by_user_id,
   createdAt: r.created_at.toISOString(),
 });
 const contractorItemDTO = (r: ContractorItemRow): Projects.ContractorItemDTO => ({
@@ -1032,6 +1076,88 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         [userId]
       );
       return rows.map(projectDTO);
+    },
+    async listPings(projectId) {
+      const rows = await query<ProjectPingRow>(
+        db,
+        `SELECT * FROM projects.project_pings WHERE project_id=$1 ORDER BY created_at DESC`,
+        [projectId]
+      );
+      return rows.map(pingDTO);
+    },
+    async createPing(input) {
+      const project = await this.getProject(input.projectId);
+      if (!project) throw NotFound("project", input.projectId);
+      const row = await one<ProjectPingRow>(
+        db,
+        `INSERT INTO projects.project_pings (project_id, user_id, reminder_id, message, created_by_user_id)
+         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [input.projectId, input.userId, input.reminderId ?? null, input.message?.trim() ?? "", input.createdByUserId ?? null]
+      );
+      const dto = pingDTO(row!);
+      await bus.publish({ type: "project.ping.created", projectId: dto.projectId, pingId: dto.id, userId: dto.userId, at: new Date().toISOString() });
+      return dto;
+    },
+    async respondToPing(id, status, byUserId) {
+      const existing = await one<ProjectPingRow>(db, `SELECT * FROM projects.project_pings WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("project ping", id);
+      if (existing.user_id !== byUserId) throw BadRequest("этот пинг адресован не вам");
+      const row = await one<ProjectPingRow>(
+        db,
+        `UPDATE projects.project_pings
+         SET status=$2, responded_at=now()
+         WHERE id=$1 RETURNING *`,
+        [id, status]
+      );
+      return pingDTO(row!);
+    },
+    async listReminders(projectId) {
+      const rows = await query<ProjectReminderRow>(
+        db,
+        `SELECT * FROM projects.project_reminders WHERE project_id=$1 ORDER BY offset_minutes DESC, created_at`,
+        [projectId]
+      );
+      return rows.map(reminderDTO);
+    },
+    async createReminder(input) {
+      const project = await this.getProject(input.projectId);
+      if (!project) throw NotFound("project", input.projectId);
+      const row = await one<ProjectReminderRow>(
+        db,
+        `INSERT INTO projects.project_reminders
+           (project_id, offset_minutes, recipient_mode, user_ids, note, created_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [
+          input.projectId,
+          input.offsetMinutes,
+          input.recipientMode ?? "project_team",
+          input.userIds ?? [],
+          input.note?.trim() || null,
+          input.createdByUserId ?? null,
+        ]
+      );
+      return reminderDTO(row!);
+    },
+    async deleteReminder(id) {
+      const row = await one<{ id: string }>(db, `DELETE FROM projects.project_reminders WHERE id=$1 RETURNING id`, [id]);
+      if (!row) throw NotFound("project reminder", id);
+    },
+    async listDueReminders(nowIso) {
+      const rows = await query<ProjectReminderRow>(
+        db,
+        `SELECT r.*
+         FROM projects.project_reminders r
+         JOIN projects.projects p ON p.id = r.project_id
+         WHERE r.sent_at IS NULL
+           AND p.status <> 'cancelled'
+           AND p.starts_at - (r.offset_minutes || ' minutes')::interval <= $1::timestamptz
+         ORDER BY p.starts_at, r.offset_minutes DESC`,
+        [nowIso]
+      );
+      return rows.map(reminderDTO);
+    },
+    async markReminderSent(id) {
+      await query(db, `UPDATE projects.project_reminders SET sent_at=now() WHERE id=$1`, [id]);
     },
 
     // ── Contractor equipment (subrent) ──

@@ -297,6 +297,52 @@ export interface AddAssignmentInput {
   invitedByUserId?: ID | null;
 }
 
+// ── Telegram pings + project reminders ──────────────────────────────────────
+
+export type ProjectPingStatus = "pending" | "confirmed" | "declined";
+export type ProjectReminderRecipientMode = "project_team" | "selected";
+
+export interface ProjectPingDTO {
+  id: ID;
+  projectId: ID;
+  userId: ID;
+  reminderId: ID | null;
+  message: string;
+  status: ProjectPingStatus;
+  respondedAt: ISODateTime | null;
+  createdByUserId: ID | null;
+  createdAt: ISODateTime;
+}
+
+export interface CreateProjectPingInput {
+  projectId: ID;
+  userId: ID;
+  reminderId?: ID | null;
+  message?: string | null;
+  createdByUserId?: ID | null;
+}
+
+export interface ProjectReminderDTO {
+  id: ID;
+  projectId: ID;
+  offsetMinutes: number;
+  recipientMode: ProjectReminderRecipientMode;
+  userIds: ID[];
+  note: string | null;
+  sentAt: ISODateTime | null;
+  createdByUserId: ID | null;
+  createdAt: ISODateTime;
+}
+
+export interface CreateProjectReminderInput {
+  projectId: ID;
+  offsetMinutes: number;
+  recipientMode?: ProjectReminderRecipientMode;
+  userIds?: ID[];
+  note?: string | null;
+  createdByUserId?: ID | null;
+}
+
 // ── Contractor costs — external gear/services used on a project ───────────────
 // Equipment is returnable subrent gear. Delivery/setup are service costs and do
 // not appear in contractor return tracking.
@@ -395,6 +441,14 @@ export interface ProjectsService {
   respondToInvite(assignmentId: ID, accept: boolean, byUserId: ID): Promise<AssignmentDTO>;
   /** Projects a given user is assigned to (for the Tech "my projects" view). */
   listProjectsForUser(userId: ID): Promise<ProjectDTO[]>;
+  listPings(projectId: ID): Promise<ProjectPingDTO[]>;
+  createPing(input: CreateProjectPingInput): Promise<ProjectPingDTO>;
+  respondToPing(id: ID, status: ProjectPingStatus, byUserId: ID): Promise<ProjectPingDTO>;
+  listReminders(projectId: ID): Promise<ProjectReminderDTO[]>;
+  createReminder(input: CreateProjectReminderInput): Promise<ProjectReminderDTO>;
+  deleteReminder(id: ID): Promise<void>;
+  listDueReminders(nowIso: ISODateTime): Promise<ProjectReminderDTO[]>;
+  markReminderSent(id: ID): Promise<void>;
 
   // Contractor equipment (subrent)
   listContractorItems(projectId: ID): Promise<ContractorItemDTO[]>;
@@ -481,6 +535,14 @@ export interface ProjectOperationStageChangedEvent {
   at: ISODateTime;
 }
 
+export interface ProjectPingCreatedEvent {
+  type: "project.ping.created";
+  projectId: ID;
+  pingId: ID;
+  userId: ID;
+  at: ISODateTime;
+}
+
 export type ProjectsEvent =
   | ProjectConfirmedEvent
   | ReservationConflictEvent
@@ -489,4 +551,5 @@ export type ProjectsEvent =
   | ProjectInvitedEvent
   | InviteRespondedEvent
   | InviteCancelledEvent
-  | ProjectOperationStageChangedEvent;
+  | ProjectOperationStageChangedEvent
+  | ProjectPingCreatedEvent;
