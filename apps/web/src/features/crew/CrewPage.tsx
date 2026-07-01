@@ -4,10 +4,13 @@ import type { Equipment, People, Projects } from "@sever/contracts";
 import { Card, Button, SectionHead, Field, Input, Select, Textarea, Loading, EmptyState, Chip } from "../../ui-kit/index.ts";
 import { useSession } from "../../app/session.ts";
 import { api } from "../../lib/api.ts";
+import { getToken } from "../../lib/api.ts";
 import { dateRange, dateTime } from "../../lib/labels.ts";
 import { usePeople, useRoles, useUpdateUser } from "../settings/hooks.ts";
 import { useProjectsForFinance } from "../finance/hooks.ts";
 import { personName } from "../../lib/people.ts";
+
+const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
 const actionLabel: Record<Equipment.JournalAction, string> = {
   created: "Создано",
@@ -42,6 +45,137 @@ function displayImageUrl(value: string | null | undefined): string | null {
   return value;
 }
 
+function formatBirthDate(value: string | null | undefined): string {
+  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : value || "—";
+}
+
+function CrewTabIcon({ type }: { type: "people" | "applications" }) {
+  if (type === "applications") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7 3.5h10A2.5 2.5 0 0 1 19.5 6v12a2.5 2.5 0 0 1-2.5 2.5H7A2.5 2.5 0 0 1 4.5 18V6A2.5 2.5 0 0 1 7 3.5Z" fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d="M8 8h8M8 12h8M8 16h5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8.5 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM15.5 12.5a3 3 0 1 0 0-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M3.5 20a5 5 0 0 1 10 0M14.5 18.5a4.5 4.5 0 0 1 6 1.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CrewApplicationCard({
+  application,
+  roleId,
+  roles,
+  isAccepting,
+  isRejecting,
+  onRoleChange,
+  onAccept,
+  onReject,
+}: {
+  application: People.CrewApplicationDTO;
+  roleId: string;
+  roles: People.RoleDTO[];
+  isAccepting: boolean;
+  isRejecting: boolean;
+  onRoleChange: (roleId: string) => void;
+  onAccept: () => void;
+  onReject: () => void;
+}) {
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    let objectUrl: string | null = null;
+    const token = getToken();
+    if (!token) return;
+    void fetch(`${API_BASE}/api/crew-applications/${application.id}/photo`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.blob() : null))
+      .then((blob) => {
+        if (!alive || !blob) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPhotoUrl(objectUrl);
+      })
+      .catch(() => {
+        if (alive) setPhotoUrl(null);
+      });
+    return () => {
+      alive = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [application.id]);
+
+  const full = [application.firstName, application.lastName, application.patronymic].filter(Boolean).join(" ");
+
+  return (
+    <Card>
+      <div className="row row--between" style={{ alignItems: "flex-start" }}>
+        <div className="row" style={{ minWidth: 0 }}>
+          {photoUrl ? (
+            <img src={photoUrl} alt="" className="crew-photo crew-photo--large" />
+          ) : (
+            <span className="crew-photo crew-photo--large crew-photo--empty">{application.nickname.slice(0, 2).toUpperCase()}</span>
+          )}
+          <div style={{ minWidth: 0 }}>
+            <p className="card__title" style={{ fontSize: "var(--fs-lg)" }}>{application.nickname}</p>
+            <p className="card__subtitle">{full}</p>
+          </div>
+        </div>
+        <Chip label="анкета" tone="warn" />
+      </div>
+
+      <div className="crew-dossier">
+        <div className="crew-dossier__item">
+          <span>Email</span>
+          <b>{application.email}</b>
+        </div>
+        <div className="crew-dossier__item">
+          <span>Дата рождения</span>
+          <b>{formatBirthDate(application.birthDate)}</b>
+        </div>
+        <div className="crew-dossier__item">
+          <span>Telegram</span>
+          <b>{application.telegramUsername ? `@${application.telegramUsername}` : application.telegramId}</b>
+        </div>
+        <div className="crew-dossier__item">
+          <span>Источник</span>
+          <b>{application.source}</b>
+        </div>
+      </div>
+
+      <div className="crew-text-block">
+        <span>Языки</span>
+        <p>{application.languages}</p>
+      </div>
+      <div className="crew-text-block">
+        <span>О себе</span>
+        <p>{application.about}</p>
+      </div>
+
+      <div className="row" style={{ marginTop: 12, alignItems: "flex-end" }}>
+        <Field label="Роль">
+          <Select
+            value={roleId}
+            onChange={(e) => onRoleChange(e.target.value)}
+            options={[
+              { value: "", label: "Выбрать" },
+              ...roles.filter((role) => !role.isOwner).map((role) => ({ value: role.id, label: role.name })),
+            ]}
+          />
+        </Field>
+        <Button disabled={!roleId || isAccepting} onClick={onAccept}>✓</Button>
+        <Button variant="ghost" disabled={isRejecting} onClick={onReject}>×</Button>
+      </div>
+    </Card>
+  );
+}
+
 export function CrewPage() {
   const { can } = useSession();
   const qc = useQueryClient();
@@ -53,6 +187,7 @@ export function CrewPage() {
   const [draft, setDraft] = useState<People.UpdateUserInput>({});
   const [historyMode, setHistoryMode] = useState<"projects" | "actions">("projects");
   const [applicationRoleIds, setApplicationRoleIds] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState<"people" | "applications">("people");
   const canReviewApplications = can("people.applications.review", "people.manage");
 
   const list = people.data ?? [];
@@ -166,11 +301,12 @@ export function CrewPage() {
   };
   const avatarSrc = displayImageUrl(draft.usePhotoAsAvatar ? draft.photoUrl : null);
   const pendingApplications = applications.data ?? [];
+  const currentTab = canReviewApplications ? activeTab : "people";
 
   return (
     <div className="stack">
       <SectionHead label="Crew" meta={pendingApplications.length > 0 ? `${list.length} · ${pendingApplications.length} анкет` : `${list.length}`} />
-      {canReviewApplications && (
+      {currentTab === "applications" ? (
         <>
           <SectionHead label="Анкеты" meta={`${pendingApplications.length}`} />
           {applications.isLoading ? (
@@ -180,42 +316,26 @@ export function CrewPage() {
           ) : (
             <div className="stack">
               {pendingApplications.map((application) => {
-              const roleId = applicationRoleIds[application.id] ?? "";
-              return (
-                <Card key={application.id}>
-                  <div className="row row--between" style={{ alignItems: "flex-start" }}>
-                    <div style={{ minWidth: 0 }}>
-                      <p className="card__title">{application.nickname}</p>
-                      <p className="card__subtitle">{application.firstName} {application.lastName}{application.patronymic ? ` ${application.patronymic}` : ""}</p>
-                    </div>
-                    <Chip label="новая" tone="warn" />
-                  </div>
-                  <p className="card__subtitle" style={{ marginTop: 8 }}>{application.email} · {application.birthDate}</p>
-                  <p style={{ color: "var(--text)", marginTop: 8, whiteSpace: "pre-wrap" }}>{application.languages}</p>
-                  <p className="card__subtitle" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{application.about}</p>
-                  <p className="card__subtitle" style={{ marginTop: 6 }}>Источник: {application.source}</p>
-                  <p className="card__subtitle" style={{ marginTop: 6 }}>{application.telegramUsername ?? application.telegramId} · фото в Telegram</p>
-                  <div className="row" style={{ marginTop: 10 }}>
-                    <Field label="Роль">
-                      <Select
-                        value={roleId}
-                        onChange={(e) => setApplicationRoleIds((prev) => ({ ...prev, [application.id]: e.target.value }))}
-                        options={[
-                          { value: "", label: "Выбрать" },
-                          ...(roles.data ?? []).filter((role) => !role.isOwner).map((role) => ({ value: role.id, label: role.name })),
-                        ]}
-                      />
-                    </Field>
-                    <Button disabled={!roleId || acceptApplication.isPending} onClick={() => acceptApplication.mutate({ id: application.id, roleId })}>✓</Button>
-                    <Button variant="ghost" disabled={rejectApplication.isPending} onClick={() => rejectApplication.mutate(application.id)}>×</Button>
-                  </div>
-                </Card>
-              );
+                const roleId = applicationRoleIds[application.id] ?? "";
+                return (
+                  <CrewApplicationCard
+                    key={application.id}
+                    application={application}
+                    roleId={roleId}
+                    roles={roles.data ?? []}
+                    isAccepting={acceptApplication.isPending}
+                    isRejecting={rejectApplication.isPending}
+                    onRoleChange={(next) => setApplicationRoleIds((prev) => ({ ...prev, [application.id]: next }))}
+                    onAccept={() => acceptApplication.mutate({ id: application.id, roleId })}
+                    onReject={() => rejectApplication.mutate(application.id)}
+                  />
+                );
               })}
             </div>
           )}
         </>
-      )}
+      ) : (
+        <>
       {!selected && <EmptyState title="Crew пуст" />}
       {selected && (
         <>
@@ -392,6 +512,36 @@ export function CrewPage() {
         </div>
       )}
         </>
+      )}
+        </>
+      )}
+      {canReviewApplications && (
+        <div className="project-tabbar" role="tablist" aria-label="Crew">
+          {([
+            { id: "people" as const, label: "Работники", shortLabel: "Люди", count: list.length },
+            { id: "applications" as const, label: "Анкеты", shortLabel: "Анкеты", count: pendingApplications.length },
+          ]).map((tab) => {
+            const isActive = currentTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                className={`project-tabbar__item ${isActive ? "project-tabbar__item--active" : ""}`}
+                onClick={() => setActiveTab(tab.id)}
+                aria-label={tab.label}
+                aria-selected={isActive}
+                role="tab"
+                type="button"
+                style={{ ["--tab-c" as string]: tab.id === "applications" ? "var(--warn)" : "var(--accent)" }}
+              >
+                <span className="project-tabbar__icon">
+                  <CrewTabIcon type={tab.id} />
+                  {tab.count > 0 && <span className="project-tabbar__badge">{tab.count > 9 ? "9+" : tab.count}</span>}
+                </span>
+                <span className="project-tabbar__label">{tab.shortLabel}</span>
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );

@@ -609,6 +609,12 @@
   border: 1px solid var(--bdr-md);
   background: var(--s2);
 }
+.crew-photo--large {
+  width: 76px;
+  height: 76px;
+  flex-basis: 76px;
+  border-radius: 20px;
+}
 .crew-photo--empty {
   display: inline-flex;
   align-items: center;
@@ -635,6 +641,51 @@
   object-fit: cover;
   border: 1px solid var(--bdr-md);
   margin-left: auto;
+}
+.crew-dossier {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+.crew-dossier__item,
+.crew-text-block {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--bdr);
+  border-radius: 12px;
+  background: var(--s1);
+}
+.crew-dossier__item span,
+.crew-text-block span {
+  display: block;
+  margin-bottom: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.crew-dossier__item b {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+.crew-text-block {
+  margin-top: 8px;
+}
+.crew-text-block p {
+  margin: 0;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 420px) {
+  .crew-dossier {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── States ────────────────────────────────────────────────────────── */

@@ -4,7 +4,7 @@ import type { People } from "@sever/contracts";
 import { ALL_PERMISSIONS } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
 import { requirePermission, bearerToken, verifyTelegramInitData } from "../../core/auth.js";
-import { Unauthorized, Forbidden } from "../../core/errors.js";
+import { Unauthorized, Forbidden, NotFound } from "../../core/errors.js";
 import { env } from "../../env.js";
 
 const permissionEnum = z.enum(ALL_PERMISSIONS as [string, ...string[]]);
@@ -140,6 +140,23 @@ export function registerPeopleRoutes(
     requirePermission(auth, "people.applications.review", "people.manage");
     const status = req.query.status ? applicationStatusSchema.parse(req.query.status) : "pending";
     return service.listApplications(status);
+  });
+  app.get<{ Params: { id: string } }>("/api/crew-applications/:id/photo", async (req, reply) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "people.applications.review", "people.manage");
+    if (!env.auth.telegramBotToken) throw NotFound("photo", req.params.id);
+    const application = await service.getApplication(req.params.id);
+    if (!application) throw NotFound("crew application", req.params.id);
+    const fileRes = await fetch(`https://api.telegram.org/bot${env.auth.telegramBotToken}/getFile?file_id=${encodeURIComponent(application.photoFileId)}`);
+    const fileJson = await fileRes.json() as { ok?: boolean; result?: { file_path?: string } };
+    const filePath = fileJson.result?.file_path;
+    if (!fileJson.ok || !filePath) throw NotFound("photo", req.params.id);
+    const photoRes = await fetch(`https://api.telegram.org/file/bot${env.auth.telegramBotToken}/${filePath}`);
+    if (!photoRes.ok) throw NotFound("photo", req.params.id);
+    const bytes = Buffer.from(await photoRes.arrayBuffer());
+    reply.header("Content-Type", photoRes.headers.get("content-type") ?? "image/jpeg");
+    reply.header("Cache-Control", "private, max-age=3600");
+    return reply.send(bytes);
   });
   app.post<{ Params: { id: string } }>("/api/crew-applications/:id/accept", async (req) => {
     const auth = await ctx.auth(req);
