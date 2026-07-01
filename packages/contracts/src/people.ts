@@ -111,6 +111,48 @@ export interface CalendarFeedDTO {
   url: string;
 }
 
+// ── Telegram inbox ──────────────────────────────────────────────────────────
+
+export type TelegramDialogDirection = "user" | "bot" | "operator";
+export type TelegramMessageType = "text" | "photo" | "system";
+
+export interface TelegramInboxSettingsDTO {
+  workUsername: string;
+}
+
+export interface UpdateTelegramInboxSettingsInput {
+  workUsername: string;
+}
+
+export interface TelegramDialogParticipantDTO {
+  telegramId: string;
+  telegramUsername: string | null;
+  displayName: string | null;
+  lastMessageAt: ISODateTime;
+}
+
+export interface TelegramDialogMessageDTO {
+  id: ID;
+  telegramId: string;
+  telegramUsername: string | null;
+  direction: TelegramDialogDirection;
+  messageType: TelegramMessageType;
+  text: string;
+  telegramMessageId: number | null;
+  deletedAt: ISODateTime | null;
+  createdAt: ISODateTime;
+}
+
+export interface LogTelegramDialogMessageInput {
+  telegramId: string;
+  telegramUsername?: string | null;
+  direction: TelegramDialogDirection;
+  messageType?: TelegramMessageType;
+  text: string;
+  telegramMessageId?: number | null;
+  deletedAt?: string | null;
+}
+
 // ── Telegram crew applications ───────────────────────────────────────────────
 
 export type CrewApplicationStatus = "pending" | "accepted" | "rejected";
@@ -190,6 +232,14 @@ export interface PeopleService {
   ensureCalendarToken(userId: ID): Promise<string>;
   getByCalendarToken(token: string): Promise<UserDTO | null>;
   updateMyPreferences(userId: ID, input: UpdateMyPreferencesInput): Promise<UserDTO>;
+  getTelegramInboxSettings(): Promise<TelegramInboxSettingsDTO>;
+  updateTelegramInboxSettings(input: UpdateTelegramInboxSettingsInput): Promise<TelegramInboxSettingsDTO>;
+  getTelegramInboxWorkChatId(): Promise<string | null>;
+  rememberTelegramInboxWorkChatId(telegramId: string): Promise<void>;
+  listTelegramDialogParticipants(): Promise<TelegramDialogParticipantDTO[]>;
+  listTelegramDialogMessages(telegramId: string, limit?: number): Promise<TelegramDialogMessageDTO[]>;
+  logTelegramDialogMessage(input: LogTelegramDialogMessageInput): Promise<TelegramDialogMessageDTO>;
+  markTelegramDialogMessageDeleted(telegramId: string, telegramMessageId: number): Promise<void>;
 
   // Users
   list(status?: UserListStatus): Promise<UserDTO[]>;

@@ -63,6 +63,7 @@ const updateRoleSchema = z.object({ name: z.string().min(1).optional(), permissi
 const peopleStatusSchema = z.enum(["active", "deleted", "all"]);
 const applicationStatusSchema = z.enum(["pending", "accepted", "rejected", "all"]);
 const acceptApplicationSchema = z.object({ roleId: z.string().uuid() });
+const telegramInboxSettingsSchema = z.object({ workUsername: z.string().max(64) });
 
 export function registerPeopleRoutes(
   app: FastifyInstance,
@@ -113,6 +114,16 @@ export function registerPeopleRoutes(
     }
     const user = await service.updateMyPreferences(auth.userId, body as People.UpdateMyPreferencesInput);
     return { user, permissions: auth.permissions, isOwner: auth.isOwner };
+  });
+  app.get("/api/telegram/inbox-settings", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "telegram.inbox.manage", "people.manage");
+    return service.getTelegramInboxSettings();
+  });
+  app.put("/api/telegram/inbox-settings", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "telegram.inbox.manage", "people.manage");
+    return service.updateTelegramInboxSettings(telegramInboxSettingsSchema.parse(req.body));
   });
 
   // ── Users ──

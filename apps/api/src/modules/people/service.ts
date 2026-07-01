@@ -65,6 +65,23 @@ interface CrewApplicationRow {
   created_user_id: string | null;
   created_at: Date;
 }
+interface TelegramDialogMessageRow {
+  id: string;
+  telegram_id: string;
+  telegram_username: string | null;
+  direction: People.TelegramDialogDirection;
+  message_type: People.TelegramMessageType;
+  text: string;
+  telegram_message_id: number | null;
+  deleted_at: Date | null;
+  created_at: Date;
+}
+interface TelegramDialogParticipantRow {
+  telegram_id: string;
+  telegram_username: string | null;
+  display_name: string | null;
+  last_message_at: Date;
+}
 
 const roleDTO = (r: RoleRow): People.RoleDTO => ({
   id: r.id,
@@ -121,6 +138,23 @@ const applicationDTO = (r: CrewApplicationRow): People.CrewApplicationDTO => ({
   reviewedAt: r.reviewed_at ? r.reviewed_at.toISOString() : null,
   createdUserId: r.created_user_id,
   createdAt: r.created_at.toISOString(),
+});
+const telegramDialogMessageDTO = (r: TelegramDialogMessageRow): People.TelegramDialogMessageDTO => ({
+  id: r.id,
+  telegramId: r.telegram_id,
+  telegramUsername: r.telegram_username,
+  direction: r.direction,
+  messageType: r.message_type,
+  text: r.text,
+  telegramMessageId: r.telegram_message_id,
+  deletedAt: r.deleted_at ? r.deleted_at.toISOString() : null,
+  createdAt: r.created_at.toISOString(),
+});
+const telegramDialogParticipantDTO = (r: TelegramDialogParticipantRow): People.TelegramDialogParticipantDTO => ({
+  telegramId: r.telegram_id,
+  telegramUsername: r.telegram_username,
+  displayName: r.display_name,
+  lastMessageAt: r.last_message_at.toISOString(),
 });
 
 const USER_SELECT = `
@@ -325,6 +359,92 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
       if (!row) throw NotFound("user", userId);
       const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [userId]);
       return userDTO(u!);
+    },
+    async getTelegramInboxSettings() {
+      const row = await one<{ value: string }>(db, `SELECT value FROM people.app_settings WHERE key='telegram.work_username'`);
+      return { workUsername: row?.value ?? "" };
+    },
+    async updateTelegramInboxSettings(input) {
+      const workUsername = input.workUsername.trim().replace(/^@/, "");
+      await query(
+        db,
+        `INSERT INTO people.app_settings (key, value, updated_at)
+         VALUES ('telegram.work_username', $1, now())
+         ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()`,
+        [workUsername]
+      );
+      return { workUsername };
+    },
+    async getTelegramInboxWorkChatId() {
+      const row = await one<{ value: string }>(db, `SELECT value FROM people.app_settings WHERE key='telegram.work_chat_id'`);
+      return row?.value || null;
+    },
+    async rememberTelegramInboxWorkChatId(telegramId) {
+      await query(
+        db,
+        `INSERT INTO people.app_settings (key, value, updated_at)
+         VALUES ('telegram.work_chat_id', $1, now())
+         ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()`,
+        [telegramId]
+      );
+    },
+    async listTelegramDialogParticipants() {
+      const rows = await query<TelegramDialogParticipantRow>(
+        db,
+        `SELECT DISTINCT ON (m.telegram_id)
+           m.telegram_id,
+           m.telegram_username,
+           COALESCE(u.nickname, u.display_name) AS display_name,
+           m.created_at AS last_message_at
+         FROM people.telegram_dialog_messages m
+         LEFT JOIN people.users u ON u.telegram_id=m.telegram_id
+         WHERE m.telegram_id <> ''
+         ORDER BY m.telegram_id, m.created_at DESC`
+      );
+      return rows
+        .map(telegramDialogParticipantDTO)
+        .sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
+    },
+    async listTelegramDialogMessages(telegramId, limit = 80) {
+      const rows = await query<TelegramDialogMessageRow>(
+        db,
+        `SELECT * FROM (
+           SELECT * FROM people.telegram_dialog_messages
+           WHERE telegram_id=$1
+           ORDER BY created_at DESC
+           LIMIT $2
+         ) recent ORDER BY created_at ASC`,
+        [telegramId, Math.max(1, Math.min(limit, 200))]
+      );
+      return rows.map(telegramDialogMessageDTO);
+    },
+    async logTelegramDialogMessage(input) {
+      const row = await one<TelegramDialogMessageRow>(
+        db,
+        `INSERT INTO people.telegram_dialog_messages
+           (telegram_id, telegram_username, direction, message_type, text, telegram_message_id, deleted_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         RETURNING *`,
+        [
+          input.telegramId,
+          input.telegramUsername ?? null,
+          input.direction,
+          input.messageType ?? "text",
+          input.text,
+          input.telegramMessageId ?? null,
+          input.deletedAt ?? null,
+        ]
+      );
+      return telegramDialogMessageDTO(row!);
+    },
+    async markTelegramDialogMessageDeleted(telegramId, telegramMessageId) {
+      await query(
+        db,
+        `UPDATE people.telegram_dialog_messages
+         SET deleted_at=COALESCE(deleted_at, now())
+         WHERE telegram_id=$1 AND telegram_message_id=$2 AND direction='user'`,
+        [telegramId, telegramMessageId]
+      );
     },
 
     // ── Users ──

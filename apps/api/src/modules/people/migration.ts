@@ -90,4 +90,24 @@ CREATE TABLE IF NOT EXISTS people.crew_applications (
 ALTER TABLE people.crew_applications ADD COLUMN IF NOT EXISTS language text NOT NULL DEFAULT 'ru';
 CREATE INDEX IF NOT EXISTS crew_applications_status_idx ON people.crew_applications(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS crew_applications_telegram_idx ON people.crew_applications(telegram_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS people.app_settings (
+  key        text PRIMARY KEY,
+  value      text NOT NULL DEFAULT '',
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS people.telegram_dialog_messages (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  telegram_id         text NOT NULL,
+  telegram_username   text,
+  direction           text NOT NULL CHECK (direction IN ('user','bot','operator')),
+  message_type        text NOT NULL DEFAULT 'text' CHECK (message_type IN ('text','photo','system')),
+  text                text NOT NULL DEFAULT '',
+  telegram_message_id integer,
+  deleted_at          timestamptz,
+  created_at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS telegram_dialog_messages_chat_idx ON people.telegram_dialog_messages(telegram_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS telegram_dialog_messages_message_idx ON people.telegram_dialog_messages(telegram_id, telegram_message_id);
 `;

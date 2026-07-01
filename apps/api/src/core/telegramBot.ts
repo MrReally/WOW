@@ -57,6 +57,10 @@ interface ApplicationSession {
   usedSingleAnswers: boolean;
   submitted: boolean;
 }
+interface OperatorSession {
+  targetTelegramId: string | null;
+  menuMessageIds: number[];
+}
 
 const LANG_LABELS: Record<BotLang, string> = { ru: "Русский", sr: "Srpski", en: "English" };
 const CHOOSE_LANGUAGE_TEXT = "<b>SEVER Crew</b>\nРусский · Srpski · English";
@@ -283,14 +287,38 @@ interface Update {
 export function startTelegramBot(deps: BotDeps): void {
   const { people, onCallback } = deps;
   if (!env.auth.telegramBotToken) return;
-  const send = (chatId: string | number, text: string, replyMarkup?: unknown) =>
-    tg("sendMessage", { chat_id: chatId, text, parse_mode: "HTML", reply_markup: replyMarkup });
+  const send = async (
+    chatId: string | number,
+    text: string,
+    replyMarkup?: unknown,
+    opts: { log?: boolean; direction?: People.TelegramDialogDirection } = {}
+  ) => {
+    const res = await tg("sendMessage", { chat_id: chatId, text, parse_mode: "HTML", reply_markup: replyMarkup });
+    const messageId = (res?.result as { message_id?: number } | undefined)?.message_id;
+    if (res?.ok && typeof messageId === "number" && opts.log !== false && /^\d+$/.test(String(chatId))) {
+      await people.logTelegramDialogMessage({
+        telegramId: String(chatId),
+        direction: opts.direction ?? "bot",
+        messageType: "text",
+        text,
+        telegramMessageId: messageId,
+      });
+    }
+    return res;
+  };
   const edit = (chatId: string | number, messageId: number, text: string, replyMarkup?: unknown) =>
     tg("editMessageText", { chat_id: chatId, message_id: messageId, text, parse_mode: "HTML", reply_markup: replyMarkup });
-  const del = (chatId: string | number, messageId: number) => tg("deleteMessage", { chat_id: chatId, message_id: messageId });
+  const del = async (chatId: string | number, messageId: number) => {
+    const res = await tg("deleteMessage", { chat_id: chatId, message_id: messageId });
+    if (res?.ok && /^\d+$/.test(String(chatId))) {
+      await people.markTelegramDialogMessageDeleted(String(chatId), messageId);
+    }
+    return res;
+  };
   const publicName = (user: { nickname?: string | null; displayName?: string | null }) =>
     user.nickname?.trim() || user.displayName?.trim() || "аккаунт";
   const sessions = new Map<string, ApplicationSession>();
+  const operatorSessions = new Map<string, OperatorSession>();
   let offset = 0;
 
   const copy = (session: ApplicationSession) => COPY[session.lang ?? "ru"];
@@ -308,6 +336,7 @@ export function startTelegramBot(deps: BotDeps): void {
     ]],
   };
   const escapeHtml = (value: string | null | undefined) => (value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const stripHtml = (value: string) => value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   const normalizeIntent = (value: string): string =>
     value.trim().toLowerCase().replace(/[.!?,;:]+$/g, "").trim();
   const languageFromText = (value: string): BotLang | null => {
@@ -525,6 +554,140 @@ export function startTelegramBot(deps: BotDeps): void {
     }
     return true;
   };
+  const isWorkAccount = async (username: string | null | undefined): Promise<boolean> => {
+    const settings = await people.getTelegramInboxSettings();
+    return !!settings.workUsername && normHandle(username) === normHandle(settings.workUsername);
+  };
+  const participantLabel = (p: People.TelegramDialogParticipantDTO): string =>
+    p.displayName?.trim() || (p.telegramUsername ? `@${p.telegramUsername.replace(/^@/, "")}` : p.telegramId);
+  const rememberOperatorMessage = (operatorChatId: string, sent: Awaited<ReturnType<typeof send>>) => {
+    const messageId = (sent?.result as { message_id?: number } | undefined)?.message_id;
+    if (typeof messageId !== "number") return;
+    const session = operatorSessions.get(operatorChatId) ?? { targetTelegramId: null, menuMessageIds: [] };
+    session.menuMessageIds.push(messageId);
+    operatorSessions.set(operatorChatId, session);
+  };
+  const clearOperatorMessages = async (operatorChatId: string) => {
+    const session = operatorSessions.get(operatorChatId);
+    if (!session?.menuMessageIds.length) return;
+    for (const messageId of session.menuMessageIds) await tg("deleteMessage", { chat_id: operatorChatId, message_id: messageId });
+    session.menuMessageIds = [];
+    operatorSessions.set(operatorChatId, session);
+  };
+  const compactDateTime = (iso: string): string => {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const operatorMenu = async (operatorChatId: string) => {
+    await clearOperatorMessages(operatorChatId);
+    const participants = await people.listTelegramDialogParticipants();
+    const rows = participants.slice(0, 24).reduce<{ text: string; callback_data: string }[][]>((acc, p, index) => {
+      const rowIndex = Math.floor(index / 2);
+      acc[rowIndex] ??= [];
+      acc[rowIndex]!.push({ text: participantLabel(p).slice(0, 28), callback_data: `inbox:open:${p.telegramId}` });
+      return acc;
+    }, []);
+    rows.push([{ text: "↩ Выйти", callback_data: "inbox:exit" }]);
+    const sent = await send(
+      operatorChatId,
+      `<b>SEVER Inbox</b>\nВыберите диалог.`,
+      { inline_keyboard: rows },
+      { log: false }
+    );
+    rememberOperatorMessage(operatorChatId, sent);
+  };
+  const renderDialogLine = (m: People.TelegramDialogMessageDTO): string => {
+    const label = m.direction === "user" ? "👤" : m.direction === "operator" ? "SEVER" : "🤖";
+    const type = m.messageType === "photo" ? " [photo]" : "";
+    const text = escapeHtml(stripHtml(m.text) || type.trim() || "—");
+    const body = m.deletedAt ? `<s>${text}</s>` : text;
+    return `${compactDateTime(m.createdAt)} ${label} ${body}`;
+  };
+  const sendDialogHistory = async (operatorChatId: string, targetTelegramId: string) => {
+    await clearOperatorMessages(operatorChatId);
+    const [participants, messages] = await Promise.all([
+      people.listTelegramDialogParticipants(),
+      people.listTelegramDialogMessages(targetTelegramId, 80),
+    ]);
+    const participant = participants.find((p) => p.telegramId === targetTelegramId);
+    const title = participant ? participantLabel(participant) : targetTelegramId;
+    const chunks: string[] = [];
+    let current = `<b>Диалог: ${escapeHtml(title)}</b>\n<code>#tg_${escapeHtml(targetTelegramId)}</code>\n\n`;
+    for (const message of messages) {
+      const line = `${renderDialogLine(message)}\n`;
+      if (current.length + line.length > 3600) {
+        chunks.push(current);
+        current = "";
+      }
+      current += line;
+    }
+    chunks.push(current.trim() || `<b>Диалог: ${escapeHtml(title)}</b>\nПока пусто.`);
+    operatorSessions.set(operatorChatId, { targetTelegramId, menuMessageIds: [] });
+    for (const chunk of chunks) {
+      rememberOperatorMessage(operatorChatId, await send(operatorChatId, chunk, undefined, { log: false }));
+    }
+    rememberOperatorMessage(operatorChatId, await send(
+      operatorChatId,
+      `Режим ответа: <b>${escapeHtml(title)}</b>\nВаши сообщения уйдут человеку от лица SEVER.`,
+      {
+        keyboard: [["↩ Выйти", "☰ Диалоги"]],
+        resize_keyboard: true,
+        one_time_keyboard: false,
+      },
+      { log: false }
+    ));
+  };
+  const notifyWorkAccount = async (fromChatId: string, username: string | null | undefined, text: string, type: People.TelegramMessageType) => {
+    const workChatId = await people.getTelegramInboxWorkChatId();
+    if (!workChatId || workChatId === fromChatId) return;
+    const users = await people.list("all");
+    const user = users.find((item) => item.telegramId === fromChatId);
+    const name = user ? publicName(user) : username ? `@${username}` : fromChatId;
+    const body = [
+      `<b>Новое сообщение в бот</b>`,
+      `${escapeHtml(name)} · <code>#tg_${escapeHtml(fromChatId)}</code>`,
+      "",
+      type === "photo" ? "[photo]" : escapeHtml(text).slice(0, 1200),
+    ].join("\n");
+    await send(workChatId, body, {
+      inline_keyboard: [[{ text: "Открыть диалог", callback_data: `inbox:open:${fromChatId}` }]],
+    }, { log: false });
+  };
+  const logIncomingMessage = async (chatId: string, msg: NonNullable<Update["message"]>) => {
+    const photo = [...(msg.photo ?? [])].sort((a, b) => (b.file_size ?? 0) - (a.file_size ?? 0))[0];
+    const text = msg.text?.trim() ?? (photo ? "[photo]" : "");
+    const type: People.TelegramMessageType = photo ? "photo" : "text";
+    await people.logTelegramDialogMessage({
+      telegramId: chatId,
+      telegramUsername: msg.from?.username ? `@${msg.from.username}` : null,
+      direction: "user",
+      messageType: type,
+      text,
+      telegramMessageId: msg.message_id,
+    });
+    await notifyWorkAccount(chatId, msg.from?.username, text, type);
+  };
+  const handleOperatorMessage = async (chatId: string, msg: NonNullable<Update["message"]>): Promise<boolean> => {
+    if (!(await isWorkAccount(msg.from?.username))) return false;
+    await people.rememberTelegramInboxWorkChatId(chatId);
+    const text = msg.text?.trim() ?? "";
+    if (text === "/inbox" || text === "/start" || text === "☰ Диалоги") {
+      operatorSessions.set(chatId, { targetTelegramId: null, menuMessageIds: [] });
+      await operatorMenu(chatId);
+      return true;
+    }
+    if (text === "↩ Выйти" || text === "/exit") {
+      operatorSessions.delete(chatId);
+      await send(chatId, "Режим ответа выключен.", { remove_keyboard: true }, { log: false });
+      return true;
+    }
+    const session = operatorSessions.get(chatId);
+    if (!session?.targetTelegramId || !text || text.startsWith("/")) return false;
+    await send(session.targetTelegramId, text, undefined, { direction: "operator" });
+    await send(chatId, "✓", undefined, { log: false });
+    return true;
+  };
   const handleApplicationMessage = async (chatId: string, msg: NonNullable<Update["message"]>) => {
     const session = sessions.get(chatId);
     if (!session) return false;
@@ -613,6 +776,21 @@ export function startTelegramBot(deps: BotDeps): void {
   async function handleCallback(cb: NonNullable<Update["callback_query"]>) {
     const fromChatId = String(cb.from.id);
     const data = cb.data ?? "";
+    if (data.startsWith("inbox:")) {
+      await people.rememberTelegramInboxWorkChatId(fromChatId);
+      if (data === "inbox:exit") {
+        operatorSessions.delete(fromChatId);
+        await tg("answerCallbackQuery", { callback_query_id: cb.id });
+        await send(fromChatId, "Режим ответа выключен.", { remove_keyboard: true }, { log: false });
+        return;
+      }
+      const openMatch = data.match(/^inbox:open:(.+)$/);
+      if (openMatch) {
+        await tg("answerCallbackQuery", { callback_query_id: cb.id });
+        await sendDialogHistory(fromChatId, openMatch[1]!);
+        return;
+      }
+    }
     if (data.startsWith("app:")) {
       const session = sessions.get(fromChatId);
       if (!session) {
@@ -703,6 +881,9 @@ export function startTelegramBot(deps: BotDeps): void {
           const text = msg.text?.trim() ?? "";
           const codeMatch = text.match(/^\/start\s+(\S+)/);
           try {
+            if (await handleOperatorMessage(chatId, msg)) continue;
+            const isCommand = text.startsWith("/");
+            if (!isCommand) await logIncomingMessage(chatId, msg);
             if (!text.startsWith("/start") && await handleApplicationMessage(chatId, msg)) continue;
             if (codeMatch) {
               // Deep-link path: the link carries the exact account id.

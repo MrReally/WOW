@@ -19,7 +19,7 @@ import { createApexService } from "./modules/apex/service.js";
 import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
-import { editTelegramMessage, sendTelegramMessage, sendTelegramPhoto } from "./core/telegram.js";
+import { editTelegramMessage, sendTelegramMessage, sendTelegramPhoto, setTelegramMessageLogger } from "./core/telegram.js";
 import type { Notifications, People } from "@sever/contracts";
 import type { DomainEvent } from "./core/eventBus.js";
 
@@ -31,6 +31,10 @@ export function createModules(bus: EventBus = new EventBus()) {
   const venues = createVenuesModule(pool);
   const plans = createPlansModule(pool);
   const notifications = createNotificationsModule(pool);
+
+  setTelegramMessageLogger(async (message) => {
+    await people.service.logTelegramDialogMessage(message);
+  });
 
   const apex = createApexService({
     equipment: equipment.service,

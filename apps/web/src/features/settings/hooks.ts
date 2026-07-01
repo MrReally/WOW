@@ -14,6 +14,22 @@ export function useBotInfo() {
 export function useCalendarFeed() {
   return useQuery({ queryKey: ["me", "calendar-feed"], queryFn: () => api.get<People.CalendarFeedDTO>("/api/me/calendar-feed") });
 }
+export function useTelegramInboxSettings(enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: ["telegram", "inbox-settings"],
+    queryFn: () => api.get<People.TelegramInboxSettingsDTO>("/api/telegram/inbox-settings"),
+  });
+}
+export function useSetTelegramInboxSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: People.UpdateTelegramInboxSettingsInput) =>
+      api.put<People.TelegramInboxSettingsDTO>("/api/telegram/inbox-settings", input),
+    meta: { successMessage: "Telegram Inbox сохранён" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["telegram", "inbox-settings"] }),
+  });
+}
 export function useSetMyPreferences() {
   const qc = useQueryClient();
   return useMutation({
