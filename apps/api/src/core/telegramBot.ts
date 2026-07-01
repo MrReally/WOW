@@ -560,6 +560,11 @@ export function startTelegramBot(deps: BotDeps): void {
   };
   const participantLabel = (p: People.TelegramDialogParticipantDTO): string =>
     p.displayName?.trim() || (p.telegramUsername ? `@${p.telegramUsername.replace(/^@/, "")}` : p.telegramId);
+  const operatorReplyKeyboard = {
+    keyboard: [["☰ Диалоги", "↩ Выйти"]],
+    resize_keyboard: true,
+    one_time_keyboard: false,
+  };
   const rememberOperatorMessage = (operatorChatId: string, sent: Awaited<ReturnType<typeof send>>) => {
     const messageId = (sent?.result as { message_id?: number } | undefined)?.message_id;
     if (typeof messageId !== "number") return;
@@ -589,6 +594,7 @@ export function startTelegramBot(deps: BotDeps): void {
       return acc;
     }, []);
     rows.push([{ text: "↩ Выйти", callback_data: "inbox:exit" }]);
+    rememberOperatorMessage(operatorChatId, await send(operatorChatId, "Inbox", operatorReplyKeyboard, { log: false }));
     const sent = await send(
       operatorChatId,
       `<b>SEVER Inbox</b>\nВыберите диалог.`,
@@ -630,11 +636,7 @@ export function startTelegramBot(deps: BotDeps): void {
     rememberOperatorMessage(operatorChatId, await send(
       operatorChatId,
       `Режим ответа: <b>${escapeHtml(title)}</b>\nВаши сообщения уйдут человеку от лица SEVER.`,
-      {
-        keyboard: [["↩ Выйти", "☰ Диалоги"]],
-        resize_keyboard: true,
-        one_time_keyboard: false,
-      },
+      operatorReplyKeyboard,
       { log: false }
     ));
   };
@@ -666,7 +668,7 @@ export function startTelegramBot(deps: BotDeps): void {
       text,
       telegramMessageId: msg.message_id,
     });
-    await notifyWorkAccount(chatId, msg.from?.username, text, type);
+    return { text, type };
   };
   const handleOperatorMessage = async (chatId: string, msg: NonNullable<Update["message"]>): Promise<boolean> => {
     if (!(await isWorkAccount(msg.from?.username))) return false;
@@ -678,8 +680,8 @@ export function startTelegramBot(deps: BotDeps): void {
       return true;
     }
     if (text === "↩ Выйти" || text === "/exit") {
-      operatorSessions.delete(chatId);
-      await send(chatId, "Режим ответа выключен.", { remove_keyboard: true }, { log: false });
+      operatorSessions.set(chatId, { targetTelegramId: null, menuMessageIds: [] });
+      await send(chatId, "Режим ответа выключен.", operatorReplyKeyboard, { log: false });
       return true;
     }
     const session = operatorSessions.get(chatId);
@@ -779,9 +781,9 @@ export function startTelegramBot(deps: BotDeps): void {
     if (data.startsWith("inbox:")) {
       await people.rememberTelegramInboxWorkChatId(fromChatId);
       if (data === "inbox:exit") {
-        operatorSessions.delete(fromChatId);
+        operatorSessions.set(fromChatId, { targetTelegramId: null, menuMessageIds: [] });
         await tg("answerCallbackQuery", { callback_query_id: cb.id });
-        await send(fromChatId, "Режим ответа выключен.", { remove_keyboard: true }, { log: false });
+        await send(fromChatId, "Режим ответа выключен.", operatorReplyKeyboard, { log: false });
         return;
       }
       const openMatch = data.match(/^inbox:open:(.+)$/);
@@ -883,7 +885,7 @@ export function startTelegramBot(deps: BotDeps): void {
           try {
             if (await handleOperatorMessage(chatId, msg)) continue;
             const isCommand = text.startsWith("/");
-            if (!isCommand) await logIncomingMessage(chatId, msg);
+            const incoming = !isCommand ? await logIncomingMessage(chatId, msg) : null;
             if (!text.startsWith("/start") && await handleApplicationMessage(chatId, msg)) continue;
             if (codeMatch) {
               // Deep-link path: the link carries the exact account id.
@@ -901,7 +903,8 @@ export function startTelegramBot(deps: BotDeps): void {
             const users = await people.list();
             const already = users.find((p) => p.telegramId === chatId);
             if (already) {
-              await send(chatId, `Вы уже привязаны к аккаунту <b>${publicName(already)}</b>.`);
+              if (incoming) await notifyWorkAccount(chatId, username, incoming.text, incoming.type);
+              else await send(chatId, `Вы уже привязаны к аккаунту <b>${publicName(already)}</b>.`);
               continue;
             }
             const norm = normHandle(username);
