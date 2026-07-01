@@ -558,8 +558,9 @@ export function startTelegramBot(deps: BotDeps): void {
     const settings = await people.getTelegramInboxSettings();
     return !!settings.workUsername && normHandle(username) === normHandle(settings.workUsername);
   };
+  const INBOX_PAGE_SIZE = 10;
   const participantLabel = (p: People.TelegramDialogParticipantDTO): string =>
-    p.displayName?.trim() || (p.telegramUsername ? `@${p.telegramUsername.replace(/^@/, "")}` : p.telegramId);
+    p.displayName?.trim() || (p.telegramUsername ? `@${p.telegramUsername.replace(/^@/, "")}` : "Без имени");
   const operatorReplyKeyboard = {
     keyboard: [["☰ Диалоги", "↩ Выйти"]],
     resize_keyboard: true,
@@ -584,20 +585,30 @@ export function startTelegramBot(deps: BotDeps): void {
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${pad(d.getDate())}.${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
-  const operatorMenu = async (operatorChatId: string) => {
+  const operatorMenu = async (operatorChatId: string, page = 0) => {
     await clearOperatorMessages(operatorChatId);
     const participants = await people.listTelegramDialogParticipants();
-    const rows = participants.slice(0, 24).reduce<{ text: string; callback_data: string }[][]>((acc, p, index) => {
+    const pageCount = Math.max(1, Math.ceil(participants.length / INBOX_PAGE_SIZE));
+    const safePage = Math.min(Math.max(0, page), pageCount - 1);
+    const pageItems = participants.slice(safePage * INBOX_PAGE_SIZE, (safePage + 1) * INBOX_PAGE_SIZE);
+    const rows = pageItems.reduce<{ text: string; callback_data: string }[][]>((acc, p, index) => {
       const rowIndex = Math.floor(index / 2);
       acc[rowIndex] ??= [];
       acc[rowIndex]!.push({ text: participantLabel(p).slice(0, 28), callback_data: `inbox:open:${p.telegramId}` });
       return acc;
     }, []);
+    if (pageCount > 1) {
+      const nav: { text: string; callback_data: string }[] = [];
+      if (safePage > 0) nav.push({ text: "‹", callback_data: `inbox:page:${safePage - 1}` });
+      nav.push({ text: `${safePage + 1}/${pageCount}`, callback_data: `inbox:page:${safePage}` });
+      if (safePage < pageCount - 1) nav.push({ text: "›", callback_data: `inbox:page:${safePage + 1}` });
+      rows.push(nav);
+    }
     rows.push([{ text: "↩ Выйти", callback_data: "inbox:exit" }]);
     rememberOperatorMessage(operatorChatId, await send(operatorChatId, "Inbox", operatorReplyKeyboard, { log: false }));
     const sent = await send(
       operatorChatId,
-      `<b>SEVER Inbox</b>\nВыберите диалог.`,
+      `<b>SEVER Inbox</b>\nДиалоги: ${participants.length}`,
       { inline_keyboard: rows },
       { log: false }
     );
@@ -617,9 +628,9 @@ export function startTelegramBot(deps: BotDeps): void {
       people.listTelegramDialogMessages(targetTelegramId, 80),
     ]);
     const participant = participants.find((p) => p.telegramId === targetTelegramId);
-    const title = participant ? participantLabel(participant) : targetTelegramId;
+    const title = participant ? participantLabel(participant) : "Без имени";
     const chunks: string[] = [];
-    let current = `<b>Диалог: ${escapeHtml(title)}</b>\n<code>#tg_${escapeHtml(targetTelegramId)}</code>\n\n`;
+    let current = `<b>Диалог: ${escapeHtml(title)}</b>\n\n`;
     for (const message of messages) {
       const line = `${renderDialogLine(message)}\n`;
       if (current.length + line.length > 3600) {
@@ -645,10 +656,10 @@ export function startTelegramBot(deps: BotDeps): void {
     if (!workChatId || workChatId === fromChatId) return;
     const users = await people.list("all");
     const user = users.find((item) => item.telegramId === fromChatId);
-    const name = user ? publicName(user) : username ? `@${username}` : fromChatId;
+    const name = user ? publicName(user) : username ? `@${username}` : "Без имени";
     const body = [
       `<b>Новое сообщение в бот</b>`,
-      `${escapeHtml(name)} · <code>#tg_${escapeHtml(fromChatId)}</code>`,
+      escapeHtml(name),
       "",
       type === "photo" ? "[photo]" : escapeHtml(text).slice(0, 1200),
     ].join("\n");
@@ -790,6 +801,12 @@ export function startTelegramBot(deps: BotDeps): void {
       if (openMatch) {
         await tg("answerCallbackQuery", { callback_query_id: cb.id });
         await sendDialogHistory(fromChatId, openMatch[1]!);
+        return;
+      }
+      const pageMatch = data.match(/^inbox:page:(\d+)$/);
+      if (pageMatch) {
+        await tg("answerCallbackQuery", { callback_query_id: cb.id });
+        await operatorMenu(fromChatId, Number(pageMatch[1]));
         return;
       }
     }
