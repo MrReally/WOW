@@ -207,6 +207,7 @@ export function CrewPage() {
   const [selectedId, setSelectedId] = useState("");
   const [draft, setDraft] = useState<People.UpdateUserInput>({});
   const [newPerson, setNewPerson] = useState({ name: "", email: "", telegram: "", roleId: "" });
+  const [isAddingPerson, setIsAddingPerson] = useState(false);
   const [revealedPassword, setRevealedPassword] = useState<{ who: string; pw: string } | null>(null);
   const [historyMode, setHistoryMode] = useState<"projects" | "actions">("projects");
   const [applicationRoleIds, setApplicationRoleIds] = useState<Record<string, string>>({});
@@ -428,41 +429,57 @@ export function CrewPage() {
               </div>
             </Card>
           )}
-          <Card>
-            <SectionHead label="+ человек" />
-            <Field label="Имя">
-              <Input value={newPerson.name} onChange={(e) => setNewPerson((p) => ({ ...p, name: e.target.value }))} placeholder="Имя Фамилия" />
-            </Field>
-            <div className="row">
-              <Field label="Email">
-                <Input type="email" value={newPerson.email} onChange={(e) => setNewPerson((p) => ({ ...p, email: e.target.value }))} placeholder="name@company.com" />
+          {!isAddingPerson ? (
+            <Button variant="secondary" onClick={() => setIsAddingPerson(true)}>Добавить человека</Button>
+          ) : (
+            <Card>
+              <div className="row row--between">
+                <SectionHead label="Новый человек" />
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setIsAddingPerson(false);
+                    setNewPerson({ name: "", email: "", telegram: "", roleId: "" });
+                  }}
+                >
+                  ×
+                </Button>
+              </div>
+              <Field label="Имя">
+                <Input value={newPerson.name} onChange={(e) => setNewPerson((p) => ({ ...p, name: e.target.value }))} placeholder="Имя Фамилия" />
               </Field>
-              <Field label="Telegram">
-                <Input value={newPerson.telegram} onChange={(e) => setNewPerson((p) => ({ ...p, telegram: e.target.value }))} placeholder="@username" />
+              <div className="row">
+                <Field label="Email">
+                  <Input type="email" value={newPerson.email} onChange={(e) => setNewPerson((p) => ({ ...p, email: e.target.value }))} placeholder="name@company.com" />
+                </Field>
+                <Field label="Telegram">
+                  <Input value={newPerson.telegram} onChange={(e) => setNewPerson((p) => ({ ...p, telegram: e.target.value }))} placeholder="@username" />
+                </Field>
+              </div>
+              <Field label="Роль">
+                <Select value={newRoleId} onChange={(e) => setNewPerson((p) => ({ ...p, roleId: e.target.value }))} options={roleOptions} />
               </Field>
-            </div>
-            <Field label="Роль">
-              <Select value={newRoleId} onChange={(e) => setNewPerson((p) => ({ ...p, roleId: e.target.value }))} options={roleOptions} />
-            </Field>
-            <Button
-              block
-              disabled={!newPerson.name || (!newPerson.email && !newPerson.telegram) || !newRoleId || createUser.isPending}
-              onClick={() =>
-                createUser.mutate(
-                  { displayName: newPerson.name, roleId: newRoleId, email: newPerson.email || null, telegramId: newPerson.telegram || null } as People.CreateUserInput,
-                  {
-                    onSuccess: (res) => {
-                      setNewPerson({ name: "", email: "", telegram: "", roleId: "" });
-                      setSelectedId(res.user.id);
-                      if (res.temporaryPassword) setRevealedPassword({ who: personName(res.user), pw: res.temporaryPassword });
-                    },
-                  }
-                )
-              }
-            >
-              Создать
-            </Button>
-          </Card>
+              <Button
+                block
+                disabled={!newPerson.name || (!newPerson.email && !newPerson.telegram) || !newRoleId || createUser.isPending}
+                onClick={() =>
+                  createUser.mutate(
+                    { displayName: newPerson.name, roleId: newRoleId, email: newPerson.email || null, telegramId: newPerson.telegram || null } as People.CreateUserInput,
+                    {
+                      onSuccess: (res) => {
+                        setNewPerson({ name: "", email: "", telegram: "", roleId: "" });
+                        setIsAddingPerson(false);
+                        setSelectedId(res.user.id);
+                        if (res.temporaryPassword) setRevealedPassword({ who: personName(res.user), pw: res.temporaryPassword });
+                      },
+                    }
+                  )
+                }
+              >
+                Создать
+              </Button>
+            </Card>
+          )}
         </>
       )}
       {!selected && <EmptyState title="Crew пуст" />}
