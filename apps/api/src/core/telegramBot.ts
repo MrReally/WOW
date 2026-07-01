@@ -22,7 +22,7 @@ const tg = (method: string, body: unknown) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   })
-    .then((r) => r.json() as Promise<{ ok: boolean; result?: unknown }>)
+    .then((r) => r.json() as Promise<{ ok: boolean; result?: unknown; description?: string }>)
     .catch(() => null);
 
 let cachedUsername: string | null = null;
@@ -278,7 +278,8 @@ export function startTelegramBot(deps: BotDeps): void {
     const markup = keyboard(session, editMode);
     if (session.summaryMessageId) {
       const edited = await edit(chatId, session.summaryMessageId, text, markup);
-      if (edited?.ok) return;
+      if (edited?.ok || edited?.description?.includes("message is not modified")) return;
+      if (!edited?.description?.includes("message to edit not found")) return;
     }
     const sent = await send(chatId, text, markup);
     const messageId = (sent?.result as { message_id?: number } | undefined)?.message_id;
@@ -297,6 +298,9 @@ export function startTelegramBot(deps: BotDeps): void {
     if (typeof messageId === "number") session.questionMessageId = messageId;
   };
   const startApplication = async (chatId: string, username: string | null) => {
+    const previous = sessions.get(chatId);
+    if (previous?.summaryMessageId) await del(chatId, previous.summaryMessageId);
+    if (previous?.questionMessageId) await del(chatId, previous.questionMessageId);
     const session: ApplicationSession = {
       summaryMessageId: null,
       questionMessageId: null,
@@ -323,8 +327,12 @@ export function startTelegramBot(deps: BotDeps): void {
       sessions.delete(chatId);
       const finalText = "✅ Анкета отправлена. Мы вернёмся с ответом после просмотра.";
       if (session.questionMessageId) await del(chatId, session.questionMessageId);
-      if (session.summaryMessageId) await edit(chatId, session.summaryMessageId, finalText);
-      else await send(chatId, finalText);
+      if (session.summaryMessageId) {
+        const edited = await edit(chatId, session.summaryMessageId, finalText);
+        if (!edited?.ok && edited?.description?.includes("message to edit not found")) await send(chatId, finalText);
+      } else {
+        await send(chatId, finalText);
+      }
     } catch (err) {
       session.lastError = err instanceof Error ? err.message : "Не удалось отправить анкету.";
       await renderOrSendApplication(chatId, session);
