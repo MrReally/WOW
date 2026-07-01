@@ -166,21 +166,20 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
          VALUES ('Владелец', '{}', true, true)
          ON CONFLICT (name) DO NOTHING`
       );
-      // Склад / Монтажник are code-managed defaults: keep their permissions in
-      // sync with the current build on every boot (so upgrades aren't stale —
-      // no database wipe needed). Custom roles are for customization.
+      // Склад / Монтажник are defaults, but their permissions are editable in
+      // Settings. Create them once and never overwrite local configuration.
       await query(
         db,
         `INSERT INTO people.roles (name, permissions, is_system, is_owner)
          VALUES ('Склад', $1, true, false)
-         ON CONFLICT (name) DO UPDATE SET permissions = EXCLUDED.permissions, is_system = true`,
+         ON CONFLICT (name) DO NOTHING`,
         [WAREHOUSE_PERMS]
       );
       await query(
         db,
         `INSERT INTO people.roles (name, permissions, is_system, is_owner)
          VALUES ('Монтажник', $1, true, false)
-         ON CONFLICT (name) DO UPDATE SET permissions = EXCLUDED.permissions, is_system = true`,
+         ON CONFLICT (name) DO NOTHING`,
         [TECH_PERMS]
       );
       if (env.auth.systemOwnerEmail && env.auth.systemOwnerPassword) {
@@ -598,13 +597,14 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
       const role = await one<RoleRow>(db, `SELECT * FROM people.roles WHERE id=$1`, [id]);
       if (!role) throw NotFound("role", id);
       if (role.is_owner && input.permissions) throw Forbidden("у роли Владельца всегда все права");
+      if (role.is_system && input.name && input.name !== role.name) throw Forbidden("системную роль нельзя переименовать");
       const row = await one<RoleRow>(
         db,
         `UPDATE people.roles SET
            name = COALESCE($2, name),
            permissions = COALESCE($3, permissions)
          WHERE id=$1 RETURNING *`,
-        [id, input.name ?? null, role.is_owner ? null : (input.permissions ?? null)]
+        [id, role.is_system ? null : (input.name ?? null), role.is_owner ? null : (input.permissions ?? null)]
       );
       return roleDTO(row!);
     },

@@ -68,26 +68,18 @@ export function createModules(bus: EventBus = new EventBus()) {
   const acceptedApplicationCopy: Record<People.CrewApplicationLanguage, {
     title: string;
     created: string;
-    tempPassword: string;
-    changePassword: string;
   }> = {
     ru: {
       title: "Анкета SEVER Crew принята",
       created: "Аккаунт создан, Telegram уже привязан.",
-      tempPassword: "Временный пароль",
-      changePassword: "После входа приложение попросит задать новый пароль.",
     },
     sr: {
       title: "SEVER Crew prijava je prihvaćena",
       created: "Nalog je kreiran, Telegram je već povezan.",
-      tempPassword: "Privremena lozinka",
-      changePassword: "Posle prijave aplikacija će tražiti da postavite novu lozinku.",
     },
     en: {
       title: "SEVER Crew application accepted",
       created: "Your account has been created and Telegram is already linked.",
-      tempPassword: "Temporary password",
-      changePassword: "After login, the app will ask you to set a new password.",
     },
   };
 
@@ -352,8 +344,6 @@ export function createModules(bus: EventBus = new EventBus()) {
       "",
       c.created,
       user.email ? `Email: ${escapeHtml(user.email)}` : null,
-      e.temporaryPassword ? `${c.tempPassword}: <code>${escapeHtml(e.temporaryPassword)}</code>` : null,
-      e.temporaryPassword ? c.changePassword : null,
     ].filter(Boolean).join("\n");
     await sendTelegramMessage(user.telegramId, lines);
   });

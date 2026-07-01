@@ -41,7 +41,7 @@ export function RoleEditor() {
       <SectionHead label="Роли и права" meta={`${(roles.data ?? []).length}`} />
       <div className="stack">
         {(roles.data ?? []).map((r) => (
-          <Card key={r.id} onClick={() => (r.isSystem ? undefined : select(r))}>
+          <Card key={r.id} onClick={() => (r.isOwner ? undefined : select(r))}>
             <div className="row row--between">
               <div>
                 <p className="card__title">{r.name}</p>
@@ -71,12 +71,15 @@ export function RoleEditor() {
         </div>
       </Card>
 
-      {/* Permission editor for the selected custom (non-system) role */}
-      {selected && !selected.isSystem && (
+      {/* Permission editor for the selected role. Owner stays implicit-all. */}
+      {selected && !selected.isOwner && (
         <Card style={{ marginTop: 12 }}>
-          <Field label="Название роли">
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
+          {!selected.isSystem && (
+            <Field label="Название роли">
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </Field>
+          )}
+          {selected.isSystem && <SectionHead label={selected.name} meta="системная роль" />}
           {grouped.map(({ group, items }) => (
             <div key={group} style={{ marginBottom: 12 }}>
               <div className="t-label" style={{ marginBottom: 6 }}>{group}</div>
@@ -92,7 +95,7 @@ export function RoleEditor() {
             <Button
               block
               disabled={updateRole.isPending}
-              onClick={() => updateRole.mutate({ id: selected.id, input: { name, permissions: [...perms] } })}
+              onClick={() => updateRole.mutate({ id: selected.id, input: { ...(selected.isSystem ? {} : { name }), permissions: [...perms] } })}
             >
               Сохранить
             </Button>
