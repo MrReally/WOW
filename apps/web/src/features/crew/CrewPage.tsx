@@ -6,7 +6,7 @@ import { useSession } from "../../app/session.ts";
 import { api } from "../../lib/api.ts";
 import { getToken } from "../../lib/api.ts";
 import { dateRange, dateTime } from "../../lib/labels.ts";
-import { usePeople, useRoles, useUpdateUser } from "../settings/hooks.ts";
+import { useArchiveUser, useDeleteUserPermanently, usePeople, useRoles, useUpdateUser } from "../settings/hooks.ts";
 import { useProjectsForFinance } from "../finance/hooks.ts";
 import { personName } from "../../lib/people.ts";
 
@@ -50,12 +50,21 @@ function formatBirthDate(value: string | null | undefined): string {
   return match ? `${match[3]}.${match[2]}.${match[1]}` : value || "—";
 }
 
-function CrewTabIcon({ type }: { type: "people" | "applications" }) {
+type CrewTab = "people" | "applications" | "deleted";
+
+function CrewTabIcon({ type }: { type: CrewTab }) {
   if (type === "applications") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M7 3.5h10A2.5 2.5 0 0 1 19.5 6v12a2.5 2.5 0 0 1-2.5 2.5H7A2.5 2.5 0 0 1 4.5 18V6A2.5 2.5 0 0 1 7 3.5Z" fill="none" stroke="currentColor" strokeWidth="2" />
         <path d="M8 8h8M8 12h8M8 16h5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (type === "deleted") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 7h14M10 11v6M14 11v6M9 7l.7-2h4.6L15 7M7 7l1 13h8l1-13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
@@ -177,18 +186,22 @@ function CrewApplicationCard({
 }
 
 export function CrewPage() {
-  const { can } = useSession();
+  const { can, isOwner } = useSession();
   const qc = useQueryClient();
+  const canReviewApplications = can("people.applications.review", "people.manage");
+  const canManagePeople = can("people.manage");
   const people = usePeople();
+  const deletedPeople = usePeople("deleted", canManagePeople);
   const roles = useRoles();
   const projects = useProjectsForFinance();
   const updateUser = useUpdateUser();
+  const archiveUser = useArchiveUser();
+  const deleteUserPermanently = useDeleteUserPermanently();
   const [selectedId, setSelectedId] = useState("");
   const [draft, setDraft] = useState<People.UpdateUserInput>({});
   const [historyMode, setHistoryMode] = useState<"projects" | "actions">("projects");
   const [applicationRoleIds, setApplicationRoleIds] = useState<Record<string, string>>({});
-  const [activeTab, setActiveTab] = useState<"people" | "applications">("people");
-  const canReviewApplications = can("people.applications.review", "people.manage");
+  const [activeTab, setActiveTab] = useState<CrewTab>("people");
 
   const list = people.data ?? [];
   const applications = useQuery({
@@ -301,7 +314,11 @@ export function CrewPage() {
   };
   const avatarSrc = displayImageUrl(draft.usePhotoAsAvatar ? draft.photoUrl : null);
   const pendingApplications = applications.data ?? [];
-  const currentTab = canReviewApplications ? activeTab : "people";
+  const deletedList = deletedPeople.data ?? [];
+  const currentTab =
+    activeTab === "applications" && !canReviewApplications ? "people" :
+    activeTab === "deleted" && !canManagePeople ? "people" :
+    canReviewApplications || canManagePeople ? activeTab : "people";
 
   return (
     <div className="stack">
@@ -331,6 +348,54 @@ export function CrewPage() {
                   />
                 );
               })}
+            </div>
+          )}
+        </>
+      ) : currentTab === "deleted" ? (
+        <>
+          <SectionHead label="Удалённые" meta={`${deletedList.length}`} />
+          {deletedPeople.isLoading ? (
+            <Loading />
+          ) : deletedList.length === 0 ? (
+            <EmptyState title="Удалённых нет" />
+          ) : (
+            <div className="stack">
+              {deletedList.map((person) => (
+                <Card key={person.id}>
+                  <div className="row row--between" style={{ alignItems: "flex-start" }}>
+                    <div className="row" style={{ minWidth: 0 }}>
+                      {displayImageUrl(person.photoUrl) ? (
+                        <img src={displayImageUrl(person.photoUrl)!} alt="" className="crew-photo" />
+                      ) : (
+                        <span className="crew-photo crew-photo--empty">{personName(person).slice(0, 2).toUpperCase()}</span>
+                      )}
+                      <div style={{ minWidth: 0 }}>
+                        <p className="card__title" style={{ fontSize: "var(--fs-lg)" }}>{personName(person)}</p>
+                        <p className="card__subtitle">{person.email ?? person.telegramId ?? "без контакта"}</p>
+                      </div>
+                    </div>
+                    <Chip label="удалён" tone="neutral" />
+                  </div>
+                  <div className="row" style={{ marginTop: 12 }}>
+                    <Button
+                      variant="secondary"
+                      disabled={updateUser.isPending}
+                      onClick={() => updateUser.mutate({ id: person.id, input: { active: true } })}
+                    >
+                      ↩
+                    </Button>
+                    {isOwner && (
+                      <Button
+                        variant="danger"
+                        disabled={deleteUserPermanently.isPending}
+                        onClick={() => confirm(`Удалить «${personName(person)}» окончательно? Это действие нельзя отменить.`) && deleteUserPermanently.mutate(person.id)}
+                      >
+                        ×
+                      </Button>
+                    )}
+                  </div>
+                </Card>
+              ))}
             </div>
           )}
         </>
@@ -365,7 +430,18 @@ export function CrewPage() {
               <p className="card__subtitle">{selected.roleName}{selected.hourlyRateEUR != null ? ` · ${selected.hourlyRateEUR} €` : ""}</p>
             </div>
           </div>
-          {!selected.active && <Chip label="выкл" tone="neutral" />}
+          <div className="row" style={{ gap: 6, flexShrink: 0 }}>
+            {!selected.active && <Chip label="выкл" tone="neutral" />}
+            {canManagePeople && (
+              <Button
+                variant="ghost"
+                disabled={archiveUser.isPending}
+                onClick={() => confirm(`Переместить «${personName(selected)}» в удалённые?`) && archiveUser.mutate(selected.id, { onSuccess: () => setSelectedId("") })}
+              >
+                ×
+              </Button>
+            )}
+          </div>
         </div>
       </Card>
 
@@ -515,12 +591,13 @@ export function CrewPage() {
       )}
         </>
       )}
-      {canReviewApplications && (
+      {(canReviewApplications || canManagePeople) && (
         <div className="project-tabbar" role="tablist" aria-label="Crew">
           {([
             { id: "people" as const, label: "Работники", shortLabel: "Люди", count: list.length },
-            { id: "applications" as const, label: "Анкеты", shortLabel: "Анкеты", count: pendingApplications.length },
-          ]).map((tab) => {
+            canReviewApplications ? { id: "applications" as const, label: "Анкеты", shortLabel: "Анкеты", count: pendingApplications.length } : null,
+            canManagePeople ? { id: "deleted" as const, label: "Удалённые", shortLabel: "Удал.", count: deletedList.length } : null,
+          ].filter(Boolean) as { id: CrewTab; label: string; shortLabel: string; count: number }[]).map((tab) => {
             const isActive = currentTab === tab.id;
             return (
               <button
@@ -531,7 +608,7 @@ export function CrewPage() {
                 aria-selected={isActive}
                 role="tab"
                 type="button"
-                style={{ ["--tab-c" as string]: tab.id === "applications" ? "var(--warn)" : "var(--accent)" }}
+                style={{ ["--tab-c" as string]: tab.id === "applications" ? "var(--warn)" : tab.id === "deleted" ? "var(--danger)" : "var(--accent)" }}
               >
                 <span className="project-tabbar__icon">
                   <CrewTabIcon type={tab.id} />

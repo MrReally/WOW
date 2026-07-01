@@ -60,6 +60,7 @@ const updateUserSchema = z.object({
 
 const createRoleSchema = z.object({ name: z.string().min(1), permissions: z.array(permissionEnum) });
 const updateRoleSchema = z.object({ name: z.string().min(1).optional(), permissions: z.array(permissionEnum).optional() });
+const peopleStatusSchema = z.enum(["active", "deleted", "all"]);
 const applicationStatusSchema = z.enum(["pending", "accepted", "rejected", "all"]);
 const acceptApplicationSchema = z.object({ roleId: z.string().uuid() });
 
@@ -115,10 +116,12 @@ export function registerPeopleRoutes(
   });
 
   // ── Users ──
-  app.get("/api/people", async (req) => {
+  app.get<{ Querystring: { status?: People.UserListStatus } }>("/api/people", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "people.view", "people.manage");
-    return service.list();
+    const status = req.query.status ? peopleStatusSchema.parse(req.query.status) : "active";
+    if (status !== "active") requirePermission(auth, "people.manage");
+    return service.list(status);
   });
   app.post("/api/people", async (req) => {
     const auth = await ctx.auth(req);
@@ -134,6 +137,19 @@ export function registerPeopleRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "people.manage");
     return service.resetPassword(req.params.id);
+  });
+  app.post<{ Params: { id: string } }>("/api/people/:id/archive", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "people.manage");
+    if (auth.userId === req.params.id) throw Forbidden("нельзя удалить свой аккаунт");
+    return service.archive(req.params.id);
+  });
+  app.delete<{ Params: { id: string } }>("/api/people/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    if (!auth.isOwner) throw Forbidden("окончательное удаление доступно только владельцу");
+    if (auth.userId === req.params.id) throw Forbidden("нельзя удалить свой аккаунт");
+    await service.deletePermanently(req.params.id);
+    return { ok: true };
   });
   app.get<{ Querystring: { status?: People.CrewApplicationStatus | "all" } }>("/api/crew-applications", async (req) => {
     const auth = await ctx.auth(req);

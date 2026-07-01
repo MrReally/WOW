@@ -327,8 +327,12 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
     },
 
     // ── Users ──
-    async list() {
-      const rows = await query<UserRow>(db, `${USER_SELECT} WHERE u.is_system=false ORDER BY u.created_at`);
+    async list(status = "active") {
+      const statusWhere =
+        status === "all" ? "" :
+        status === "deleted" ? " AND u.active=false" :
+        " AND u.active=true";
+      const rows = await query<UserRow>(db, `${USER_SELECT} WHERE u.is_system=false${statusWhere} ORDER BY u.created_at`);
       return rows.map(userDTO);
     },
     async getById(id) {
@@ -437,6 +441,23 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
       );
       const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [row!.id]);
       return userDTO(u!);
+    },
+    async archive(id) {
+      const existing = await one<UserRow>(db, `SELECT * FROM people.users WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("user", id);
+      if (existing.is_system) throw Forbidden("системный аккаунт нельзя удалить");
+      const row = await one<UserRow>(db, `UPDATE people.users SET active=false WHERE id=$1 RETURNING id`, [id]);
+      await query(db, `DELETE FROM people.sessions WHERE user_id=$1`, [id]);
+      const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [row!.id]);
+      return userDTO(u!);
+    },
+    async deletePermanently(id) {
+      const existing = await one<UserRow>(db, `SELECT * FROM people.users WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("user", id);
+      if (existing.is_system) throw Forbidden("системный аккаунт нельзя удалить");
+      if (existing.active) throw BadRequest("сначала переместите пользователя в удалённые");
+      await query(db, `DELETE FROM people.sessions WHERE user_id=$1`, [id]);
+      await query(db, `DELETE FROM people.users WHERE id=$1`, [id]);
     },
     async resetPassword(id) {
       const u = await one<UserRow>(db, `SELECT * FROM people.users WHERE id=$1`, [id]);

@@ -99,6 +99,8 @@ export interface UpdateMyPreferencesInput {
   operationsShowAllProjects?: boolean;
 }
 
+export type UserListStatus = "active" | "deleted" | "all";
+
 /** Returned when an admin creates a user — the one-time temporary password. */
 export interface CreatedUserDTO {
   user: UserDTO;
@@ -187,11 +189,13 @@ export interface PeopleService {
   updateMyPreferences(userId: ID, input: UpdateMyPreferencesInput): Promise<UserDTO>;
 
   // Users
-  list(): Promise<UserDTO[]>;
+  list(status?: UserListStatus): Promise<UserDTO[]>;
   getById(id: ID): Promise<UserDTO | null>;
   listWithPermission(permission: Permission): Promise<UserDTO[]>;
   create(input: CreateUserInput): Promise<CreatedUserDTO>;
   update(id: ID, input: UpdateUserInput): Promise<UserDTO>;
+  archive(id: ID): Promise<UserDTO>;
+  deletePermanently(id: ID): Promise<void>;
   resetPassword(id: ID): Promise<{ temporaryPassword: string }>;
   listApplications(status?: CrewApplicationStatus | "all"): Promise<CrewApplicationDTO[]>;
   getApplication(id: ID): Promise<CrewApplicationDTO | null>;

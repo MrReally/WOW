@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { People, Finance } from "@sever/contracts";
 import { api } from "../../lib/api.ts";
 
-export function usePeople() {
-  return useQuery({ queryKey: ["people"], queryFn: () => api.get<People.UserDTO[]>("/api/people") });
+export function usePeople(status: People.UserListStatus = "active", enabled = true) {
+  return useQuery({ enabled, queryKey: ["people", status], queryFn: () => api.get<People.UserDTO[]>(`/api/people?status=${status}`) });
 }
 export function useRoles() {
   return useQuery({ queryKey: ["roles"], queryFn: () => api.get<People.RoleDTO[]>("/api/roles") });
@@ -49,6 +49,22 @@ export function useUpdateUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: People.UpdateUserInput }) => api.patch(`/api/people/${id}`, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["people"] }),
+  });
+}
+export function useArchiveUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<People.UserDTO>(`/api/people/${id}/archive`, {}),
+    meta: { successMessage: "Человек перемещён в удалённые" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["people"] }),
+  });
+}
+export function useDeleteUserPermanently() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/people/${id}`),
+    meta: { successMessage: "Пользователь удалён" },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["people"] }),
   });
 }
