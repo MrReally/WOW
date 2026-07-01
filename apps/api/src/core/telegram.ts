@@ -64,10 +64,10 @@ export async function sendTelegramPhoto(
   photoFileId: string,
   caption: string,
   opts?: { inlineKeyboard?: InlineButton[][] }
-): Promise<void> {
+): Promise<boolean> {
   const token = env.auth.telegramBotToken;
-  if (!token || !chatId || !photoFileId) return;
-  if (!/^\d+$/.test(chatId)) return;
+  if (!token || !chatId || !photoFileId) return false;
+  if (!/^\d+$/.test(chatId)) return false;
   const body: Record<string, unknown> = { chat_id: chatId, photo: photoFileId, caption, parse_mode: "HTML" };
   if (opts?.inlineKeyboard) {
     body.reply_markup = {
@@ -75,12 +75,15 @@ export async function sendTelegramPhoto(
     };
   }
   try {
-    await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    const json = await res.json() as { ok?: boolean };
+    return json.ok === true;
   } catch {
     // Best-effort.
+    return false;
   }
 }

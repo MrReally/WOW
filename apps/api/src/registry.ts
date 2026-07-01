@@ -61,6 +61,10 @@ export function createModules(bus: EventBus = new EventBus()) {
     user?.nickname?.trim() || user?.displayName?.trim() || fallback;
   const escapeHtml = (value: string | null | undefined) =>
     (value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const formatBirthDate = (value: string | null | undefined) => {
+    const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return match ? `${match[3]}.${match[2]}.${match[1]}` : (value ?? "");
+  };
 
   const fmtActor = async (actorId?: string | null) => {
     if (!actorId) return "Система";
@@ -297,7 +301,7 @@ export function createModules(bus: EventBus = new EventBus()) {
       `${escapeHtml(application.firstName)} ${escapeHtml(application.lastName)}${application.patronymic ? ` ${escapeHtml(application.patronymic)}` : ""}`,
       `Ник: ${escapeHtml(application.nickname)}`,
       `Email: ${escapeHtml(application.email)}`,
-      `Дата рождения: ${escapeHtml(application.birthDate)}`,
+      `Дата рождения: ${escapeHtml(formatBirthDate(application.birthDate))}`,
       `Языки: ${escapeHtml(application.languages)}`,
       `О себе: ${escapeHtml(application.about)}`,
       `Источник: ${escapeHtml(application.source)}`,
@@ -306,7 +310,8 @@ export function createModules(bus: EventBus = new EventBus()) {
     for (const reviewer of reviewers) {
       if (!(await notifications.service.isAdvancedEnabled(reviewer.id, "people.application.submitted"))) continue;
       await notifications.service.create({ userId: reviewer.id, kind: "info", title: "Новая анкета Crew", body: `${application.nickname} · ${application.email}`, link: "/crew" });
-      await sendTelegramPhoto(reviewer.telegramId, application.photoFileId, body);
+      const sentPhoto = await sendTelegramPhoto(reviewer.telegramId, application.photoFileId, body);
+      if (!sentPhoto) await sendTelegramMessage(reviewer.telegramId, body);
     }
   });
 

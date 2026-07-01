@@ -170,11 +170,16 @@ export function CrewPage() {
   return (
     <div className="stack">
       <SectionHead label="Crew" meta={pendingApplications.length > 0 ? `${list.length} · ${pendingApplications.length} анкет` : `${list.length}`} />
-      {canReviewApplications && pendingApplications.length > 0 && (
+      {canReviewApplications && (
         <>
           <SectionHead label="Анкеты" meta={`${pendingApplications.length}`} />
-          <div className="stack">
-            {pendingApplications.map((application) => {
+          {applications.isLoading ? (
+            <Loading />
+          ) : pendingApplications.length === 0 ? (
+            <EmptyState title="Новых анкет нет" />
+          ) : (
+            <div className="stack">
+              {pendingApplications.map((application) => {
               const roleId = applicationRoleIds[application.id] ?? "";
               return (
                 <Card key={application.id}>
@@ -206,8 +211,9 @@ export function CrewPage() {
                   </div>
                 </Card>
               );
-            })}
-          </div>
+              })}
+            </div>
+          )}
         </>
       )}
       {!selected && <EmptyState title="Crew пуст" />}
