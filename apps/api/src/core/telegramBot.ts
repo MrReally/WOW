@@ -47,10 +47,12 @@ interface BotDeps {
 type ApplicationField = "firstName" | "lastName" | "patronymic" | "nickname" | "email" | "birthDate" | "languages" | "about" | "source" | "photoFileId";
 interface ApplicationSession {
   summaryMessageId: number | null;
+  questionMessageId: number | null;
   editingField: ApplicationField | null;
   draft: Partial<People.SubmitCrewApplicationInput>;
   username: string | null;
   lastError: string | null;
+  usedSingleAnswers: boolean;
 }
 
 const APPLICATION_STEPS: { field: ApplicationField; label: string; question: string; optional?: boolean }[] = [
@@ -241,29 +243,33 @@ export function startTelegramBot(deps: BotDeps): void {
     };
   };
   const renderApplication = (session: ApplicationSession, editMode = false): string => {
+    const required = APPLICATION_STEPS.filter((step) => !step.optional).length;
+    const done = APPLICATION_STEPS.filter((step) => !step.optional && hasField(session, step.field)).length;
     const lines = [
-      "<b>Анкета SEVER Crew</b>",
-      "Можно ответить одним сообщением по номерам или продолжать по одному пункту.",
+      "<b>SEVER Crew</b>",
+      `Анкета · ${done}/${required}`,
       "",
       ...APPLICATION_STEPS.map((step, index) => {
         const answered = step.optional ? session.draft[step.field] !== undefined : hasField(session, step.field);
-        const mark = answered ? "✓" : "·";
-        return `${index + 1}. ${mark} <b>${step.label}</b>: ${escapeHtml(displayValue(session, step.field))}`;
+        const mark = answered ? "✓" : "○";
+        return `${mark} ${index + 1}. ${step.label}: ${escapeHtml(displayValue(session, step.field))}`;
       }),
     ];
     if (session.lastError) lines.push("", `⚠️ ${escapeHtml(session.lastError)}`);
-    const missing = firstUnansweredField(session);
     if (editMode) {
       lines.push("", "Что редактируем?");
-    } else if (session.editingField) {
-      const step = APPLICATION_STEPS.find((item) => item.field === session.editingField);
-      lines.push("", `✎ ${step?.question ?? "Отправьте новое значение."}`);
-    } else if (missing) {
-      const step = APPLICATION_STEPS.find((item) => item.field === missing);
-      lines.push("", `Следующий вопрос: ${step?.question ?? "Ответьте сообщением."}`);
-      lines.push("", "Пример списка:\n<code>1. Александр</code>\n<code>2. Иванов</code>\n<code>3. -</code>");
-    } else {
-      lines.push("", "Анкета заполнена. Проверьте данные и нажмите «Отправить».");
+    }
+    return lines.join("\n");
+  };
+  const renderQuestion = (session: ApplicationSession): string | null => {
+    const field = session.editingField ?? firstUnansweredField(session) ?? firstRequiredMissingField(session);
+    if (!field) return null;
+    const index = APPLICATION_STEPS.findIndex((step) => step.field === field);
+    const step = APPLICATION_STEPS[index];
+    if (!step) return null;
+    const lines = [`<b>${index + 1}. ${escapeHtml(step.label)}</b>`, escapeHtml(step.question)];
+    if (!session.usedSingleAnswers && field === "firstName") {
+      lines.push("", "Можно ответить сразу списком:", "<code>1. Александр</code>", "<code>2. Иванов</code>", "<code>3. -</code>");
     }
     return lines.join("\n");
   };
@@ -278,16 +284,32 @@ export function startTelegramBot(deps: BotDeps): void {
     const messageId = (sent?.result as { message_id?: number } | undefined)?.message_id;
     if (typeof messageId === "number") session.summaryMessageId = messageId;
   };
+  const replaceQuestion = async (chatId: string, session: ApplicationSession) => {
+    if (session.questionMessageId) {
+      await del(chatId, session.questionMessageId);
+      session.questionMessageId = null;
+    }
+    if (session.editingField === null && firstUnansweredField(session) === null && firstRequiredMissingField(session) === null) return;
+    const text = renderQuestion(session);
+    if (!text) return;
+    const sent = await send(chatId, text);
+    const messageId = (sent?.result as { message_id?: number } | undefined)?.message_id;
+    if (typeof messageId === "number") session.questionMessageId = messageId;
+  };
   const startApplication = async (chatId: string, username: string | null) => {
     const session: ApplicationSession = {
       summaryMessageId: null,
+      questionMessageId: null,
       editingField: null,
       draft: { telegramId: chatId, telegramUsername: username },
       username,
       lastError: null,
+      usedSingleAnswers: false,
     };
     sessions.set(chatId, session);
+    await send(chatId, "<b>Анкета SEVER Crew</b>\nЗаполните короткую форму. Можно отвечать по одному вопросу или сразу списком по номерам.");
     await renderOrSendApplication(chatId, session);
+    await replaceQuestion(chatId, session);
   };
   const submitApplication = async (chatId: string, session: ApplicationSession) => {
     const missing = firstRequiredMissingField(session);
@@ -300,6 +322,7 @@ export function startTelegramBot(deps: BotDeps): void {
       await people.submitApplication(session.draft as People.SubmitCrewApplicationInput);
       sessions.delete(chatId);
       const finalText = "✅ Анкета отправлена. Мы вернёмся с ответом после просмотра.";
+      if (session.questionMessageId) await del(chatId, session.questionMessageId);
       if (session.summaryMessageId) await edit(chatId, session.summaryMessageId, finalText);
       else await send(chatId, finalText);
     } catch (err) {
@@ -314,6 +337,7 @@ export function startTelegramBot(deps: BotDeps): void {
     if (msg.text?.trim().toLowerCase() === "/cancel" || msg.text?.trim().toLowerCase() === "отмена") {
       sessions.delete(chatId);
       await del(chatId, msg.message_id);
+      if (session.questionMessageId) await del(chatId, session.questionMessageId);
       if (session.summaryMessageId) await edit(chatId, session.summaryMessageId, "Анкета отменена. Чтобы начать заново, нажмите /start.");
       else await send(chatId, "Анкета отменена. Чтобы начать заново, нажмите /start.");
       return true;
@@ -321,6 +345,7 @@ export function startTelegramBot(deps: BotDeps): void {
     session.lastError = null;
     const photo = [...(msg.photo ?? [])].sort((a, b) => (b.file_size ?? 0) - (a.file_size ?? 0))[0];
     if (photo) {
+      session.usedSingleAnswers = true;
       session.draft.photoFileId = photo.file_id;
       session.editingField = null;
     } else {
@@ -335,6 +360,7 @@ export function startTelegramBot(deps: BotDeps): void {
         session.lastError = errors[0] ?? null;
         session.editingField = null;
       } else {
+        session.usedSingleAnswers = true;
         const target = session.editingField ?? firstUnansweredField(session) ?? firstRequiredMissingField(session);
         if (!target) {
           session.lastError = "Анкета уже заполнена. Можно отправить или отредактировать поле.";
@@ -346,7 +372,12 @@ export function startTelegramBot(deps: BotDeps): void {
       }
     }
     await del(chatId, msg.message_id);
+    if (session.questionMessageId) {
+      await del(chatId, session.questionMessageId);
+      session.questionMessageId = null;
+    }
     await renderOrSendApplication(chatId, session);
+    await replaceQuestion(chatId, session);
     return true;
   };
 
@@ -362,12 +393,17 @@ export function startTelegramBot(deps: BotDeps): void {
       if (data === "app:edit") {
         await tg("answerCallbackQuery", { callback_query_id: cb.id });
         await renderOrSendApplication(fromChatId, session, true);
+        if (session.questionMessageId) {
+          await del(fromChatId, session.questionMessageId);
+          session.questionMessageId = null;
+        }
         return;
       }
       if (data === "app:done") {
         session.editingField = null;
         await tg("answerCallbackQuery", { callback_query_id: cb.id });
         await renderOrSendApplication(fromChatId, session);
+        await replaceQuestion(fromChatId, session);
         return;
       }
       if (data === "app:submit") {
@@ -381,6 +417,7 @@ export function startTelegramBot(deps: BotDeps): void {
         session.lastError = null;
         await tg("answerCallbackQuery", { callback_query_id: cb.id });
         await renderOrSendApplication(fromChatId, session);
+        await replaceQuestion(fromChatId, session);
         return;
       }
     }
