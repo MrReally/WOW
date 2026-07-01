@@ -45,10 +45,12 @@ interface BotDeps {
 }
 
 type ApplicationField = "firstName" | "lastName" | "patronymic" | "nickname" | "email" | "birthDate" | "languages" | "about" | "source" | "photoFileId";
+type BotLang = "ru" | "sr" | "en";
 interface ApplicationSession {
   summaryMessageId: number | null;
   questionMessageId: number | null;
   editingField: ApplicationField | null;
+  lang: BotLang | null;
   draft: Partial<People.SubmitCrewApplicationInput>;
   username: string | null;
   lastError: string | null;
@@ -56,17 +58,203 @@ interface ApplicationSession {
   submitted: boolean;
 }
 
-const APPLICATION_STEPS: { field: ApplicationField; label: string; question: string; optional?: boolean }[] = [
-  { field: "firstName", label: "Имя", question: "Как вас зовут?" },
-  { field: "lastName", label: "Фамилия", question: "Какая у вас фамилия?" },
-  { field: "patronymic", label: "Отчество", question: "Отчество, если есть. Если нет — отправьте «-».", optional: true },
-  { field: "nickname", label: "Ник", question: "Какой короткий ник использовать в таймингах и списках?" },
-  { field: "email", label: "Email", question: "На какой email можно с вами связаться?" },
-  { field: "birthDate", label: "Дата рождения", question: "Какая у вас дата рождения? Формат: ДД.ММ.ГГГГ или ДД.ММ.ГГ." },
-  { field: "languages", label: "Языки", question: "Какие языки вы знаете и на каком уровне? Например: RU C2, EN B2, SR A2." },
-  { field: "about", label: "О себе", question: "Коротко расскажите о себе и опыте." },
-  { field: "source", label: "Источник", question: "Откуда вы узнали о SEVER? Кто пригласил или где нашли бота?" },
-  { field: "photoFileId", label: "Фото", question: "Отправьте своё фото", optional: false },
+const LANG_LABELS: Record<BotLang, string> = { ru: "Русский", sr: "Srpski", en: "English" };
+
+const COPY = {
+  ru: {
+    chooseLanguage: "<b>SEVER Crew</b>\nВыберите язык анкеты.",
+    intro: "<b>Анкета SEVER Crew</b>\nЗаполните короткую форму. Можно отвечать по одному вопросу или сразу списком по номерам.",
+    appStatus: "Анкета",
+    sentStatus: "Анкета · отправлена",
+    attached: "приложено",
+    empty: "—",
+    edit: "Редактировать",
+    submit: "Отправить",
+    done: "Готово",
+    editPrompt: "Что редактируем?",
+    completeQuestion: "<b>Анкета заполнена</b>\nХотите отправить?",
+    listHint: ["Можно ответить сразу списком:", "<code>1. Александр</code>", "<code>2. Иванов</code>", "<code>3. -</code>"],
+    required: (label: string) => `Не заполнено поле «${label}».`,
+    cancelled: "Анкета отменена. Чтобы начать заново, нажмите /start.",
+    inactive: "Анкета не активна. Нажмите /start.",
+    emptyField: "Поле не должно быть пустым.",
+    invalidEmail: "Пожалуйста, отправьте корректный email.",
+    invalidDate: "Не понял дату. Формат: ДД.ММ.ГГГГ или ДД.ММ.ГГ.",
+    photoAsImage: "Фото нужно отправить как изображение.",
+    alreadyComplete: "Анкета уже заполнена. Можно отправить или отредактировать поле.",
+    submitFailed: "Не удалось отправить анкету.",
+    submitted: "✅ Анкета отправлена. Мы вернёмся с ответом после просмотра.",
+    fieldLabels: {
+      firstName: "Имя",
+      lastName: "Фамилия",
+      patronymic: "Отчество",
+      nickname: "Ник",
+      email: "Email",
+      birthDate: "Дата рождения",
+      languages: "Языки",
+      about: "О себе",
+      source: "Источник",
+      photoFileId: "Фото",
+    },
+    questions: {
+      firstName: "Как вас зовут?",
+      lastName: "Какая у вас фамилия?",
+      patronymic: "Отчество, если есть. Если нет — отправьте «-».",
+      nickname: "Какой короткий ник использовать в таймингах и списках?",
+      email: "На какой email можно с вами связаться?",
+      birthDate: "Какая у вас дата рождения? Формат: ДД.ММ.ГГГГ или ДД.ММ.ГГ.",
+      languages: "Какие языки вы знаете и на каком уровне?",
+      about: "Коротко расскажите о себе и опыте.",
+      source: "Откуда вы узнали о SEVER? Кто пригласил или где нашли бота?",
+      photoFileId: "Отправьте своё фото",
+    },
+    noPatronymic: ["нет"],
+    yes: ["да", "д", "ага", "отправить", "отправляй"],
+    cancel: ["отмена"],
+  },
+  sr: {
+    chooseLanguage: "<b>SEVER Crew</b>\nIzaberite jezik prijave.",
+    intro: "<b>SEVER Crew prijava</b>\nPopunite kratku formu. Možete odgovarati po jednom pitanju ili poslati odgovore kao numerisanu listu.",
+    appStatus: "Prijava",
+    sentStatus: "Prijava · poslata",
+    attached: "priloženo",
+    empty: "—",
+    edit: "Izmeni",
+    submit: "Pošalji",
+    done: "Gotovo",
+    editPrompt: "Šta želite da izmenite?",
+    completeQuestion: "<b>Prijava je popunjena</b>\nŽelite li da je pošaljete?",
+    listHint: ["Možete odgovoriti i kao listu:", "<code>1. Aleksandar</code>", "<code>2. Ivanović</code>", "<code>3. -</code>"],
+    required: (label: string) => `Nije popunjeno polje „${label}“.`,
+    cancelled: "Prijava je otkazana. Za novi početak pritisnite /start.",
+    inactive: "Prijava nije aktivna. Pritisnite /start.",
+    emptyField: "Polje ne sme biti prazno.",
+    invalidEmail: "Pošaljite ispravan email.",
+    invalidDate: "Ne razumem datum. Format: DD.MM.GGGG ili DD.MM.GG.",
+    photoAsImage: "Fotografiju pošaljite kao sliku.",
+    alreadyComplete: "Prijava je već popunjena. Možete je poslati ili izmeniti polje.",
+    submitFailed: "Nije uspelo slanje prijave.",
+    submitted: "✅ Prijava je poslata. Javićemo se posle pregleda.",
+    fieldLabels: {
+      firstName: "Ime",
+      lastName: "Prezime",
+      patronymic: "Srednje ime",
+      nickname: "Nadimak",
+      email: "Email",
+      birthDate: "Datum rođenja",
+      languages: "Jezici",
+      about: "O sebi",
+      source: "Izvor",
+      photoFileId: "Fotografija",
+    },
+    questions: {
+      firstName: "Kako se zovete?",
+      lastName: "Koje je vaše prezime?",
+      patronymic: "Srednje ime, ako ga imate. Ako nemate, pošaljite „-“.",
+      nickname: "Koji kratak nadimak da koristimo u rasporedima i listama?",
+      email: "Na koji email možemo da vas kontaktiramo?",
+      birthDate: "Koji je vaš datum rođenja? Format: DD.MM.GGGG ili DD.MM.GG.",
+      languages: "Koje jezike znate i na kom nivou?",
+      about: "Ukratko napišite nešto o sebi i iskustvu.",
+      source: "Kako ste saznali za SEVER? Ko vas je pozvao ili gde ste našli bota?",
+      photoFileId: "Pošaljite svoju fotografiju",
+    },
+    noPatronymic: ["ne", "nemam", "nema"],
+    yes: ["da", "pošalji", "posalji", "šalji", "salji"],
+    cancel: ["otkaži", "otkazi", "odustani"],
+  },
+  en: {
+    chooseLanguage: "<b>SEVER Crew</b>\nChoose the application language.",
+    intro: "<b>SEVER Crew application</b>\nFill out a short form. You can answer one question at a time or send a numbered list.",
+    appStatus: "Application",
+    sentStatus: "Application · sent",
+    attached: "attached",
+    empty: "—",
+    edit: "Edit",
+    submit: "Send",
+    done: "Done",
+    editPrompt: "What would you like to edit?",
+    completeQuestion: "<b>Application complete</b>\nDo you want to send it?",
+    listHint: ["You can also answer as a list:", "<code>1. Alexander</code>", "<code>2. Ivanov</code>", "<code>3. -</code>"],
+    required: (label: string) => `The “${label}” field is missing.`,
+    cancelled: "Application cancelled. Press /start to begin again.",
+    inactive: "No active application. Press /start.",
+    emptyField: "This field cannot be empty.",
+    invalidEmail: "Please send a valid email.",
+    invalidDate: "I could not read the date. Format: DD.MM.YYYY or DD.MM.YY.",
+    photoAsImage: "Please send the photo as an image.",
+    alreadyComplete: "The application is complete. You can send it or edit a field.",
+    submitFailed: "Could not send the application.",
+    submitted: "✅ Application sent. We will get back to you after review.",
+    fieldLabels: {
+      firstName: "First name",
+      lastName: "Last name",
+      patronymic: "Middle name",
+      nickname: "Nickname",
+      email: "Email",
+      birthDate: "Date of birth",
+      languages: "Languages",
+      about: "About",
+      source: "Source",
+      photoFileId: "Photo",
+    },
+    questions: {
+      firstName: "What is your first name?",
+      lastName: "What is your last name?",
+      patronymic: "Middle name, if you have one. If not, send “-”.",
+      nickname: "What short nickname should we use in schedules and lists?",
+      email: "Which email can we use to contact you?",
+      birthDate: "What is your date of birth? Format: DD.MM.YYYY or DD.MM.YY.",
+      languages: "Which languages do you know, and at what level?",
+      about: "Briefly tell us about yourself and your experience.",
+      source: "How did you hear about SEVER? Who invited you or where did you find the bot?",
+      photoFileId: "Send your photo",
+    },
+    noPatronymic: ["no", "none", "n/a"],
+    yes: ["yes", "y", "send", "submit"],
+    cancel: ["cancel"],
+  },
+} satisfies Record<BotLang, {
+  chooseLanguage: string;
+  intro: string;
+  appStatus: string;
+  sentStatus: string;
+  attached: string;
+  empty: string;
+  edit: string;
+  submit: string;
+  done: string;
+  editPrompt: string;
+  completeQuestion: string;
+  listHint: string[];
+  required: (label: string) => string;
+  cancelled: string;
+  inactive: string;
+  emptyField: string;
+  invalidEmail: string;
+  invalidDate: string;
+  photoAsImage: string;
+  alreadyComplete: string;
+  submitFailed: string;
+  submitted: string;
+  fieldLabels: Record<ApplicationField, string>;
+  questions: Record<ApplicationField, string>;
+  noPatronymic: string[];
+  yes: string[];
+  cancel: string[];
+}>;
+
+const APPLICATION_FIELDS: { field: ApplicationField; optional?: boolean }[] = [
+  { field: "firstName" },
+  { field: "lastName" },
+  { field: "patronymic", optional: true },
+  { field: "nickname" },
+  { field: "email" },
+  { field: "birthDate" },
+  { field: "languages" },
+  { field: "about" },
+  { field: "source" },
+  { field: "photoFileId" },
 ];
 
 interface Update {
@@ -94,6 +282,20 @@ export function startTelegramBot(deps: BotDeps): void {
   const sessions = new Map<string, ApplicationSession>();
   let offset = 0;
 
+  const copy = (session: ApplicationSession) => COPY[session.lang ?? "ru"];
+  const steps = (session: ApplicationSession) =>
+    APPLICATION_FIELDS.map((step) => ({
+      ...step,
+      label: copy(session).fieldLabels[step.field],
+      question: copy(session).questions[step.field],
+    }));
+  const languageKeyboard = {
+    inline_keyboard: [[
+      { text: LANG_LABELS.ru, callback_data: "app:lang:ru" },
+      { text: LANG_LABELS.sr, callback_data: "app:lang:sr" },
+      { text: LANG_LABELS.en, callback_data: "app:lang:en" },
+    ]],
+  };
   const escapeHtml = (value: string | null | undefined) => (value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const normalizeBirthYear = (year: number): number => {
     if (year >= 100) return year;
@@ -118,38 +320,42 @@ export function startTelegramBot(deps: BotDeps): void {
     return match ? `${match[3]}.${match[2]}.${match[1]}` : "—";
   };
   const displayValue = (session: ApplicationSession, field: ApplicationField): string => {
+    const c = copy(session);
     const value = session.draft[field];
-    if (field === "patronymic" && (value === null || value === "")) return "—";
-    if (field === "photoFileId") return value ? "приложено" : "—";
-    if (field === "birthDate") return typeof value === "string" ? formatDateForDisplay(value) : "—";
-    return typeof value === "string" && value.trim() ? value : "—";
+    if (field === "patronymic" && (value === null || value === "")) return c.empty;
+    if (field === "photoFileId") return value ? c.attached : c.empty;
+    if (field === "birthDate") return typeof value === "string" ? formatDateForDisplay(value) : c.empty;
+    return typeof value === "string" && value.trim() ? value : c.empty;
   };
   const hasField = (session: ApplicationSession, field: ApplicationField): boolean => {
-    const step = APPLICATION_STEPS.find((item) => item.field === field);
+    const step = APPLICATION_FIELDS.find((item) => item.field === field);
     const value = session.draft[field];
     if (step?.optional) return true;
     return typeof value === "string" && value.trim().length > 0;
   };
   const firstRequiredMissingField = (session: ApplicationSession): ApplicationField | null =>
-    APPLICATION_STEPS.find((step) => !hasField(session, step.field))?.field ?? null;
+    APPLICATION_FIELDS.find((step) => !hasField(session, step.field))?.field ?? null;
   const firstUnansweredField = (session: ApplicationSession): ApplicationField | null =>
-    APPLICATION_STEPS.find((step) => session.draft[step.field] === undefined)?.field ?? null;
-  const validateTextField = (field: ApplicationField, value: string): string | null => {
+    APPLICATION_FIELDS.find((step) => session.draft[step.field] === undefined)?.field ?? null;
+  const validateTextField = (session: ApplicationSession, field: ApplicationField, value: string): string | null => {
+    const c = copy(session);
     const v = value.trim();
-    if (field === "patronymic" && (v === "-" || v.toLowerCase() === "нет")) return "";
-    if (!v) return "Поле не должно быть пустым.";
-    if (field === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "Пожалуйста, отправьте корректный email.";
-    if (field === "birthDate" && !parseDate(v)) return "Не понял дату. Формат: ДД.ММ.ГГГГ или ДД.ММ.ГГ.";
+    if (field === "patronymic" && (v === "-" || c.noPatronymic.includes(v.toLowerCase()))) return "";
+    if (!v) return c.emptyField;
+    if (field === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return c.invalidEmail;
+    if (field === "birthDate" && !parseDate(v)) return c.invalidDate;
     return null;
   };
   const applyTextField = (session: ApplicationSession, field: ApplicationField, value: string): string | null => {
-    if (field === "photoFileId") return "Фото нужно отправить как изображение.";
-    const error = validateTextField(field, value);
+    const c = copy(session);
+    if (field === "photoFileId") return c.photoAsImage;
+    const error = validateTextField(session, field, value);
     if (error) return error;
     if (field === "birthDate") {
       session.draft.birthDate = parseDate(value)!;
     } else if (field === "patronymic") {
-      session.draft.patronymic = value.trim() === "-" || value.trim().toLowerCase() === "нет" ? null : value.trim();
+      const v = value.trim();
+      session.draft.patronymic = v === "-" || c.noPatronymic.includes(v.toLowerCase()) ? null : v;
     } else {
       (session.draft as Record<string, unknown>)[field] = value.trim();
     }
@@ -160,38 +366,45 @@ export function startTelegramBot(deps: BotDeps): void {
     for (const line of text.split(/\n+/)) {
       const match = line.match(/^\s*(\d{1,2})[.)]\s*(.+)\s*$/);
       if (!match) continue;
-      const step = APPLICATION_STEPS[Number(match[1]) - 1];
+      const step = APPLICATION_FIELDS[Number(match[1]) - 1];
       if (step && step.field !== "photoFileId") out.push({ field: step.field, value: match[2]!.trim() });
     }
     return out;
   };
+  const isAffirmative = (session: ApplicationSession, text: string): boolean => {
+    const normalized = text.trim().toLowerCase();
+    return copy(session).yes.includes(normalized);
+  };
   const keyboard = (session: ApplicationSession, editMode = false) => {
+    const c = copy(session);
     if (session.submitted) return { inline_keyboard: [] };
     if (editMode) {
-      const rows = APPLICATION_STEPS.reduce<{ text: string; callback_data: string }[][]>((acc, step, index) => {
+      const rows = steps(session).reduce<{ text: string; callback_data: string }[][]>((acc, step, index) => {
         const rowIndex = Math.floor(index / 2);
         acc[rowIndex] ??= [];
         acc[rowIndex]!.push({ text: `${index + 1}. ${step.label}`, callback_data: `app:field:${step.field}` });
         return acc;
       }, []);
-      rows.push([{ text: "Готово", callback_data: "app:done" }]);
+      rows.push([{ text: c.done, callback_data: "app:done" }]);
       return { inline_keyboard: rows };
     }
     return {
       inline_keyboard: [[
-        { text: "Редактировать", callback_data: "app:edit" },
-        { text: "Отправить", callback_data: "app:submit" },
+        { text: c.edit, callback_data: "app:edit" },
+        { text: c.submit, callback_data: "app:submit" },
       ]],
     };
   };
   const renderApplication = (session: ApplicationSession, editMode = false): string => {
-    const required = APPLICATION_STEPS.filter((step) => !step.optional).length;
-    const done = APPLICATION_STEPS.filter((step) => !step.optional && hasField(session, step.field)).length;
+    const c = copy(session);
+    const localizedSteps = steps(session);
+    const required = APPLICATION_FIELDS.filter((step) => !step.optional).length;
+    const done = APPLICATION_FIELDS.filter((step) => !step.optional && hasField(session, step.field)).length;
     const lines = [
       "<b>SEVER Crew</b>",
-      session.submitted ? "Анкета · отправлена" : `Анкета · ${done}/${required}`,
+      session.submitted ? c.sentStatus : `${c.appStatus} · ${done}/${required}`,
       "",
-      ...APPLICATION_STEPS.map((step, index) => {
+      ...localizedSteps.map((step, index) => {
         const answered = step.optional ? session.draft[step.field] !== undefined : hasField(session, step.field);
         const mark = answered ? "✓" : "○";
         return `${mark} ${index + 1}. ${step.label}: ${escapeHtml(displayValue(session, step.field))}`;
@@ -199,20 +412,22 @@ export function startTelegramBot(deps: BotDeps): void {
     ];
     if (session.lastError) lines.push("", `⚠️ ${escapeHtml(session.lastError)}`);
     if (editMode) {
-      lines.push("", "Что редактируем?");
+      lines.push("", c.editPrompt);
     }
     return lines.join("\n");
   };
   const renderQuestion = (session: ApplicationSession): string | null => {
+    const c = copy(session);
     if (session.submitted) return null;
     const field = session.editingField ?? firstUnansweredField(session) ?? firstRequiredMissingField(session);
-    if (!field) return "<b>Анкета заполнена</b>\nХотите отправить?";
-    const index = APPLICATION_STEPS.findIndex((step) => step.field === field);
-    const step = APPLICATION_STEPS[index];
+    if (!field) return c.completeQuestion;
+    const localizedSteps = steps(session);
+    const index = localizedSteps.findIndex((step) => step.field === field);
+    const step = localizedSteps[index];
     if (!step) return null;
     const lines = [`<b>${index + 1}. ${escapeHtml(step.label)}</b>`, escapeHtml(step.question)];
     if (!session.usedSingleAnswers && field === "firstName") {
-      lines.push("", "Можно ответить сразу списком:", "<code>1. Александр</code>", "<code>2. Иванов</code>", "<code>3. -</code>");
+      lines.push("", ...c.listHint);
     }
     return lines.join("\n");
   };
@@ -247,6 +462,7 @@ export function startTelegramBot(deps: BotDeps): void {
       summaryMessageId: null,
       questionMessageId: null,
       editingField: null,
+      lang: null,
       draft: { telegramId: chatId, telegramUsername: username },
       username,
       lastError: null,
@@ -254,14 +470,15 @@ export function startTelegramBot(deps: BotDeps): void {
       submitted: false,
     };
     sessions.set(chatId, session);
-    await send(chatId, "<b>Анкета SEVER Crew</b>\nЗаполните короткую форму. Можно отвечать по одному вопросу или сразу списком по номерам.");
-    await renderOrSendApplication(chatId, session);
-    await replaceQuestion(chatId, session);
+    const sent = await send(chatId, COPY.ru.chooseLanguage, languageKeyboard);
+    const messageId = (sent?.result as { message_id?: number } | undefined)?.message_id;
+    if (typeof messageId === "number") session.summaryMessageId = messageId;
   };
   const submitApplication = async (chatId: string, session: ApplicationSession) => {
+    const c = copy(session);
     const missing = firstRequiredMissingField(session);
     if (missing) {
-      session.lastError = `Не заполнено поле «${APPLICATION_STEPS.find((step) => step.field === missing)?.label ?? missing}».`;
+      session.lastError = c.required(c.fieldLabels[missing]);
       await renderOrSendApplication(chatId, session);
       return false;
     }
@@ -273,9 +490,9 @@ export function startTelegramBot(deps: BotDeps): void {
       if (session.questionMessageId) await del(chatId, session.questionMessageId);
       await renderOrSendApplication(chatId, session);
       sessions.delete(chatId);
-      await send(chatId, "✅ Анкета отправлена. Мы вернёмся с ответом после просмотра.");
+      await send(chatId, c.submitted);
     } catch (err) {
-      session.lastError = err instanceof Error ? err.message : "Не удалось отправить анкету.";
+      session.lastError = err instanceof Error ? err.message : c.submitFailed;
       await renderOrSendApplication(chatId, session);
     }
     return true;
@@ -283,12 +500,25 @@ export function startTelegramBot(deps: BotDeps): void {
   const handleApplicationMessage = async (chatId: string, msg: NonNullable<Update["message"]>) => {
     const session = sessions.get(chatId);
     if (!session) return false;
-    if (msg.text?.trim().toLowerCase() === "/cancel" || msg.text?.trim().toLowerCase() === "отмена") {
+    const c = copy(session);
+    if (!session.lang) {
+      await del(chatId, msg.message_id);
+      if (session.summaryMessageId) await edit(chatId, session.summaryMessageId, COPY.ru.chooseLanguage, languageKeyboard);
+      else {
+        const sent = await send(chatId, COPY.ru.chooseLanguage, languageKeyboard);
+        const messageId = (sent?.result as { message_id?: number } | undefined)?.message_id;
+        if (typeof messageId === "number") session.summaryMessageId = messageId;
+      }
+      return true;
+    }
+    const incomingText = msg.text?.trim() ?? "";
+    const lowerText = incomingText.toLowerCase();
+    if (lowerText === "/cancel" || c.cancel.includes(lowerText)) {
       sessions.delete(chatId);
       await del(chatId, msg.message_id);
       if (session.questionMessageId) await del(chatId, session.questionMessageId);
-      if (session.summaryMessageId) await edit(chatId, session.summaryMessageId, "Анкета отменена. Чтобы начать заново, нажмите /start.");
-      else await send(chatId, "Анкета отменена. Чтобы начать заново, нажмите /start.");
+      if (session.summaryMessageId) await edit(chatId, session.summaryMessageId, c.cancelled);
+      else await send(chatId, c.cancelled);
       return true;
     }
     session.lastError = null;
@@ -304,7 +534,7 @@ export function startTelegramBot(deps: BotDeps): void {
         const errors: string[] = [];
         for (const item of numbered) {
           const error = applyTextField(session, item.field, item.value);
-          if (error) errors.push(`${APPLICATION_STEPS.find((step) => step.field === item.field)?.label}: ${error}`);
+          if (error) errors.push(`${c.fieldLabels[item.field]}: ${error}`);
         }
         session.lastError = errors[0] ?? null;
         session.editingField = null;
@@ -312,7 +542,12 @@ export function startTelegramBot(deps: BotDeps): void {
         session.usedSingleAnswers = true;
         const target = session.editingField ?? firstUnansweredField(session) ?? firstRequiredMissingField(session);
         if (!target) {
-          session.lastError = "Анкета уже заполнена. Можно отправить или отредактировать поле.";
+          if (isAffirmative(session, text)) {
+            await del(chatId, msg.message_id);
+            await submitApplication(chatId, session);
+            return true;
+          }
+          session.lastError = c.alreadyComplete;
         } else {
           const error = applyTextField(session, target, text);
           session.lastError = error;
@@ -336,7 +571,21 @@ export function startTelegramBot(deps: BotDeps): void {
     if (data.startsWith("app:")) {
       const session = sessions.get(fromChatId);
       if (!session) {
-        await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Анкета не активна. Нажмите /start." });
+        await tg("answerCallbackQuery", { callback_query_id: cb.id, text: COPY.ru.inactive });
+        return;
+      }
+      const langMatch = data.match(/^app:lang:(ru|sr|en)$/);
+      if (langMatch) {
+        session.lang = langMatch[1] as BotLang;
+        session.lastError = null;
+        await tg("answerCallbackQuery", { callback_query_id: cb.id });
+        await send(fromChatId, copy(session).intro);
+        await renderOrSendApplication(fromChatId, session);
+        await replaceQuestion(fromChatId, session);
+        return;
+      }
+      if (!session.lang) {
+        await tg("answerCallbackQuery", { callback_query_id: cb.id, text: COPY.ru.chooseLanguage.replace(/<[^>]+>/g, "") });
         return;
       }
       if (data === "app:edit") {
