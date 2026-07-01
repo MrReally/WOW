@@ -10,6 +10,7 @@ export type AdvancedNotificationEvent =
   | "project.invited"
   | "project.invite.responded"
   | "project.operation_stage.changed"
+  | "people.application.submitted"
   | "equipment.units.issued"
   | "equipment.unit.returned"
   | "equipment.return.incomplete"
@@ -22,6 +23,7 @@ export const ADVANCED_NOTIFICATION_EVENTS: AdvancedNotificationEvent[] = [
   "project.invited",
   "project.invite.responded",
   "project.operation_stage.changed",
+  "people.application.submitted",
   "equipment.units.issued",
   "equipment.unit.returned",
   "equipment.return.incomplete",

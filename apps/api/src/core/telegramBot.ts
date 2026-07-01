@@ -44,9 +44,34 @@ interface BotDeps {
   onCallback?: CallbackHandler;
 }
 
+type ApplicationField = "firstName" | "lastName" | "patronymic" | "nickname" | "email" | "birthDate" | "languages" | "about" | "source" | "photoFileId";
+interface ApplicationSession {
+  step: ApplicationField;
+  draft: Partial<People.SubmitCrewApplicationInput>;
+  username: string | null;
+}
+
+const APPLICATION_STEPS: { field: ApplicationField; prompt: string; optional?: boolean }[] = [
+  { field: "firstName", prompt: "Имя" },
+  { field: "lastName", prompt: "Фамилия" },
+  { field: "patronymic", prompt: "Отчество, если есть. Если нет — отправьте «-»", optional: true },
+  { field: "nickname", prompt: "Короткий ник для таймингов и списков" },
+  { field: "email", prompt: "Email" },
+  { field: "birthDate", prompt: "Дата рождения в формате ДД/ММ/ГГГГ" },
+  { field: "languages", prompt: "Уровень языков. Например: RU C2, EN B2, SR A2" },
+  { field: "about", prompt: "Коротко о себе" },
+  { field: "source", prompt: "Откуда узнали о SEVER: кто пригласил или где нашли бота" },
+  { field: "photoFileId", prompt: "Отправьте фото человека", optional: false },
+];
+
 interface Update {
   update_id: number;
-  message?: { text?: string; from?: { username?: string }; chat: { id: number } };
+  message?: {
+    text?: string;
+    photo?: { file_id: string; file_size?: number; width?: number; height?: number }[];
+    from?: { username?: string };
+    chat: { id: number };
+  };
   callback_query?: { id: string; data?: string; from: { id: number }; message?: { chat: { id: number }; message_id: number } };
 }
 
@@ -56,7 +81,81 @@ export function startTelegramBot(deps: BotDeps): void {
   const send = (chatId: string | number, text: string) => tg("sendMessage", { chat_id: chatId, text, parse_mode: "HTML" });
   const publicName = (user: { nickname?: string | null; displayName?: string | null }) =>
     user.nickname?.trim() || user.displayName?.trim() || "аккаунт";
+  const sessions = new Map<string, ApplicationSession>();
   let offset = 0;
+
+  const currentPrompt = (session: ApplicationSession) => APPLICATION_STEPS.find((step) => step.field === session.step)?.prompt ?? "Ответ";
+  const nextStep = (field: ApplicationField): ApplicationField | null => {
+    const index = APPLICATION_STEPS.findIndex((step) => step.field === field);
+    return APPLICATION_STEPS[index + 1]?.field ?? null;
+  };
+  const parseDate = (value: string): string | null => {
+    const m = value.trim().match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+    if (!m) return null;
+    const day = Number(m[1]);
+    const month = Number(m[2]);
+    const year = Number(m[3]);
+    const d = new Date(Date.UTC(year, month - 1, day));
+    if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  };
+  const validateTextField = (field: ApplicationField, value: string): string | null => {
+    const v = value.trim();
+    if (field === "patronymic" && (v === "-" || v.toLowerCase() === "нет")) return "";
+    if (!v) return "Поле не должно быть пустым.";
+    if (field === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "Пожалуйста, отправьте корректный email.";
+    if (field === "birthDate" && !parseDate(v)) return "Нужна дата в формате ДД/ММ/ГГГГ.";
+    return null;
+  };
+  const startApplication = async (chatId: string, username: string | null) => {
+    const session: ApplicationSession = { step: "firstName", draft: { telegramId: chatId, telegramUsername: username }, username };
+    sessions.set(chatId, session);
+    await send(chatId, `В SEVER пока нет вашего аккаунта. Заполните короткую анкету для участия.\n\n${currentPrompt(session)}`);
+  };
+  const handleApplicationMessage = async (chatId: string, msg: NonNullable<Update["message"]>) => {
+    const session = sessions.get(chatId);
+    if (!session) return false;
+    if (msg.text?.trim().toLowerCase() === "/cancel" || msg.text?.trim().toLowerCase() === "отмена") {
+      sessions.delete(chatId);
+      await send(chatId, "Анкета отменена. Чтобы начать заново, нажмите /start.");
+      return true;
+    }
+    if (session.step === "photoFileId") {
+      const photo = [...(msg.photo ?? [])].sort((a, b) => (b.file_size ?? 0) - (a.file_size ?? 0))[0];
+      if (!photo) {
+        await send(chatId, "Нужно отправить именно фото человека.");
+        return true;
+      }
+      session.draft.photoFileId = photo.file_id;
+      try {
+        await people.submitApplication(session.draft as People.SubmitCrewApplicationInput);
+        sessions.delete(chatId);
+        await send(chatId, "✅ Анкета отправлена. Мы вернёмся с ответом после просмотра.");
+      } catch (err) {
+        sessions.delete(chatId);
+        await send(chatId, err instanceof Error ? `Не удалось отправить анкету: ${err.message}` : "Не удалось отправить анкету.");
+      }
+      return true;
+    }
+    const value = msg.text?.trim() ?? "";
+    const error = validateTextField(session.step, value);
+    if (error) {
+      await send(chatId, `${error}\n\n${currentPrompt(session)}`);
+      return true;
+    }
+    if (session.step === "birthDate") {
+      session.draft.birthDate = parseDate(value)!;
+    } else if (session.step === "patronymic") {
+      session.draft.patronymic = value === "-" || value.toLowerCase() === "нет" ? null : value;
+    } else {
+      (session.draft as Record<string, unknown>)[session.step] = value;
+    }
+    const next = nextStep(session.step);
+    if (!next) return true;
+    session.step = next;
+    await send(chatId, currentPrompt(session));
+    return true;
+  };
 
   async function handleCallback(cb: NonNullable<Update["callback_query"]>) {
     const fromChatId = String(cb.from.id);
@@ -92,12 +191,13 @@ export function startTelegramBot(deps: BotDeps): void {
             continue;
           }
           const msg = u.message;
-          if (!msg?.text) continue;
+          if (!msg?.text && !msg?.photo) continue;
           const chatId = String(msg.chat.id);
           const username = msg.from?.username;
-          const text = msg.text.trim();
+          const text = msg.text?.trim() ?? "";
           const codeMatch = text.match(/^\/start\s+(\S+)/);
           try {
+            if (!text.startsWith("/start") && await handleApplicationMessage(chatId, msg)) continue;
             if (codeMatch) {
               // Deep-link path: the link carries the exact account id.
               const userId = codeMatch[1]!;
@@ -123,14 +223,7 @@ export function startTelegramBot(deps: BotDeps): void {
               await people.update(match.id, { telegramId: chatId });
               await send(chatId, `✅ Telegram привязан к аккаунту <b>${publicName(match)}</b>. Уведомления будут приходить сюда.`);
             } else {
-              await send(
-                chatId,
-                `Это бот уведомлений <b>SEVER</b>.\nВаш chat_id: <code>${chatId}</code>\n` +
-                  (username
-                    ? `Ник <b>@${username}</b> пока не привязан ни к одному аккаунту. `
-                    : `У вас не задан username в Telegram. `) +
-                  `Попросите администратора вписать ваш @username в карточке: Настройки → Люди.`
-              );
+              await startApplication(chatId, username ? `@${username}` : null);
             }
           } catch {
             await send(chatId, `Ваш chat_id: <code>${chatId}</code>`);

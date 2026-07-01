@@ -35,11 +35,33 @@ interface UserRow {
   document_number: string | null;
   document_photo_url: string | null;
   languages: string | null;
+  about: string | null;
+  source: string | null;
   photo_url: string | null;
   use_photo_as_avatar: boolean;
   birth_date: Date | string | null;
   operations_show_all_projects: boolean;
   active: boolean;
+  created_at: Date;
+}
+interface CrewApplicationRow {
+  id: string;
+  telegram_id: string;
+  telegram_username: string | null;
+  first_name: string;
+  last_name: string;
+  patronymic: string | null;
+  nickname: string;
+  email: string;
+  birth_date: Date | string;
+  languages: string;
+  about: string;
+  source: string;
+  photo_file_id: string;
+  status: People.CrewApplicationStatus;
+  reviewed_by_user_id: string | null;
+  reviewed_at: Date | null;
+  created_user_id: string | null;
   created_at: Date;
 }
 
@@ -67,6 +89,8 @@ const userDTO = (r: UserRow): People.UserDTO => ({
   documentNumber: r.document_number,
   documentPhotoUrl: r.document_photo_url,
   languages: r.languages,
+  about: r.about,
+  source: r.source,
   photoUrl: r.photo_url,
   usePhotoAsAvatar: r.use_photo_as_avatar,
   birthDate: r.birth_date ? (typeof r.birth_date === "string" ? r.birth_date : r.birth_date.toISOString().slice(0, 10)) : null,
@@ -74,6 +98,26 @@ const userDTO = (r: UserRow): People.UserDTO => ({
   active: r.active,
   mustChangePassword: r.must_change_password,
   hasPassword: r.password_hash !== null,
+  createdAt: r.created_at.toISOString(),
+});
+const applicationDTO = (r: CrewApplicationRow): People.CrewApplicationDTO => ({
+  id: r.id,
+  telegramId: r.telegram_id,
+  telegramUsername: r.telegram_username,
+  firstName: r.first_name,
+  lastName: r.last_name,
+  patronymic: r.patronymic,
+  nickname: r.nickname,
+  email: r.email,
+  birthDate: typeof r.birth_date === "string" ? r.birth_date : r.birth_date.toISOString().slice(0, 10),
+  languages: r.languages,
+  about: r.about,
+  source: r.source,
+  photoFileId: r.photo_file_id,
+  status: r.status,
+  reviewedByUserId: r.reviewed_by_user_id,
+  reviewedAt: r.reviewed_at ? r.reviewed_at.toISOString() : null,
+  createdUserId: r.created_user_id,
   createdAt: r.created_at.toISOString(),
 });
 
@@ -314,9 +358,9 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
         db,
         `INSERT INTO people.users
            (email, telegram_id, display_name, role_id, hourly_rate_eur, password_hash, must_change_password,
-            document_number, document_photo_url, languages, photo_url, use_photo_as_avatar, birth_date,
+            document_number, document_photo_url, languages, about, source, photo_url, use_photo_as_avatar, birth_date,
             first_name, last_name, patronymic, nickname)
-         VALUES (lower($1), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+         VALUES (lower($1), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
         [
           input.email ?? null,
           input.telegramId ?? null,
@@ -328,6 +372,8 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
           input.documentNumber ?? null,
           input.documentPhotoUrl ?? null,
           input.languages ?? null,
+          input.about ?? null,
+          input.source ?? null,
           input.photoUrl ?? null,
           input.usePhotoAsAvatar ?? false,
           input.birthDate ?? null,
@@ -356,14 +402,16 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
            active          = COALESCE($7, active),
            document_number = $8,
            languages       = $9,
-           photo_url       = $10,
-           birth_date      = $11,
-           first_name      = $12,
-           last_name       = $13,
-           patronymic      = $14,
-           nickname        = $15,
-           document_photo_url = $16,
-           use_photo_as_avatar = COALESCE($17, use_photo_as_avatar)
+           about           = $10,
+           source          = $11,
+           photo_url       = $12,
+           birth_date      = $13,
+           first_name      = $14,
+           last_name       = $15,
+           patronymic      = $16,
+           nickname        = $17,
+           document_photo_url = $18,
+           use_photo_as_avatar = COALESCE($19, use_photo_as_avatar)
          WHERE id=$1 RETURNING id`,
         [
           id,
@@ -375,6 +423,8 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
           input.active ?? null,
           input.documentNumber === undefined ? existing.document_number : input.documentNumber,
           input.languages === undefined ? existing.languages : input.languages,
+          input.about === undefined ? existing.about : input.about,
+          input.source === undefined ? existing.source : input.source,
           input.photoUrl === undefined ? existing.photo_url : input.photoUrl,
           input.birthDate === undefined ? existing.birth_date : input.birthDate,
           input.firstName === undefined ? existing.first_name : input.firstName,
@@ -399,6 +449,99 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
         [id, hashPassword(temp)]
       );
       return { temporaryPassword: temp };
+    },
+
+    async listApplications(status = "pending") {
+      const rows = await query<CrewApplicationRow>(
+        db,
+        status === "all"
+          ? `SELECT * FROM people.crew_applications ORDER BY created_at DESC`
+          : `SELECT * FROM people.crew_applications WHERE status=$1 ORDER BY created_at DESC`,
+        status === "all" ? [] : [status]
+      );
+      return rows.map(applicationDTO);
+    },
+    async getApplication(id) {
+      const row = await one<CrewApplicationRow>(db, `SELECT * FROM people.crew_applications WHERE id=$1`, [id]);
+      return row ? applicationDTO(row) : null;
+    },
+    async submitApplication(input) {
+      const existingUser = await one<{ id: string }>(db, `SELECT id FROM people.users WHERE telegram_id=$1 OR lower(email)=lower($2)`, [input.telegramId, input.email]);
+      if (existingUser) throw Conflict("такой пользователь уже есть");
+      const pending = await one<{ id: string }>(
+        db,
+        `SELECT id FROM people.crew_applications WHERE status='pending' AND (telegram_id=$1 OR lower(email)=lower($2)) LIMIT 1`,
+        [input.telegramId, input.email]
+      );
+      if (pending) throw Conflict("анкета уже отправлена");
+      const row = await one<CrewApplicationRow>(
+        db,
+        `INSERT INTO people.crew_applications
+           (telegram_id, telegram_username, first_name, last_name, patronymic, nickname, email, birth_date, languages, about, source, photo_file_id)
+         VALUES ($1,$2,$3,$4,$5,$6,lower($7),$8,$9,$10,$11,$12) RETURNING *`,
+        [
+          input.telegramId,
+          input.telegramUsername ?? null,
+          input.firstName.trim(),
+          input.lastName.trim(),
+          input.patronymic?.trim() || null,
+          input.nickname.trim(),
+          input.email.trim(),
+          input.birthDate,
+          input.languages.trim(),
+          input.about.trim(),
+          input.source.trim(),
+          input.photoFileId,
+        ]
+      );
+      const dto = applicationDTO(row!);
+      await bus.publish({ type: "people.application.submitted", applicationId: dto.id, at: new Date().toISOString() });
+      return dto;
+    },
+    async acceptApplication(id, input) {
+      const app = await one<CrewApplicationRow>(db, `SELECT * FROM people.crew_applications WHERE id=$1`, [id]);
+      if (!app) throw NotFound("crew application", id);
+      if (app.status !== "pending") throw BadRequest("анкета уже обработана");
+      const created = await this.create({
+        displayName: [app.first_name, app.last_name, app.patronymic].filter(Boolean).join(" "),
+        firstName: app.first_name,
+        lastName: app.last_name,
+        patronymic: app.patronymic,
+        nickname: app.nickname,
+        email: app.email,
+        telegramId: app.telegram_id,
+        roleId: input.roleId,
+        languages: app.languages,
+        about: app.about,
+        source: app.source,
+        photoUrl: `telegram-file:${app.photo_file_id}`,
+        usePhotoAsAvatar: true,
+        birthDate: typeof app.birth_date === "string" ? app.birth_date : app.birth_date.toISOString().slice(0, 10),
+      });
+      await query(
+        db,
+        `UPDATE people.crew_applications
+         SET status='accepted', reviewed_by_user_id=$2, reviewed_at=now(), created_user_id=$3
+         WHERE id=$1`,
+        [id, input.reviewedByUserId, created.user.id]
+      );
+      return created;
+    },
+    async rejectApplication(id, reviewedByUserId) {
+      const row = await one<CrewApplicationRow>(
+        db,
+        `UPDATE people.crew_applications
+         SET status='rejected', reviewed_by_user_id=$2, reviewed_at=now()
+         WHERE id=$1 AND status='pending'
+         RETURNING *`,
+        [id, reviewedByUserId]
+      );
+      if (!row) {
+        const existing = await one<CrewApplicationRow>(db, `SELECT * FROM people.crew_applications WHERE id=$1`, [id]);
+        if (!existing) throw NotFound("crew application", id);
+        throw BadRequest("анкета уже обработана");
+      }
+      return applicationDTO(row);
     },
 
     // ── Roles ──

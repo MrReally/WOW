@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Equipment, People, Projects } from "@sever/contracts";
-import { Card, Button, SectionHead, Field, Input, Textarea, Loading, EmptyState, Chip } from "../../ui-kit/index.ts";
+import { Card, Button, SectionHead, Field, Input, Select, Textarea, Loading, EmptyState, Chip } from "../../ui-kit/index.ts";
 import { useSession } from "../../app/session.ts";
 import { api } from "../../lib/api.ts";
 import { dateRange, dateTime } from "../../lib/labels.ts";
-import { usePeople, useUpdateUser } from "../settings/hooks.ts";
+import { usePeople, useRoles, useUpdateUser } from "../settings/hooks.ts";
 import { useProjectsForFinance } from "../finance/hooks.ts";
 import { personName } from "../../lib/people.ts";
 
@@ -37,16 +37,43 @@ function fullName(draft: People.UpdateUserInput): string {
   return parts.join(" ") || draft.displayName?.trim() || "";
 }
 
+function displayImageUrl(value: string | null | undefined): string | null {
+  if (!value || value.startsWith("telegram-file:")) return null;
+  return value;
+}
+
 export function CrewPage() {
   const { can } = useSession();
+  const qc = useQueryClient();
   const people = usePeople();
+  const roles = useRoles();
   const projects = useProjectsForFinance();
   const updateUser = useUpdateUser();
   const [selectedId, setSelectedId] = useState("");
   const [draft, setDraft] = useState<People.UpdateUserInput>({});
   const [historyMode, setHistoryMode] = useState<"projects" | "actions">("projects");
+  const [applicationRoleIds, setApplicationRoleIds] = useState<Record<string, string>>({});
+  const canReviewApplications = can("people.applications.review", "people.manage");
 
   const list = people.data ?? [];
+  const applications = useQuery({
+    enabled: canReviewApplications,
+    queryKey: ["crew-applications", "pending"],
+    queryFn: () => api.get<People.CrewApplicationDTO[]>("/api/crew-applications?status=pending"),
+  });
+  const acceptApplication = useMutation({
+    mutationFn: ({ id, roleId }: { id: string; roleId: string }) => api.post<People.CreatedUserDTO>(`/api/crew-applications/${id}/accept`, { roleId }),
+    meta: { successMessage: "Человек добавлен" },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["crew-applications"] });
+      qc.invalidateQueries({ queryKey: ["people"] });
+    },
+  });
+  const rejectApplication = useMutation({
+    mutationFn: (id: string) => api.post<People.CrewApplicationDTO>(`/api/crew-applications/${id}/reject`, {}),
+    meta: { successMessage: "Анкета отклонена" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crew-applications"] }),
+  });
   const selected = list.find((u) => u.id === selectedId) ?? list[0] ?? null;
   const actionHistory = useQuery({
     enabled: !!selected,
@@ -75,6 +102,8 @@ export function CrewPage() {
       documentNumber: selected.documentNumber,
       documentPhotoUrl: selected.documentPhotoUrl,
       languages: selected.languages,
+      about: selected.about,
+      source: selected.source,
       photoUrl: selected.photoUrl,
       usePhotoAsAvatar: selected.usePhotoAsAvatar,
       birthDate: selected.birthDate,
@@ -102,10 +131,10 @@ export function CrewPage() {
       .sort((a, b) => Date.parse(b.project.startsAt) - Date.parse(a.project.startsAt));
   }, [assignmentQueries, projects.data, selected]);
 
-  if (people.isLoading) return <Loading />;
-  if (!selected) return <EmptyState title="Crew пуст" />;
+  if (people.isLoading || roles.isLoading) return <Loading />;
 
   const save = () => {
+    if (!selected) return;
     const name = fullName(draft);
     updateUser.mutate({
       id: selected.id,
@@ -122,6 +151,8 @@ export function CrewPage() {
         documentNumber: draft.documentNumber || null,
         documentPhotoUrl: draft.documentPhotoUrl || null,
         languages: draft.languages || null,
+        about: draft.about || null,
+        source: draft.source || null,
         photoUrl: draft.photoUrl || null,
         usePhotoAsAvatar: !!draft.usePhotoAsAvatar,
         birthDate: draft.birthDate || null,
@@ -133,11 +164,55 @@ export function CrewPage() {
     const url = await fileToDataUrl(file);
     setDraft((d) => ({ ...d, [field]: url }));
   };
-  const avatarSrc = draft.usePhotoAsAvatar ? draft.photoUrl : null;
+  const avatarSrc = displayImageUrl(draft.usePhotoAsAvatar ? draft.photoUrl : null);
+  const pendingApplications = applications.data ?? [];
 
   return (
     <div className="stack">
-      <SectionHead label="Crew" meta={`${list.length}`} />
+      <SectionHead label="Crew" meta={pendingApplications.length > 0 ? `${list.length} · ${pendingApplications.length} анкет` : `${list.length}`} />
+      {canReviewApplications && pendingApplications.length > 0 && (
+        <>
+          <SectionHead label="Анкеты" meta={`${pendingApplications.length}`} />
+          <div className="stack">
+            {pendingApplications.map((application) => {
+              const roleId = applicationRoleIds[application.id] ?? "";
+              return (
+                <Card key={application.id}>
+                  <div className="row row--between" style={{ alignItems: "flex-start" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <p className="card__title">{application.nickname}</p>
+                      <p className="card__subtitle">{application.firstName} {application.lastName}{application.patronymic ? ` ${application.patronymic}` : ""}</p>
+                    </div>
+                    <Chip label="новая" tone="warn" />
+                  </div>
+                  <p className="card__subtitle" style={{ marginTop: 8 }}>{application.email} · {application.birthDate}</p>
+                  <p style={{ color: "var(--text)", marginTop: 8, whiteSpace: "pre-wrap" }}>{application.languages}</p>
+                  <p className="card__subtitle" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{application.about}</p>
+                  <p className="card__subtitle" style={{ marginTop: 6 }}>Источник: {application.source}</p>
+                  <p className="card__subtitle" style={{ marginTop: 6 }}>{application.telegramUsername ?? application.telegramId} · фото в Telegram</p>
+                  <div className="row" style={{ marginTop: 10 }}>
+                    <Field label="Роль">
+                      <Select
+                        value={roleId}
+                        onChange={(e) => setApplicationRoleIds((prev) => ({ ...prev, [application.id]: e.target.value }))}
+                        options={[
+                          { value: "", label: "Выбрать" },
+                          ...(roles.data ?? []).filter((role) => !role.isOwner).map((role) => ({ value: role.id, label: role.name })),
+                        ]}
+                      />
+                    </Field>
+                    <Button disabled={!roleId || acceptApplication.isPending} onClick={() => acceptApplication.mutate({ id: application.id, roleId })}>✓</Button>
+                    <Button variant="ghost" disabled={rejectApplication.isPending} onClick={() => rejectApplication.mutate(application.id)}>×</Button>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      )}
+      {!selected && <EmptyState title="Crew пуст" />}
+      {selected && (
+        <>
       <div className="row" style={{ gap: 8, overflowX: "auto", paddingBottom: 2 }}>
         {list.map((person) => (
           <button
@@ -154,8 +229,8 @@ export function CrewPage() {
       <Card>
         <div className="row row--between" style={{ alignItems: "flex-start" }}>
           <div className="row" style={{ minWidth: 0 }}>
-            {draft.photoUrl ? (
-              <img src={avatarSrc || draft.photoUrl} alt="" className="crew-photo" />
+            {displayImageUrl(draft.photoUrl) ? (
+              <img src={avatarSrc || displayImageUrl(draft.photoUrl)!} alt="" className="crew-photo" />
             ) : (
               <span className="crew-photo crew-photo--empty">{personName(selected).slice(0, 2).toUpperCase()}</span>
             )}
@@ -219,12 +294,18 @@ export function CrewPage() {
         <Field label="Языки">
           <Textarea value={draft.languages ?? ""} onChange={(e) => setDraft((d) => ({ ...d, languages: e.target.value }))} placeholder="RU C2, EN B2, SR A2" />
         </Field>
+        <Field label="О себе">
+          <Textarea value={draft.about ?? ""} onChange={(e) => setDraft((d) => ({ ...d, about: e.target.value }))} />
+        </Field>
+        <Field label="Источник">
+          <Input value={draft.source ?? ""} onChange={(e) => setDraft((d) => ({ ...d, source: e.target.value }))} />
+        </Field>
         <div className="crew-attach">
           <div style={{ minWidth: 0 }}>
             <p className="card__title">Фото человека</p>
             <p className="card__subtitle">{draft.photoUrl ? "Файл приложен" : "Для досье или аватарки"}</p>
           </div>
-          {draft.photoUrl && <img src={draft.photoUrl} alt="" className="crew-attach__thumb" />}
+          {displayImageUrl(draft.photoUrl) && <img src={displayImageUrl(draft.photoUrl)!} alt="" className="crew-attach__thumb" />}
           <label className="btn btn--secondary" style={{ height: 38, padding: "0 12px" }}>
             +
             <input type="file" accept="image/*" hidden onChange={(e) => attach("photoUrl", e.target.files?.[0])} />
@@ -303,6 +384,8 @@ export function CrewPage() {
             );
           })}
         </div>
+      )}
+        </>
       )}
     </div>
   );

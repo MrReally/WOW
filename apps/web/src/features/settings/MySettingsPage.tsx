@@ -45,7 +45,7 @@ export function MySettingsPage() {
   const { locale, setLocale, t } = useI18n();
   const prefs = useNotifPrefs();
   const setPrefs = useSetNotifPrefs();
-  const canAdvancedNotifications = can("notifications.advanced");
+  const canAdvancedNotifications = can("notifications.advanced", "people.applications.review");
   const advancedPrefs = useAdvancedNotifPrefs(canAdvancedNotifications);
   const setAdvancedPrefs = useSetAdvancedNotifPrefs();
   const calendar = useCalendarFeed();
@@ -91,6 +91,7 @@ export function MySettingsPage() {
     "project.invited": "Отправили приглашение",
     "project.invite.responded": "Ответили на приглашение",
     "project.operation_stage.changed": "Сменили этап проекта",
+    "people.application.submitted": "Новая анкета Crew",
     "equipment.units.issued": "Выдали оборудование",
     "equipment.unit.returned": "Вернули оборудование",
     "equipment.return.incomplete": "Некомплект при возврате",

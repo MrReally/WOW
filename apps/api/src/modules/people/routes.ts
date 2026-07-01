@@ -31,6 +31,8 @@ const createUserSchema = z.object({
   documentNumber: z.string().nullable().optional(),
   documentPhotoUrl: z.string().nullable().optional(),
   languages: z.string().nullable().optional(),
+  about: z.string().nullable().optional(),
+  source: z.string().nullable().optional(),
   photoUrl: z.string().nullable().optional(),
   usePhotoAsAvatar: z.boolean().optional(),
   birthDate: z.string().nullable().optional(),
@@ -48,6 +50,8 @@ const updateUserSchema = z.object({
   documentNumber: z.string().nullable().optional(),
   documentPhotoUrl: z.string().nullable().optional(),
   languages: z.string().nullable().optional(),
+  about: z.string().nullable().optional(),
+  source: z.string().nullable().optional(),
   photoUrl: z.string().nullable().optional(),
   usePhotoAsAvatar: z.boolean().optional(),
   birthDate: z.string().nullable().optional(),
@@ -56,6 +60,8 @@ const updateUserSchema = z.object({
 
 const createRoleSchema = z.object({ name: z.string().min(1), permissions: z.array(permissionEnum) });
 const updateRoleSchema = z.object({ name: z.string().min(1).optional(), permissions: z.array(permissionEnum).optional() });
+const applicationStatusSchema = z.enum(["pending", "accepted", "rejected", "all"]);
+const acceptApplicationSchema = z.object({ roleId: z.string().uuid() });
 
 export function registerPeopleRoutes(
   app: FastifyInstance,
@@ -128,6 +134,23 @@ export function registerPeopleRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "people.manage");
     return service.resetPassword(req.params.id);
+  });
+  app.get<{ Querystring: { status?: People.CrewApplicationStatus | "all" } }>("/api/crew-applications", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "people.applications.review", "people.manage");
+    const status = req.query.status ? applicationStatusSchema.parse(req.query.status) : "pending";
+    return service.listApplications(status);
+  });
+  app.post<{ Params: { id: string } }>("/api/crew-applications/:id/accept", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "people.applications.review", "people.manage");
+    const body = acceptApplicationSchema.parse(req.body);
+    return service.acceptApplication(req.params.id, { roleId: body.roleId, reviewedByUserId: auth.userId });
+  });
+  app.post<{ Params: { id: string } }>("/api/crew-applications/:id/reject", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "people.applications.review", "people.manage");
+    return service.rejectApplication(req.params.id, auth.userId);
   });
 
   // ── Roles ──

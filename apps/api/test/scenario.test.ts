@@ -359,6 +359,7 @@ describe("Tech pickup/return → некомплект", () => {
       "equipment.return.incomplete": false,
       "equipment.unit.transferred": true,
       "people.user.created": false,
+      "people.application.submitted": false,
     });
 
     const from = await equipment.service.createWarehouse({ name: `From ${Date.now()}` });

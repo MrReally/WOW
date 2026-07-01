@@ -13,9 +13,10 @@ interface Props {
   onClose: () => void;
   user: People.UserDTO;
   current: Workspace;
+  crewApplicationsCount: number;
 }
 
-export function WorkspaceSwitcher({ open, onClose, user, current }: Props) {
+export function WorkspaceSwitcher({ open, onClose, user, current, crewApplicationsCount }: Props) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { can } = useSession();
@@ -66,7 +67,7 @@ export function WorkspaceSwitcher({ open, onClose, user, current }: Props) {
             <div className="ws-bar__name" style={{ fontSize: 21 }}>{copy(current).name}</div>
             <div className="card__subtitle">{copy(current).sub}</div>
           </div>
-          <Chip label="LIVE" tone="ok" />
+          {current.id === "crew" && crewApplicationsCount > 0 ? <Chip label={String(crewApplicationsCount)} tone="warn" /> : <Chip label="LIVE" tone="ok" />}
         </div>
       </div>
 
@@ -81,6 +82,7 @@ export function WorkspaceSwitcher({ open, onClose, user, current }: Props) {
                 {copy(w).sub}
               </div>
             </div>
+            {w.id === "crew" && crewApplicationsCount > 0 && <Chip label={String(crewApplicationsCount)} tone="warn" />}
             <svg width="8" height="13" viewBox="0 0 8 13" fill="none">
               <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="var(--text3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>

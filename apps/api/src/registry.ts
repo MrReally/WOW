@@ -19,7 +19,7 @@ import { createApexService } from "./modules/apex/service.js";
 import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
-import { editTelegramMessage, sendTelegramMessage } from "./core/telegram.js";
+import { editTelegramMessage, sendTelegramMessage, sendTelegramPhoto } from "./core/telegram.js";
 import type { Notifications } from "@sever/contracts";
 import type { DomainEvent } from "./core/eventBus.js";
 
@@ -59,6 +59,8 @@ export function createModules(bus: EventBus = new EventBus()) {
 
   const publicName = (user: { nickname?: string | null; displayName?: string | null } | null | undefined, fallback = "Человек") =>
     user?.nickname?.trim() || user?.displayName?.trim() || fallback;
+  const escapeHtml = (value: string | null | undefined) =>
+    (value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   const fmtActor = async (actorId?: string | null) => {
     if (!actorId) return "Система";
@@ -106,6 +108,8 @@ export function createModules(bus: EventBus = new EventBus()) {
           link: `/operations/projects/${event.projectId}`,
         };
       }
+      case "people.application.submitted":
+        return null;
       case "equipment.units.issued": {
         const project = await projects.service.getProject(event.projectId);
         return { title: "Выдача оборудования", body: `${event.count} ед. · ${project?.name ?? event.projectId} · ${await fmtActor(event.actorId)}`, link: `/projects/${event.projectId}` };
@@ -281,6 +285,28 @@ export function createModules(bus: EventBus = new EventBus()) {
         body,
         link: `/operations/projects/${e.projectId}`,
       });
+    }
+  });
+
+  bus.on("people.application.submitted", async (e) => {
+    const application = await people.service.getApplication(e.applicationId);
+    if (!application) return;
+    const reviewers = await people.service.listWithPermission("people.applications.review");
+    const body = [
+      `<b>Новая анкета Crew</b>`,
+      `${escapeHtml(application.firstName)} ${escapeHtml(application.lastName)}${application.patronymic ? ` ${escapeHtml(application.patronymic)}` : ""}`,
+      `Ник: ${escapeHtml(application.nickname)}`,
+      `Email: ${escapeHtml(application.email)}`,
+      `Дата рождения: ${escapeHtml(application.birthDate)}`,
+      `Языки: ${escapeHtml(application.languages)}`,
+      `О себе: ${escapeHtml(application.about)}`,
+      `Источник: ${escapeHtml(application.source)}`,
+      application.telegramUsername ? `Telegram: ${escapeHtml(application.telegramUsername)}` : `Telegram ID: ${escapeHtml(application.telegramId)}`,
+    ].join("\n");
+    for (const reviewer of reviewers) {
+      if (!(await notifications.service.isAdvancedEnabled(reviewer.id, "people.application.submitted"))) continue;
+      await notifications.service.create({ userId: reviewer.id, kind: "info", title: "Новая анкета Crew", body: `${application.nickname} · ${application.email}`, link: "/crew" });
+      await sendTelegramPhoto(reviewer.telegramId, application.photoFileId, body);
     }
   });
 

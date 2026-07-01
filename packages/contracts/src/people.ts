@@ -42,6 +42,8 @@ export interface UserDTO {
   documentNumber: string | null;
   documentPhotoUrl: string | null;
   languages: string | null;
+  about: string | null;
+  source: string | null;
   photoUrl: string | null;
   usePhotoAsAvatar: boolean;
   birthDate: string | null;
@@ -65,6 +67,8 @@ export interface CreateUserInput {
   documentNumber?: string | null;
   documentPhotoUrl?: string | null;
   languages?: string | null;
+  about?: string | null;
+  source?: string | null;
   photoUrl?: string | null;
   usePhotoAsAvatar?: boolean;
   birthDate?: string | null;
@@ -83,6 +87,8 @@ export interface UpdateUserInput {
   documentNumber?: string | null;
   documentPhotoUrl?: string | null;
   languages?: string | null;
+  about?: string | null;
+  source?: string | null;
   photoUrl?: string | null;
   usePhotoAsAvatar?: boolean;
   birthDate?: string | null;
@@ -101,6 +107,46 @@ export interface CreatedUserDTO {
 
 export interface CalendarFeedDTO {
   url: string;
+}
+
+// ── Telegram crew applications ───────────────────────────────────────────────
+
+export type CrewApplicationStatus = "pending" | "accepted" | "rejected";
+
+export interface CrewApplicationDTO {
+  id: ID;
+  telegramId: string;
+  telegramUsername: string | null;
+  firstName: string;
+  lastName: string;
+  patronymic: string | null;
+  nickname: string;
+  email: string;
+  birthDate: string;
+  languages: string;
+  about: string;
+  source: string;
+  photoFileId: string;
+  status: CrewApplicationStatus;
+  reviewedByUserId: ID | null;
+  reviewedAt: ISODateTime | null;
+  createdUserId: ID | null;
+  createdAt: ISODateTime;
+}
+
+export interface SubmitCrewApplicationInput {
+  telegramId: string;
+  telegramUsername?: string | null;
+  firstName: string;
+  lastName: string;
+  patronymic?: string | null;
+  nickname: string;
+  email: string;
+  birthDate: string;
+  languages: string;
+  about: string;
+  source: string;
+  photoFileId: string;
 }
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -147,6 +193,11 @@ export interface PeopleService {
   create(input: CreateUserInput): Promise<CreatedUserDTO>;
   update(id: ID, input: UpdateUserInput): Promise<UserDTO>;
   resetPassword(id: ID): Promise<{ temporaryPassword: string }>;
+  listApplications(status?: CrewApplicationStatus | "all"): Promise<CrewApplicationDTO[]>;
+  getApplication(id: ID): Promise<CrewApplicationDTO | null>;
+  submitApplication(input: SubmitCrewApplicationInput): Promise<CrewApplicationDTO>;
+  acceptApplication(id: ID, input: { roleId: ID; reviewedByUserId: ID }): Promise<CreatedUserDTO>;
+  rejectApplication(id: ID, reviewedByUserId: ID): Promise<CrewApplicationDTO>;
 
   // Roles
   listRoles(): Promise<RoleDTO[]>;
@@ -165,4 +216,10 @@ export interface UserCreatedEvent {
   at: ISODateTime;
 }
 
-export type PeopleEvent = UserCreatedEvent;
+export interface CrewApplicationSubmittedEvent {
+  type: "people.application.submitted";
+  applicationId: ID;
+  at: ISODateTime;
+}
+
+export type PeopleEvent = UserCreatedEvent | CrewApplicationSubmittedEvent;

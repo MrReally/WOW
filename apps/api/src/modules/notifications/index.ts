@@ -51,6 +51,7 @@ const toDTO = (r: Row): Notifications.NotificationDTO => ({
 
 function createService(db: Sql): Notifications.NotificationsService {
   const advKey = (event: Notifications.AdvancedNotificationEvent) => `advanced:${event}`;
+  const defaultAdvanced = (event: Notifications.AdvancedNotificationEvent) => event === "people.application.submitted";
   return {
     async listForUser(userId, opts) {
       const limit = Math.min(opts?.limit ?? 50, 100);
@@ -121,12 +122,12 @@ function createService(db: Sql): Notifications.NotificationsService {
       );
       const set = new Map(rows.map((r) => [r.kind.replace(/^advanced:/, ""), r.enabled]));
       const out = {} as Notifications.AdvancedNotificationPrefs;
-      for (const k of ADVANCED_NOTIFICATION_EVENTS) out[k] = set.get(k) ?? false; // default off
+      for (const k of ADVANCED_NOTIFICATION_EVENTS) out[k] = set.get(k) ?? defaultAdvanced(k);
       return out;
     },
     async setAdvancedPrefs(userId, prefs) {
       for (const k of ADVANCED_NOTIFICATION_EVENTS) {
-        const enabled = prefs[k] ?? false;
+        const enabled = prefs[k] ?? defaultAdvanced(k);
         await query(
           db,
           `INSERT INTO notifications.prefs (user_id, kind, enabled) VALUES ($1,$2,$3)
@@ -142,7 +143,7 @@ function createService(db: Sql): Notifications.NotificationsService {
         `SELECT enabled FROM notifications.prefs WHERE user_id=$1 AND kind=$2`,
         [userId, advKey(event)]
       );
-      return row?.enabled ?? false;
+      return row?.enabled ?? defaultAdvanced(event);
     },
   };
 }
@@ -182,12 +183,12 @@ export function createNotificationsModule(db: Sql): SeverModule<Notifications.No
       });
       app.get("/api/notifications/advanced-preferences", async (req) => {
         const auth = await ctx.auth(req);
-        requirePermission(auth, "notifications.advanced");
+        requirePermission(auth, "notifications.advanced", "people.applications.review");
         return service.getAdvancedPrefs(auth.userId);
       });
       app.put("/api/notifications/advanced-preferences", async (req) => {
         const auth = await ctx.auth(req);
-        requirePermission(auth, "notifications.advanced");
+        requirePermission(auth, "notifications.advanced", "people.applications.review");
         return service.setAdvancedPrefs(auth.userId, (req.body ?? {}) as Notifications.AdvancedNotificationPrefs);
       });
     },

@@ -58,3 +58,29 @@ export async function editTelegramMessage(
     // Best-effort.
   }
 }
+
+export async function sendTelegramPhoto(
+  chatId: string | null,
+  photoFileId: string,
+  caption: string,
+  opts?: { inlineKeyboard?: InlineButton[][] }
+): Promise<void> {
+  const token = env.auth.telegramBotToken;
+  if (!token || !chatId || !photoFileId) return;
+  if (!/^\d+$/.test(chatId)) return;
+  const body: Record<string, unknown> = { chat_id: chatId, photo: photoFileId, caption, parse_mode: "HTML" };
+  if (opts?.inlineKeyboard) {
+    body.reply_markup = {
+      inline_keyboard: opts.inlineKeyboard.map((row) => row.map((b) => ({ text: b.text, callback_data: b.callbackData }))),
+    };
+  }
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    // Best-effort.
+  }
+}

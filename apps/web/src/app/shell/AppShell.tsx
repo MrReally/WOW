@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import type { People } from "@sever/contracts";
 import { WSChip, Avatar } from "../../ui-kit/index.ts";
 import { useSession } from "../session.ts";
 import { currentWorkspace, workspacesFor, WORKSPACE_COPY } from "../workspaces.ts";
@@ -7,6 +9,7 @@ import { useI18n } from "../i18n.tsx";
 import { platform } from "../platform/telegram.ts";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher.tsx";
 import { NotificationsBell } from "../../features/notifications/NotificationsBell.tsx";
+import { api } from "../../lib/api.ts";
 import { personInitials } from "../../lib/people.ts";
 import "./shell.css";
 
@@ -26,6 +29,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const ws = currentWorkspace(location.pathname);
   const wsCopy = WORKSPACE_COPY[ws.id]?.[locale] ?? ws;
   const count = workspacesFor(can).length;
+  const canReviewApplications = can("people.applications.review", "people.manage");
+  const applications = useQuery({
+    enabled: canReviewApplications,
+    queryKey: ["crew-applications", "pending"],
+    queryFn: () => api.get<People.CrewApplicationDTO[]>("/api/crew-applications?status=pending"),
+  });
+  const crewApplicationsCount = applications.data?.length ?? 0;
 
   // On a detail screen (a path deeper than a workspace root), show Telegram's
   // native back button.
@@ -54,6 +64,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-start" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
               <span className="ws-bar__name">{wsCopy.name}</span>
+              {ws.id === "crew" && crewApplicationsCount > 0 && (
+                <span className="project-tabbar__badge" style={{ position: "static" }}>{crewApplicationsCount > 9 ? "9+" : crewApplicationsCount}</span>
+              )}
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <path d="M2.5 4.5L6 8L9.5 4.5" stroke="var(--text3)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -83,6 +96,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           onClose={() => setSwitcherOpen(false)}
           user={user}
           current={ws}
+          crewApplicationsCount={crewApplicationsCount}
         />
       )}
     </div>
