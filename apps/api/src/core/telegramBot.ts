@@ -59,12 +59,54 @@ const APPLICATION_STEPS: { field: ApplicationField; label: string; question: str
   { field: "patronymic", label: "Отчество", question: "Отчество, если есть. Если нет — отправьте «-».", optional: true },
   { field: "nickname", label: "Ник", question: "Какой короткий ник использовать в таймингах и списках?" },
   { field: "email", label: "Email", question: "На какой email можно с вами связаться?" },
-  { field: "birthDate", label: "Дата рождения", question: "Какая у вас дата рождения? Формат: ДД/ММ/ГГГГ." },
+  { field: "birthDate", label: "Дата рождения", question: "Какая у вас дата рождения? Можно цифрами или месяц словами." },
   { field: "languages", label: "Языки", question: "Какие языки вы знаете и на каком уровне? Например: RU C2, EN B2, SR A2." },
   { field: "about", label: "О себе", question: "Коротко расскажите о себе и опыте." },
   { field: "source", label: "Источник", question: "Откуда вы узнали о SEVER? Кто пригласил или где нашли бота?" },
   { field: "photoFileId", label: "Фото", question: "Отправьте фото человека.", optional: false },
 ];
+
+const MONTH_WORDS = new Map<string, number>([
+  // RU
+  ["январь", 1], ["января", 1], ["янв", 1],
+  ["февраль", 2], ["февраля", 2], ["фев", 2], ["февр", 2],
+  ["март", 3], ["марта", 3], ["мар", 3],
+  ["апрель", 4], ["апреля", 4], ["апр", 4],
+  ["май", 5], ["мая", 5],
+  ["июнь", 6], ["июня", 6], ["июн", 6],
+  ["июль", 7], ["июля", 7], ["июл", 7],
+  ["август", 8], ["августа", 8], ["авг", 8],
+  ["сентябрь", 9], ["сентября", 9], ["сен", 9], ["сент", 9], ["сентяб", 9],
+  ["октябрь", 10], ["октября", 10], ["окт", 10],
+  ["ноябрь", 11], ["ноября", 11], ["ноя", 11], ["нояб", 11],
+  ["декабрь", 12], ["декабря", 12], ["дек", 12],
+  // EN
+  ["january", 1], ["jan", 1],
+  ["february", 2], ["feb", 2],
+  ["march", 3], ["mar", 3],
+  ["april", 4], ["apr", 4],
+  ["may", 5],
+  ["june", 6], ["jun", 6],
+  ["july", 7], ["jul", 7],
+  ["august", 8], ["aug", 8],
+  ["september", 9], ["sep", 9], ["sept", 9],
+  ["october", 10], ["oct", 10],
+  ["november", 11], ["nov", 11],
+  ["december", 12], ["dec", 12],
+  // SR latin/cyrillic
+  ["januar", 1], ["januara", 1], ["јануар", 1], ["јануара", 1],
+  ["februar", 2], ["februara", 2], ["фебруар", 2], ["фебруара", 2],
+  ["mart", 3], ["marta", 3], ["март", 3], ["марта", 3],
+  ["april", 4], ["aprila", 4], ["април", 4], ["априла", 4],
+  ["maj", 5], ["maja", 5], ["мај", 5], ["маја", 5],
+  ["jun", 6], ["juna", 6], ["јун", 6], ["јуна", 6],
+  ["jul", 7], ["jula", 7], ["јул", 7], ["јула", 7],
+  ["avgust", 8], ["avgusta", 8], ["avg", 8], ["август", 8], ["августа", 8], ["авг", 8],
+  ["septembar", 9], ["septembra", 9], ["sep", 9], ["септембар", 9], ["септембра", 9], ["сеп", 9],
+  ["oktobar", 10], ["oktobra", 10], ["okt", 10], ["октобар", 10], ["октобра", 10], ["окт", 10],
+  ["novembar", 11], ["novembra", 11], ["nov", 11], ["новембар", 11], ["новембра", 11], ["нов", 11],
+  ["decembar", 12], ["decembra", 12], ["dec", 12], ["децембар", 12], ["децембра", 12], ["дец", 12],
+]);
 
 interface Update {
   update_id: number;
@@ -92,15 +134,46 @@ export function startTelegramBot(deps: BotDeps): void {
   let offset = 0;
 
   const escapeHtml = (value: string | null | undefined) => (value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const finishDate = (day: number, month: number, year: number): string | null => {
+    const fullYear = year < 100 ? (year > 30 ? 1900 + year : 2000 + year) : year;
+    if (fullYear < 1900 || fullYear > new Date().getFullYear()) return null;
+    const d = new Date(Date.UTC(fullYear, month - 1, day));
+    if (d.getUTCFullYear() !== fullYear || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
+    return `${fullYear}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  };
   const parseDate = (value: string): string | null => {
-    const m = value.trim().match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
-    if (!m) return null;
-    const day = Number(m[1]);
-    const month = Number(m[2]);
-    const year = Number(m[3]);
-    const d = new Date(Date.UTC(year, month - 1, day));
-    if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
-    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const raw = value
+      .trim()
+      .toLowerCase()
+      .replace(/[,’']/g, "")
+      .replace(/\b(\d{1,2})(st|nd|rd|th)\b/g, "$1");
+    const tokens = raw
+      .split(/[^\p{L}\p{N}]+/u)
+      .map((token) => token.trim())
+      .filter(Boolean);
+    if (tokens.length < 3) return null;
+
+    const monthIndex = tokens.findIndex((token) => MONTH_WORDS.has(token));
+    if (monthIndex >= 0) {
+      const month = MONTH_WORDS.get(tokens[monthIndex]!)!;
+      const numbers = tokens
+        .map((token, index) => ({ token, index }))
+        .filter((item) => item.index !== monthIndex && /^\d{1,4}$/.test(item.token))
+        .map((item) => ({ value: Number(item.token), index: item.index, raw: item.token }));
+      const yearCandidate = numbers.find((item) => item.raw.length === 4) ?? numbers[numbers.length - 1];
+      const dayCandidate = numbers.find((item) => item !== yearCandidate && item.value >= 1 && item.value <= 31);
+      if (!yearCandidate || !dayCandidate) return null;
+      return finishDate(dayCandidate.value, month, yearCandidate.value);
+    }
+
+    const nums = tokens.filter((token) => /^\d{1,4}$/.test(token)).map(Number);
+    if (nums.length < 3) return null;
+    const [a, b, c] = nums;
+    if (String(tokens[0]).length === 4) return finishDate(c!, b!, a!); // YYYY-MM-DD
+    if (a! > 31 || b! > 31) return null;
+    if (a! > 12) return finishDate(a!, b!, c!); // DD-MM-YYYY
+    if (b! > 12) return finishDate(b!, a!, c!); // MM-DD-YYYY, useful for English numeric dates
+    return finishDate(a!, b!, c!); // default to DD-MM-YYYY for local usage
   };
   const displayValue = (session: ApplicationSession, field: ApplicationField): string => {
     const value = session.draft[field];
@@ -123,7 +196,7 @@ export function startTelegramBot(deps: BotDeps): void {
     if (field === "patronymic" && (v === "-" || v.toLowerCase() === "нет")) return "";
     if (!v) return "Поле не должно быть пустым.";
     if (field === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "Пожалуйста, отправьте корректный email.";
-    if (field === "birthDate" && !parseDate(v)) return "Нужна дата в формате ДД/ММ/ГГГГ.";
+    if (field === "birthDate" && !parseDate(v)) return "Не понял дату. Можно так: 01/02/2000, 1 февраля 2000, Feb 1 2000.";
     return null;
   };
   const applyTextField = (session: ApplicationSession, field: ApplicationField, value: string): string | null => {
