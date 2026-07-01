@@ -23,7 +23,7 @@ export const WORKSPACES: Workspace[] = [
   { id: "crew", name: "Crew", shortcut: "E", glyph: "person", tone: "ok", route: "/crew", requires: ["people.view"], sub: "Работники · досье · история" },
   { id: "ctr", name: "Contractors", shortcut: "C", glyph: "person", tone: "info", route: "/contractors", requires: ["projects.reservation.manage", "finance.view"], sub: "Подрядчики · цены · возвраты" },
   { id: "fin", name: "Finance", shortcut: "F", glyph: "coin", tone: "ok", route: "/finance", requires: ["finance.view"], sub: "Счета · долги · окупаемость" },
-  { id: "adm", name: "Settings", shortcut: "S", glyph: "shield", tone: "alert", route: "/settings", requires: ["people.view", "people.manage", "roles.manage"], sub: "Люди · роли · права · курсы" },
+  { id: "adm", name: "Settings", shortcut: "S", glyph: "shield", tone: "alert", route: "/settings", requires: ["people.view", "people.manage", "roles.manage", "telegram.inbox.manage"], sub: "Люди · роли · права · курсы" },
 ];
 
 export const WORKSPACE_COPY: Record<string, Record<"ru" | "en" | "sr", { name: string; sub: string }>> = {

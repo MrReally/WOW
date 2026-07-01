@@ -6,7 +6,7 @@ import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
 import { LOCALE_OPTIONS, useI18n } from "../../app/i18n.tsx";
 import { useAdvancedNotifPrefs, useNotifPrefs, useSetAdvancedNotifPrefs, useSetNotifPrefs } from "../notifications/hooks.ts";
-import { useCalendarFeed, useSetMyPreferences, useSetTelegramInboxSettings, useTelegramInboxSettings } from "./hooks.ts";
+import { useCalendarFeed, useSetMyPreferences } from "./hooks.ts";
 import { personName } from "../../lib/people.ts";
 import { useInvoiceCompanySettings, useSetInvoiceCompanySettings } from "../finance/hooks.ts";
 
@@ -50,15 +50,11 @@ export function MySettingsPage() {
   const setAdvancedPrefs = useSetAdvancedNotifPrefs();
   const calendar = useCalendarFeed();
   const setMyPreferences = useSetMyPreferences();
-  const canTelegramInbox = can("telegram.inbox.manage", "people.manage");
-  const telegramInbox = useTelegramInboxSettings(canTelegramInbox);
-  const setTelegramInbox = useSetTelegramInboxSettings();
   const serverInvoiceCompany = useInvoiceCompanySettings();
   const setServerInvoiceCompany = useSetInvoiceCompanySettings();
   const current = prefs.data;
   const [invoiceCompany, setInvoiceCompany] = useState<InvoiceCompanySettings>(loadInvoiceCompany);
   const [invoiceCompanyTouched, setInvoiceCompanyTouched] = useState(false);
-  const [workTelegram, setWorkTelegram] = useState("");
 
   useEffect(() => {
     localStorage.setItem("sever.invoice.company", JSON.stringify(invoiceCompany));
@@ -68,10 +64,6 @@ export function MySettingsPage() {
     if (!serverInvoiceCompany.data || invoiceCompanyTouched) return;
     setInvoiceCompany(serverInvoiceCompany.data);
   }, [serverInvoiceCompany.data, invoiceCompanyTouched]);
-
-  useEffect(() => {
-    if (telegramInbox.data) setWorkTelegram(telegramInbox.data.workUsername ? `@${telegramInbox.data.workUsername.replace(/^@/, "")}` : "");
-  }, [telegramInbox.data]);
 
   const saveInvoiceCompany = (patch: Partial<InvoiceCompanySettings>) => {
     const next = { ...invoiceCompany, ...patch };
@@ -241,27 +233,6 @@ export function MySettingsPage() {
                 ))}
               </>
             )}
-          </Card>
-        </>
-      )}
-
-      {canTelegramInbox && (
-        <>
-          <SectionTitle>Telegram Inbox</SectionTitle>
-          <Card>
-            <Field label="Рабочий аккаунт">
-              <Input value={workTelegram} onChange={(e) => setWorkTelegram(e.target.value)} placeholder="@username" />
-            </Field>
-            <div className="row row--between" style={{ marginTop: 10, gap: 10 }}>
-              <p className="card__subtitle" style={{ margin: 0 }}>Команды: /inbox, /exit</p>
-              <Button
-                variant="secondary"
-                disabled={setTelegramInbox.isPending}
-                onClick={() => setTelegramInbox.mutate({ workUsername: workTelegram })}
-              >
-                OK
-              </Button>
-            </div>
           </Card>
         </>
       )}

@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Currency } from "@sever/contracts";
 import { CURRENCIES } from "@sever/contracts";
 import { Card, Button, SectionTitle, Input, Select, Loading } from "../../ui-kit/index.ts";
 import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
-import { useFxRates, useSetFxRate, useResetData, useResetStatus } from "./hooks.ts";
+import { useFxRates, useSetFxRate, useResetData, useResetStatus, useSetTelegramInboxSettings, useTelegramInboxSettings } from "./hooks.ts";
 import { RoleEditor } from "./components/RoleEditor.tsx";
 
 export function SettingsPage() {
@@ -15,6 +15,16 @@ export function SettingsPage() {
   const resetData = useResetData();
   const resetStatus = useResetStatus(can("data.reset"));
   const canResetData = can("data.reset") && resetStatus.data?.available === true;
+  const canTelegramInbox = can("telegram.inbox.manage", "people.manage");
+  const telegramInbox = useTelegramInboxSettings(canTelegramInbox);
+  const setTelegramInbox = useSetTelegramInboxSettings();
+  const [workTelegram, setWorkTelegram] = useState("");
+
+  useEffect(() => {
+    if (telegramInbox.data) {
+      setWorkTelegram(telegramInbox.data.workUsername ? `@${telegramInbox.data.workUsername.replace(/^@/, "")}` : "");
+    }
+  }, [telegramInbox.data]);
 
   return (
     <div className="stack">
@@ -27,6 +37,27 @@ export function SettingsPage() {
       </Card>
 
       {can("roles.manage") && <RoleEditor />}
+
+      {canTelegramInbox && (
+        <>
+          <SectionTitle>Telegram Inbox</SectionTitle>
+          <Card>
+            <div className="row row--between" style={{ gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <Input value={workTelegram} onChange={(e) => setWorkTelegram(e.target.value)} placeholder="@username" />
+              </div>
+              <Button
+                variant="secondary"
+                disabled={setTelegramInbox.isPending}
+                onClick={() => setTelegramInbox.mutate({ workUsername: workTelegram })}
+              >
+                OK
+              </Button>
+            </div>
+            <p className="card__subtitle" style={{ marginTop: 8 }}>/inbox · /exit</p>
+          </Card>
+        </>
+      )}
 
       {can("finance.manage") && (
         <>
