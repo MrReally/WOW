@@ -256,6 +256,7 @@ export function CrewPage() {
       nickname: selected.nickname,
       email: selected.email,
       telegramId: selected.telegramId,
+      roleId: selected.roleId ?? undefined,
       hourlyRateEUR: selected.hourlyRateEUR,
       documentNumber: selected.documentNumber,
       documentPhotoUrl: selected.documentPhotoUrl,
@@ -585,6 +586,9 @@ export function CrewPage() {
             <Input type="number" value={draft.hourlyRateEUR ?? ""} onChange={(e) => setDraft((d) => ({ ...d, hourlyRateEUR: e.target.value ? Number(e.target.value) : null }))} />
           </Field>
         </div>
+        <Field label="Должность">
+          <Select value={draft.roleId ?? ""} onChange={(e) => setDraft((d) => ({ ...d, roleId: e.target.value }))} options={roleOptions} />
+        </Field>
         <Field label="Документ">
           <Input value={draft.documentNumber ?? ""} onChange={(e) => setDraft((d) => ({ ...d, documentNumber: e.target.value }))} />
         </Field>
