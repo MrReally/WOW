@@ -194,6 +194,7 @@ export function CrewPage() {
   const qc = useQueryClient();
   const canReviewApplications = can("people.applications.review", "people.manage");
   const canManagePeople = can("people.manage");
+  const canManageRoles = can("roles.manage");
   const people = usePeople();
   const deletedPeople = usePeople("deleted", canManagePeople);
   const roles = useRoles();
@@ -299,6 +300,7 @@ export function CrewPage() {
       id: selected.id,
       input: {
         ...draft,
+        roleId: canManageRoles ? draft.roleId : undefined,
         displayName: name || selected.displayName,
         firstName: draft.firstName || null,
         lastName: draft.lastName || null,
@@ -586,9 +588,11 @@ export function CrewPage() {
             <Input type="number" value={draft.hourlyRateEUR ?? ""} onChange={(e) => setDraft((d) => ({ ...d, hourlyRateEUR: e.target.value ? Number(e.target.value) : null }))} />
           </Field>
         </div>
-        <Field label="Должность">
-          <Select value={draft.roleId ?? ""} onChange={(e) => setDraft((d) => ({ ...d, roleId: e.target.value }))} options={roleOptions} />
-        </Field>
+        {canManageRoles && (
+          <Field label="Должность">
+            <Select value={draft.roleId ?? ""} onChange={(e) => setDraft((d) => ({ ...d, roleId: e.target.value }))} options={roleOptions} />
+          </Field>
+        )}
         <Field label="Документ">
           <Input value={draft.documentNumber ?? ""} onChange={(e) => setDraft((d) => ({ ...d, documentNumber: e.target.value }))} />
         </Field>

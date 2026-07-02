@@ -142,7 +142,9 @@ export function registerPeopleRoutes(
   app.patch<{ Params: { id: string } }>("/api/people/:id", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "people.manage");
-    return service.update(req.params.id, updateUserSchema.parse(req.body) as People.UpdateUserInput);
+    const body = updateUserSchema.parse(req.body) as People.UpdateUserInput;
+    if (body.roleId !== undefined) requirePermission(auth, "roles.manage");
+    return service.update(req.params.id, body);
   });
   app.post<{ Params: { id: string } }>("/api/people/:id/reset-password", async (req) => {
     const auth = await ctx.auth(req);
