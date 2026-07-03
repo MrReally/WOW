@@ -916,7 +916,7 @@ export function startTelegramBot(deps: BotDeps): void {
                 await people.update(userId, { telegramId: chatId });
                 await send(chatId, `✅ Telegram привязан к аккаунту <b>${publicName(user)}</b>. Уведомления будут приходить сюда.`);
               } else {
-                await send(chatId, `Не нашёл аккаунт по коду. Ваш chat_id: <code>${chatId}</code>`);
+                await send(chatId, `Не нашёл аккаунт по ссылке. Попросите отправить новую ссылку.`);
               }
               continue;
             }
@@ -937,7 +937,7 @@ export function startTelegramBot(deps: BotDeps): void {
               await startApplication(chatId, username ? `@${username}` : null);
             }
           } catch {
-            await send(chatId, `Ваш chat_id: <code>${chatId}</code>`);
+            await send(chatId, `Не удалось обработать сообщение. Попробуйте ещё раз позже.`);
           }
         }
       } catch {

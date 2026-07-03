@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Projects } from "@sever/contracts";
 import { Sheet, Button, Chip, Loading, Field, Input } from "../../../ui-kit/index.ts";
-import { useInStockUnits, useResolveReservation } from "../hooks.ts";
+import { useInStockUnits, useOverlappingReservations, useResolveReservation } from "../hooks.ts";
 
 interface Props {
   reservation: Projects.ReservationDTO | null;
@@ -14,6 +14,7 @@ interface Props {
 export function ResolveReservationSheet({ reservation, modelName, onClose }: Props) {
   const navigate = useNavigate();
   const units = useInStockUnits(reservation?.modelId ?? "");
+  const overlapping = useOverlappingReservations(reservation);
   const resolve = useResolveReservation();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -43,8 +44,14 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
   };
 
   const q = search.trim().toLowerCase();
+  const blockedUnitIds = new Set(
+    (overlapping.data ?? [])
+      .filter((r) => r.id !== reservation.id)
+      .flatMap((r) => r.resolvedUnitIds)
+  );
   const list = (units.data ?? []).filter((u) =>
-    !q || [u.assetTag, u.serial ?? "", modelName].some((v) => v.toLowerCase().includes(q))
+    !blockedUnitIds.has(u.id) &&
+    (!q || [u.assetTag, u.serial ?? "", modelName].some((v) => v.toLowerCase().includes(q)))
   );
   const enough = selected.size === reservation.qty;
 
@@ -56,7 +63,7 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
       <Field label="Поиск">
         <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, номер, серийник" />
       </Field>
-      {units.isLoading ? (
+      {units.isLoading || overlapping.isLoading ? (
         <Loading />
       ) : list.length === 0 ? (
         <p className="card__subtitle">Нет свободных единиц этой модели на складе.</p>

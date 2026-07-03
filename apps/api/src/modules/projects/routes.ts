@@ -182,6 +182,12 @@ export function registerProjectsRoutes(
     await ctx.auth(req);
     return service.listReservations(req.params.id);
   });
+  app.get<{ Querystring: { modelId: string; startsAt: string; endsAt: string } }>("/api/reservations/overlap", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.reservation.manage", "warehouse.issue", "apex.view");
+    const q = z.object({ modelId: z.string().uuid(), startsAt: z.string(), endsAt: z.string() }).parse(req.query);
+    return service.findOverlapping(q.modelId, q.startsAt, q.endsAt);
+  });
   app.post("/api/reservations", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.reservation.manage");

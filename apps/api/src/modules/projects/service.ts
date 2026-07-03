@@ -597,32 +597,12 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
     },
     async createReservation(input) {
       assertRange(input.startsAt, input.endsAt);
-      const overlapping = await this.findOverlapping(input.modelId, input.startsAt, input.endsAt);
       const row = await one<ReservationRow>(
         db,
         `INSERT INTO projects.reservations (project_id, model_id, qty, starts_at, ends_at)
          VALUES ($1,$2,$3,$4,$5) RETURNING *`,
         [input.projectId, input.modelId, input.qty, input.startsAt, input.endsAt]
       );
-      // Conflicts never block — they create a visible Problem for Apex.
-      if (overlapping.length > 0) {
-        await query(
-          db,
-          `INSERT INTO projects.problems (kind, severity, title, detail, refs)
-           VALUES ('reservation_conflict','warning',$1,$2,$3)`,
-          [
-            `Пересечение броней`,
-            `Модель уже забронирована на пересекающийся интервал (${overlapping.length})`,
-            JSON.stringify({ projectId: input.projectId, modelId: input.modelId }),
-          ]
-        );
-        await bus.publish({
-          type: "reservation.conflict",
-          projectId: input.projectId,
-          modelId: input.modelId,
-          at: new Date().toISOString(),
-        });
-      }
       return reservationDTO(row!);
     },
     async resolveReservation(id, unitIds) {

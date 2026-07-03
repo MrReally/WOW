@@ -300,9 +300,23 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
       );
     },
 
-    async resolveTelegramUser(telegramId, displayName) {
+    async resolveTelegramUser(telegramId, displayName, username) {
       const existing = await one<UserRow>(db, `${USER_SELECT} WHERE u.telegram_id=$1`, [telegramId]);
       if (existing) return existing.active ? sessionUser(existing) : null;
+      const handle = username?.trim().replace(/^@/, "").toLowerCase();
+      if (handle) {
+        const pending = await one<UserRow>(
+          db,
+          `${USER_SELECT} WHERE lower(regexp_replace(u.telegram_id, '^@', ''))=$1`,
+          [handle]
+        );
+        if (pending) {
+          if (!pending.active) return null;
+          await query(db, `UPDATE people.users SET telegram_id=$2 WHERE id=$1`, [pending.id, telegramId]);
+          const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [pending.id]);
+          return sessionUser(u!);
+        }
+      }
       // First-ever user via Telegram becomes the Owner.
       if ((await this.countUsers()) === 0) {
         await this.ensureDefaultRoles();

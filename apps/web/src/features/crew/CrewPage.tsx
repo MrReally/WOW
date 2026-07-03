@@ -48,6 +48,15 @@ function displayImageUrl(value: string | null | undefined): string | null {
 function isTelegramLinked(telegramId: string | null): boolean {
   return !!telegramId && /^\d+$/.test(telegramId);
 }
+function telegramFieldValue(telegramId: string | null): string {
+  if (!telegramId || isTelegramLinked(telegramId)) return "";
+  return telegramId.startsWith("@") ? telegramId : `@${telegramId}`;
+}
+function contactLine(person: People.UserDTO): string {
+  if (person.email) return person.email;
+  if (person.telegramId && !isTelegramLinked(person.telegramId)) return telegramFieldValue(person.telegramId);
+  return "без контакта";
+}
 
 function formatBirthDate(value: string | null | undefined): string {
   const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -256,7 +265,7 @@ export function CrewPage() {
       patronymic: selected.patronymic,
       nickname: selected.nickname,
       email: selected.email,
-      telegramId: selected.telegramId,
+      telegramId: telegramFieldValue(selected.telegramId),
       roleId: selected.roleId ?? undefined,
       hourlyRateEUR: selected.hourlyRateEUR,
       documentNumber: selected.documentNumber,
@@ -296,6 +305,9 @@ export function CrewPage() {
   const save = () => {
     if (!selected) return;
     const name = fullName(draft);
+    const telegramId = draft.telegramId?.trim()
+      ? draft.telegramId.trim()
+      : isTelegramLinked(selected.telegramId) ? selected.telegramId : null;
     updateUser.mutate({
       id: selected.id,
       input: {
@@ -307,7 +319,7 @@ export function CrewPage() {
         patronymic: draft.patronymic || null,
         nickname: draft.nickname || null,
         email: draft.email || null,
-        telegramId: draft.telegramId || null,
+        telegramId,
         hourlyRateEUR: draft.hourlyRateEUR == null || Number.isNaN(Number(draft.hourlyRateEUR)) ? null : Number(draft.hourlyRateEUR),
         documentNumber: draft.documentNumber || null,
         documentPhotoUrl: draft.documentPhotoUrl || null,
@@ -386,7 +398,7 @@ export function CrewPage() {
                       )}
                       <div style={{ minWidth: 0 }}>
                         <p className="card__title" style={{ fontSize: "var(--fs-lg)" }}>{personName(person)}</p>
-                        <p className="card__subtitle">{person.email ?? person.telegramId ?? "без контакта"}</p>
+                        <p className="card__subtitle">{contactLine(person)}</p>
                       </div>
                     </div>
                     <Chip label="удалён" tone="neutral" />
@@ -530,16 +542,15 @@ export function CrewPage() {
                 {isTelegramLinked(selected.telegramId) ? (
                   <span className="icon-btn icon-btn--ok" title="Telegram привязан" aria-label="Telegram привязан">✓</span>
                 ) : botInfo.data?.username ? (
-                  <a
+                  <button
                     className="icon-btn"
-                    href={`https://t.me/${botInfo.data.username}?start=${selected.id}`}
-                    target="_blank"
-                    rel="noreferrer"
+                    type="button"
                     title="Привязать Telegram"
                     aria-label="Привязать Telegram"
+                    onClick={() => navigator.clipboard?.writeText(`https://t.me/${botInfo.data.username}?start=${selected.id}`)}
                   >
                     TG
-                  </a>
+                  </button>
                 ) : null}
                 <Button
                   variant="ghost"
@@ -577,7 +588,7 @@ export function CrewPage() {
             <Input type="email" value={draft.email ?? ""} onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))} />
           </Field>
           <Field label="Telegram">
-            <Input value={draft.telegramId ?? ""} onChange={(e) => setDraft((d) => ({ ...d, telegramId: e.target.value }))} />
+            <Input value={draft.telegramId ?? ""} onChange={(e) => setDraft((d) => ({ ...d, telegramId: e.target.value }))} placeholder="@username" />
           </Field>
         </div>
         <div className="row">

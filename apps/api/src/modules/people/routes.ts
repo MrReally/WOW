@@ -84,7 +84,7 @@ export function registerPeopleRoutes(
     const tg = verifyTelegramInitData(initData, env.auth.telegramBotToken);
     if (!tg) throw Unauthorized("недействительные данные Telegram");
     const name = [tg.first_name, tg.last_name].filter(Boolean).join(" ") || tg.username || String(tg.id);
-    const su = await service.resolveTelegramUser(String(tg.id), name);
+    const su = await service.resolveTelegramUser(String(tg.id), name, tg.username ?? null);
     if (!su) throw Forbidden("этот Telegram не привязан к аккаунту — попросите администратора");
     const token = await service.issueToken(su.user.id);
     return { token, user: su.user, permissions: su.permissions, mustChangePassword: su.user.mustChangePassword };

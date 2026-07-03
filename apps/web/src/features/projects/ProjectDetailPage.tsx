@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type { Equipment, People, Projects } from "@sever/contracts";
 import { PROJECT_STATUSES } from "@sever/contracts";
@@ -304,7 +304,7 @@ export function ProjectDetailPage() {
             </div>
           </Card>
           {canPlans && (
-            <ProjectActionButton icon="plan" label="План сцены" meta="схема" onClick={() => navigate(`/projects/${p.id}/plan`)} />
+            <ProjectActionButton icon="plan" label="План сцены" meta="недоступно" onClick={() => alert("Схема сцены временно недоступна.")} />
           )}
           {canFinance && invoice.data && (
             <ProjectActionButton icon="invoice" label="Счёт" meta="PDF" onClick={() => navigate(`/projects/${p.id}/invoice`)} />
@@ -409,6 +409,7 @@ export function ProjectDetailPage() {
                 onSelect={(model) => {
                   setResModel(model.id);
                   setResModelQuery(model.name);
+                  setResQty("1");
                   setResModelOpen(false);
                 }}
               />
@@ -425,7 +426,7 @@ export function ProjectDetailPage() {
                   qty: Number(resQty),
                   startsAt: p.startsAt,
                   endsAt: p.endsAt,
-                }, { onSuccess: () => { setResModel(""); setResModelQuery(""); setResModelOpen(false); } })
+                }, { onSuccess: () => { setResModel(""); setResModelQuery(""); setResQty("1"); setResModelOpen(false); } })
               }
             >
               + Бронь
@@ -1184,6 +1185,8 @@ function ModelAutocomplete({
   onQuery: (value: string) => void;
   onSelect: (model: Equipment.EquipmentModelDTO) => void;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<"top" | "bottom">("bottom");
   const selected = models.find((model) => model.id === value) ?? null;
   const results = useMemo(
     () => models.filter((model) => modelMatches(model, debouncedQuery)).slice(0, 8),
@@ -1191,9 +1194,17 @@ function ModelAutocomplete({
   );
   const searching = query.trim() !== debouncedQuery.trim();
   const showList = open && query.trim().length > 0;
+  useEffect(() => {
+    if (!showList) return;
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const below = window.innerHeight - rect.bottom;
+    const above = rect.top;
+    setPlacement(below < 260 && above > below ? "top" : "bottom");
+  }, [showList, query, debouncedQuery]);
 
   return (
-    <div style={{ position: "relative" }}>
+    <div ref={rootRef} style={{ position: "relative" }}>
       <Input
         value={query}
         onFocus={() => onOpen(true)}
@@ -1210,18 +1221,19 @@ function ModelAutocomplete({
           className="stack"
           style={{
             position: "absolute",
-            zIndex: 40,
-            top: "calc(100% + 6px)",
+            zIndex: 120,
+            top: placement === "bottom" ? "calc(100% + 6px)" : undefined,
+            bottom: placement === "top" ? "calc(100% + 6px)" : undefined,
             left: 0,
             right: 0,
             gap: 4,
-            maxHeight: 280,
+            maxHeight: Math.min(280, Math.max(180, placement === "top" ? rootRef.current?.getBoundingClientRect().top ?? 240 : window.innerHeight - (rootRef.current?.getBoundingClientRect().bottom ?? 0) - 18)),
             overflow: "auto",
             padding: 6,
-            border: "1px solid var(--bdr)",
+            border: "1px solid var(--bdr-hi)",
             borderRadius: 10,
-            background: "var(--panel)",
-            boxShadow: "0 18px 36px rgba(0,0,0,.32)",
+            background: "var(--bg)",
+            boxShadow: "0 18px 44px rgba(0,0,0,.48)",
           }}
         >
           {searching ? (

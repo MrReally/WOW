@@ -298,6 +298,12 @@
   overscroll-behavior: contain;
   box-shadow: var(--shadow-sheet);
   animation: slideUp 0.2s ease;
+  transition: transform 0.12s ease;
+}
+.sheet__drag {
+  touch-action: none;
+  cursor: grab;
+  padding-top: 2px;
 }
 .sheet__handle {
   width: 38px;
@@ -508,13 +514,16 @@
   letter-spacing: 0.08em;
 }
 .project-tabbar {
-  position: sticky;
+  position: fixed;
+  left: max(10px, env(safe-area-inset-left));
+  right: max(10px, env(safe-area-inset-right));
   bottom: 8px;
   z-index: 10;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(46px, 1fr));
   gap: 4px;
-  margin-top: var(--space-3);
+  width: min(560px, calc(100vw - 20px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  margin: 0 auto;
   padding: 7px;
   padding-bottom: calc(7px + env(safe-area-inset-bottom));
   border: 1px solid var(--bdr);

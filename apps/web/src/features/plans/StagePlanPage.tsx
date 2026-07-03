@@ -19,12 +19,25 @@ const LAYER_LABEL: Record<PlanLayer, string> = {
 // Devices sit on the light / sound layers; dmx / power / audio are cable runs.
 const DEVICE_LAYERS: PlanLayer[] = ["light", "sound"];
 const CABLE_LAYERS: PlanLayer[] = ["dmx", "power", "audio"];
+const STAGE_PLANS_ENABLED = false;
 
 export function StagePlanPage() {
   const { id: projectId = "" } = useParams();
   const navigate = useNavigate();
   const { can } = useSession();
   const canManage = can("plans.manage");
+
+  if (!STAGE_PLANS_ENABLED) {
+    return (
+      <div className="stack">
+        <Button variant="ghost" onClick={() => navigate(`/projects/${projectId}`)}>← К проекту</Button>
+        <Card>
+          <SectionHead label="Схема сцены" />
+          <p className="card__subtitle">Временно недоступно.</p>
+        </Card>
+      </div>
+    );
+  }
 
   const plan = useCurrentPlan(projectId);
   const versions = usePlanVersions(projectId);

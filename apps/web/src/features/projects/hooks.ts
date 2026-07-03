@@ -308,6 +308,17 @@ export function useInStockUnits(modelId: string) {
   });
 }
 
+export function useOverlappingReservations(reservation: Projects.ReservationDTO | null) {
+  return useQuery({
+    enabled: !!reservation,
+    queryKey: ["projects", "reservations", "overlap", reservation?.modelId, reservation?.startsAt, reservation?.endsAt],
+    queryFn: () =>
+      api.get<Projects.ReservationDTO[]>(
+        `/api/reservations/overlap?modelId=${reservation!.modelId}&startsAt=${encodeURIComponent(reservation!.startsAt)}&endsAt=${encodeURIComponent(reservation!.endsAt)}`
+      ),
+  });
+}
+
 // All units, for mapping resolved unit ids → asset tags in the reservation view.
 export function useAllUnits() {
   return useQuery({

@@ -81,7 +81,7 @@ export async function resolveAuth(req: FastifyRequest, deps: AuthDeps): Promise<
     const tg = verifyTelegramInitData(initData, env.auth.telegramBotToken);
     if (!tg) throw Unauthorized("invalid Telegram initData");
     const name = [tg.first_name, tg.last_name].filter(Boolean).join(" ") || tg.username || String(tg.id);
-    const su = await deps.people.resolveTelegramUser(String(tg.id), name);
+    const su = await deps.people.resolveTelegramUser(String(tg.id), name, tg.username ?? null);
     if (!su) throw Forbidden("этот Telegram-аккаунт не зарегистрирован — обратитесь к администратору");
     return toContext(su);
   }

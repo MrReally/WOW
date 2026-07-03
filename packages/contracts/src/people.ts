@@ -228,7 +228,7 @@ export interface PeopleService {
   logout(token: string): Promise<void>;
   changePassword(userId: ID, newPassword: string, currentPassword?: string): Promise<void>;
   /** Resolve (and auto-provision the owner if empty) a Telegram user. */
-  resolveTelegramUser(telegramId: string, displayName: string): Promise<SessionUser | null>;
+  resolveTelegramUser(telegramId: string, displayName: string, username?: string | null): Promise<SessionUser | null>;
   /** Dev-only bypass identity (first owner). */
   devIdentity(): Promise<SessionUser | null>;
   issueToken(userId: ID): Promise<string>;
