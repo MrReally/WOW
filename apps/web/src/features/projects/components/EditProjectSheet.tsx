@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { Projects } from "@sever/contracts";
 import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
 import { useUpdateProject } from "../hooks.ts";
-import { useVenues } from "../../plans/hooks.ts";
+import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { toLocalInput } from "../../../lib/datetime.ts";
 
 interface Props {
@@ -15,9 +15,13 @@ interface Props {
 export function EditProjectSheet({ open, project, clients, onClose }: Props) {
   const update = useUpdateProject();
   const venues = useVenues();
+  const createVenue = useCreateVenue();
   const [name, setName] = useState(project.name);
   const [clientId, setClientId] = useState(project.clientId);
   const [venueId, setVenueId] = useState(project.venueId ?? "");
+  const [venueFormOpen, setVenueFormOpen] = useState(false);
+  const [newVenue, setNewVenue] = useState("");
+  const [newVenueAddress, setNewVenueAddress] = useState("");
   const [starts, setStarts] = useState(toLocalInput(project.startsAt));
   const [ends, setEnds] = useState(toLocalInput(project.endsAt));
 
@@ -65,6 +69,40 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
           options={[{ value: "", label: "— не выбрана —" }, ...(venues.data ?? []).map((v) => ({ value: v.id, label: v.name }))]}
         />
       </Field>
+      {!venueFormOpen ? (
+        <Button variant="ghost" onClick={() => setVenueFormOpen(true)}>+ Площадка</Button>
+      ) : (
+        <div className="stack" style={{ gap: 8 }}>
+          <Field label="Новая площадка">
+            <Input value={newVenue} onChange={(e) => setNewVenue(e.target.value)} placeholder="Название" />
+          </Field>
+          <Field label="Адрес">
+            <Input value={newVenueAddress} onChange={(e) => setNewVenueAddress(e.target.value)} placeholder="Можно позже" />
+          </Field>
+          <div className="row">
+            <Button
+              variant="secondary"
+              disabled={!newVenue.trim() || createVenue.isPending}
+              onClick={() =>
+                createVenue.mutate(
+                  { name: newVenue.trim(), address: newVenueAddress.trim() || null },
+                  {
+                    onSuccess: (venue) => {
+                      setVenueId(venue.id);
+                      setNewVenue("");
+                      setNewVenueAddress("");
+                      setVenueFormOpen(false);
+                    },
+                  }
+                )
+              }
+            >
+              Добавить
+            </Button>
+            <Button variant="ghost" onClick={() => setVenueFormOpen(false)}>Отмена</Button>
+          </div>
+        </div>
+      )}
       <div className="row">
         <Field label="Начало">
           <Input type="datetime-local" value={starts} onChange={(e) => setStarts(e.target.value)} />

@@ -88,7 +88,7 @@ export function useMoveElements(projectId: string) {
 export function useCreateVenue() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name: string }) => api.post<Venues.VenueDTO>("/api/venues", input),
+    mutationFn: (input: Venues.CreateVenueInput) => api.post<Venues.VenueDTO>("/api/venues", input),
     meta: { successMessage: "Площадка добавлена" },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["venues"] }),
   });
