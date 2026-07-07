@@ -5,6 +5,7 @@ import { projectStatusLabel, projectStatusTone, dateRange } from "../../lib/labe
 import { useSession } from "../../app/session.ts";
 import { useProjects, useClients } from "./hooks.ts";
 import { CreateProjectSheet } from "./components/CreateProjectSheet.tsx";
+import { ProjectWizardSheet } from "./components/ProjectWizardSheet.tsx";
 
 export function ProjectsPage() {
   const { can } = useSession();
@@ -13,6 +14,7 @@ export function ProjectsPage() {
   const projects = useProjects();
   const clients = useClients();
   const [createOpen, setCreateOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   if (projects.isLoading) return <Loading />;
   if (projects.error) return <ErrorState error={projects.error} onRetry={projects.refetch} />;
@@ -22,7 +24,12 @@ export function ProjectsPage() {
 
   return (
     <div className="stack">
-      {canCreate && <Button block onClick={() => setCreateOpen(true)}>+ Новый проект</Button>}
+      {canCreate && (
+        <div className="row">
+          <Button block onClick={() => setWizardOpen(true)}>Мастер</Button>
+          <Button block variant="secondary" onClick={() => setCreateOpen(true)}>+ Проект</Button>
+        </div>
+      )}
 
       {list.length === 0 ? (
         <EmptyState title="Нет проектов" hint={!canCreate ? "Вам пока не назначены проекты" : undefined} />
@@ -46,6 +53,7 @@ export function ProjectsPage() {
       )}
 
       {canCreate && <CreateProjectSheet open={createOpen} onClose={() => setCreateOpen(false)} />}
+      {canCreate && <ProjectWizardSheet open={wizardOpen} onClose={() => setWizardOpen(false)} />}
     </div>
   );
 }

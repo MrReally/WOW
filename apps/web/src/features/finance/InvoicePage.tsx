@@ -43,6 +43,7 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const money = (n: number, cur = "EUR") => `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(n))} ${cur}`;
 const amount = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(n));
 const cleanText = (value: string) => value.trim().replace(/\s+/g, " ");
+const wizardInvoiceKey = (projectId: string) => `sever.invoice.wizardLines.${projectId}`;
 
 const DOC_LABELS: Record<InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
   EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
@@ -120,7 +121,13 @@ export function InvoicePage() {
 
   useEffect(() => {
     if (!seeded && invoice.data) {
-      setLines(invoice.data.rentalLines.map((l) => ({
+      let wizardLines: Line[] = [];
+      try {
+        wizardLines = JSON.parse(localStorage.getItem(wizardInvoiceKey(id)) || "[]") as Line[];
+      } catch {
+        wizardLines = [];
+      }
+      setLines([...invoice.data.rentalLines.map((l) => ({
         id: l.refId,
         section: l.section,
         name: l.label,
@@ -128,10 +135,10 @@ export function InvoicePage() {
         price: l.amountEUR,
         cost: l.costEUR,
         comment: l.detail,
-      })));
+      })), ...wizardLines]);
       setSeeded(true);
     }
-  }, [invoice.data, seeded]);
+  }, [id, invoice.data, seeded]);
 
   useEffect(() => {
     if (project.data && !number) setNumber(`EST-${dateStr.replace(/-/g, "")}-${id.slice(0, 4).toUpperCase()}`);
