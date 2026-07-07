@@ -319,6 +319,109 @@ const stageRequiredMarks: Partial<Record<Projects.ProjectChecklistGroup, Project
 };
 
 export function createProjectsService(db: Sql, bus: EventBus): Projects.ProjectsService {
+  async function computeReservationAvailability(modelId: ID, from: ISODateTime, to: ISODateTime): Promise<Projects.ReservationAvailabilityDTO> {
+    assertRange(from, to);
+    const model = await one<{ tracking_mode: "serial" | "quantity" }>(
+      db,
+      `SELECT t.tracking_mode
+       FROM equipment.models m
+       JOIN equipment.types t ON t.id=m.type_id
+       WHERE m.id=$1`,
+      [modelId]
+    );
+    if (!model) throw NotFound("model", modelId);
+    const totalRow = model.tracking_mode === "quantity"
+      ? await one<{ total: string }>(
+          db,
+          `SELECT COALESCE(SUM(total_qty),0)::text AS total FROM equipment.model_stock WHERE model_id=$1`,
+          [modelId]
+        )
+      : await one<{ total: string }>(
+          db,
+          `SELECT COUNT(*)::text AS total
+           FROM equipment.units
+           WHERE model_id=$1 AND status IN ('in_stock','reserved','on_project')`,
+          [modelId]
+        );
+    const bookedRow = await one<{ booked: string }>(
+      db,
+      `SELECT COALESCE(SUM(qty),0)::text AS booked
+       FROM projects.reservations
+       WHERE model_id=$1 AND starts_at < $3 AND ends_at > $2`,
+      [modelId, from, to]
+    );
+    const total = Number(totalRow?.total ?? 0);
+    const booked = Number(bookedRow?.booked ?? 0);
+    const shortage = Math.max(0, booked - total);
+    return { modelId, startsAt: from, endsAt: to, total, booked, free: Math.max(0, total - booked), shortage };
+  }
+
+  async function syncReservationAvailabilityProblems(modelId: ID, from: ISODateTime, to: ISODateTime) {
+    const reservations = await query<ReservationRow>(
+      db,
+      `SELECT * FROM projects.reservations
+       WHERE model_id=$1 AND starts_at < $3 AND ends_at > $2
+       ORDER BY starts_at`,
+      [modelId, from, to]
+    );
+    for (const reservation of reservations) {
+      const availability = await computeReservationAvailability(modelId, reservation.starts_at.toISOString(), reservation.ends_at.toISOString());
+      const existing = await one<ProblemRow>(
+        db,
+        `SELECT * FROM projects.problems
+         WHERE kind='reservation_conflict' AND refs->>'reservationId'=$1 AND resolved=false
+         LIMIT 1`,
+        [reservation.id]
+      );
+      if (availability.shortage > 0) {
+        const detail = `Забронировано ${availability.booked} из ${availability.total}: не хватает ${availability.shortage}`;
+        if (existing) {
+          await query(
+            db,
+            `UPDATE projects.problems SET severity='warning', title=$2, detail=$3, refs=$4 WHERE id=$1`,
+            [
+              existing.id,
+              "Дефицит оборудования",
+              detail,
+              JSON.stringify({ reservationId: reservation.id, projectId: reservation.project_id, modelId }),
+            ]
+          );
+        } else {
+          await query(
+            db,
+            `INSERT INTO projects.problems (kind, severity, title, detail, refs)
+             VALUES ('reservation_conflict','warning',$1,$2,$3)`,
+            [
+              "Дефицит оборудования",
+              detail,
+              JSON.stringify({ reservationId: reservation.id, projectId: reservation.project_id, modelId }),
+            ]
+          );
+        }
+      } else if (existing) {
+        await query(db, `UPDATE projects.problems SET resolved=true, resolved_at=now() WHERE id=$1`, [existing.id]);
+      }
+    }
+  }
+
+  async function syncAllReservationAvailabilityProblems() {
+    const reservations = await query<ReservationRow>(
+      db,
+      `SELECT * FROM projects.reservations ORDER BY starts_at`
+    );
+    const seen = new Set<string>();
+    for (const reservation of reservations) {
+      const key = `${reservation.model_id}:${reservation.starts_at.toISOString()}:${reservation.ends_at.toISOString()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      await syncReservationAvailabilityProblems(
+        reservation.model_id,
+        reservation.starts_at.toISOString(),
+        reservation.ends_at.toISOString()
+      );
+    }
+  }
+
   async function loadChecklist(projectId: ID): Promise<ProjectChecklistRow[]> {
     return query<ProjectChecklistRow>(
       db,
@@ -595,6 +698,9 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       );
       return rows.map(reservationDTO);
     },
+    async reservationAvailability(modelId, from, to) {
+      return computeReservationAvailability(modelId, from, to);
+    },
     async createReservation(input) {
       assertRange(input.startsAt, input.endsAt);
       const row = await one<ReservationRow>(
@@ -603,6 +709,7 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
          VALUES ($1,$2,$3,$4,$5) RETURNING *`,
         [input.projectId, input.modelId, input.qty, input.startsAt, input.endsAt]
       );
+      await syncReservationAvailabilityProblems(input.modelId, input.startsAt, input.endsAt);
       return reservationDTO(row!);
     },
     async resolveReservation(id, unitIds) {
@@ -628,11 +735,19 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         `UPDATE projects.reservations SET resolved_unit_ids=$2 WHERE id=$1 RETURNING *`,
         [id, unitIds]
       );
+      await syncReservationAvailabilityProblems(res.model_id, res.starts_at.toISOString(), res.ends_at.toISOString());
       return reservationDTO(row!);
     },
     async deleteReservation(id) {
-      const row = await one<{ id: string }>(db, `DELETE FROM projects.reservations WHERE id=$1 RETURNING id`, [id]);
+      const row = await one<ReservationRow>(db, `DELETE FROM projects.reservations WHERE id=$1 RETURNING *`, [id]);
       if (!row) throw NotFound("reservation", id);
+      await query(
+        db,
+        `UPDATE projects.problems SET resolved=true, resolved_at=now()
+         WHERE kind='reservation_conflict' AND refs->>'reservationId'=$1 AND resolved=false`,
+        [id]
+      );
+      await syncReservationAvailabilityProblems(row.model_id, row.starts_at.toISOString(), row.ends_at.toISOString());
     },
 
     // ── Timings + assignments ──
@@ -1208,6 +1323,7 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
 
     // ── Problems ──
     async listProblems(opts) {
+      await syncAllReservationAvailabilityProblems();
       const rows = await query<ProblemRow>(
         db,
         opts?.includeResolved

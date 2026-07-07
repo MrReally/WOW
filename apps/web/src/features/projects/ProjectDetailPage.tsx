@@ -34,6 +34,8 @@ import {
   useDeleteProjectReminder,
   useProjectPings,
   useProjectReminders,
+  useReservationAvailabilities,
+  useReservationAvailability,
 } from "./hooks.ts";
 import { ResolveReservationSheet } from "./components/ResolveReservationSheet.tsx";
 import { EditProjectSheet } from "./components/EditProjectSheet.tsx";
@@ -122,6 +124,7 @@ export function ProjectDetailPage() {
   const serverInvoiceVersions = useInvoiceVersions(id, canFinance);
   const pings = useProjectPings(id, canAssign);
   const reminders = useProjectReminders(id, canAssign);
+  const reservationAvailabilities = useReservationAvailabilities(reservations.data ?? []);
 
   const setStatus = useSetProjectStatus();
   const addReservation = useCreateReservation();
@@ -144,6 +147,12 @@ export function ProjectDetailPage() {
   const [debouncedResModelQuery, setDebouncedResModelQuery] = useState("");
   const [resModelOpen, setResModelOpen] = useState(false);
   const [resQty, setResQty] = useState("1");
+  const selectedReservationAvailability = useReservationAvailability(
+    resModel,
+    project.data?.startsAt ?? "",
+    project.data?.endsAt ?? "",
+    canReserve && !!project.data && !!resModel
+  );
   const [timingTitle, setTimingTitle] = useState("");
   const [timingStart, setTimingStart] = useState("");
   const [timingEnd, setTimingEnd] = useState("");
@@ -328,14 +337,18 @@ export function ProjectDetailPage() {
             const issuedCount = issuedUnits.length;
             const issued = issuedCount >= r.qty;
             const shownIds = [...new Set([...r.resolvedUnitIds, ...issuedUnits.map((u) => u.id)])];
+            const availability = reservationAvailabilities.data?.[r.id];
             return (
               <Card key={r.id}>
                 <div className="row row--between">
                   <p className="card__title">{modelName(r.modelId)} × {r.qty}</p>
-                  <StatusBadge tone={issued ? "warn" : resolved ? "ok" : "info"}>
-                    {issued ? "выдано" : resolved ? "распределено" : "по модели"}
+                  <StatusBadge tone={availability?.shortage ? "warn" : issued ? "warn" : resolved ? "ok" : "info"}>
+                    {availability?.shortage ? "дефицит" : issued ? "выдано" : resolved ? "распределено" : "по модели"}
                   </StatusBadge>
                 </div>
+                {availability && (
+                  <ReservationAvailabilityLine availability={availability} compact />
+                )}
                 {issuedCount > 0 && (
                   <p className="card__subtitle">выдано {Math.min(issuedCount, r.qty)}/{r.qty}</p>
                 )}
@@ -432,6 +445,9 @@ export function ProjectDetailPage() {
               + Бронь
             </Button>
           </div>
+          {selectedReservationAvailability.data && (
+            <ReservationAvailabilityLine availability={selectedReservationAvailability.data} requested={Number(resQty) || 0} />
+          )}
         </Card>
       )}
         </>
@@ -1148,6 +1164,29 @@ function CandidatePicker({
         ))}
         {results.length === 0 && <span className="card__subtitle">Никого не найдено</span>}
       </div>
+    </div>
+  );
+}
+
+function ReservationAvailabilityLine({
+  availability,
+  requested = 0,
+  compact = false,
+}: {
+  availability: Projects.ReservationAvailabilityDTO;
+  requested?: number;
+  compact?: boolean;
+}) {
+  const shortageAfterRequest = Math.max(0, availability.booked + requested - availability.total);
+  const freeAfterRequest = Math.max(0, availability.total - availability.booked - requested);
+  const shortage = requested > 0 ? shortageAfterRequest : availability.shortage;
+  const free = requested > 0 ? freeAfterRequest : availability.free;
+  return (
+    <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: compact ? 6 : 10 }}>
+      <Chip label={`свободно ${free}`} tone={shortage ? "warn" : "ok"} />
+      <Chip label={`забронировано ${availability.booked}`} tone="neutral" />
+      <Chip label={`всего ${availability.total}`} tone="neutral" />
+      {shortage > 0 && <Chip label={`не хватает ${shortage}`} tone="warn" />}
     </div>
   );
 }

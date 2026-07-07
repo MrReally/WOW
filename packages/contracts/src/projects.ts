@@ -76,6 +76,16 @@ export interface ReservationDTO {
   createdAt: ISODateTime;
 }
 
+export interface ReservationAvailabilityDTO {
+  modelId: ID;
+  startsAt: ISODateTime;
+  endsAt: ISODateTime;
+  total: number;
+  booked: number;
+  free: number;
+  shortage: number;
+}
+
 export interface CreateReservationInput {
   projectId: ID;
   modelId: ID;
@@ -411,6 +421,7 @@ export interface ProjectsService {
   deleteReservation(id: ID): Promise<void>;
   /** Reservations overlapping [from,to] for a model — used for conflict checks. */
   findOverlapping(modelId: ID, from: ISODateTime, to: ISODateTime): Promise<ReservationDTO[]>;
+  reservationAvailability(modelId: ID, from: ISODateTime, to: ISODateTime): Promise<ReservationAvailabilityDTO>;
 
   // Timings + assignments
   /** When opts.forUserId is set, only timings that user is assigned to. */

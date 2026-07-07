@@ -319,6 +319,36 @@ export function useOverlappingReservations(reservation: Projects.ReservationDTO 
   });
 }
 
+export function useReservationAvailability(modelId: string, startsAt: string, endsAt: string, enabled = true) {
+  return useQuery({
+    enabled: enabled && !!modelId && !!startsAt && !!endsAt,
+    queryKey: ["projects", "reservations", "availability", modelId, startsAt, endsAt],
+    queryFn: () =>
+      api.get<Projects.ReservationAvailabilityDTO>(
+        `/api/reservations/availability?modelId=${modelId}&startsAt=${encodeURIComponent(startsAt)}&endsAt=${encodeURIComponent(endsAt)}`
+      ),
+  });
+}
+
+export function useReservationAvailabilities(reservations: Projects.ReservationDTO[]) {
+  const key = reservations.map((r) => `${r.id}:${r.modelId}:${r.startsAt}:${r.endsAt}`).join("|");
+  return useQuery({
+    enabled: reservations.length > 0,
+    queryKey: ["projects", "reservations", "availability-list", key],
+    queryFn: async () => {
+      const rows = await Promise.all(
+        reservations.map(async (r) => [
+          r.id,
+          await api.get<Projects.ReservationAvailabilityDTO>(
+            `/api/reservations/availability?modelId=${r.modelId}&startsAt=${encodeURIComponent(r.startsAt)}&endsAt=${encodeURIComponent(r.endsAt)}`
+          ),
+        ] as const)
+      );
+      return Object.fromEntries(rows) as Record<string, Projects.ReservationAvailabilityDTO>;
+    },
+  });
+}
+
 // All units, for mapping resolved unit ids → asset tags in the reservation view.
 export function useAllUnits() {
   return useQuery({
