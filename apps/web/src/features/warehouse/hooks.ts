@@ -14,6 +14,23 @@ export function useTypes() {
   return useQuery({ queryKey: ["equipment", "types"], queryFn: () => api.get<Equipment.EquipmentTypeDTO[]>("/api/equipment/types") });
 }
 
+export function useCableSettings(enabled = true) {
+  return useQuery({
+    enabled,
+    queryKey: ["equipment", "cable-settings"],
+    queryFn: () => api.get<Equipment.CableSettingsDTO>("/api/equipment/cable-settings"),
+  });
+}
+
+export function useSetCableSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Equipment.CableSettingsDTO) => api.put<Equipment.CableSettingsDTO>("/api/equipment/cable-settings", input),
+    meta: { successMessage: "Настройки кабелей сохранены" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["equipment", "cable-settings"] }),
+  });
+}
+
 export function useModels() {
   return useQuery({ queryKey: ["equipment", "models"], queryFn: () => api.get<Equipment.EquipmentModelDTO[]>("/api/equipment/models") });
 }
@@ -83,7 +100,7 @@ function invalidateEquipment(qc: ReturnType<typeof useQueryClient>) {
 export function useCreateType() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name: string; trackingMode: "serial" | "quantity" }) =>
+    mutationFn: (input: { name: string; trackingMode: Equipment.TrackingMode }) =>
       api.post("/api/equipment/types", input),
     onSuccess: () => invalidateEquipment(qc),
   });
@@ -139,7 +156,7 @@ export function useUpdateModel() {
 export function useSetModelTrackingMode() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, trackingMode }: { id: string; trackingMode: "serial" | "quantity" }) =>
+    mutationFn: ({ id, trackingMode }: { id: string; trackingMode: Equipment.TrackingMode }) =>
       api.patch<Equipment.EquipmentModelDTO>(`/api/equipment/models/${id}/tracking-mode`, { trackingMode }),
     meta: { successMessage: "Режим учёта изменён" },
     onSuccess: () => invalidateEquipment(qc),

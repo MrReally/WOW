@@ -124,15 +124,15 @@ describe("Tech pickup/return → некомплект", () => {
 
   it("tracks cables by quantity (no serials) through issue/return", async () => {
     const { equipment, projects } = wiring;
-    const type = await equipment.service.createType({ name: `Cables-${Date.now()}`, trackingMode: "quantity" });
+    const type = await equipment.service.createType({ name: `Cables-${Date.now()}`, trackingMode: "cable" });
     const model = await equipment.service.createModel({
       typeId: type.id,
       name: "DMX 10m",
       unitCostEUR: 20,
       dailyPriceEUR: 2,
-      attrs: { cableType: "DMX", lengthM: 10, connectors: "XLR5" },
+      attrs: { cableType: "DMX", lengthM: 10, sideAConnector: "XLR 5 pin male", sideAQty: 1, sideBConnector: "XLR 5 pin female", sideBQty: 1 },
     });
-    expect(model.trackingMode).toBe("quantity");
+    expect(model.trackingMode).toBe("cable");
 
     await equipment.service.setModelStockTotal(model.id, 50);
     let stock = await equipment.service.modelStock(model.id);
@@ -172,7 +172,7 @@ describe("Tech pickup/return → некомплект", () => {
     const result = await equipment.service.importCatalog([
       { type: `ImpFix-${Date.now()}`, trackingMode: "serial", model: "Imp Fixture", unitCostEUR: 100, dailyPriceEUR: 5, assetTag: `${tag}-1` },
       { type: `ImpFix-${Date.now()}`, trackingMode: "serial", model: "Imp Fixture", unitCostEUR: 100, dailyPriceEUR: 5, assetTag: `${tag}-2` },
-      { type: `ImpCab-${Date.now()}`, trackingMode: "quantity", model: "Imp Cable", qty: 25, cableType: "DMX", lengthM: 3, connectors: "XLR3" },
+      { type: `ImpCab-${Date.now()}`, trackingMode: "cable", model: "Imp Cable", qty: 25, cableType: "DMX", lengthM: 3, sideAConnector: "XLR 3 pin male", sideAQty: 1, sideBConnector: "XLR 3 pin female", sideBQty: 1 },
     ]);
     expect(result.unitsCreated).toBe(2);
     expect(result.stockUpdated).toBe(1);

@@ -27,7 +27,9 @@ import {
   useCreateWarehouse,
   useUpdateWarehouse,
   useUpdateType,
+  useCableSettings,
 } from "./hooks.ts";
+import { formatCableModel } from "./cables.ts";
 import { AddModelSheet } from "./components/AddModelSheet.tsx";
 import { EditModelSheet } from "./components/EditModelSheet.tsx";
 import { ImportSheet } from "./components/ImportSheet.tsx";
@@ -96,12 +98,13 @@ function ModelRow({ model, units, last, onEdit }: { model: Equipment.EquipmentMo
   );
 }
 
-type WarehouseTab = "dashboard" | "repair" | "stocklist" | "models";
+type WarehouseTab = "dashboard" | "repair" | "stocklist" | "cables" | "models";
 
 const WAREHOUSE_TABS: { id: WarehouseTab; label: string; shortLabel: string; tone: "accent" | "warn" | "info" | "ok" }[] = [
   { id: "dashboard", label: "Dashboard", shortLabel: "Dash", tone: "accent" },
   { id: "repair", label: "Ремонт", shortLabel: "Ремонт", tone: "warn" },
   { id: "stocklist", label: "Stocklist", shortLabel: "Stock", tone: "ok" },
+  { id: "cables", label: "Кабели", shortLabel: "Кабели", tone: "warn" },
   { id: "models", label: "Модели", shortLabel: "Модели", tone: "info" },
 ];
 
@@ -120,6 +123,8 @@ function WarehouseGlyph({ type }: { type: WarehouseTab }) {
       return <svg viewBox="0 0 24 24"><path d="M14.7 5.3l4 4-3.4 3.4-4-4z" {...p} /><path d="M11.5 8.5L5 15v4h4l6.5-6.5" {...p} /><path d="M5 19l4-4" {...p} /></svg>;
     case "stocklist":
       return <svg viewBox="0 0 24 24"><rect x="4.5" y="6" width="15" height="12.5" rx="2" {...p} /><path d="M4.5 10h15M8 14h4M15 14h1" {...p} /></svg>;
+    case "cables":
+      return <svg viewBox="0 0 24 24"><path d="M6 8c3 0 3 8 6 8s3-8 6-8" {...p} /><circle cx="5" cy="8" r="1.6" {...p} /><circle cx="19" cy="8" r="1.6" {...p} /></svg>;
     case "models":
       return <svg viewBox="0 0 24 24"><path d="M12 4.5l7 3.8-7 3.8-7-3.8z" {...p} /><path d="M5 12l7 3.8 7-3.8M5 15.7l7 3.8 7-3.8" {...p} /></svg>;
     default:
@@ -144,6 +149,7 @@ export function WarehousePage() {
   const projects = useProjectsForOps();
   const openRepairs = useOpenRepairs();
   const openHandovers = useOpenHandovers();
+  const cableSettings = useCableSettings();
 
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -212,13 +218,14 @@ export function WarehousePage() {
   };
   const query = search.trim().toLowerCase();
   const modelMatches = (m: Equipment.EquipmentModelDTO) =>
-    !query || [m.name, m.manufacturer ?? "", getTypeName(m.typeId)].some((v) => v.toLowerCase().includes(query));
+    !query || [m.name, m.manufacturer ?? "", getTypeName(m.typeId), m.trackingMode === "cable" ? formatCableModel(m, cableSettings.data?.nameFormat) : ""].some((v) => v.toLowerCase().includes(query));
   const unitMatches = (u: Equipment.EquipmentUnitDTO) => {
     const m = allModels.find((x) => x.id === u.modelId);
     return !query || [u.assetTag, u.serial ?? "", m?.name ?? "", m?.manufacturer ?? "", getTypeName(m?.typeId)].some((v) => v.toLowerCase().includes(query));
   };
   const serialModels = allModels.filter((m) => m.trackingMode === "serial" && modelMatches(m));
-  const cableModels = allModels.filter((m) => m.trackingMode === "quantity" && modelMatches(m));
+  const quantityModels = allModels.filter((m) => m.trackingMode === "quantity" && modelMatches(m));
+  const cableModels = allModels.filter((m) => m.trackingMode === "cable" && modelMatches(m));
   const filteredByWarehouse = warehouseFilter === "all" ? allUnits : allUnits.filter((u) => u.warehouseId === warehouseFilter);
   const filteredByStatus = statusFilter === "all" ? filteredByWarehouse : filteredByWarehouse.filter((u) => u.status === statusFilter);
   const filtered = filteredByStatus.filter(unitMatches);
@@ -373,24 +380,54 @@ export function WarehousePage() {
               ))}
             </div>
           )}
-          {cableModels.length > 0 && (
+          {quantityModels.length > 0 && (
             <>
-              <SectionHead label="Кабели (по количеству)" meta={`${cableModels.length}`} />
+              <SectionHead label="Количество" meta={`${quantityModels.length}`} />
               <div className="card" style={{ padding: "2px 16px" }}>
-                {cableModels.map((m, i) => (
+                {quantityModels.map((m, i) => (
                   <CableRow
                     key={m.id}
                     model={m}
                     warehouseId={warehouseFilter === "all" ? null : warehouseFilter}
                     onMove={() => setCableModel(m)}
                     onEdit={canCatalog ? () => setEditModel(m) : undefined}
-                    last={i === cableModels.length - 1}
+                    last={i === quantityModels.length - 1}
                   />
                 ))}
               </div>
             </>
           )}
         </>
+      )}
+    </>
+  );
+  const cableSection = (
+    <>
+      {warehouseSelector}
+      <Field label="Поиск кабеля">
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Разъём, длина, тип" />
+      </Field>
+      {canCatalog && (
+        <div className="row" style={{ marginBottom: 10 }}>
+          <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Кабель</Button>
+        </div>
+      )}
+      <SectionHead label="Кабели" meta={`${cableModels.length}`} />
+      {cableModels.length === 0 ? (
+        <EmptyState title="Нет кабелей" />
+      ) : (
+        <div className="card" style={{ padding: "2px 16px" }}>
+          {cableModels.map((m, i) => (
+            <CableRow
+              key={m.id}
+              model={m}
+              warehouseId={warehouseFilter === "all" ? null : warehouseFilter}
+              onMove={() => setCableModel(m)}
+              onEdit={canCatalog ? () => setEditModel(m) : undefined}
+              last={i === cableModels.length - 1}
+            />
+          ))}
+        </div>
       )}
     </>
   );
@@ -479,6 +516,7 @@ export function WarehousePage() {
           {unitSection}
         </>
       )}
+      {activeTab === "cables" && cableSection}
       {activeTab === "models" && modelSection}
 
       {canEdit && (
@@ -495,7 +533,7 @@ export function WarehousePage() {
       <div className="project-tabbar" role="tablist" aria-label="Warehouse">
         {WAREHOUSE_TABS.map((tab) => {
           const isActive = activeTab === tab.id;
-          const count = tab.id === "repair" ? repairCount : tab.id === "stocklist" ? filtered.length : tab.id === "models" ? allModels.length : 0;
+          const count = tab.id === "repair" ? repairCount : tab.id === "stocklist" ? filtered.length : tab.id === "cables" ? cableModels.length : tab.id === "models" ? serialModels.length + quantityModels.length : 0;
           return (
             <button
               key={tab.id}

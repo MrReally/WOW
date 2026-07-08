@@ -222,7 +222,7 @@ export function ProjectDetailPage() {
   const reservationCount = (reservations.data ?? []).length;
   const reservedUnitCount = (reservations.data ?? []).reduce((sum, r) => {
     const model = (models.data ?? []).find((m) => m.id === r.modelId);
-    return model?.trackingMode === "quantity" ? sum : sum + r.qty;
+    return model?.trackingMode === "quantity" || model?.trackingMode === "cable" ? sum : sum + r.qty;
   }, 0);
   const timingCount = (timings.data ?? []).length;
   const teamCount = (projectRoles.data ?? []).length > 0
@@ -1297,7 +1297,7 @@ function ModelAutocomplete({
                 }}
               >
                 <span style={{ display: "block", fontWeight: 800 }}>{model.name}</span>
-                <span className="card__subtitle">{model.trackingMode === "quantity" ? "quantity" : "serial"} · {eur(model.dailyPriceEUR)}/сут</span>
+                <span className="card__subtitle">{model.trackingMode === "cable" ? "cable" : model.trackingMode === "quantity" ? "quantity" : "serial"} · {eur(model.dailyPriceEUR)}/сут</span>
               </button>
             ))
           )}

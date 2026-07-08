@@ -321,7 +321,7 @@ const stageRequiredMarks: Partial<Record<Projects.ProjectChecklistGroup, Project
 export function createProjectsService(db: Sql, bus: EventBus): Projects.ProjectsService {
   async function computeReservationAvailability(modelId: ID, from: ISODateTime, to: ISODateTime): Promise<Projects.ReservationAvailabilityDTO> {
     assertRange(from, to);
-    const model = await one<{ tracking_mode: "serial" | "quantity" }>(
+    const model = await one<{ tracking_mode: "serial" | "quantity" | "cable" }>(
       db,
       `SELECT t.tracking_mode
        FROM equipment.models m
@@ -330,7 +330,7 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       [modelId]
     );
     if (!model) throw NotFound("model", modelId);
-    const totalRow = model.tracking_mode === "quantity"
+    const totalRow = model.tracking_mode === "quantity" || model.tracking_mode === "cable"
       ? await one<{ total: string }>(
           db,
           `SELECT COALESCE(SUM(total_qty),0)::text AS total FROM equipment.model_stock WHERE model_id=$1`,

@@ -6,6 +6,7 @@ import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
 import { useFxRates, useSetFxRate, useResetData, useResetStatus, useSetTelegramInboxSettings, useTelegramInboxSettings } from "./hooks.ts";
 import { RoleEditor } from "./components/RoleEditor.tsx";
+import { useCableSettings, useSetCableSettings } from "../warehouse/hooks.ts";
 
 export function SettingsPage() {
   const { theme, toggle } = useTheme();
@@ -18,13 +19,23 @@ export function SettingsPage() {
   const canTelegramInbox = can("telegram.inbox.manage", "people.manage");
   const telegramInbox = useTelegramInboxSettings(canTelegramInbox);
   const setTelegramInbox = useSetTelegramInboxSettings();
+  const cableSettings = useCableSettings(can("warehouse.catalog.manage"));
+  const setCableSettings = useSetCableSettings();
   const [workTelegram, setWorkTelegram] = useState("");
+  const [connectors, setConnectors] = useState("");
+  const [nameFormat, setNameFormat] = useState("");
 
   useEffect(() => {
     if (telegramInbox.data) {
       setWorkTelegram(telegramInbox.data.workUsername ? `@${telegramInbox.data.workUsername.replace(/^@/, "")}` : "");
     }
   }, [telegramInbox.data]);
+
+  useEffect(() => {
+    if (!cableSettings.data) return;
+    setConnectors(cableSettings.data.connectors.join("\n"));
+    setNameFormat(cableSettings.data.nameFormat.join(" "));
+  }, [cableSettings.data]);
 
   return (
     <div className="stack">
@@ -55,6 +66,44 @@ export function SettingsPage() {
               </Button>
             </div>
             <p className="card__subtitle" style={{ marginTop: 8 }}>/inbox · /exit</p>
+          </Card>
+        </>
+      )}
+
+      {can("warehouse.catalog.manage") && (
+        <>
+          <SectionTitle>Кабели</SectionTitle>
+          <Card>
+            <div className="stack" style={{ gap: 10 }}>
+              <div>
+                <p className="card__title">Разъёмы</p>
+                <textarea
+                  className="input"
+                  rows={6}
+                  value={connectors}
+                  onChange={(e) => setConnectors(e.target.value)}
+                  placeholder={"XLR 3 pin male\nXLR 3 pin female\nSchuko plug male"}
+                  style={{ resize: "vertical", minHeight: 120 }}
+                />
+              </div>
+              <div>
+                <p className="card__title">Формат имени</p>
+                <Input value={nameFormat} onChange={(e) => setNameFormat(e.target.value)} placeholder="sideA arrow sideB length" />
+                <p className="card__subtitle" style={{ marginTop: 6 }}>Токены: sideA, arrow, sideB, length, type, name</p>
+              </div>
+              <Button
+                variant="secondary"
+                disabled={setCableSettings.isPending}
+                onClick={() =>
+                  setCableSettings.mutate({
+                    connectors: connectors.split("\n").map((x) => x.trim()).filter(Boolean),
+                    nameFormat: nameFormat.split(/\s+/).map((x) => x.trim()).filter(Boolean),
+                  })
+                }
+              >
+                Сохранить
+              </Button>
+            </div>
           </Card>
         </>
       )}

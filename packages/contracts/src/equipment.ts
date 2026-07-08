@@ -1,5 +1,7 @@
 import type { ID, ISODateTime, Problem } from "./common.js";
 
+export type TrackingMode = "serial" | "quantity" | "cable";
+
 // ── Status model (no "written off" status, by design) ────────────────────────
 
 export type UnitStatus =
@@ -26,8 +28,8 @@ export const UNIT_STATUSES: UnitStatus[] = [
 export interface EquipmentTypeDTO {
   id: ID;
   name: string;
-  /** Cables are counted quantitatively per model, not by serial unit. */
-  trackingMode: "serial" | "quantity";
+  /** Serial units, generic counted stock, or cable stock with cable attrs. */
+  trackingMode: TrackingMode;
   createdAt: ISODateTime;
 }
 
@@ -35,14 +37,14 @@ export interface EquipmentModelDTO {
   id: ID;
   typeId: ID;
   /** Inherited from the model's type — serial units vs counted quantity. */
-  trackingMode: "serial" | "quantity";
+  trackingMode: TrackingMode;
   name: string;
   manufacturer: string | null;
   /** Purchase/replacement cost in EUR — basis for payback. */
   unitCostEUR: number;
   /** Default daily rental price in EUR. */
   dailyPriceEUR: number;
-  /** For quantity-tracked models (cables): properties of the model. */
+  /** For cable models: structured cable properties. */
   attrs: CableAttrs | Record<string, unknown> | null;
   /** Component model ids required when issuing a unit of this model. */
   requiredComponentModelIds: ID[];
@@ -50,9 +52,19 @@ export interface EquipmentModelDTO {
 }
 
 export interface CableAttrs {
-  cableType: string; // e.g. "DMX", "PowerCON", "XLR"
+  cableType: string; // e.g. "DMX", "Power", "Audio"
   lengthM: number;
-  connectors: string; // e.g. "XLR3 male/female"
+  sideAConnector: string;
+  sideAQty: number;
+  sideBConnector: string;
+  sideBQty: number;
+  /** Legacy/import compatibility. */
+  connectors?: string | null;
+}
+
+export interface CableSettingsDTO {
+  connectors: string[];
+  nameFormat: string[];
 }
 
 export interface EquipmentUnitDTO {
@@ -188,7 +200,7 @@ export interface TransferQuantityInput {
 
 export interface ImportRow {
   type: string;
-  trackingMode: "serial" | "quantity";
+  trackingMode: TrackingMode;
   model: string;
   manufacturer?: string | null;
   unitCostEUR?: number;
@@ -201,6 +213,10 @@ export interface ImportRow {
   /** Cable attributes (quantity rows). */
   cableType?: string | null;
   lengthM?: number | null;
+  sideAConnector?: string | null;
+  sideAQty?: number | null;
+  sideBConnector?: string | null;
+  sideBQty?: number | null;
   connectors?: string | null;
 }
 
@@ -291,13 +307,15 @@ export interface EquipmentService {
 
   // Catalog
   listTypes(): Promise<EquipmentTypeDTO[]>;
-  createType(input: { name: string; trackingMode: "serial" | "quantity" }): Promise<EquipmentTypeDTO>;
+  getCableSettings(): Promise<CableSettingsDTO>;
+  updateCableSettings(input: CableSettingsDTO): Promise<CableSettingsDTO>;
+  createType(input: { name: string; trackingMode: TrackingMode }): Promise<EquipmentTypeDTO>;
   updateType(id: ID, input: { name?: string }): Promise<EquipmentTypeDTO>;
   listModels(typeId?: ID): Promise<EquipmentModelDTO[]>;
   getModel(id: ID): Promise<EquipmentModelDTO | null>;
   createModel(input: CreateModelInput): Promise<EquipmentModelDTO>;
   updateModel(id: ID, input: UpdateModelInput): Promise<EquipmentModelDTO>;
-  setModelTrackingMode(id: ID, trackingMode: "serial" | "quantity"): Promise<EquipmentModelDTO>;
+  setModelTrackingMode(id: ID, trackingMode: TrackingMode): Promise<EquipmentModelDTO>;
   deleteModel(id: ID): Promise<void>;
 
   // Units

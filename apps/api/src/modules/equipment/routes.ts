@@ -8,7 +8,11 @@ import { parseCatalogCsv } from "./csv.js";
 
 const createTypeSchema = z.object({
   name: z.string().min(1),
-  trackingMode: z.enum(["serial", "quantity"]),
+  trackingMode: z.enum(["serial", "quantity", "cable"]),
+});
+const cableSettingsSchema = z.object({
+  connectors: z.array(z.string().min(1)).max(200),
+  nameFormat: z.array(z.string().min(1)).max(12),
 });
 const updateTypeSchema = z.object({
   name: z.string().min(1).optional(),
@@ -39,7 +43,7 @@ const updateModelSchema = z.object({
   dailyPriceEUR: z.number().nonnegative().optional(),
   attrs: z.record(z.unknown()).nullable().optional(),
 });
-const modelTrackingSchema = z.object({ trackingMode: z.enum(["serial", "quantity"]) });
+const modelTrackingSchema = z.object({ trackingMode: z.enum(["serial", "quantity", "cable"]) });
 const modelIdParamsSchema = z.object({ id: z.string().uuid() });
 
 const createUnitSchema = z.object({
@@ -136,6 +140,16 @@ export function registerEquipmentRoutes(
     auth.isOwner || auth.permissions.includes("warehouse.costs.view");
   const hideRepairCost = (repair: Equipment.RepairDTO): Equipment.RepairDTO => ({ ...repair, estCostEUR: null, costEUR: null });
   const hideHandoverCost = (handover: Equipment.HandoverDTO): Equipment.HandoverDTO => ({ ...handover, costEUR: null });
+
+  app.get("/api/equipment/cable-settings", async (req) => {
+    await ctx.auth(req);
+    return service.getCableSettings();
+  });
+  app.put("/api/equipment/cable-settings", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.catalog.manage");
+    return service.updateCableSettings(cableSettingsSchema.parse(req.body));
+  });
 
   // ── Warehouses ──
   app.get("/api/equipment/warehouses", async (req) => {

@@ -56,6 +56,10 @@ const HEADERS = [
   "qty",
   "cableType",
   "lengthM",
+  "sideAConnector",
+  "sideAQty",
+  "sideBConnector",
+  "sideBQty",
   "connectors",
 ] as const;
 
@@ -83,9 +87,10 @@ export function parseCatalogCsv(text: string): Equipment.ImportRow[] {
 
   return grid.slice(1).map((cols) => {
     const tm = (at(cols, "trackingMode") ?? "serial").toLowerCase();
+    const cableByFields = !!(at(cols, "sideAConnector") || at(cols, "sideBConnector") || at(cols, "lengthM"));
     return {
       type: at(cols, "type") ?? "",
-      trackingMode: tm === "quantity" ? "quantity" : "serial",
+      trackingMode: tm === "cable" || cableByFields ? "cable" : tm === "quantity" ? "quantity" : "serial",
       model: at(cols, "model") ?? "",
       manufacturer: at(cols, "manufacturer") || null,
       unitCostEUR: num(at(cols, "unitCostEUR")),
@@ -95,6 +100,10 @@ export function parseCatalogCsv(text: string): Equipment.ImportRow[] {
       qty: num(at(cols, "qty")) ?? null,
       cableType: at(cols, "cableType") || null,
       lengthM: num(at(cols, "lengthM")) ?? null,
+      sideAConnector: at(cols, "sideAConnector") || null,
+      sideAQty: num(at(cols, "sideAQty")) ?? null,
+      sideBConnector: at(cols, "sideBConnector") || null,
+      sideBQty: num(at(cols, "sideBQty")) ?? null,
       connectors: at(cols, "connectors") || null,
     };
   });

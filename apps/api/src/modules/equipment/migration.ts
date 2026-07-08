@@ -4,9 +4,27 @@ CREATE SCHEMA IF NOT EXISTS equipment;
 CREATE TABLE IF NOT EXISTS equipment.types (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name          text NOT NULL,
-  tracking_mode text NOT NULL CHECK (tracking_mode IN ('serial','quantity')),
+  tracking_mode text NOT NULL CHECK (tracking_mode IN ('serial','quantity','cable')),
   created_at    timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE equipment.types DROP CONSTRAINT IF EXISTS types_tracking_mode_check;
+ALTER TABLE equipment.types ADD CONSTRAINT types_tracking_mode_check CHECK (tracking_mode IN ('serial','quantity','cable'));
+UPDATE equipment.types
+SET tracking_mode='cable'
+WHERE tracking_mode='quantity' AND lower(name) IN ('кабели','cables','cable','кабель');
+
+CREATE TABLE IF NOT EXISTS equipment.settings (
+  id integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  cable_connectors text[] NOT NULL DEFAULT ARRAY[
+    'XLR 3 pin male','XLR 3 pin female','XLR 5 pin male','XLR 5 pin female',
+    'Jack 6.3 TRS','Jack 6.3 TS','Jack 3.5 TRS',
+    'Schuko plug male','Schuko socket female','PowerCON TRUE1 in','PowerCON TRUE1 out',
+    'CEE 16A male','CEE 16A female','CEE 32A male','CEE 32A female',
+    'RCA male','RCA female','etherCON','RJ45'
+  ],
+  cable_name_format text[] NOT NULL DEFAULT ARRAY['sideA','arrow','sideB','length']
+);
+INSERT INTO equipment.settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS equipment.models (
   id                           uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -8,13 +8,13 @@ import type { EventBus } from "../../core/eventBus.js";
 interface TypeRow {
   id: string;
   name: string;
-  tracking_mode: "serial" | "quantity";
+  tracking_mode: Equipment.TrackingMode;
   created_at: Date;
 }
 interface ModelRow {
   id: string;
   type_id: string;
-  tracking_mode: "serial" | "quantity";
+  tracking_mode: Equipment.TrackingMode;
   name: string;
   manufacturer: string | null;
   unit_cost_eur: string;
@@ -56,6 +56,10 @@ interface WarehouseRow {
   address: string | null;
   is_default: boolean;
   created_at: Date;
+}
+interface EquipmentSettingsRow {
+  cable_connectors: string[];
+  cable_name_format: string[];
 }
 interface ProblemRow {
   id: string;
@@ -120,6 +124,10 @@ const warehouseDTO = (r: WarehouseRow): Equipment.WarehouseDTO => ({
   address: r.address,
   isDefault: r.is_default,
   createdAt: r.created_at.toISOString(),
+});
+const cableSettingsDTO = (r: EquipmentSettingsRow): Equipment.CableSettingsDTO => ({
+  connectors: r.cable_connectors,
+  nameFormat: r.cable_name_format,
 });
 const problemDTO = (r: ProblemRow): Problem => ({
   id: r.id,
@@ -268,6 +276,22 @@ export function createEquipmentService(
     if (!row) throw NotFound("warehouse", id);
   }
 
+  async function ensureCableSettings(client: Sql = db): Promise<EquipmentSettingsRow> {
+    let row = await one<EquipmentSettingsRow>(
+      client,
+      `SELECT cable_connectors, cable_name_format FROM equipment.settings WHERE id=1`
+    );
+    if (!row) {
+      row = await one<EquipmentSettingsRow>(
+        client,
+        `INSERT INTO equipment.settings (id) VALUES (1)
+         ON CONFLICT (id) DO UPDATE SET id=EXCLUDED.id
+         RETURNING cable_connectors, cable_name_format`
+      );
+    }
+    return row!;
+  }
+
   return {
     // ── Warehouses ──
     async listWarehouses() {
@@ -308,6 +332,22 @@ export function createEquipmentService(
     },
 
     // ── Catalog: types ──
+    async getCableSettings() {
+      return cableSettingsDTO(await ensureCableSettings());
+    },
+    async updateCableSettings(input) {
+      const connectors = [...new Set(input.connectors.map((x) => x.trim()).filter(Boolean))];
+      const format = input.nameFormat.map((x) => x.trim()).filter(Boolean);
+      const row = await one<EquipmentSettingsRow>(
+        db,
+        `INSERT INTO equipment.settings (id, cable_connectors, cable_name_format)
+         VALUES (1,$1,$2)
+         ON CONFLICT (id) DO UPDATE SET cable_connectors=$1, cable_name_format=$2
+         RETURNING cable_connectors, cable_name_format`,
+        [connectors, format.length ? format : ["sideA", "arrow", "sideB", "length"]]
+      );
+      return cableSettingsDTO(row!);
+    },
     async listTypes() {
       const rows = await query<TypeRow>(db, `SELECT * FROM equipment.types ORDER BY name`);
       return rows.map(typeDTO);
@@ -408,7 +448,7 @@ export function createEquipmentService(
            RETURNING *`,
           [existing.type_id, trackingMode]
         );
-        if (trackingMode === "quantity") {
+        if (trackingMode === "quantity" || trackingMode === "cable") {
           const rows = await query<{ warehouse_id: string | null; count: string }>(
             client,
             `SELECT warehouse_id, COUNT(*)::text AS count
@@ -555,7 +595,7 @@ export function createEquipmentService(
       if (!model) throw NotFound("model", modelId);
       if (warehouseId) await assertWarehouse(warehouseId);
 
-      if (model.trackingMode === "quantity") {
+      if (model.trackingMode === "quantity" || model.trackingMode === "cable") {
         const stock = warehouseId
           ? await one<{ total_qty: number }>(
               db,
@@ -639,7 +679,7 @@ export function createEquipmentService(
     async setModelStockTotal(modelId, total, warehouseIdInput) {
       const model = await this.getModel(modelId);
       if (!model) throw NotFound("model", modelId);
-      if (model.trackingMode !== "quantity") throw BadRequest("model is not quantity-tracked");
+      if (model.trackingMode !== "quantity" && model.trackingMode !== "cable") throw BadRequest("model is not quantity-tracked");
       const warehouseId = warehouseIdInput ?? await defaultWarehouseId();
       await assertWarehouse(warehouseId);
       await query(
@@ -788,11 +828,11 @@ export function createEquipmentService(
         skipped: 0,
         errors: [],
       };
-      const typeCache = new Map<string, { id: string; trackingMode: "serial" | "quantity" }>();
+      const typeCache = new Map<string, { id: string; trackingMode: Equipment.TrackingMode }>();
       const modelCache = new Map<string, string>(); // `${typeId}::${name}` -> modelId
       const warehouseId = await defaultWarehouseId();
 
-      const findOrCreateType = async (name: string, mode: "serial" | "quantity") => {
+      const findOrCreateType = async (name: string, mode: Equipment.TrackingMode) => {
         const key = name.toLowerCase();
         const cached = typeCache.get(key);
         if (cached) return cached;
@@ -822,7 +862,15 @@ export function createEquipmentService(
         if (!m) {
           const attrs =
             row.cableType || row.lengthM != null || row.connectors
-              ? { cableType: row.cableType ?? "", lengthM: row.lengthM ?? 0, connectors: row.connectors ?? "" }
+              ? {
+                  cableType: row.cableType ?? "",
+                  lengthM: row.lengthM ?? 0,
+                  sideAConnector: row.sideAConnector ?? row.connectors ?? "",
+                  sideAQty: row.sideAQty ?? 1,
+                  sideBConnector: row.sideBConnector ?? row.connectors ?? "",
+                  sideBQty: row.sideBQty ?? 1,
+                  connectors: row.connectors ?? null,
+                }
               : null;
           await query(
             db,
@@ -851,7 +899,7 @@ export function createEquipmentService(
           const type = await findOrCreateType(row.type, row.trackingMode);
           const modelId = await findOrCreateModel(row, type.id);
 
-          if (type.trackingMode === "quantity") {
+          if (type.trackingMode === "quantity" || type.trackingMode === "cable") {
             const qty = row.qty ?? 0;
             if (qty > 0) {
               await query(

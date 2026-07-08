@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import type { Equipment, Projects } from "@sever/contracts";
 import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
-import { useIssueQty, useReturnQty, useModelStock, useModelStockAtWarehouse, useTransferQty, useRepairQty, useServiceQty } from "../hooks.ts";
+import { useCableSettings, useIssueQty, useReturnQty, useModelStock, useModelStockAtWarehouse, useTransferQty, useRepairQty, useServiceQty } from "../hooks.ts";
 import { useSession } from "../../../app/session.ts";
+import { cableAttrs, formatCableModel } from "../cables.ts";
 
 interface Props {
   model: Equipment.EquipmentModelDTO | null;
@@ -26,6 +27,7 @@ export function CableMoveSheet({ model, projects, warehouses, selectedWarehouseI
   const transfer = useTransferQty();
   const repair = useRepairQty();
   const service = useServiceQty();
+  const cableSettings = useCableSettings(!!model && model.trackingMode === "cable");
   const [note, setNote] = useState("");
   const [cost, setCost] = useState("");
   const stock = useModelStock(model?.id ?? "", !!model);
@@ -57,7 +59,7 @@ export function CableMoveSheet({ model, projects, warehouses, selectedWarehouseI
   const warehouseOptions = warehouses.map((w) => ({ value: w.id, label: w.name }));
 
   return (
-    <Sheet open={!!model} onClose={onClose} title={model.name}>
+    <Sheet open={!!model} onClose={onClose} title={model.trackingMode === "cable" ? formatCableModel(model, cableSettings.data?.nameFormat) : model.name}>
       {stock.data && (
         <div className="card card--flat" style={{ marginBottom: 14 }}>
           <div className="card__subtitle" style={{ color: "var(--text2)" }}>
@@ -121,14 +123,16 @@ export function CableRow({
 }) {
   const aggregateStock = useModelStock(model.id, !warehouseId);
   const scopedStock = useModelStockAtWarehouse(model.id, warehouseId ?? "", !!warehouseId);
+  const settings = useCableSettings(model.trackingMode === "cable");
   const stock = warehouseId ? scopedStock : aggregateStock;
-  const attrs = model.attrs as Equipment.CableAttrs | null;
+  const attrs = cableAttrs(model);
+  const title = model.trackingMode === "cable" ? formatCableModel(model, settings.data?.nameFormat) : model.name;
   return (
     <div className={`lrow ${onEdit ? "card--tappable" : ""}`} style={{ borderBottom: last ? "none" : undefined }} onClick={onEdit}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="lrow__title">{model.name}</div>
+        <div className="lrow__title">{title}</div>
         <div className="lrow__detail">
-          {attrs?.cableType ? `${attrs.cableType} · ${attrs.lengthM}m` : "кабель"}
+          {model.trackingMode === "cable" ? (attrs?.cableType || "кабель") : "количество"}
           {stock.data ? ` · свободно ${stock.data.inStock}/${stock.data.total}` : ""}
         </div>
       </div>

@@ -11,6 +11,7 @@ import {
   useWarehouses,
 } from "./hooks.ts";
 import { RepairContractorPanel } from "./components/RepairContractor.tsx";
+import { cableAttrs } from "./cables.ts";
 
 const journalActionLabel: Record<Equipment.JournalAction, string> = {
   created: "Создано",
@@ -90,7 +91,7 @@ export function UnitDetailPage() {
 
   const model = (models.data ?? []).find((m) => m.id === u.modelId) ?? null;
   const type = model ? (types.data ?? []).find((t) => t.id === model.typeId) ?? null : null;
-  const cable = model?.attrs && typeof model.attrs === "object" && "cableType" in model.attrs ? (model.attrs as Equipment.CableAttrs) : null;
+  const cable = model ? cableAttrs(model) : null;
   const projectName = u.currentProjectId ? (projects.data ?? []).find((p) => p.id === u.currentProjectId)?.name ?? null : null;
   const warehouseList = warehouses.data ?? [];
   const warehouseName = (wid: string | null) => warehouseList.find((w) => w.id === wid)?.name ?? "—";
@@ -143,7 +144,8 @@ export function UnitDetailPage() {
           <>
             <InfoRow label="Кабель" value={cable.cableType} />
             <InfoRow label="Длина" value={`${cable.lengthM} м`} />
-            <InfoRow label="Разъёмы" value={cable.connectors} />
+            <InfoRow label="Сторона A" value={`${cable.sideAQty}x ${cable.sideAConnector}`} />
+            <InfoRow label="Сторона B" value={`${cable.sideBQty}x ${cable.sideBConnector}`} />
           </>
         )}
       </Card>

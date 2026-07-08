@@ -44,7 +44,7 @@ export async function seedDemo(s: SeedServices): Promise<{ summary: Record<strin
   const tLight = await s.equipment.createType({ name: "Световые приборы", trackingMode: "serial" });
   const tSound = await s.equipment.createType({ name: "Звук", trackingMode: "serial" });
   const tHaze = await s.equipment.createType({ name: "Дым / Хейз", trackingMode: "serial" });
-  const tCable = await s.equipment.createType({ name: "Кабели", trackingMode: "quantity" });
+  const tCable = await s.equipment.createType({ name: "Кабели", trackingMode: "cable" });
 
   // ── Models ──
   const mMegaPointe = await s.equipment.createModel({ typeId: tLight.id, name: "Robe MegaPointe", manufacturer: "Robe", unitCostEUR: 6000, dailyPriceEUR: 120 });
@@ -55,10 +55,10 @@ export async function seedDemo(s: SeedServices): Promise<{ summary: Record<strin
   const mSpeaker = await s.equipment.createModel({ typeId: tSound.id, name: "QSC K12.2", manufacturer: "QSC", unitCostEUR: 1200, dailyPriceEUR: 45 });
   const mHazer = await s.equipment.createModel({ typeId: tHaze.id, name: "Antari Z1500", manufacturer: "Antari", unitCostEUR: 900, dailyPriceEUR: 40 });
 
-  const mDmx5 = await s.equipment.createModel({ typeId: tCable.id, name: "DMX 5m XLR5", unitCostEUR: 12, dailyPriceEUR: 1, attrs: { cableType: "DMX", lengthM: 5, connectors: "XLR5 male/female" } });
-  const mDmx10 = await s.equipment.createModel({ typeId: tCable.id, name: "DMX 10m XLR5", unitCostEUR: 18, dailyPriceEUR: 1, attrs: { cableType: "DMX", lengthM: 10, connectors: "XLR5 male/female" } });
-  const mPower10 = await s.equipment.createModel({ typeId: tCable.id, name: "PowerCON 10m", unitCostEUR: 22, dailyPriceEUR: 1, attrs: { cableType: "Power", lengthM: 10, connectors: "PowerCON in/out" } });
-  const mXlr15 = await s.equipment.createModel({ typeId: tCable.id, name: "XLR 15m audio", unitCostEUR: 20, dailyPriceEUR: 1, attrs: { cableType: "Audio", lengthM: 15, connectors: "XLR3" } });
+  const mDmx5 = await s.equipment.createModel({ typeId: tCable.id, name: "XLR5 -> XLR5 5m", unitCostEUR: 12, dailyPriceEUR: 1, attrs: { cableType: "DMX", lengthM: 5, sideAConnector: "XLR 5 pin male", sideAQty: 1, sideBConnector: "XLR 5 pin female", sideBQty: 1 } });
+  const mDmx10 = await s.equipment.createModel({ typeId: tCable.id, name: "XLR5 -> XLR5 10m", unitCostEUR: 18, dailyPriceEUR: 1, attrs: { cableType: "DMX", lengthM: 10, sideAConnector: "XLR 5 pin male", sideAQty: 1, sideBConnector: "XLR 5 pin female", sideBQty: 1 } });
+  const mPower10 = await s.equipment.createModel({ typeId: tCable.id, name: "PowerCON -> PowerCON 10m", unitCostEUR: 22, dailyPriceEUR: 1, attrs: { cableType: "Power", lengthM: 10, sideAConnector: "PowerCON TRUE1 in", sideAQty: 1, sideBConnector: "PowerCON TRUE1 out", sideBQty: 1 } });
+  const mXlr15 = await s.equipment.createModel({ typeId: tCable.id, name: "XLR3 -> XLR3 15m", unitCostEUR: 20, dailyPriceEUR: 1, attrs: { cableType: "Audio", lengthM: 15, sideAConnector: "XLR 3 pin male", sideAQty: 1, sideBConnector: "XLR 3 pin female", sideBQty: 1 } });
 
   // ── Cable stock ──
   await s.equipment.setModelStockTotal(mDmx5.id, 60);
