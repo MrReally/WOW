@@ -96,6 +96,37 @@ function ModelRow({ model, units, last, onEdit }: { model: Equipment.EquipmentMo
   );
 }
 
+type WarehouseTab = "dashboard" | "repair" | "stocklist" | "models";
+
+const WAREHOUSE_TABS: { id: WarehouseTab; label: string; shortLabel: string; tone: "accent" | "warn" | "info" | "ok" }[] = [
+  { id: "dashboard", label: "Dashboard", shortLabel: "Dash", tone: "accent" },
+  { id: "repair", label: "Ремонт", shortLabel: "Ремонт", tone: "warn" },
+  { id: "stocklist", label: "Stocklist", shortLabel: "Stock", tone: "ok" },
+  { id: "models", label: "Модели", shortLabel: "Модели", tone: "info" },
+];
+
+function WarehouseGlyph({ type }: { type: WarehouseTab }) {
+  const p = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  switch (type) {
+    case "dashboard":
+      return <svg viewBox="0 0 24 24"><rect x="4.5" y="5" width="6" height="6" rx="1.4" {...p} /><rect x="13.5" y="5" width="6" height="6" rx="1.4" {...p} /><rect x="4.5" y="14" width="6" height="5" rx="1.4" {...p} /><rect x="13.5" y="14" width="6" height="5" rx="1.4" {...p} /></svg>;
+    case "repair":
+      return <svg viewBox="0 0 24 24"><path d="M14.7 5.3l4 4-3.4 3.4-4-4z" {...p} /><path d="M11.5 8.5L5 15v4h4l6.5-6.5" {...p} /><path d="M5 19l4-4" {...p} /></svg>;
+    case "stocklist":
+      return <svg viewBox="0 0 24 24"><rect x="4.5" y="6" width="15" height="12.5" rx="2" {...p} /><path d="M4.5 10h15M8 14h4M15 14h1" {...p} /></svg>;
+    case "models":
+      return <svg viewBox="0 0 24 24"><path d="M12 4.5l7 3.8-7 3.8-7-3.8z" {...p} /><path d="M5 12l7 3.8 7-3.8M5 15.7l7 3.8 7-3.8" {...p} /></svg>;
+    default:
+      return null;
+  }
+}
+
 export function WarehousePage() {
   const { can } = useSession();
   const canCatalog = can("warehouse.catalog.manage");
@@ -126,6 +157,7 @@ export function WarehousePage() {
   const [warehouseAddressDraft, setWarehouseAddressDraft] = useState("");
   const [search, setSearch] = useState("");
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<WarehouseTab>("dashboard");
 
   useEffect(() => {
     if (warehouseFilter === "all") return;
@@ -206,11 +238,14 @@ export function WarehousePage() {
     if (!next || next === current) return;
     updateType.mutate({ id: tid, input: { name: next } });
   };
-
-  return (
-    <div>
-      <PrepHero units={allUnits} onOps={canIssue ? () => setOpsOpen(true) : () => navigate("/operations")} />
-
+  const repairCount = (openRepairs.data ?? []).length + (openHandovers.data ?? []).length;
+  const searchField = (
+    <Field label="Поиск по складу">
+      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, тип, номер, серийник" />
+    </Field>
+  );
+  const warehouseSelector = (
+    <>
       <SectionHead label="Склады" meta={warehouseFilter === "all" ? "ВСЕ" : warehouseName(warehouseFilter)} />
       <div className="card" style={{ padding: "12px 14px", marginBottom: 12 }}>
         <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
@@ -284,36 +319,42 @@ export function WarehousePage() {
           </div>
         )}
       </div>
-
-      {((openRepairs.data ?? []).length > 0 || (openHandovers.data ?? []).length > 0) && (
-        <>
-          <SectionHead label="Ремонты и сервисные выдачи" meta={`${(openRepairs.data ?? []).length + (openHandovers.data ?? []).length}`} />
-          <div className="card" style={{ padding: "2px 16px" }}>
-            {(openRepairs.data ?? []).map((r) => (
-              <div key={r.id} className="lrow card--tappable" onClick={() => navigate(`/warehouse/units/${r.unitId}`)}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="lrow__title">{tag(r.unitId)} · {r.problem}</div>
-                  <div className="lrow__detail">в ремонте{r.vendor ? ` · ${r.vendor}` : ""}</div>
-                </div>
-                <Chip label="ремонт" tone={repairTone("in_repair")} />
+    </>
+  );
+  const repairSection = (
+    <>
+      <SectionHead label="Ремонты и сервисные выдачи" meta={`${repairCount}`} />
+      {repairCount === 0 ? (
+        <EmptyState title="Нет открытых ремонтов" />
+      ) : (
+        <div className="card" style={{ padding: "2px 16px" }}>
+          {(openRepairs.data ?? []).map((r) => (
+            <div key={r.id} className="lrow card--tappable" onClick={() => navigate(`/warehouse/units/${r.unitId}`)}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="lrow__title">{tag(r.unitId)} · {r.problem}</div>
+                <div className="lrow__detail">в ремонте{r.vendor ? ` · ${r.vendor}` : ""}</div>
               </div>
-            ))}
-            {(openHandovers.data ?? []).map((h) => (
-              <div key={h.id} className="lrow card--tappable" onClick={() => navigate(`/warehouse/units/${h.unitId}`)}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="lrow__title">{tag(h.unitId)} · {h.contractorName}</div>
-                  <div className="lrow__detail">на внешнем сервисе{h.reason ? ` · ${h.reason}` : ""}</div>
-                </div>
-                <Chip label="сервис" tone="warn" />
+              <Chip label="ремонт" tone={repairTone("in_repair")} />
+            </div>
+          ))}
+          {(openHandovers.data ?? []).map((h) => (
+            <div key={h.id} className="lrow card--tappable" onClick={() => navigate(`/warehouse/units/${h.unitId}`)}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="lrow__title">{tag(h.unitId)} · {h.contractorName}</div>
+                <div className="lrow__detail">на внешнем сервисе{h.reason ? ` · ${h.reason}` : ""}</div>
               </div>
-            ))}
-          </div>
-        </>
+              <Chip label="сервис" tone="warn" />
+            </div>
+          ))}
+        </div>
       )}
-
-      <SectionHead label="Каталог" meta={canEdit ? undefined : `${allModels.length} МОДЕЛЕЙ`} />
-      <Field label="Поиск по складу">
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, тип, номер, серийник" />
+    </>
+  );
+  const modelSection = (
+    <>
+      <SectionHead label="Модели" meta={canEdit ? undefined : `${allModels.length}`} />
+      <Field label="Поиск модели">
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель или тип" />
       </Field>
       {canEdit && (
         <div className="row" style={{ marginBottom: 10 }}>
@@ -351,7 +392,10 @@ export function WarehousePage() {
           )}
         </>
       )}
-
+    </>
+  );
+  const unitSection = (
+    <>
       <SectionHead label="Единицы" meta={`${filtered.length}`} />
       <div className="row" style={{ flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
         {statuses.map((s) => (
@@ -369,7 +413,6 @@ export function WarehousePage() {
         <EmptyState title="Нет единиц" />
       ) : (
         (() => {
-          // Group the units by equipment type so the catalog is easy to scan.
           const modelOf = (mid: string) => allModels.find((m) => m.id === mid);
           const groups = new Map<string, Equipment.EquipmentUnitDTO[]>();
           for (const u of filtered) {
@@ -417,6 +460,26 @@ export function WarehousePage() {
           ));
         })()
       )}
+    </>
+  );
+
+  return (
+    <div style={{ paddingBottom: 92 }}>
+      {activeTab === "dashboard" && (
+        <>
+          <PrepHero units={allUnits} onOps={canIssue ? () => setOpsOpen(true) : () => navigate("/operations")} />
+          {searchField}
+        </>
+      )}
+      {activeTab === "repair" && repairSection}
+      {activeTab === "stocklist" && (
+        <>
+          {warehouseSelector}
+          {searchField}
+          {unitSection}
+        </>
+      )}
+      {activeTab === "models" && modelSection}
 
       {canEdit && (
         <>
@@ -429,6 +492,30 @@ export function WarehousePage() {
       )}
       {canCatalog && <EditModelSheet model={editModel} onClose={() => setEditModel(null)} />}
       <CableMoveSheet model={cableModel} projects={projects.data ?? []} warehouses={warehouseList} selectedWarehouseId={warehouseFilter === "all" ? null : warehouseFilter} onClose={() => setCableModel(null)} />
+      <div className="project-tabbar" role="tablist" aria-label="Warehouse">
+        {WAREHOUSE_TABS.map((tab) => {
+          const isActive = activeTab === tab.id;
+          const count = tab.id === "repair" ? repairCount : tab.id === "stocklist" ? filtered.length : tab.id === "models" ? allModels.length : 0;
+          return (
+            <button
+              key={tab.id}
+              className={`project-tabbar__item ${isActive ? "project-tabbar__item--active" : ""}`}
+              onClick={() => setActiveTab(tab.id)}
+              aria-label={tab.label}
+              aria-selected={isActive}
+              role="tab"
+              type="button"
+              style={{ ["--tab-c" as string]: `var(--${tab.tone === "accent" ? "accent" : tab.tone})` }}
+            >
+              <span className="project-tabbar__icon">
+                <WarehouseGlyph type={tab.id} />
+                {count > 0 && <span className="project-tabbar__badge">{count > 9 ? "9+" : count}</span>}
+              </span>
+              <span className="project-tabbar__label">{tab.shortLabel}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
