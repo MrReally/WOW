@@ -30,15 +30,28 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
   const [dailyPrice, setDailyPrice] = useState("0");
 
   // unit form
-  const [modelId, setModelId] = useState(models[0]?.id ?? "");
+  const [modelId, setModelId] = useState("");
+  const [modelSearch, setModelSearch] = useState("");
   const [assetTag, setAssetTag] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
   const [stockQty, setStockQty] = useState("");
 
-  // Fall back to the first available option so a freshly-created type/model is
-  // selectable immediately (the controlled <select> showed it but state was "").
+  // Unit creation should require an explicit model pick; otherwise it is too
+  // easy to create an item under the first model by accident.
   const effTypeId = typeId || types[0]?.id || "";
-  const effModelId = modelId || models[0]?.id || "";
+  const effModelId = modelId;
+  const typeNameById = new Map(types.map((t) => [t.id, t.name]));
+  const duplicateModelNames = new Set(
+    models
+      .map((m) => m.name.trim().toLowerCase())
+      .filter((name, _idx, names) => names.indexOf(name) !== names.lastIndexOf(name))
+  );
+  const modelLabel = (m: Equipment.EquipmentModelDTO) => {
+    const base = duplicateModelNames.has(m.name.trim().toLowerCase())
+      ? `${m.name} · ${typeNameById.get(m.typeId) ?? "Тип"}`
+      : m.name;
+    return `${base}${m.trackingMode === "quantity" ? " · количество" : ""}`;
+  };
   const selectedModel = models.find((m) => m.id === effModelId);
   const serialModels = models.filter((m) => m.trackingMode === "serial");
   const quantityModels = models.filter((m) => m.trackingMode === "quantity");
@@ -51,6 +64,17 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
       setStockQty(String(scopedStock.data.total));
     }
   }, [scopedStock.data, selectedModel?.trackingMode]);
+
+  const pickModelBySearch = (value: string) => {
+    setModelSearch(value);
+    const query = value.trim().toLowerCase();
+    const exactByLabel = models.find((m) => modelLabel(m).toLowerCase() === query);
+    const exactByName = models.filter((m) => m.name.trim().toLowerCase() === query);
+    const nextModel = exactByLabel ?? (exactByName.length === 1 ? exactByName[0] : null);
+    setModelId(nextModel?.id ?? "");
+    setAssetTag("");
+    setStockQty("");
+  };
 
   return (
     <Sheet open={open} onClose={onClose} title="Добавить">
@@ -125,15 +149,21 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
       {tab === "unit" && (
         <>
           <Field label="Модель">
-            <Select
-              value={effModelId}
-              onChange={(e) => {
-                setModelId(e.target.value);
-                setAssetTag("");
-                setStockQty("");
+            <Input
+              value={modelSearch}
+              onChange={(e) => pickModelBySearch(e.target.value)}
+              onBlur={() => {
+                if (selectedModel) setModelSearch(modelLabel(selectedModel));
               }}
-              options={models.map((m) => ({ value: m.id, label: `${m.name}${m.trackingMode === "quantity" ? " · количество" : ""}` }))}
+              list="warehouse-unit-models"
+              placeholder="Начните вводить модель"
+              autoComplete="off"
             />
+            <datalist id="warehouse-unit-models">
+              {models.map((m) => (
+                <option key={m.id} value={modelLabel(m)} />
+              ))}
+            </datalist>
           </Field>
           {selectedModel?.trackingMode === "quantity" ? (
             <>
