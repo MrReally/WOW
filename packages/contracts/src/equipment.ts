@@ -166,6 +166,15 @@ export interface QuantityMoveInput {
   note?: string;
 }
 
+export interface QuantityServiceInput {
+  modelId: ID;
+  warehouseId?: ID | null;
+  qty: number;
+  actorId: ID;
+  note?: string | null;
+  costEUR?: number | null;
+}
+
 export interface TransferQuantityInput {
   modelId: ID;
   fromWarehouseId: ID;
@@ -254,6 +263,7 @@ export interface HandoverDTO {
   status: "out" | "returned";
   reason: string | null;
   note: string | null;
+  costEUR: number | null;
   expectedReturn: ISODateTime | null;
   sentBy: ID | null;
   sentAt: ISODateTime;
@@ -266,6 +276,7 @@ export interface SendToContractorInput {
   contractorId: ID;
   reason?: string | null;
   note?: string | null;
+  costEUR?: number | null;
   expectedReturn?: ISODateTime | null;
   actorId: ID;
 }
@@ -286,6 +297,8 @@ export interface EquipmentService {
   getModel(id: ID): Promise<EquipmentModelDTO | null>;
   createModel(input: CreateModelInput): Promise<EquipmentModelDTO>;
   updateModel(id: ID, input: UpdateModelInput): Promise<EquipmentModelDTO>;
+  setModelTrackingMode(id: ID, trackingMode: "serial" | "quantity"): Promise<EquipmentModelDTO>;
+  deleteModel(id: ID): Promise<void>;
 
   // Units
   listUnits(filter?: { modelId?: ID; status?: UnitStatus; projectId?: ID; warehouseId?: ID }): Promise<EquipmentUnitDTO[]>;
@@ -303,6 +316,8 @@ export interface EquipmentService {
   issueQuantity(input: QuantityMoveInput): Promise<ModelStockDTO>;
   returnQuantity(input: QuantityMoveInput): Promise<ModelStockDTO>;
   transferQuantity(input: TransferQuantityInput): Promise<ModelStockDTO>;
+  sendQuantityToRepair(input: QuantityServiceInput): Promise<ModelStockDTO>;
+  sendQuantityToContractor(input: QuantityServiceInput): Promise<ModelStockDTO>;
 
   // Bulk catalog import (CSV parsed upstream into rows).
   importCatalog(rows: ImportRow[]): Promise<ImportResult>;

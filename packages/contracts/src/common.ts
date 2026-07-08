@@ -24,8 +24,11 @@ export type Permission =
   | "operations.stage.back"
   | "warehouse.view"
   | "warehouse.catalog.manage"
+  | "warehouse.model.convert"
+  | "warehouse.model.delete"
   | "warehouse.issue"
   | "warehouse.unit.status"
+  | "warehouse.costs.view"
   | "warehouse.import"
   | "projects.view"
   | "projects.manage"
@@ -60,9 +63,12 @@ export const PERMISSIONS: PermissionMeta[] = [
   { key: "operations.stage.back", group: "Operations (бригада)", label: "Возвращать проект на предыдущий этап" },
   { key: "warehouse.view", group: "Склад", label: "Видеть склад и каталог" },
   { key: "warehouse.catalog.manage", group: "Склад", label: "Управлять каталогом (типы/модели/единицы)" },
+  { key: "warehouse.model.convert", group: "Склад", label: "Менять режим учёта модели" },
+  { key: "warehouse.model.delete", group: "Склад", label: "Удалять модели вместе с единицами" },
   { key: "warehouse.import", group: "Склад", label: "Импорт каталога из CSV" },
   { key: "warehouse.issue", group: "Склад", label: "Выдавать и принимать оборудование" },
   { key: "warehouse.unit.status", group: "Склад", label: "Менять статус единиц (ремонт, утеря)" },
+  { key: "warehouse.costs.view", group: "Склад", label: "Видеть стоимость ремонтов и сервисов" },
   { key: "projects.view", group: "Планирование", label: "Видеть проекты" },
   { key: "projects.manage", group: "Планирование", label: "Создавать/редактировать проекты" },
   { key: "projects.reservation.manage", group: "Планирование", label: "Брони и распределение" },

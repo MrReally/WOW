@@ -62,7 +62,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
           Модель
         </Button>
         <Button variant={tab === "unit" ? "primary" : "secondary"} onClick={() => setTab("unit")}>
-          Склад
+          Единица
         </Button>
       </div>
 

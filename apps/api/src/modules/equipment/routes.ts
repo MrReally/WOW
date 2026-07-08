@@ -39,6 +39,7 @@ const updateModelSchema = z.object({
   dailyPriceEUR: z.number().nonnegative().optional(),
   attrs: z.record(z.unknown()).nullable().optional(),
 });
+const modelTrackingSchema = z.object({ trackingMode: z.enum(["serial", "quantity"]) });
 const modelIdParamsSchema = z.object({ id: z.string().uuid() });
 
 const createUnitSchema = z.object({
@@ -81,6 +82,13 @@ const qtyMoveSchema = z.object({
   qty: z.number().int().positive(),
   note: z.string().optional(),
 });
+const qtyServiceSchema = z.object({
+  modelId: z.string().uuid(),
+  warehouseId: z.string().uuid().nullable().optional(),
+  qty: z.number().int().positive(),
+  note: z.string().nullable().optional(),
+  costEUR: z.number().nullable().optional(),
+});
 const qtyTransferSchema = z.object({
   modelId: z.string().uuid(),
   fromWarehouseId: z.string().uuid(),
@@ -114,6 +122,7 @@ const toContractorSchema = z.object({
   contractorId: z.string().uuid(),
   reason: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
+  costEUR: z.number().nullable().optional(),
   expectedReturn: z.string().datetime().nullable().optional(),
 });
 const returnHandoverSchema = z.object({ note: z.string().nullable().optional() });
@@ -123,6 +132,11 @@ export function registerEquipmentRoutes(
   ctx: RouteContext,
   service: Equipment.EquipmentService
 ): void {
+  const canViewCosts = (auth: Awaited<ReturnType<RouteContext["auth"]>>) =>
+    auth.isOwner || auth.permissions.includes("warehouse.costs.view");
+  const hideRepairCost = (repair: Equipment.RepairDTO): Equipment.RepairDTO => ({ ...repair, estCostEUR: null, costEUR: null });
+  const hideHandoverCost = (handover: Equipment.HandoverDTO): Equipment.HandoverDTO => ({ ...handover, costEUR: null });
+
   // ── Warehouses ──
   app.get("/api/equipment/warehouses", async (req) => {
     await ctx.auth(req);
@@ -181,6 +195,20 @@ export function registerEquipmentRoutes(
     requirePermission(auth, "warehouse.catalog.manage");
     return service.updateModel(id, updateModelSchema.parse(req.body) as Equipment.UpdateModelInput);
   });
+  app.patch<{ Params: { id: string } }>("/api/equipment/models/:id/tracking-mode", async (req) => {
+    const { id } = modelIdParamsSchema.parse(req.params);
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.model.convert");
+    const body = modelTrackingSchema.parse(req.body);
+    return service.setModelTrackingMode(id, body.trackingMode);
+  });
+  app.delete<{ Params: { id: string } }>("/api/equipment/models/:id", async (req) => {
+    const { id } = modelIdParamsSchema.parse(req.params);
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.model.delete");
+    await service.deleteModel(id);
+    return { ok: true };
+  });
   app.put<{ Params: { id: string } }>("/api/equipment/models/:id/stock", async (req) => {
     const { id } = modelIdParamsSchema.parse(req.params);
     const auth = await ctx.auth(req);
@@ -214,6 +242,18 @@ export function registerEquipmentRoutes(
     requirePermission(auth, "warehouse.catalog.manage");
     const body = qtyTransferSchema.parse(req.body);
     return service.transferQuantity({ ...body, actorId: auth.userId });
+  });
+  app.post("/api/equipment/repair-qty", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.unit.status");
+    const body = qtyServiceSchema.parse(req.body);
+    return service.sendQuantityToRepair({ ...body, costEUR: canViewCosts(auth) ? body.costEUR : null, actorId: auth.userId });
+  });
+  app.post("/api/equipment/service-qty", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.unit.status");
+    const body = qtyServiceSchema.parse(req.body);
+    return service.sendQuantityToContractor({ ...body, costEUR: canViewCosts(auth) ? body.costEUR : null, actorId: auth.userId });
   });
 
   // ── Units ──
@@ -309,45 +349,53 @@ export function registerEquipmentRoutes(
 
   // ── Repairs ──
   app.get("/api/equipment/repairs/open", async (req) => {
-    await ctx.auth(req);
-    return service.listOpenRepairs();
+    const auth = await ctx.auth(req);
+    const rows = await service.listOpenRepairs();
+    return canViewCosts(auth) ? rows : rows.map(hideRepairCost);
   });
   app.get<{ Params: { id: string } }>("/api/equipment/units/:id/repairs", async (req) => {
-    await ctx.auth(req);
-    return service.listRepairs(req.params.id);
+    const auth = await ctx.auth(req);
+    const rows = await service.listRepairs(req.params.id);
+    return canViewCosts(auth) ? rows : rows.map(hideRepairCost);
   });
   app.post<{ Params: { id: string } }>("/api/equipment/units/:id/repair", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.unit.status");
     const body = openRepairSchema.parse(req.body);
-    return service.openRepair({ ...body, unitId: req.params.id, actorId: auth.userId });
+    const row = await service.openRepair({ ...body, estCostEUR: canViewCosts(auth) ? body.estCostEUR : null, unitId: req.params.id, actorId: auth.userId });
+    return canViewCosts(auth) ? row : hideRepairCost(row);
   });
   app.post<{ Params: { id: string } }>("/api/equipment/repairs/:id/close", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.unit.status");
     const body = closeRepairSchema.parse(req.body);
-    return service.closeRepair(req.params.id, { ...body, actorId: auth.userId });
+    const row = await service.closeRepair(req.params.id, { ...body, costEUR: canViewCosts(auth) ? body.costEUR : null, actorId: auth.userId });
+    return canViewCosts(auth) ? row : hideRepairCost(row);
   });
 
   // ── Contractor handovers ──
   app.get("/api/equipment/handovers/open", async (req) => {
-    await ctx.auth(req);
-    return service.listOpenHandovers();
+    const auth = await ctx.auth(req);
+    const rows = await service.listOpenHandovers();
+    return canViewCosts(auth) ? rows : rows.map(hideHandoverCost);
   });
   app.get<{ Params: { id: string } }>("/api/equipment/units/:id/handovers", async (req) => {
-    await ctx.auth(req);
-    return service.listHandovers(req.params.id);
+    const auth = await ctx.auth(req);
+    const rows = await service.listHandovers(req.params.id);
+    return canViewCosts(auth) ? rows : rows.map(hideHandoverCost);
   });
   app.post<{ Params: { id: string } }>("/api/equipment/units/:id/to-contractor", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.unit.status");
     const body = toContractorSchema.parse(req.body);
-    return service.sendToContractor({ ...body, unitId: req.params.id, actorId: auth.userId });
+    const row = await service.sendToContractor({ ...body, costEUR: canViewCosts(auth) ? body.costEUR : null, unitId: req.params.id, actorId: auth.userId });
+    return canViewCosts(auth) ? row : hideHandoverCost(row);
   });
   app.post<{ Params: { id: string } }>("/api/equipment/handovers/:id/return", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.unit.status");
     const body = returnHandoverSchema.parse(req.body);
-    return service.returnFromContractor(req.params.id, { ...body, actorId: auth.userId });
+    const row = await service.returnFromContractor(req.params.id, { ...body, actorId: auth.userId });
+    return canViewCosts(auth) ? row : hideHandoverCost(row);
   });
 }

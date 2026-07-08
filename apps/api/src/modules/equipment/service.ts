@@ -157,6 +157,7 @@ interface HandoverRow {
   status: "out" | "returned";
   reason: string | null;
   note: string | null;
+  cost_eur: string | null;
   expected_return: Date | null;
   sent_by: string | null;
   sent_at: Date;
@@ -189,6 +190,7 @@ const handoverDTO = (r: HandoverRow): Equipment.HandoverDTO => ({
   status: r.status,
   reason: r.reason,
   note: r.note,
+  costEUR: r.cost_eur === null ? null : Number(r.cost_eur),
   expectedReturn: r.expected_return ? r.expected_return.toISOString() : null,
   sentBy: r.sent_by,
   sentAt: r.sent_at.toISOString(),
@@ -387,6 +389,69 @@ export function createEquipmentService(
       const row = await one<ModelRow>(db, `${MODEL_SELECT} WHERE m.id=$1`, [id]);
       return modelDTO(row!);
     },
+    async setModelTrackingMode(id, trackingMode) {
+      const existing = await one<ModelRow>(db, `${MODEL_SELECT} WHERE m.id=$1`, [id]);
+      if (!existing) throw NotFound("model", id);
+      if (existing.tracking_mode === trackingMode) return modelDTO(existing);
+      return tx(async (client) => {
+        const type = await one<TypeRow>(
+          client,
+          `SELECT t2.* FROM equipment.types t1
+           JOIN equipment.types t2 ON lower(t2.name)=lower(t1.name) AND t2.tracking_mode=$2
+           WHERE t1.id=$1
+           ORDER BY t2.created_at LIMIT 1`,
+          [existing.type_id, trackingMode]
+        ) ?? await one<TypeRow>(
+          client,
+          `INSERT INTO equipment.types (name, tracking_mode)
+           VALUES ((SELECT name FROM equipment.types WHERE id=$1), $2)
+           RETURNING *`,
+          [existing.type_id, trackingMode]
+        );
+        if (trackingMode === "quantity") {
+          const rows = await query<{ warehouse_id: string | null; count: string }>(
+            client,
+            `SELECT warehouse_id, COUNT(*)::text AS count
+             FROM equipment.units
+             WHERE model_id=$1 AND status <> 'lost'
+             GROUP BY warehouse_id`,
+            [id]
+          );
+          await query(client, `DELETE FROM equipment.model_stock WHERE model_id=$1`, [id]);
+          for (const r of rows) {
+            const warehouseId = r.warehouse_id ?? await defaultWarehouseId(client);
+            await query(
+              client,
+              `INSERT INTO equipment.model_stock (model_id, warehouse_id, total_qty) VALUES ($1,$2,$3)
+               ON CONFLICT (model_id, warehouse_id) DO UPDATE SET total_qty=EXCLUDED.total_qty`,
+              [id, warehouseId, Number(r.count)]
+            );
+          }
+          await query(client, `DELETE FROM equipment.repairs WHERE unit_id IN (SELECT id FROM equipment.units WHERE model_id=$1)`, [id]);
+          await query(client, `DELETE FROM equipment.handovers WHERE unit_id IN (SELECT id FROM equipment.units WHERE model_id=$1)`, [id]);
+          await query(client, `DELETE FROM equipment.journal WHERE unit_id IN (SELECT id FROM equipment.units WHERE model_id=$1)`, [id]);
+          await query(client, `DELETE FROM equipment.units WHERE model_id=$1`, [id]);
+        } else {
+          await query(client, `DELETE FROM equipment.model_stock WHERE model_id=$1`, [id]);
+        }
+        await query(client, `UPDATE equipment.models SET type_id=$2 WHERE id=$1`, [id, type!.id]);
+        const row = await one<ModelRow>(client, `${MODEL_SELECT} WHERE m.id=$1`, [id]);
+        return modelDTO(row!);
+      });
+    },
+    async deleteModel(id) {
+      const existing = await one<ModelRow>(db, `${MODEL_SELECT} WHERE m.id=$1`, [id]);
+      if (!existing) throw NotFound("model", id);
+      await tx(async (client) => {
+        await query(client, `DELETE FROM equipment.repairs WHERE unit_id IN (SELECT id FROM equipment.units WHERE model_id=$1)`, [id]);
+        await query(client, `DELETE FROM equipment.handovers WHERE unit_id IN (SELECT id FROM equipment.units WHERE model_id=$1)`, [id]);
+        await query(client, `DELETE FROM equipment.journal WHERE unit_id IN (SELECT id FROM equipment.units WHERE model_id=$1) OR model_id=$1`, [id]);
+        await query(client, `DELETE FROM equipment.problems WHERE refs->>'modelId'=$1 OR refs->>'unitId' IN (SELECT id::text FROM equipment.units WHERE model_id=$1)`, [id]);
+        await query(client, `DELETE FROM equipment.model_stock WHERE model_id=$1`, [id]);
+        await query(client, `DELETE FROM equipment.units WHERE model_id=$1`, [id]);
+        await query(client, `DELETE FROM equipment.models WHERE id=$1`, [id]);
+      });
+    },
 
     // ── Units ──
     async listUnits(filter) {
@@ -497,7 +562,9 @@ export function createEquipmentService(
         const moved = await one<{ out: string }>(
           db,
           `SELECT COALESCE(SUM(CASE WHEN action='issued' THEN qty
+                                    WHEN action IN ('sent_to_repair','sent_to_contractor') THEN qty
                                     WHEN action IN ('returned','return_incomplete') THEN -qty
+                                    WHEN action IN ('back_from_repair','back_from_contractor') THEN -qty
                                     ELSE 0 END),0)::text AS out
            FROM equipment.journal WHERE model_id=$1 AND qty IS NOT NULL ${warehouseId ? "AND warehouse_id=$2" : ""}`,
           warehouseId ? [modelId, warehouseId] : [modelId]
@@ -668,6 +735,38 @@ export function createEquipmentService(
         });
       });
       return this.modelStock(input.modelId, input.toWarehouseId);
+    },
+
+    async sendQuantityToRepair(input) {
+      if (input.qty <= 0) throw BadRequest("qty must be positive");
+      const warehouseId = input.warehouseId ?? await defaultWarehouseId();
+      const stock = await this.modelStock(input.modelId, warehouseId);
+      if (input.qty > stock.inStock) throw BadRequest(`only ${stock.inStock} available on stock`);
+      await appendJournal(db, {
+        modelId: input.modelId,
+        qty: input.qty,
+        action: "sent_to_repair",
+        warehouseId,
+        actorId: input.actorId,
+        note: [input.note ?? "ремонт", input.costEUR != null ? `cost ${input.costEUR} EUR` : ""].filter(Boolean).join(" · "),
+      });
+      return this.modelStock(input.modelId, warehouseId);
+    },
+
+    async sendQuantityToContractor(input) {
+      if (input.qty <= 0) throw BadRequest("qty must be positive");
+      const warehouseId = input.warehouseId ?? await defaultWarehouseId();
+      const stock = await this.modelStock(input.modelId, warehouseId);
+      if (input.qty > stock.inStock) throw BadRequest(`only ${stock.inStock} available on stock`);
+      await appendJournal(db, {
+        modelId: input.modelId,
+        qty: input.qty,
+        action: "sent_to_contractor",
+        warehouseId,
+        actorId: input.actorId,
+        note: [input.note ?? "сервис", input.costEUR != null ? `cost ${input.costEUR} EUR` : ""].filter(Boolean).join(" · "),
+      });
+      return this.modelStock(input.modelId, warehouseId);
     },
 
     // ── CSV import ──
@@ -1113,9 +1212,9 @@ export function createEquipmentService(
         await query(client, `UPDATE equipment.units SET status='at_contractor' WHERE id=$1`, [input.unitId]);
         await query(
           client,
-          `INSERT INTO equipment.handovers (unit_id, contractor_id, reason, note, expected_return, sent_by)
-           VALUES ($1,$2,$3,$4,$5,$6)`,
-          [input.unitId, input.contractorId, input.reason ?? null, input.note ?? null, input.expectedReturn ?? null, input.actorId]
+          `INSERT INTO equipment.handovers (unit_id, contractor_id, reason, note, cost_eur, expected_return, sent_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [input.unitId, input.contractorId, input.reason ?? null, input.note ?? null, input.costEUR ?? null, input.expectedReturn ?? null, input.actorId]
         );
         await appendJournal(client, {
           unitId: input.unitId,
@@ -1123,7 +1222,7 @@ export function createEquipmentService(
           fromStatus: unit.status,
           toStatus: "at_contractor",
           actorId: input.actorId,
-          note: input.reason ?? contractor.name,
+          note: [input.reason ?? contractor.name, input.costEUR != null ? `cost ${input.costEUR} EUR` : ""].filter(Boolean).join(" · "),
         });
         const row = await one<HandoverRow>(
           client,

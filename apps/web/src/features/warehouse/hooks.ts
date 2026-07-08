@@ -136,6 +136,25 @@ export function useUpdateModel() {
   });
 }
 
+export function useSetModelTrackingMode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, trackingMode }: { id: string; trackingMode: "serial" | "quantity" }) =>
+      api.patch<Equipment.EquipmentModelDTO>(`/api/equipment/models/${id}/tracking-mode`, { trackingMode }),
+    meta: { successMessage: "Режим учёта изменён" },
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
+export function useDeleteModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/equipment/models/${id}`),
+    meta: { successMessage: "Модель удалена" },
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
 export function useCreateUnit() {
   const qc = useQueryClient();
   return useMutation({
@@ -237,6 +256,24 @@ export function useTransferQty() {
   });
 }
 
+export function useRepairQty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { modelId: string; warehouseId?: string | null; qty: number; note?: string | null; costEUR?: number | null }) =>
+      api.post<Equipment.ModelStockDTO>("/api/equipment/repair-qty", input),
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
+export function useServiceQty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { modelId: string; warehouseId?: string | null; qty: number; note?: string | null; costEUR?: number | null }) =>
+      api.post<Equipment.ModelStockDTO>("/api/equipment/service-qty", input),
+    onSuccess: () => invalidateEquipment(qc),
+  });
+}
+
 // ── Repairs & contractors ──
 export function useContractors() {
   return useQuery({ queryKey: ["equipment", "contractors"], queryFn: () => api.get<Equipment.ContractorDTO[]>("/api/equipment/contractors") });
@@ -282,7 +319,7 @@ export function useCloseRepair() {
 export function useSendToContractor() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ unitId, input }: { unitId: string; input: { contractorId: string; reason?: string | null; expectedReturn?: string | null } }) =>
+    mutationFn: ({ unitId, input }: { unitId: string; input: { contractorId: string; reason?: string | null; expectedReturn?: string | null; costEUR?: number | null } }) =>
       api.post(`/api/equipment/units/${unitId}/to-contractor`, input),
     meta: { successMessage: "Передано подрядчику" },
     onSuccess: () => invalidateEquipment(qc),

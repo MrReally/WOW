@@ -45,6 +45,7 @@ export function UnitDetailPage() {
   const { can } = useSession();
   const canEdit = can("warehouse.unit.status");
   const canCatalog = can("warehouse.catalog.manage");
+  const canViewCosts = can("warehouse.costs.view");
 
   const unit = useUnit(id);
   const journal = useUnitJournal(id);
@@ -155,7 +156,7 @@ export function UnitDetailPage() {
         <InfoRow label="Склад" value={warehouseName(u.warehouseId)} />
         {projectName && <InfoRow label="Сейчас на проекте" value={projectName} />}
         <InfoRow label="В системе с" value={dateTime(u.createdAt)} />
-        <InfoRow label="Потрачено на ремонт" value={repairTotal > 0 ? eur(repairTotal) : "—"} />
+        {canViewCosts && <InfoRow label="Потрачено на ремонт" value={repairTotal > 0 ? eur(repairTotal) : "—"} />}
 
         <div style={{ marginTop: 10 }}>
           <span className="field__label">Название / инв. номер</span>

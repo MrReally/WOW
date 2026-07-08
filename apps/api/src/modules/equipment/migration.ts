@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS equipment.handovers (
   status          text NOT NULL DEFAULT 'out' CHECK (status IN ('out','returned')),
   reason          text,
   note            text,
+  cost_eur        numeric(12,2),
   expected_return timestamptz,
   sent_by         uuid,
   sent_at         timestamptz NOT NULL DEFAULT now(),
@@ -148,6 +149,7 @@ CREATE TABLE IF NOT EXISTS equipment.handovers (
 );
 CREATE INDEX IF NOT EXISTS handovers_unit_idx ON equipment.handovers(unit_id);
 CREATE INDEX IF NOT EXISTS handovers_status_idx ON equipment.handovers(status);
+ALTER TABLE equipment.handovers ADD COLUMN IF NOT EXISTS cost_eur numeric(12,2);
 
 -- Problems surfaced to Apex (некомплект, lost). Actions are never blocked.
 CREATE TABLE IF NOT EXISTS equipment.problems (

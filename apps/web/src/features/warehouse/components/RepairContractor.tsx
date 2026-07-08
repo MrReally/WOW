@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Equipment } from "@sever/contracts";
 import { Card, Button, SectionTitle, Chip, Sheet, Field, Input, Select } from "../../../ui-kit/index.ts";
 import { eur, dateTime } from "../../../lib/labels.ts";
+import { useSession } from "../../../app/session.ts";
 import {
   useUnitRepairs, useUnitHandovers, useContractors, useCreateContractor,
   useOpenRepair, useCloseRepair, useSendToContractor, useReturnFromContractor,
@@ -10,6 +11,8 @@ import {
 const outcomeLabel: Record<string, string> = { repaired: "отремонтировано", written_off: "списано" };
 
 export function RepairContractorPanel({ unit }: { unit: Equipment.EquipmentUnitDTO }) {
+  const { can } = useSession();
+  const canViewCosts = can("warehouse.costs.view");
   const repairs = useUnitRepairs(unit.id);
   const handovers = useUnitHandovers(unit.id);
   const closeRepair = useCloseRepair();
@@ -50,7 +53,7 @@ export function RepairContractorPanel({ unit }: { unit: Equipment.EquipmentUnitD
             <Button block variant="secondary" onClick={() => setContractorSheet(true)}>Передать в сервис</Button>
           </div>
         )}
-        {totalRepair > 0 && (
+        {canViewCosts && totalRepair > 0 && (
           <p className="card__subtitle" style={{ marginTop: 10 }}>Всего на ремонт: {eur(totalRepair)}</p>
         )}
       </Card>
@@ -68,7 +71,7 @@ export function RepairContractorPanel({ unit }: { unit: Equipment.EquipmentUnitD
                 </div>
                 <p className="card__subtitle">
                   {r.vendor ?? "—"} · {dateTime(r.openedAt)}{r.closedAt ? ` → ${dateTime(r.closedAt)}` : ""}
-                  {r.costEUR != null ? ` · ${eur(r.costEUR)}` : ""}
+                  {canViewCosts && r.costEUR != null ? ` · ${eur(r.costEUR)}` : ""}
                 </p>
                 {r.resolution && <p className="card__subtitle">{r.resolution}</p>}
               </Card>
@@ -88,6 +91,7 @@ export function RepairContractorPanel({ unit }: { unit: Equipment.EquipmentUnitD
                 </div>
                 <p className="card__subtitle">
                   {h.reason ?? "—"} · {dateTime(h.sentAt)}{h.returnedAt ? ` → ${dateTime(h.returnedAt)}` : ""}
+                  {canViewCosts && h.costEUR != null ? ` · ${eur(h.costEUR)}` : ""}
                 </p>
               </Card>
             ))}
@@ -95,14 +99,14 @@ export function RepairContractorPanel({ unit }: { unit: Equipment.EquipmentUnitD
         </>
       )}
 
-      <OpenRepairSheet open={openRepairSheet} unitId={unit.id} onClose={() => setOpenRepairSheet(false)} />
-      {closeSheet && <CloseRepairSheet repair={closeSheet} onClose={() => setCloseSheet(null)} closeRepair={closeRepair} />}
-      <SendContractorSheet open={contractorSheet} unitId={unit.id} onClose={() => setContractorSheet(false)} />
+      <OpenRepairSheet open={openRepairSheet} unitId={unit.id} canViewCosts={canViewCosts} onClose={() => setOpenRepairSheet(false)} />
+      {closeSheet && <CloseRepairSheet repair={closeSheet} canViewCosts={canViewCosts} onClose={() => setCloseSheet(null)} closeRepair={closeRepair} />}
+      <SendContractorSheet open={contractorSheet} unitId={unit.id} canViewCosts={canViewCosts} onClose={() => setContractorSheet(false)} />
     </>
   );
 }
 
-function OpenRepairSheet({ open, unitId, onClose }: { open: boolean; unitId: string; onClose: () => void }) {
+function OpenRepairSheet({ open, unitId, canViewCosts, onClose }: { open: boolean; unitId: string; canViewCosts: boolean; onClose: () => void }) {
   const m = useOpenRepair();
   const [problem, setProblem] = useState("");
   const [vendor, setVendor] = useState("");
@@ -111,15 +115,15 @@ function OpenRepairSheet({ open, unitId, onClose }: { open: boolean; unitId: str
     <Sheet open={open} onClose={onClose} title="В ремонт">
       <Field label="Что не так"><Input value={problem} onChange={(e) => setProblem(e.target.value)} placeholder="Не зажигается сегмент" /></Field>
       <Field label="Мастерская / подрядчик (необязательно)"><Input value={vendor} onChange={(e) => setVendor(e.target.value)} /></Field>
-      <Field label="Оценка стоимости, € (необязательно)"><Input type="number" value={est} onChange={(e) => setEst(e.target.value)} /></Field>
-      <Button block disabled={!problem || m.isPending} onClick={() => m.mutate({ unitId, input: { problem, vendor: vendor || null, estCostEUR: est ? Number(est) : null } }, { onSuccess: onClose })}>
+      {canViewCosts && <Field label="Оценка стоимости, € (необязательно)"><Input type="number" value={est} onChange={(e) => setEst(e.target.value)} /></Field>}
+      <Button block disabled={!problem || m.isPending} onClick={() => m.mutate({ unitId, input: { problem, vendor: vendor || null, estCostEUR: canViewCosts && est ? Number(est) : null } }, { onSuccess: onClose })}>
         Отправить в ремонт
       </Button>
     </Sheet>
   );
 }
 
-function CloseRepairSheet({ repair, onClose, closeRepair }: { repair: Equipment.RepairDTO; onClose: () => void; closeRepair: ReturnType<typeof useCloseRepair> }) {
+function CloseRepairSheet({ repair, canViewCosts, onClose, closeRepair }: { repair: Equipment.RepairDTO; canViewCosts: boolean; onClose: () => void; closeRepair: ReturnType<typeof useCloseRepair> }) {
   const [cost, setCost] = useState(repair.estCostEUR != null ? String(repair.estCostEUR) : "");
   const [resolution, setResolution] = useState("");
   const [outcome, setOutcome] = useState<"repaired" | "written_off">("repaired");
@@ -128,21 +132,22 @@ function CloseRepairSheet({ repair, onClose, closeRepair }: { repair: Equipment.
       <Field label="Итог">
         <Select value={outcome} onChange={(e) => setOutcome(e.target.value as "repaired" | "written_off")} options={[{ value: "repaired", label: "Отремонтировано → на склад" }, { value: "written_off", label: "Списано → утеряно" }]} />
       </Field>
-      <Field label="Стоимость, €"><Input type="number" value={cost} onChange={(e) => setCost(e.target.value)} /></Field>
+      {canViewCosts && <Field label="Стоимость, €"><Input type="number" value={cost} onChange={(e) => setCost(e.target.value)} /></Field>}
       <Field label="Что сделали"><Input value={resolution} onChange={(e) => setResolution(e.target.value)} placeholder="Заменён драйвер" /></Field>
-      <Button block disabled={closeRepair.isPending} onClick={() => closeRepair.mutate({ id: repair.id, input: { costEUR: cost ? Number(cost) : null, resolution: resolution || null, outcome } }, { onSuccess: onClose })}>
+      <Button block disabled={closeRepair.isPending} onClick={() => closeRepair.mutate({ id: repair.id, input: { costEUR: canViewCosts && cost ? Number(cost) : null, resolution: resolution || null, outcome } }, { onSuccess: onClose })}>
         Закрыть ремонт
       </Button>
     </Sheet>
   );
 }
 
-function SendContractorSheet({ open, unitId, onClose }: { open: boolean; unitId: string; onClose: () => void }) {
+function SendContractorSheet({ open, unitId, canViewCosts, onClose }: { open: boolean; unitId: string; canViewCosts: boolean; onClose: () => void }) {
   const contractors = useContractors();
   const createContractor = useCreateContractor();
   const send = useSendToContractor();
   const [contractorId, setContractorId] = useState("");
   const [reason, setReason] = useState("");
+  const [cost, setCost] = useState("");
   const [newName, setNewName] = useState("");
 
   const list = contractors.data ?? [];
@@ -167,7 +172,8 @@ function SendContractorSheet({ open, unitId, onClose }: { open: boolean; unitId:
         </Button>
       </div>
       <Field label="Причина (диагностика, ремонт, проверка…)"><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
-      <Button block disabled={!eff || send.isPending} onClick={() => send.mutate({ unitId, input: { contractorId: eff, reason: reason || null } }, { onSuccess: onClose })}>
+      {canViewCosts && <Field label="Стоимость, €"><Input type="number" value={cost} onChange={(e) => setCost(e.target.value)} /></Field>}
+      <Button block disabled={!eff || send.isPending} onClick={() => send.mutate({ unitId, input: { contractorId: eff, reason: reason || null, costEUR: canViewCosts && cost ? Number(cost) : null } }, { onSuccess: onClose })}>
         Передать в сервис
       </Button>
     </Sheet>
