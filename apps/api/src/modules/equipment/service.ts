@@ -443,10 +443,19 @@ export function createEquipmentService(
       const existing = await one<ModelRow>(db, `${MODEL_SELECT} WHERE m.id=$1`, [id]);
       if (!existing) throw NotFound("model", id);
       await tx(async (client) => {
+        const unitRows = await query<{ id: string }>(client, `SELECT id FROM equipment.units WHERE model_id=$1`, [id]);
+        const unitIds = unitRows.map((u) => u.id);
+        await query(client, `DELETE FROM projects.reservations WHERE model_id=$1::uuid`, [id]);
+        if (unitIds.length > 0) {
+          await query(client, `DELETE FROM projects.operation_unit_marks WHERE unit_id = ANY($1::uuid[])`, [unitIds]);
+          await query(client, `UPDATE plans.elements SET unit_id=NULL WHERE unit_id = ANY($1::uuid[])`, [unitIds]);
+        }
+        await query(client, `UPDATE plans.elements SET model_id=NULL WHERE model_id=$1::uuid`, [id]);
+        await query(client, `UPDATE equipment.models SET required_component_model_ids = array_remove(required_component_model_ids, $1::uuid)`, [id]);
         await query(client, `DELETE FROM equipment.repairs WHERE unit_id IN (SELECT id FROM equipment.units WHERE model_id=$1)`, [id]);
         await query(client, `DELETE FROM equipment.handovers WHERE unit_id IN (SELECT id FROM equipment.units WHERE model_id=$1)`, [id]);
         await query(client, `DELETE FROM equipment.journal WHERE unit_id IN (SELECT id FROM equipment.units WHERE model_id=$1) OR model_id=$1`, [id]);
-        await query(client, `DELETE FROM equipment.problems WHERE refs->>'modelId'=$1 OR refs->>'unitId' IN (SELECT id::text FROM equipment.units WHERE model_id=$1)`, [id]);
+        await query(client, `DELETE FROM equipment.problems WHERE refs->>'modelId'=$1::text OR refs->>'unitId' IN (SELECT id::text FROM equipment.units WHERE model_id=$1::uuid)`, [id]);
         await query(client, `DELETE FROM equipment.model_stock WHERE model_id=$1`, [id]);
         await query(client, `DELETE FROM equipment.units WHERE model_id=$1`, [id]);
         await query(client, `DELETE FROM equipment.models WHERE id=$1`, [id]);
