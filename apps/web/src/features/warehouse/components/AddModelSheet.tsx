@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Equipment } from "@sever/contracts";
 import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
-import { useCreateModel, useCreateType, useCreateUnit } from "../hooks.ts";
+import { useCreateModel, useCreateType, useCreateUnit, useModelStockAtWarehouse, useSetModelStock, useWarehouses } from "../hooks.ts";
 
 interface Props {
   open: boolean;
@@ -14,6 +14,8 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
   const createType = useCreateType();
   const createModel = useCreateModel();
   const createUnit = useCreateUnit();
+  const setModelStock = useSetModelStock();
+  const warehouses = useWarehouses();
 
   const [tab, setTab] = useState<"type" | "model" | "unit">("model");
 
@@ -30,11 +32,25 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
   // unit form
   const [modelId, setModelId] = useState(models[0]?.id ?? "");
   const [assetTag, setAssetTag] = useState("");
+  const [warehouseId, setWarehouseId] = useState("");
+  const [stockQty, setStockQty] = useState("");
 
   // Fall back to the first available option so a freshly-created type/model is
   // selectable immediately (the controlled <select> showed it but state was "").
   const effTypeId = typeId || types[0]?.id || "";
   const effModelId = modelId || models[0]?.id || "";
+  const selectedModel = models.find((m) => m.id === effModelId);
+  const serialModels = models.filter((m) => m.trackingMode === "serial");
+  const quantityModels = models.filter((m) => m.trackingMode === "quantity");
+  const warehouseList = warehouses.data ?? [];
+  const effWarehouseId = warehouseId || warehouseList.find((w) => w.isDefault)?.id || warehouseList[0]?.id || "";
+  const scopedStock = useModelStockAtWarehouse(effModelId, effWarehouseId, selectedModel?.trackingMode === "quantity");
+
+  useEffect(() => {
+    if (selectedModel?.trackingMode === "quantity" && scopedStock.data) {
+      setStockQty(String(scopedStock.data.total));
+    }
+  }, [scopedStock.data, selectedModel?.trackingMode]);
 
   return (
     <Sheet open={open} onClose={onClose} title="Добавить">
@@ -46,7 +62,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
           Модель
         </Button>
         <Button variant={tab === "unit" ? "primary" : "secondary"} onClick={() => setTab("unit")}>
-          Единицу
+          Склад
         </Button>
       </div>
 
@@ -109,18 +125,56 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
       {tab === "unit" && (
         <>
           <Field label="Модель">
-            <Select value={effModelId} onChange={(e) => setModelId(e.target.value)} options={models.map((m) => ({ value: m.id, label: m.name }))} />
+            <Select
+              value={effModelId}
+              onChange={(e) => {
+                setModelId(e.target.value);
+                setAssetTag("");
+                setStockQty("");
+              }}
+              options={models.map((m) => ({ value: m.id, label: `${m.name}${m.trackingMode === "quantity" ? " · количество" : ""}` }))}
+            />
           </Field>
-          <Field label="Инвентарный номер">
-            <Input value={assetTag} onChange={(e) => setAssetTag(e.target.value)} placeholder="MP-001" />
-          </Field>
-          <Button
-            block
-            disabled={!assetTag || !effModelId || createUnit.isPending}
-            onClick={() => createUnit.mutate({ modelId: effModelId, assetTag }, { onSuccess: () => setAssetTag("") })}
-          >
-            Создать единицу
-          </Button>
+          {selectedModel?.trackingMode === "quantity" ? (
+            <>
+              <Field label="Склад">
+                <Select
+                  value={effWarehouseId}
+                  onChange={(e) => setWarehouseId(e.target.value)}
+                  options={warehouseList.map((w) => ({ value: w.id, label: w.isDefault ? `${w.name} ★` : w.name }))}
+                />
+              </Field>
+              <Field label="Количество">
+                <Input type="number" value={stockQty} onChange={(e) => setStockQty(e.target.value)} placeholder="40" />
+              </Field>
+              <p className="card__subtitle">
+                Кабели и расходники хранятся количеством по модели, без инвентарных номеров.
+              </p>
+              <Button
+                block
+                disabled={!effModelId || !effWarehouseId || stockQty === "" || setModelStock.isPending}
+                onClick={() => setModelStock.mutate({ modelId: effModelId, total: Math.max(0, Math.trunc(Number(stockQty) || 0)), warehouseId: effWarehouseId })}
+              >
+                Сохранить количество
+              </Button>
+            </>
+          ) : (
+            <>
+              {serialModels.length === 0 && quantityModels.length > 0 && (
+                <p className="card__subtitle">Для кабелей используйте количество, серийные единицы не нужны.</p>
+              )}
+              <Field label="Инвентарный номер">
+                <Input value={assetTag} onChange={(e) => setAssetTag(e.target.value)} placeholder="MP-001" />
+              </Field>
+              <Button
+                block
+                disabled={!assetTag || !effModelId || createUnit.isPending}
+                onClick={() => createUnit.mutate({ modelId: effModelId, assetTag }, { onSuccess: () => setAssetTag("") })}
+              >
+                Создать единицу
+              </Button>
+            </>
+          )}
         </>
       )}
     </Sheet>

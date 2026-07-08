@@ -423,6 +423,7 @@ export function createEquipmentService(
     async createUnit(input) {
       const model = await this.getModel(input.modelId);
       if (!model) throw NotFound("model", input.modelId);
+      if (model.trackingMode !== "serial") throw BadRequest("количественные модели учитываются остатком, а не серийными единицами");
       return tx(async (client) => {
         const warehouseId = input.warehouseId ?? await defaultWarehouseId(client);
         await assertWarehouse(warehouseId, client);
