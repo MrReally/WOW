@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "Unbounded";
+  src: url("/fonts/Unbounded-Variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+}
+
 /*
  * SEVER design tokens — "Workspaces v2".
  * Light = warm paper (primary, Apple-Maps/Things-3 calm).
@@ -102,6 +110,7 @@
 
   --font: "Barlow", -apple-system, system-ui, sans-serif;
   --font-cond: "Barlow Condensed", "Barlow", sans-serif;
+  --font-heading: "Unbounded", "Barlow Condensed", "Barlow", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   --fs-xs: 11px;

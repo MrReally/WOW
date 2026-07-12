@@ -161,7 +161,7 @@
 .bo-document-head h2,
 .bo-peek h2 {
   margin: 2px 0 0;
-  font-family: var(--font-cond);
+  font-family: var(--font-heading);
   letter-spacing: 0.01em;
 }
 

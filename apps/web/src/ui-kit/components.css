@@ -1,6 +1,15 @@
 /* SEVER "Workspaces v2" component styles. Redesign lives here + tokens.css. */
 
 /* ── Typography helpers ────────────────────────────────────────────── */
+h1,
+h2,
+h3,
+.card__title,
+.sheet__title,
+.page-toolbar__title strong {
+  font-family: var(--font-heading);
+}
+
 .t-cond {
   font-family: var(--font-cond);
   text-transform: uppercase;
@@ -137,6 +146,7 @@
   border-color: var(--bdr-hi);
 }
 .card__title {
+  font-family: var(--font-heading);
   font-size: var(--fs-md);
   font-weight: 600;
   margin: 0;
@@ -313,7 +323,7 @@
   margin: 0 auto var(--space-4);
 }
 .sheet__title {
-  font-family: var(--font-cond);
+  font-family: var(--font-heading);
   text-transform: uppercase;
   letter-spacing: 0.02em;
   font-size: var(--fs-lg);
@@ -871,7 +881,7 @@
   }
 
   .page-toolbar__title strong {
-    font-family: var(--font-cond);
+    font-family: var(--font-heading);
     font-size: 28px;
     line-height: 1.05;
     text-transform: uppercase;
