@@ -18,6 +18,22 @@ describe.skipIf(!apiUp)("UI smoke — desktop employee walkthrough", () => {
     await user.click(within(nav).getByRole("button", { name: /^Оборудование/ }));
     expect(await screen.findByRole("heading", { name: "Оборудование" })).toBeTruthy();
     expect(await screen.findByRole("textbox", { name: "Поиск в реестре" })).toBeTruthy();
+    const register = screen.getByRole("table");
+    const rows = within(register).getAllByRole("row");
+    expect(rows.length).toBeGreaterThan(1);
+    await user.click(within(rows[1]!).getAllByRole("cell")[0]!);
+    expect(await screen.findByText("Карточка оборудования")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Основное" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "История" })).toBeTruthy();
+  });
+
+  it("opens an equipment card from a direct desktop link", async () => {
+    const units = await fetch(`${API}/api/equipment/units`).then((r) => r.json()) as Array<{ id: string; assetTag: string }>;
+    expect(units.length).toBeGreaterThan(0);
+    window.history.pushState({}, "", `/backoffice?domain=equipment&id=${units[0]!.id}`);
+    render(<App />);
+    expect(await screen.findByText("Карточка оборудования", {}, { timeout: 10000 })).toBeTruthy();
+    expect(await screen.findByDisplayValue(units[0]!.assetTag)).toBeTruthy();
   });
 
   it("opens Backoffice and renders every real-data domain", async () => {

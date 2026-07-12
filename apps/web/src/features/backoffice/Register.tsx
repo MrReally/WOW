@@ -24,6 +24,7 @@ export function Register<T>({
   onOpen,
   empty = "Нет записей",
   toolbar,
+  externalQuery = "",
 }: {
   id: string;
   rows: T[];
@@ -32,6 +33,7 @@ export function Register<T>({
   onOpen?: (row: T) => void;
   empty?: string;
   toolbar?: ReactNode;
+  externalQuery?: string;
 }) {
   const storageKey = `sever.backoffice.register.${id}`;
   const initial = (() => {
@@ -44,12 +46,12 @@ export function Register<T>({
   const [showColumns, setShowColumns] = useState(false);
   const activeColumns = columns.filter((column) => visible.includes(column.id));
   const filtered = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase();
+    const needle = [query, externalQuery].filter(Boolean).join(" ").trim().toLocaleLowerCase();
     const next = needle ? rows.filter((row) => columns.some((column) => String(column.value(row)).toLocaleLowerCase().includes(needle))) : [...rows];
     const column = columns.find((item) => item.id === sortId);
     if (column) next.sort((a, b) => String(column.value(a)).localeCompare(String(column.value(b)), "ru", { numeric: true }) * (descending ? -1 : 1));
     return next;
-  }, [columns, descending, query, rows, sortId]);
+  }, [columns, descending, externalQuery, query, rows, sortId]);
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify({ name: "Моё представление", query, sortId, descending, visible } satisfies SavedView));

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { Catalog, Equipment, Finance, Operations, People, Permission, Problem, Projects } from "@sever/contracts";
 import { PERMISSIONS } from "@sever/contracts";
@@ -7,6 +7,9 @@ import { useSession } from "../../app/session.ts";
 import { useTheme } from "../../app/theme.tsx";
 import { Register, type RegisterColumn } from "./Register.tsx";
 import { useBackofficeAppearance, useBackofficeCommands, useBackofficeData } from "./hooks.ts";
+import { useChangeStatus, useUnit, useUnitHandovers, useUnitJournal, useUnitRepairs, useUpdateUnit } from "../warehouse/hooks.ts";
+import { RepairContractorPanel } from "../warehouse/components/RepairContractor.tsx";
+import { cableAttrs } from "../warehouse/cables.ts";
 import "./backoffice.css";
 
 type DomainId = "overview" | "projects" | "equipment" | "catalog" | "documents" | "movement" | "inventory" | "people" | "contractors" | "finance" | "problems" | "reports" | "permissions";
@@ -49,8 +52,10 @@ export function BackofficePage() {
   const data = useBackofficeData(can);
   const commands = useBackofficeCommands();
   const initialDomain = domains.some((item) => item.id === params.get("domain")) ? params.get("domain") as DomainId : "overview";
-  const [tabs, setTabs] = useState<WorkspaceTab[]>([{ id: "overview", domain: initialDomain, title: domains.find((d) => d.id === initialDomain)?.label ?? "Обзор" }]);
-  const [activeTab, setActiveTab] = useState("overview");
+  const initialEntityId = params.get("id") ?? undefined;
+  const initialTabId = initialEntityId ? `${initialDomain}:${initialEntityId}` : initialDomain;
+  const [tabs, setTabs] = useState<WorkspaceTab[]>([{ id: initialTabId, domain: initialDomain, entityId: initialEntityId, title: domains.find((d) => d.id === initialDomain)?.label ?? "Обзор" }]);
+  const [activeTab, setActiveTab] = useState(initialTabId);
   const [globalQuery, setGlobalQuery] = useState("");
   const [warehouseId, setWarehouseId] = useState("all");
   const active = tabs.find((tab) => tab.id === activeTab) ?? tabs[0]!;
@@ -92,9 +97,9 @@ type Commands = ReturnType<typeof useBackofficeCommands>;
 
 function Workspace({ domain, entityId, query, warehouseId, data, commands, can, openDomain }: { domain: DomainId; entityId?: string; query: string; warehouseId: string; data: Data; commands: Commands; can: (...permissions: Permission[]) => boolean; openDomain: (domain: DomainId, entityId?: string, title?: string) => void }) {
   if (domain === "overview") return <Overview data={data} openDomain={openDomain} />;
-  if (domain === "equipment") return <EquipmentWorkspace data={data} warehouseId={warehouseId} entityId={entityId} openDomain={openDomain} />;
-  if (domain === "catalog") return <CatalogWorkspace data={data} commands={commands} can={can} />;
-  if (domain === "projects") return <ProjectsWorkspace data={data} entityId={entityId} commands={commands} openDomain={openDomain} />;
+  if (domain === "equipment") return <EquipmentWorkspace data={data} warehouseId={warehouseId} entityId={entityId} query={query} can={can} openDomain={openDomain} />;
+  if (domain === "catalog") return <CatalogWorkspace data={data} commands={commands} can={can} query={query} />;
+  if (domain === "projects") return <ProjectsWorkspace data={data} entityId={entityId} commands={commands} query={query} openDomain={openDomain} />;
   if (domain === "documents") return <OperationDocument data={data} commands={commands} can={can} />;
   if (domain === "inventory") return <InventoryWorkspace data={data} commands={commands} can={can} />;
   if (domain === "movement") return <MovementWorkspace data={data} query={query} />;
@@ -112,27 +117,50 @@ function Overview({ data, openDomain }: { data: Data; openDomain: (domain: Domai
 }
 function Metric({ label, value, onClick }: { label: string; value: string; onClick: () => void }) { return <button className="bo-panel bo-metric" onClick={onClick}><span>{label}</span><strong>{value}</strong></button>; }
 
-function EquipmentWorkspace({ data, warehouseId, entityId, openDomain }: { data: Data; warehouseId: string; entityId?: string; openDomain: (domain: DomainId, id?: string, title?: string) => void }) {
+function EquipmentWorkspace({ data, warehouseId, entityId, query, can, openDomain }: { data: Data; warehouseId: string; entityId?: string; query: string; can: (...permissions: Permission[]) => boolean; openDomain: (domain: DomainId, id?: string, title?: string) => void }) {
   const models = data.models.data ?? [], units = (data.units.data ?? []).filter((unit) => warehouseId === "all" || unit.warehouseId === warehouseId);
   const warehouses = new Map((data.warehouses.data ?? []).map((row) => [row.id, row.name]));
   const modelMap = new Map(models.map((row) => [row.id, row]));
-  const selected = entityId ? units.find((unit) => unit.id === entityId) : undefined;
   const columns: RegisterColumn<Equipment.EquipmentUnitDTO>[] = [
     { id: "tag", label: "Маркировка", value: (row) => row.assetTag }, { id: "model", label: "Модель", value: (row) => modelMap.get(row.modelId)?.name ?? row.modelId }, { id: "serial", label: "Серийный №", value: (row) => row.serial ?? "—" }, { id: "status", label: "Статус", value: (row) => statusLabel[row.status] ?? row.status }, { id: "warehouse", label: "Склад", value: (row) => warehouses.get(row.warehouseId ?? "") ?? "—" }, { id: "cost", label: "Стоимость", value: (row) => modelMap.get(row.modelId)?.unitCostEUR ?? 0, render: (row) => money(modelMap.get(row.modelId)?.unitCostEUR ?? 0), align: "right" },
   ];
-  return <div className="bo-split"><Register id="equipment" rows={units} columns={columns} rowKey={(row) => row.id} onOpen={(row) => openDomain("equipment", row.id, row.assetTag)} />{selected && <aside className="bo-panel bo-peek"><div className="bo-panel__head"><span>Карточка единицы</span><Chip label={statusLabel[selected.status] ?? selected.status} tone={selected.status === "lost" ? "danger" : "info"} /></div><h2>{selected.assetTag}</h2><dl className="bo-details"><dt>Модель</dt><dd>{modelMap.get(selected.modelId)?.name}</dd><dt>Серийный номер</dt><dd>{selected.serial ?? "—"}</dd><dt>Склад</dt><dd>{warehouses.get(selected.warehouseId ?? "") ?? "—"}</dd><dt>Примечание</dt><dd>{selected.notes ?? "—"}</dd></dl></aside>}</div>;
+  return <div className="bo-split"><Register id="equipment" rows={units} columns={columns} rowKey={(row) => row.id} externalQuery={query} onOpen={(row) => openDomain("equipment", row.id, row.assetTag)} />{entityId && <EquipmentDetail id={entityId} data={data} can={can} openDomain={openDomain} />}</div>;
 }
 
-function CatalogWorkspace({ data, commands, can }: { data: Data; commands: Commands; can: (...permissions: Permission[]) => boolean }) {
+const journalLabel: Record<Equipment.JournalAction, string> = { created: "Создано", reserved: "Зарезервировано", issued: "Выдано на проект", returned: "Возвращено", return_incomplete: "Некомплект", sent_to_repair: "В ремонт", back_from_repair: "Из ремонта", sent_to_contractor: "Подрядчику", back_from_contractor: "От подрядчика", marked_lost: "Утеряно", transferred: "Перемещено", status_changed: "Смена статуса" };
+function EquipmentDetail({ id, data, can, openDomain }: { id: string; data: Data; can: (...permissions: Permission[]) => boolean; openDomain: (domain: DomainId, id?: string, title?: string) => void }) {
+  const unit = useUnit(id), journal = useUnitJournal(id), repairs = useUnitRepairs(id), handovers = useUnitHandovers(id);
+  const update = useUpdateUnit(), changeStatus = useChangeStatus();
+  const [assetTag, setAssetTag] = useState(""), [serial, setSerial] = useState(""), [notes, setNotes] = useState("");
+  const u = unit.data;
+  useEffect(() => { if (u) { setAssetTag(u.assetTag); setSerial(u.serial ?? ""); setNotes(u.notes ?? ""); } }, [u?.id, u?.assetTag, u?.serial, u?.notes]);
+  if (unit.isLoading) return <aside className="bo-panel bo-peek"><p>Загрузка карточки…</p></aside>;
+  if (!u) return <aside className="bo-panel bo-peek"><h2>Карточка не найдена</h2><button onClick={() => unit.refetch()}>Повторить</button></aside>;
+  const model = data.models.data?.find((m) => m.id === u.modelId), type = data.types.data?.find((t) => t.id === model?.typeId);
+  const warehouseName = (wid: string | null) => data.warehouses.data?.find((w) => w.id === wid)?.name ?? "—";
+  const project = data.projects.data?.find((p) => p.id === u.currentProjectId), cable = model ? cableAttrs(model) : null;
+  const repairTotal = (repairs.data ?? []).filter((r) => r.status === "closed").reduce((sum, r) => sum + (r.costEUR ?? 0), 0);
+  return <aside className="bo-panel bo-peek bo-unit-card">
+    <div className="bo-panel__head"><span>Карточка оборудования</span><Chip label={statusLabel[u.status] ?? u.status} tone={u.status === "lost" ? "danger" : "info"} /></div>
+    <h2>{u.assetTag}</h2><p className="bo-note">{model?.name ?? "Неизвестная модель"}{model?.manufacturer ? ` · ${model.manufacturer}` : ""}</p>
+    <section className="bo-card-section"><h3>Основное</h3><dl className="bo-details"><dt>Тип</dt><dd>{type?.name ?? "—"}</dd><dt>Склад</dt><dd>{warehouseName(u.warehouseId)}</dd><dt>Проект</dt><dd>{project ? <button className="bo-link" onClick={() => openDomain("projects", project.id, project.name)}>{project.name}</button> : "—"}</dd><dt>В системе с</dt><dd>{dt(u.createdAt)}</dd>{can("warehouse.costs.view") && <><dt>Стоимость замены</dt><dd>{model ? money(model.unitCostEUR) : "—"}</dd><dt>Аренда / сутки</dt><dd>{model ? money(model.dailyPriceEUR) : "—"}</dd><dt>Ремонты</dt><dd>{repairTotal ? money(repairTotal) : "—"}</dd></>}</dl>{cable && <dl className="bo-details"><dt>Кабель</dt><dd>{cable.cableType}, {cable.lengthM} м</dd><dt>Сторона A</dt><dd>{cable.sideAQty}× {cable.sideAConnector}</dd><dt>Сторона B</dt><dd>{cable.sideBQty}× {cable.sideBConnector}</dd></dl>}</section>
+    <section className="bo-card-section"><h3>Учётные данные</h3><label>Инвентарный номер<input value={assetTag} disabled={!can("warehouse.catalog.manage")} onChange={(e) => setAssetTag(e.target.value)} /></label><label>Серийный номер<input value={serial} disabled={!can("warehouse.unit.status")} onChange={(e) => setSerial(e.target.value)} /></label><label>Особенности и дефекты<textarea value={notes} disabled={!can("warehouse.unit.status")} onChange={(e) => setNotes(e.target.value)} /></label>{can("warehouse.unit.status", "warehouse.catalog.manage") && <button className="bo-primary" disabled={!assetTag.trim() || update.isPending} onClick={() => update.mutate({ id, input: { assetTag: assetTag.trim(), serial: serial.trim() || null, notes: notes.trim() || null } })}>Сохранить карточку</button>}</section>
+    {can("warehouse.unit.status") && <><section className="bo-card-section"><h3>Статус</h3><select aria-label="Статус оборудования" value={u.status} disabled={changeStatus.isPending} onChange={(e) => changeStatus.mutate({ id, status: e.target.value as Equipment.UnitStatus })}>{(["in_stock","reserved","in_repair","at_contractor","lost"] as Equipment.UnitStatus[]).map((s) => <option key={s} value={s}>{statusLabel[s]}</option>)}</select></section><RepairContractorPanel unit={u} /></>}
+    <section className="bo-card-section"><h3>История</h3>{journal.isLoading ? <p>Загрузка…</p> : !(journal.data?.length) ? <p className="bo-note">Событий пока нет</p> : <div className="bo-timeline">{journal.data.slice().reverse().map((e) => { const p = data.projects.data?.find((x) => x.id === e.projectId), actor = data.people.data?.find((x) => x.id === e.actorId); return <article key={e.id}><strong>{journalLabel[e.action] ?? e.action}</strong><time>{dt(e.at)}</time><p>{[p?.name, e.toWarehouseId ? warehouseName(e.toWarehouseId) : null, actor?.displayName, e.note].filter(Boolean).join(" · ")}</p></article>; })}</div>}</section>
+    {(repairs.data?.length || handovers.data?.length) ? <p className="bo-note">Сервис: {repairs.data?.length ?? 0} ремонтов · {handovers.data?.length ?? 0} передач подрядчикам</p> : null}
+  </aside>;
+}
+
+function CatalogWorkspace({ data, commands, can, query }: { data: Data; commands: Commands; can: (...permissions: Permission[]) => boolean; query: string }) {
   const columns: RegisterColumn<Catalog.CatalogItemDTO>[] = [{ id: "sku", label: "SKU", value: (r) => r.sku }, { id: "name", label: "Название", value: (r) => r.name }, { id: "kind", label: "Тип", value: (r) => r.kind }, { id: "group", label: "Группа", value: (r) => r.groupName ?? "—" }, { id: "unit", label: "Базовая ед.", value: (r) => r.baseUnit }, { id: "state", label: "Состояние", value: (r) => r.active ? "Активна" : "Архив" }];
-  return <Register id="catalog" rows={data.catalog.data ?? []} columns={columns} rowKey={(row) => row.id} toolbar={can("warehouse.catalog.manage") ? <button className="bo-primary" onClick={() => commands.createCatalogItem.mutate({ sku: `SKU-${Date.now()}`, name: "Новая позиция", kind: "product", baseUnit: "pcs" })}>Добавить позицию</button> : null} />;
+  return <Register id="catalog" rows={data.catalog.data ?? []} columns={columns} rowKey={(row) => row.id} externalQuery={query} />;
 }
 
-function ProjectsWorkspace({ data, entityId, commands, openDomain }: { data: Data; entityId?: string; commands: Commands; openDomain: (domain: DomainId, id?: string, title?: string) => void }) {
+function ProjectsWorkspace({ data, entityId, commands, query, openDomain }: { data: Data; entityId?: string; commands: Commands; query: string; openDomain: (domain: DomainId, id?: string, title?: string) => void }) {
   const projects = data.projects.data ?? [], clients = new Map((data.clients.data ?? []).map((row) => [row.id, row.name]));
   const selected = projects.find((row) => row.id === entityId);
   const columns: RegisterColumn<Projects.ProjectDTO>[] = [{ id: "name", label: "Проект", value: (row) => row.name }, { id: "client", label: "Клиент", value: (row) => clients.get(row.clientId) ?? "—" }, { id: "starts", label: "Начало", value: (row) => dt(row.startsAt) }, { id: "ends", label: "Окончание", value: (row) => dt(row.endsAt) }, { id: "status", label: "Статус", value: (row) => statusLabel[row.status] ?? row.status }];
-  return <div className="bo-split"><Register id="projects" rows={projects} columns={columns} rowKey={(row) => row.id} onOpen={(row) => openDomain("projects", row.id, row.name)} />{selected && <ProjectEditor project={selected} clients={data.clients.data ?? []} save={(input) => commands.updateProject.mutate({ id: selected.id, input })} pending={commands.updateProject.isPending} />}</div>;
+  return <div className="bo-split"><Register id="projects" rows={projects} columns={columns} rowKey={(row) => row.id} externalQuery={query} onOpen={(row) => openDomain("projects", row.id, row.name)} />{selected && <ProjectEditor project={selected} clients={data.clients.data ?? []} save={(input) => commands.updateProject.mutate({ id: selected.id, input })} pending={commands.updateProject.isPending} />}</div>;
 }
 function ProjectEditor({ project, clients, save, pending }: { project: Projects.ProjectDTO; clients: Projects.ClientDTO[]; save: (input: Projects.UpdateProjectInput) => void; pending: boolean }) {
   const [name, setName] = useState(project.name); const [clientId, setClientId] = useState(project.clientId); const [startsAt, setStartsAt] = useState(project.startsAt.slice(0, 16)); const [endsAt, setEndsAt] = useState(project.endsAt.slice(0, 16));

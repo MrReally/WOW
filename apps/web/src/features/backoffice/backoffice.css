@@ -354,6 +354,89 @@
   overflow: auto;
 }
 
+.bo-unit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - 168px);
+  overflow: auto;
+}
+
+.bo-card-section {
+  padding-top: 14px;
+  border-top: 1px solid var(--bdr);
+}
+
+.bo-card-section h3 {
+  margin: 0 0 10px;
+  padding: 0;
+  font-family: var(--font-heading);
+  font-size: 16px;
+}
+
+.bo-card-section label {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0;
+  color: var(--bo-text-secondary);
+  font-size: var(--bo-fs-small);
+  font-weight: 650;
+}
+
+.bo-card-section textarea {
+  min-height: 86px;
+  padding: 9px;
+  border: 1px solid var(--bdr-md);
+  border-radius: 6px;
+  background: var(--s1);
+  color: var(--text);
+  resize: vertical;
+}
+
+.bo-link {
+  border: 0;
+  padding: 0;
+  color: var(--accent) !important;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.bo-timeline {
+  display: grid;
+  gap: 0;
+}
+
+.bo-timeline article {
+  position: relative;
+  padding: 0 0 14px 18px;
+  border-left: 1px solid var(--bdr-md);
+}
+
+.bo-timeline article::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.bo-timeline time {
+  display: block;
+  color: var(--bo-text-muted);
+  font-size: var(--bo-fs-caption);
+}
+
+.bo-timeline p {
+  margin: 3px 0 0;
+  color: var(--bo-text-secondary);
+  font-size: var(--bo-fs-small);
+}
+
 .bo-grid {
   display: grid;
   gap: 14px;
