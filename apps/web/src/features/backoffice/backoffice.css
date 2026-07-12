@@ -161,11 +161,12 @@
 .bo-document-head h2,
 .bo-peek h2 {
   margin: 2px 0 0;
-  font-family: var(--font-heading);
+  font-family: var(--font-cond);
   letter-spacing: 0.01em;
 }
 
 .bo-topbar h1 {
+  font-family: var(--font-heading);
   font-size: 32px;
 }
 
@@ -614,6 +615,21 @@
 /* Classic is a complete productivity profile, not merely another font.
    It follows the restrained geometry of long-lived Windows backoffice apps. */
 .bo-shell[data-bo-view="classic"] {
+  --bo-fs-caption: 12px;
+  --bo-fs-small: 13px;
+  --bo-fs-body: 14px;
+  --bo-fs-control: 13px;
+  --bo-fs-table: 13px;
+  --bo-fs-heading: 20px;
+  --bo-text-secondary: color-mix(in srgb, var(--text) 82%, var(--text2));
+  --bo-text-muted: color-mix(in srgb, var(--text) 64%, var(--text2));
+  --bo-control-height: 32px;
+  --shadow-card: none;
+  grid-template-columns: 260px minmax(0, 1fr);
+  line-height: 1.32;
+}
+
+:root[data-theme="light"] .bo-shell[data-bo-view="classic"] {
   --bg-dim: #f3f3f3;
   --card: #ffffff;
   --s1: #fafafa;
@@ -627,24 +643,12 @@
   --text3: #737373;
   --accent: #0f6cbd;
   --accent-text: #ffffff;
-  --bo-fs-caption: 12px;
-  --bo-fs-small: 13px;
-  --bo-fs-body: 14px;
-  --bo-fs-control: 13px;
-  --bo-fs-table: 13px;
-  --bo-fs-heading: 20px;
-  --bo-text-secondary: #4c4c4c;
-  --bo-text-muted: #686868;
-  --bo-control-height: 32px;
-  --shadow-card: none;
-  grid-template-columns: 260px minmax(0, 1fr);
-  line-height: 1.32;
 }
 
 .bo-shell[data-bo-view="classic"] .bo-sidebar {
   padding: 10px 8px;
   gap: 12px;
-  background: #f0f0f0;
+  background: var(--s2);
 }
 
 .bo-shell[data-bo-view="classic"] .bo-brand {
@@ -684,15 +688,15 @@
 }
 
 .bo-shell[data-bo-view="classic"] .bo-nav__item--active {
-  background: #ffffff;
-  border-color: #c8c8c8;
+  background: var(--card);
+  border-color: var(--bdr-md);
   box-shadow: none;
 }
 
 .bo-shell[data-bo-view="classic"] .bo-topbar {
   min-height: 60px;
   padding: 8px 16px;
-  background: #ffffff;
+  background: var(--card);
 }
 
 .bo-shell[data-bo-view="classic"] .bo-topbar h1 {
@@ -710,7 +714,7 @@
   width: 300px;
   height: 32px;
   border-radius: 3px;
-  background: #ffffff;
+  background: var(--card);
 }
 
 .bo-shell[data-bo-view="classic"] .bo-icon-button,
@@ -724,7 +728,7 @@
 .bo-shell[data-bo-view="classic"] .bo-tabs {
   height: 36px;
   padding: 0 8px;
-  background: #e8e8e8;
+  background: var(--s2);
 }
 
 .bo-shell[data-bo-view="classic"] .bo-tab {
@@ -736,7 +740,7 @@
 
 .bo-shell[data-bo-view="classic"] .bo-workspace {
   padding: 10px;
-  background: #f3f3f3;
+  background: var(--bg-dim);
 }
 
 .bo-shell[data-bo-view="classic"] .bo-split {
@@ -749,7 +753,7 @@
 }
 
 .bo-shell[data-bo-view="classic"] .bo-panel {
-  border-color: #cfcfcf;
+  border-color: var(--bdr-md);
   border-radius: 3px;
   box-shadow: none;
 }
@@ -769,7 +773,7 @@
 }
 
 .bo-shell[data-bo-view="classic"] .bo-table th {
-  background: #f0f0f0;
+  background: var(--s1);
   font-family: var(--font);
   font-size: 11px;
   font-weight: 650;
@@ -783,7 +787,7 @@
 }
 
 .bo-shell[data-bo-view="classic"] .bo-table tbody tr.is-selected {
-  background: #e5f1fb;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .bo-shell[data-bo-view="classic"] .bo-form-grid,
@@ -803,7 +807,7 @@
 .bo-shell[data-bo-view="classic"] .bo-doc-fields input {
   height: 30px;
   border-radius: 2px;
-  background: #ffffff;
+  background: var(--card);
   font-size: 13px;
 }
 
@@ -812,7 +816,7 @@
   margin: 8px 10px;
   padding: 10px;
   border-radius: 2px;
-  background: #ffffff;
+  background: var(--card);
 }
 
 .bo-shell[data-bo-view="classic"] .bo-kpi-row strong {
@@ -911,7 +915,7 @@
 .bo-register-tools { display:flex; align-items:center; gap:8px; padding:10px; border-bottom:1px solid var(--bdr); }
 .bo-register-tools input { flex:1; min-width:180px; height:var(--bo-control-height); padding:0 12px; border:1px solid var(--bdr-md); border-radius:8px; background:var(--s1); color:var(--text); }
 .bo-register-tools button, .bo-primary { min-height:36px; padding:0 12px; border:1px solid var(--bdr-md); border-radius:7px; background:var(--s2); color:var(--text); cursor:pointer; }
-.bo-primary { background:var(--accent); color:var(--accent-ink); border-color:transparent; }
+.bo-primary { background:var(--accent); color:var(--accent-text); border-color:transparent; }
 .bo-column-picker { display:flex; flex-wrap:wrap; gap:12px; padding:10px; border-bottom:1px solid var(--bdr); }
 .bo-table-wrap { width:100%; overflow:auto; }
 .bo-sort { border:0; background:transparent; color:inherit; font:inherit; font-weight:inherit; cursor:pointer; white-space:nowrap; }

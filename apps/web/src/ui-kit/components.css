@@ -2,9 +2,6 @@
 
 /* ── Typography helpers ────────────────────────────────────────────── */
 h1,
-h2,
-h3,
-.card__title,
 .sheet__title,
 .page-toolbar__title strong {
   font-family: var(--font-heading);
@@ -146,7 +143,6 @@ h3,
   border-color: var(--bdr-hi);
 }
 .card__title {
-  font-family: var(--font-heading);
   font-size: var(--fs-md);
   font-weight: 600;
   margin: 0;
