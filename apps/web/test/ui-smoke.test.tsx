@@ -57,4 +57,31 @@ describe.skipIf(!apiUp)("UI smoke — desktop employee walkthrough", () => {
     await user.click(stylish);
     expect(stylish.getAttribute("class")).toContain("is-active");
   });
+
+  it("exposes the essential desktop creation flows", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Backoffice/i }, { timeout: 10000 }));
+    const nav = await screen.findByRole("navigation", { name: "Разделы Backoffice" });
+
+    await user.click(within(nav).getByRole("button", { name: /^Проекты/ }));
+    await screen.findByRole("heading", { name: "Проекты" });
+    await user.click(await screen.findByRole("button", { name: "Новый проект" }));
+    expect(screen.getByRole("button", { name: "Создать проект" })).toBeTruthy();
+
+    await user.click(within(screen.getByRole("navigation", { name: "Разделы Backoffice" })).getByRole("button", { name: /^Номенклатура/ }));
+    await screen.findByRole("heading", { name: "Номенклатура" });
+    await user.click(await screen.findByRole("button", { name: "Новая позиция" }));
+    expect(screen.getByRole("button", { name: "Создать позицию" })).toBeTruthy();
+
+    await user.click(within(screen.getByRole("navigation", { name: "Разделы Backoffice" })).getByRole("button", { name: /^Люди/ }));
+    await screen.findByRole("heading", { name: "Люди" });
+    await user.click(await screen.findByRole("button", { name: "Новый сотрудник" }));
+    expect(screen.getByRole("button", { name: "Создать сотрудника" })).toBeTruthy();
+
+    await user.click(within(screen.getByRole("navigation", { name: "Разделы Backoffice" })).getByRole("button", { name: /^Подрядчики/ }));
+    await screen.findByRole("heading", { name: "Подрядчики" });
+    await user.click(await screen.findByRole("button", { name: "Новый подрядчик" }));
+    expect(screen.getByRole("button", { name: "Создать подрядчика" })).toBeTruthy();
+  });
 });

@@ -71,8 +71,11 @@ export function useBackofficeCommands() {
   const createTransaction = useMutation({ mutationFn: (input: Omit<Finance.CreateTransactionInput, "createdByUserId">) => api.post("/api/finance/transactions", input), onSuccess: () => invalidateBackoffice(qc) });
   const updateRole = useMutation({ mutationFn: ({ id, input }: { id: string; input: People.UpdateRoleInput }) => api.patch(`/api/roles/${id}`, input), onSuccess: () => invalidateBackoffice(qc) });
   const createCatalogItem = useMutation({ mutationFn: (input: Catalog.CreateCatalogItemInput) => api.post("/api/catalog/items", input), onSuccess: () => invalidateBackoffice(qc) });
+  const createPerson = useMutation({ mutationFn: (input: People.CreateUserInput) => api.post<People.CreatedUserDTO>("/api/people", input), onSuccess: () => invalidateBackoffice(qc) });
+  const updatePerson = useMutation({ mutationFn: ({ id, input }: { id: string; input: People.UpdateUserInput }) => api.patch(`/api/people/${id}`, input), onSuccess: () => invalidateBackoffice(qc) });
+  const createContractor = useMutation({ mutationFn: (input: { name: string; contacts?: string | null }) => api.post<Equipment.ContractorDTO>("/api/equipment/contractors", input), onSuccess: () => invalidateBackoffice(qc) });
   const createDocument = useMutation({ mutationFn: (input: Operations.OperationPayload) => api.post<Operations.OperationDocumentDTO>("/api/operations/documents", input), onSuccess: () => invalidateBackoffice(qc) });
   const postDocument = useMutation({ mutationFn: (id: string) => api.post<Operations.OperationDocumentDTO>(`/api/operations/documents/${id}/post`, {}), onSuccess: () => invalidateBackoffice(qc) });
   const reverseDocument = useMutation({ mutationFn: (id: string) => api.post<Operations.OperationDocumentDTO>(`/api/operations/documents/${id}/reverse`, {}), onSuccess: () => invalidateBackoffice(qc) });
-  return { issue, returnUnits, transfer, resolveProblem, createProject, updateProject, createTransaction, updateRole, createCatalogItem, createDocument, postDocument, reverseDocument };
+  return { issue, returnUnits, transfer, resolveProblem, createProject, updateProject, createTransaction, updateRole, createCatalogItem, createPerson, updatePerson, createContractor, createDocument, postDocument, reverseDocument };
 }
