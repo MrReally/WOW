@@ -84,4 +84,29 @@ describe.skipIf(!apiUp)("UI smoke — desktop employee walkthrough", () => {
     await user.click(await screen.findByRole("button", { name: "Новый подрядчик" }));
     expect(screen.getByRole("button", { name: "Создать подрядчика" })).toBeTruthy();
   });
+
+  it("uses the shared mobile data in advanced desktop flows", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Backoffice/i }, { timeout: 10000 }));
+
+    const nav = () => screen.getByRole("navigation", { name: "Разделы Backoffice" });
+    await user.click(within(nav()).getByRole("button", { name: /^Проекты/ }));
+    await user.click(await screen.findByText("Корпоратив Acme — летняя сцена"));
+    expect(await screen.findByRole("tablist", { name: "Разделы проекта" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Брони" })).toBeTruthy();
+    expect(await screen.findByRole("tab", { name: "Финансы" })).toBeTruthy();
+
+    await user.click(within(nav()).getByRole("button", { name: /^Номенклатура/ }));
+    await user.click(await screen.findByText("Rum & Cola"));
+    expect(await screen.findByText("Версия 1")).toBeTruthy();
+    expect(screen.getByText("Смешать со льдом")).toBeTruthy();
+
+    await user.click(within(nav()).getByRole("button", { name: /^Выдача и возврат/ }));
+    const scanner = await screen.findByRole("textbox", { name: "Сканер оборудования" });
+    await user.type(scanner, "AU-001{Enter}");
+    expect(await screen.findByText("AU-001 добавлено")).toBeTruthy();
+    await user.type(scanner, "AU-001{Enter}");
+    expect(await screen.findByText("AU-001 уже добавлено")).toBeTruthy();
+  });
 });

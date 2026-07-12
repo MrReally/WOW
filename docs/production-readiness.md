@@ -52,6 +52,14 @@ Example manual backup:
 pg_dump "$DATABASE_URL" > "sever-backup-$(date +%Y-%m-%d-%H%M).sql"
 ```
 
+Project command (custom-format backup plus immediate integrity check):
+
+```bash
+pnpm db:backup
+```
+
+Backups are written to the ignored `backups/` directory. Copy them to encrypted off-machine storage according to the deployment retention policy.
+
 Example restore rehearsal:
 
 ```bash

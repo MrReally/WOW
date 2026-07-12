@@ -26,6 +26,7 @@ async function main() {
         finance: wiring.finance.service,
         venues: wiring.venues.service,
         plans: wiring.plans.service,
+        catalog: wiring.catalog.service,
       });
     }
   }

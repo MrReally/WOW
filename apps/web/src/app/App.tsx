@@ -7,6 +7,7 @@ import { useSession } from "./session.ts";
 import { Loading } from "../ui-kit/index.ts";
 import { AuthGate, ChangePasswordScreen } from "./auth/AuthScreens.tsx";
 import { BackofficePage } from "../features/backoffice/BackofficePage.tsx";
+import { AppErrorBoundary } from "./AppErrorBoundary.tsx";
 
 function SessionGate() {
   const { user, mustChangePassword, isLoading, error, can } = useSession();
@@ -29,7 +30,7 @@ export function App() {
   return (
     <Providers>
       <BrowserRouter>
-        <SessionGate />
+        <AppErrorBoundary><SessionGate /></AppErrorBoundary>
       </BrowserRouter>
     </Providers>
   );

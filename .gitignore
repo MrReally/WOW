@@ -10,3 +10,4 @@ coverage/
 .turbo/
 pnpm-debug.log*
 .pnpm-store/
+backups/

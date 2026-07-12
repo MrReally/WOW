@@ -42,7 +42,10 @@ export function Register<T>({
   const [query, setQuery] = useState(initial?.query ?? "");
   const [sortId, setSortId] = useState(initial?.sortId ?? columns[0]?.id ?? "");
   const [descending, setDescending] = useState(initial?.descending ?? false);
-  const [visible, setVisible] = useState<string[]>(initial?.visible ?? columns.map((column) => column.id));
+  const [visible, setVisible] = useState<string[]>(() => {
+    const saved = initial?.visible ?? [];
+    return [...saved, ...columns.map((column) => column.id).filter((columnId) => !saved.includes(columnId))];
+  });
   const [showColumns, setShowColumns] = useState(false);
   const activeColumns = columns.filter((column) => visible.includes(column.id));
   const filtered = useMemo(() => {

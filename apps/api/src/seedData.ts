@@ -1,7 +1,7 @@
 // Rich, diverse demo dataset — used by `pnpm seed` and the admin "reset to demo"
 // action. Assumes empty module schemas (the caller drops + migrates first).
 
-import type { Equipment, Finance, People, Projects, Venues, Plans } from "@sever/contracts";
+import type { Catalog, Equipment, Finance, People, Projects, Venues, Plans } from "@sever/contracts";
 
 export interface SeedServices {
   people: People.PeopleService;
@@ -10,6 +10,7 @@ export interface SeedServices {
   finance: Finance.FinanceService;
   venues: Venues.VenuesService;
   plans: Plans.PlansService;
+  catalog: Catalog.CatalogService;
 }
 
 function iso(daysFromNow: number, hour = 10): string {
@@ -39,6 +40,17 @@ export async function seedDemo(s: SeedServices): Promise<{ summary: Record<strin
   const ware = await mkUser("warehouse@sever.local", "whse123", "Дмитрий Ларин", whRole.id, "ware-001", 18);
   const tech1 = await mkUser("tech@sever.local", "tech123", "Антон Волков", techRole.id, "tech-001", 15);
   const tech2 = await mkUser("tech2@sever.local", "tech123", "Мария Котова", techRole.id, "tech-002", 15);
+
+  // ── Consumables/menu catalog (shared by mobile and desktop) ──
+  const cola = await s.catalog.createItem({ sku: "COLA-1L", name: "Cola", kind: "product", groupName: "Бар", baseUnit: "l" });
+  const rum = await s.catalog.createItem({ sku: "RUM-1L", name: "Rum", kind: "product", groupName: "Бар", baseUnit: "l" });
+  const rumCola = await s.catalog.createItem({ sku: "RUM-COLA", name: "Rum & Cola", kind: "item", groupName: "Коктейли", baseUnit: "serving" });
+  await s.catalog.addPackaging(cola.id, { name: "Бутылка 1 л", coefficient: 1, barcode: "460000000001", supplierCode: null, active: true });
+  await s.catalog.addPackaging(rum.id, { name: "Бутылка 0,7 л", coefficient: 0.7, barcode: "460000000002", supplierCode: null, active: true });
+  await s.catalog.createRecipe(rumCola.id, { version: 1, validFrom: new Date().toISOString(), validTo: null, outputQty: 1, outputUnit: "serving", technology: "Смешать со льдом", lines: [
+    { ingredientItemId: rum.id, unit: "l", grossQty: 0.05, netQty: 0.05, baseQty: 0.05 },
+    { ingredientItemId: cola.id, unit: "l", grossQty: 0.15, netQty: 0.15, baseQty: 0.15 },
+  ] });
 
   // ── Catalog: types ──
   const tLight = await s.equipment.createType({ name: "Световые приборы", trackingMode: "serial" });
@@ -184,6 +196,7 @@ export async function seedDemo(s: SeedServices): Promise<{ summary: Record<strin
       units: mp.length + aura.length + hex.length + s4.length + strobe.length + spk.length + haze.length,
       projects: 5,
       accounts: 2,
+      catalogItems: 3,
     },
   };
 }

@@ -95,8 +95,9 @@ function projectTabFrom(value: string | null): ProjectTab {
   return PROJECT_TABS.some((tab) => tab.id === value) ? (value as ProjectTab) : "overview";
 }
 
-export function ProjectDetailPage() {
-  const { id = "" } = useParams();
+export function ProjectDetailPage({ projectId, embedded = false }: { projectId?: string; embedded?: boolean } = {}) {
+  const { id: routeId = "" } = useParams();
+  const id = projectId ?? routeId;
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -276,11 +277,11 @@ export function ProjectDetailPage() {
   };
 
   return (
-    <div className="stack project-mobile-page">
-      <button className="icon-text-action" onClick={() => navigate(-1)} aria-label="Назад">
+    <div className={`stack project-mobile-page ${embedded ? "project-desktop-embedded" : ""}`}>
+      {!embedded && <button className="icon-text-action" onClick={() => navigate(-1)} aria-label="Назад">
         <ProjectGlyph type="back" />
         <span>Назад</span>
-      </button>
+      </button>}
 
       <Card>
         <div className="row row--between">

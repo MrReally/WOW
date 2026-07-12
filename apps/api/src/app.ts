@@ -78,6 +78,13 @@ export async function buildApp(): Promise<BuiltApp> {
 
   app.get("/health", async () => ({ ok: true, ts: new Date().toISOString() }));
 
+  app.addHook("onResponse", async (req, reply) => {
+    if (!req.url.startsWith("/api/") || req.method === "GET" || req.url.startsWith("/api/audit")) return;
+    let actorId: string | null = null;
+    try { actorId = (await ctx.auth(req)).userId; } catch { /* rejected requests may be anonymous */ }
+    await wiring.audit.service.append({ actorId, method:req.method, path:req.url.split("?",1)[0]!, statusCode:reply.statusCode });
+  });
+
   // Telegram bot username (for building deep-links in the UI). Cached.
   app.get("/api/telegram/bot-info", async (req) => {
     await ctx.auth(req);

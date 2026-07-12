@@ -17,6 +17,7 @@ import { createPlansModule } from "./modules/plans/index.js";
 import { createNotificationsModule } from "./modules/notifications/index.js";
 import { createCatalogModule } from "./modules/catalog/index.js";
 import { createOperationsModule } from "./modules/operations/index.js";
+import { createAuditModule } from "./modules/audit/index.js";
 import { createApexService } from "./modules/apex/service.js";
 import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
@@ -35,6 +36,7 @@ export function createModules(bus: EventBus = new EventBus()) {
   const notifications = createNotificationsModule(pool);
   const catalog = createCatalogModule(pool);
   const operations = createOperationsModule(pool, equipment.service);
+  const audit = createAuditModule(pool);
 
   setTelegramMessageLogger(async (message) => {
     await people.service.logTelegramDialogMessage(message);
@@ -497,9 +499,9 @@ export function createModules(bus: EventBus = new EventBus()) {
     return setInterval(() => void dispatchDueReminders(), 60_000);
   }
 
-  const modules = [people, equipment, projects, finance, venues, plans, notifications, catalog, operations];
+  const modules = [people, equipment, projects, finance, venues, plans, notifications, catalog, operations, audit];
 
-  return { bus, people, equipment, projects, finance, venues, plans, notifications, catalog, operations, apex, billing, modules, handleTelegramCallback, startReminderScheduler };
+  return { bus, people, equipment, projects, finance, venues, plans, notifications, catalog, operations, audit, apex, billing, modules, handleTelegramCallback, startReminderScheduler };
 }
 
 export type Wiring = ReturnType<typeof createModules>;

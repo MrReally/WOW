@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ApexDashboardDTO, Catalog, Equipment, Finance, Operations, People, Permission, Problem, Projects } from "@sever/contracts";
+import type { ApexDashboardDTO, Audit, Catalog, Equipment, Finance, Notifications, Operations, People, Permission, Problem, Projects } from "@sever/contracts";
 import { api } from "../../lib/api.ts";
 
 export type BackofficeView = "stylish" | "classic";
@@ -50,7 +50,17 @@ export function useBackofficeData(can: (...permissions: Permission[]) => boolean
   const transactions = useQuery({ enabled: financeAccess, queryKey: ["bo", "transactions"], queryFn: () => api.get<Finance.TransactionDTO[]>("/api/finance/transactions") });
   const catalog = useQuery({ enabled: warehouse, queryKey: ["bo", "catalog"], queryFn: () => api.get<Catalog.CatalogItemDTO[]>("/api/catalog/items") });
   const documents = useQuery({ enabled: warehouse, queryKey: ["bo", "documents"], queryFn: () => api.get<Operations.OperationDocumentDTO[]>("/api/operations/documents") });
-  return { models, types, units, warehouses, journal, problems, apex, projects, clients, people, roles, contractors, contractorItems, accounts, transactions, catalog, documents };
+  const openRepairs = useQuery({ enabled:warehouse, queryKey:["bo","repairs","open"], queryFn:()=>api.get<Equipment.RepairDTO[]>("/api/equipment/repairs/open") });
+  const openHandovers = useQuery({ enabled:warehouse, queryKey:["bo","handovers","open"], queryFn:()=>api.get<Equipment.HandoverDTO[]>("/api/equipment/handovers/open") });
+  const notifications = useQuery({ queryKey:["bo","notifications"], queryFn:()=>api.get<Notifications.NotificationDTO[]>("/api/notifications") });
+  const audit = useQuery({ enabled:can("roles.manage"), queryKey:["bo","audit"], queryFn:()=>api.get<Audit.AuditEntryDTO[]>("/api/audit") });
+  return { models, types, units, warehouses, journal, problems, apex, projects, clients, people, roles, contractors, contractorItems, accounts, transactions, catalog, documents, openRepairs, openHandovers, notifications, audit };
+}
+
+export function useCatalogItemDetail(itemId?: string) {
+  const packaging = useQuery({ enabled: !!itemId, queryKey:["bo","catalog",itemId,"packaging"], queryFn:()=>api.get<Catalog.PackagingUnitDTO[]>(`/api/catalog/items/${itemId}/packaging`) });
+  const recipes = useQuery({ enabled: !!itemId, queryKey:["bo","catalog",itemId,"recipes"], queryFn:()=>api.get<Catalog.RecipeVersionDTO[]>(`/api/catalog/items/${itemId}/recipes`) });
+  return { packaging, recipes };
 }
 
 function invalidateBackoffice(qc: ReturnType<typeof useQueryClient>) {
@@ -74,8 +84,11 @@ export function useBackofficeCommands() {
   const createPerson = useMutation({ mutationFn: (input: People.CreateUserInput) => api.post<People.CreatedUserDTO>("/api/people", input), onSuccess: () => invalidateBackoffice(qc) });
   const updatePerson = useMutation({ mutationFn: ({ id, input }: { id: string; input: People.UpdateUserInput }) => api.patch(`/api/people/${id}`, input), onSuccess: () => invalidateBackoffice(qc) });
   const createContractor = useMutation({ mutationFn: (input: { name: string; contacts?: string | null }) => api.post<Equipment.ContractorDTO>("/api/equipment/contractors", input), onSuccess: () => invalidateBackoffice(qc) });
+  const addPackaging = useMutation({ mutationFn: ({ itemId, input }: { itemId:string; input:Omit<Catalog.PackagingUnitDTO,"id"|"itemId"> }) => api.post(`/api/catalog/items/${itemId}/packaging`, input), onSuccess:()=>invalidateBackoffice(qc) });
+  const createRecipe = useMutation({ mutationFn: ({ itemId, input }: { itemId:string; input:Omit<Catalog.RecipeVersionDTO,"id"|"itemId"|"lines"> & {lines:Omit<Catalog.RecipeLineDTO,"id">[]} }) => api.post(`/api/catalog/items/${itemId}/recipes`, input), onSuccess:()=>invalidateBackoffice(qc) });
+  const importEquipmentCsv = useMutation({ mutationFn:(csv:string)=>api.post<Equipment.ImportResult>("/api/equipment/import",{csv}), onSuccess:()=>invalidateBackoffice(qc) });
   const createDocument = useMutation({ mutationFn: (input: Operations.OperationPayload) => api.post<Operations.OperationDocumentDTO>("/api/operations/documents", input), onSuccess: () => invalidateBackoffice(qc) });
   const postDocument = useMutation({ mutationFn: (id: string) => api.post<Operations.OperationDocumentDTO>(`/api/operations/documents/${id}/post`, {}), onSuccess: () => invalidateBackoffice(qc) });
   const reverseDocument = useMutation({ mutationFn: (id: string) => api.post<Operations.OperationDocumentDTO>(`/api/operations/documents/${id}/reverse`, {}), onSuccess: () => invalidateBackoffice(qc) });
-  return { issue, returnUnits, transfer, resolveProblem, createProject, updateProject, createTransaction, updateRole, createCatalogItem, createPerson, updatePerson, createContractor, createDocument, postDocument, reverseDocument };
+  return { issue, returnUnits, transfer, resolveProblem, createProject, updateProject, createTransaction, updateRole, createCatalogItem, createPerson, updatePerson, createContractor, addPackaging, createRecipe, importEquipmentCsv, createDocument, postDocument, reverseDocument };
 }
