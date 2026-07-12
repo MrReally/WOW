@@ -4,7 +4,7 @@
 
 Desktop Backoffice не создаёт отдельную БД, отдельные таблицы или дублирующие поля. Все добавленные desktop-функции используют те же контракты `@sever/contracts`, API и схемы, что и мобильная версия.
 
-<span style="background:#dcfce7;color:#166534;padding:3px 8px;border-radius:6px"><strong>Отдельных desktop-only сущностей и параметров БД: 0</strong></span> Добавлена одна общая эксплуатационная сущность аудита; она доступна через общий контракт/API и не является копией mobile-данных.
+<span style="background:#dcfce7;color:#166534;padding:3px 8px;border-radius:6px"><strong>Отдельных desktop-only сущностей и параметров БД: 0</strong></span> Добавлены общие эксплуатационные сущности аудита и необязательных складских зон; они доступны через общие контракты/API и не являются копиями mobile-данных.
 
 Если в дальнейшем появится desktop-only расширение, его сущность или параметр должен быть отмечен в этой таблице так: <span style="background:#fef08a;color:#713f12;padding:2px 5px">НОВОЕ В DESKTOP</span>. На текущем этапе таких элементов нет.
 
@@ -19,9 +19,10 @@ Desktop Backoffice не создаёт отдельную БД, отдельны
 | equipment | settings | id, cable_connectors, cable_name_format | — |
 | equipment | models | id, type_id, name, manufacturer, unit_cost_eur, daily_price_eur, attrs, required_component_model_ids, created_at | — |
 | equipment | warehouses | id, name, address, is_default, created_at | — |
-| equipment | units | id, model_id, asset_tag, serial, warehouse_id, status, current_project_id, created_at, notes | — |
+| equipment | <span style="background:#fef08a;color:#713f12;padding:2px 5px">storage_zones</span> | <span style="background:#fef08a;color:#713f12;padding:2px 5px">id, warehouse_id, parent_id, name, code, kind, active, sort_order, created_at</span> | <span style="background:#fef08a;color:#713f12;padding:2px 5px">НОВОЕ: общая необязательная иерархия помещение → стеллаж → полка → ячейка</span> |
+| equipment | units | id, model_id, asset_tag, serial, warehouse_id, <span style="background:#fef08a;color:#713f12;padding:2px 5px">zone_id</span>, status, current_project_id, created_at, notes | <span style="background:#fef08a;color:#713f12;padding:2px 5px">zone_id — необязательный адрес хранения</span> |
 | equipment | journal | id, unit_id, model_id, qty, action, from_status, to_status, project_id, warehouse_id, from_warehouse_id, to_warehouse_id, actor_id, note, at | — |
-| equipment | model_stock | model_id, warehouse_id, total_qty | — |
+| equipment | model_stock | model_id, warehouse_id, <span style="background:#fef08a;color:#713f12;padding:2px 5px">zone_id</span>, total_qty | <span style="background:#fef08a;color:#713f12;padding:2px 5px">zone_id — необязательное место кабеля/количественного остатка</span> |
 | equipment | contractors | id, name, contacts, created_at | — |
 | equipment | repairs | id, unit_id, status, problem, vendor, est_cost_eur, cost_eur, resolution, outcome, opened_by, opened_at, closed_by, closed_at | — |
 | equipment | handovers | id, unit_id, contractor_id, status, reason, note, cost_eur, expected_return, sent_by, sent_at, returned_by, returned_at | — |
@@ -69,6 +70,9 @@ Desktop Backoffice не создаёт отдельную БД, отдельны
 | Полная карточка проекта | projects.projects, reservations, timings, assignments, project_roles, contractor_items, reminders, pings; equipment.units/models; finance.invoice_versions/transactions |
 | Документооборот | operations.documents; equipment.units/journal; projects.projects; people.users |
 | Сканирование | существующие equipment.units.asset_tag и equipment.units.serial; новых идентификаторов не создаётся |
+| Складские зоны | equipment.storage_zones; equipment.units.zone_id; equipment.model_stock.zone_id. Все ссылки необязательны |
+| Кабели и комплектующие | equipment.models.attrs, model_stock, journal, storage_zones; единый количественный учёт по складу |
+| Обязательная комплектность | equipment.models.required_component_model_ids; equipment.problems с kind=kit_incomplete |
 | Контроль и уведомления | notifications.notifications/prefs; equipment.repairs/handovers/problems; projects.projects/problems; finance.transactions |
 | Импорт CSV | существующий endpoint оборудования и существующие equipment.types/models/units/warehouses |
 

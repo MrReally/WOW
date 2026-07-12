@@ -46,6 +46,7 @@ export const roleLabel: Record<Role, string> = {
 
 export const problemKindLabel: Record<string, string> = {
   incomplete_return: "Некомплект",
+  kit_incomplete: "Неполная комплектность",
   reservation_conflict: "Конфликт броней",
   overdue_debt: "Просрочка долга",
   contractor_return_due: "Вернуть подрядчику",

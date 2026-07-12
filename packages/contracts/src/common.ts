@@ -131,6 +131,7 @@ export type ProblemKind =
   | "reservation_conflict"
   | "overdue_debt"
   | "contractor_return_due"
+  | "kit_incomplete"
   | "unit_lost";
 
 export type ProblemSeverity = "info" | "warning" | "critical";

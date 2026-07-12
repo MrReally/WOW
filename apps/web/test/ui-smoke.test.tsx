@@ -45,7 +45,7 @@ describe.skipIf(!apiUp)("UI smoke — desktop employee walkthrough", () => {
     render(<App />);
     await user.click(await screen.findByRole("button", { name: /Backoffice/i }, { timeout: 10000 }));
     expect(await screen.findByRole("heading", { name: "Обзор" })).toBeTruthy();
-    for (const label of ["Оборудование", "Проекты", "Движение", "Люди", "Подрядчики", "Финансы", "Проблемы", "Расходники и комплекты", "Конструктор отчётов", "Права доступа"]) {
+    for (const label of ["Оборудование", "Модели", "Кабели и комплектующие", "Проекты", "Движение", "Люди", "Подрядчики", "Финансы", "Проблемы", "Расходники и комплекты", "Конструктор отчётов", "Права доступа"]) {
       const nav = screen.getByRole("navigation", { name: "Разделы Backoffice" });
       await user.click(within(nav).getByRole("button", { name: new RegExp(`^${label}`) }));
       expect(await screen.findByRole("heading", { name: label })).toBeTruthy();

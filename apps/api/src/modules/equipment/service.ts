@@ -30,6 +30,7 @@ interface UnitRow {
   serial: string | null;
   status: Equipment.UnitStatus;
   warehouse_id: string | null;
+  zone_id: string | null;
   current_project_id: string | null;
   notes: string | null;
   created_at: Date;
@@ -55,6 +56,17 @@ interface WarehouseRow {
   name: string;
   address: string | null;
   is_default: boolean;
+  created_at: Date;
+}
+interface StorageZoneRow {
+  id: string;
+  warehouse_id: string;
+  parent_id: string | null;
+  name: string;
+  code: string;
+  kind: Equipment.StorageZoneKind;
+  active: boolean;
+  sort_order: number;
   created_at: Date;
 }
 interface EquipmentSettingsRow {
@@ -98,6 +110,7 @@ const unitDTO = (r: UnitRow): Equipment.EquipmentUnitDTO => ({
   serial: r.serial,
   status: r.status,
   warehouseId: r.warehouse_id,
+  zoneId: r.zone_id,
   currentProjectId: r.current_project_id,
   notes: r.notes,
   createdAt: r.created_at.toISOString(),
@@ -123,6 +136,17 @@ const warehouseDTO = (r: WarehouseRow): Equipment.WarehouseDTO => ({
   name: r.name,
   address: r.address,
   isDefault: r.is_default,
+  createdAt: r.created_at.toISOString(),
+});
+const storageZoneDTO = (r: StorageZoneRow): Equipment.StorageZoneDTO => ({
+  id: r.id,
+  warehouseId: r.warehouse_id,
+  parentId: r.parent_id,
+  name: r.name,
+  code: r.code,
+  kind: r.kind,
+  active: r.active,
+  sortOrder: r.sort_order,
   createdAt: r.created_at.toISOString(),
 });
 const cableSettingsDTO = (r: EquipmentSettingsRow): Equipment.CableSettingsDTO => ({
@@ -276,6 +300,12 @@ export function createEquipmentService(
     if (!row) throw NotFound("warehouse", id);
   }
 
+  async function assertZone(zoneId: string | null | undefined, warehouseId: string, client: Sql = db): Promise<void> {
+    if (!zoneId) return;
+    const row = await one<{ id: string }>(client, `SELECT id FROM equipment.storage_zones WHERE id=$1 AND warehouse_id=$2 AND active=true`, [zoneId, warehouseId]);
+    if (!row) throw BadRequest("зона хранения не относится к выбранному складу или архивирована");
+  }
+
   async function ensureCableSettings(client: Sql = db): Promise<EquipmentSettingsRow> {
     let row = await one<EquipmentSettingsRow>(
       client,
@@ -290,6 +320,25 @@ export function createEquipmentService(
       );
     }
     return row!;
+  }
+
+  async function syncProjectKitProblems(client:Sql,projectId:string):Promise<void>{
+    await query(client,`UPDATE equipment.problems p SET resolved=true,resolved_at=now() WHERE p.kind='kit_incomplete' AND p.resolved=false AND p.refs->>'projectId'=$1::text AND NOT EXISTS (SELECT 1 FROM equipment.units u WHERE u.current_project_id=$1::uuid AND u.model_id=(p.refs->>'modelId')::uuid)`,[projectId]);
+    const kitModels=await query<{id:string;name:string;required_component_model_ids:string[]}>(client,`SELECT DISTINCT m.id,m.name,m.required_component_model_ids FROM equipment.models m JOIN equipment.units u ON u.model_id=m.id WHERE u.current_project_id=$1 AND cardinality(m.required_component_model_ids)>0`,[projectId]);
+    for(const kit of kitModels){
+      const missingNames:string[]=[];
+      for(const requiredId of kit.required_component_model_ids){
+        const required=await one<{name:string;tracking_mode:Equipment.TrackingMode}>(client,`${MODEL_SELECT} WHERE m.id=$1`,[requiredId]);
+        if(!required){missingNames.push(requiredId);continue;}
+        const present=required.tracking_mode==="serial"
+          ? !!await one(client,`SELECT 1 FROM equipment.units WHERE model_id=$1 AND current_project_id=$2 AND status='on_project' LIMIT 1`,[requiredId,projectId])
+          : Number((await one<{qty:string}>(client,`SELECT COALESCE(SUM(CASE WHEN action='issued' THEN qty WHEN action IN ('returned','return_incomplete') THEN -qty ELSE 0 END),0)::text qty FROM equipment.journal WHERE model_id=$1 AND project_id=$2`,[requiredId,projectId]))?.qty??0)>0;
+        if(!present)missingNames.push(required.name);
+      }
+      const existing=await one<{id:string}>(client,`SELECT id FROM equipment.problems WHERE kind='kit_incomplete' AND resolved=false AND refs->>'projectId'=$1 AND refs->>'modelId'=$2 LIMIT 1`,[projectId,kit.id]);
+      if(missingNames.length&&!existing)await query(client,`INSERT INTO equipment.problems(kind,severity,title,detail,refs) VALUES('kit_incomplete','warning',$1,$2,$3)`,[`Неполный комплект: ${kit.name}`,`Не выданы: ${missingNames.join(", ")}`,JSON.stringify({projectId,modelId:kit.id})]);
+      if(!missingNames.length&&existing)await query(client,`UPDATE equipment.problems SET resolved=true,resolved_at=now() WHERE id=$1`,[existing.id]);
+    }
   }
 
   return {
@@ -329,6 +378,29 @@ export function createEquipmentService(
         );
         return warehouseDTO(row!);
       });
+    },
+    async listStorageZones(warehouseId) {
+      const rows = await query<StorageZoneRow>(db, `SELECT * FROM equipment.storage_zones ${warehouseId ? "WHERE warehouse_id=$1" : ""} ORDER BY warehouse_id, sort_order, code`, warehouseId ? [warehouseId] : []);
+      return rows.map(storageZoneDTO);
+    },
+    async createStorageZone(input) {
+      await assertWarehouse(input.warehouseId);
+      if (input.parentId) await assertZone(input.parentId, input.warehouseId);
+      const row = await one<StorageZoneRow>(db, `INSERT INTO equipment.storage_zones (warehouse_id,parent_id,name,code,kind,sort_order) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`, [input.warehouseId,input.parentId??null,input.name,input.code,input.kind,input.sortOrder??0]);
+      return storageZoneDTO(row!);
+    },
+    async updateStorageZone(id, input) {
+      const existing = await one<StorageZoneRow>(db, `SELECT * FROM equipment.storage_zones WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("storage zone", id);
+      const parentId = input.parentId === undefined ? existing.parent_id : input.parentId;
+      if (parentId === id) throw BadRequest("зона не может быть родителем самой себя");
+      if (parentId) {
+        await assertZone(parentId, existing.warehouse_id);
+        const cycle=await one(db,`WITH RECURSIVE ancestors AS (SELECT id,parent_id FROM equipment.storage_zones WHERE id=$1 UNION ALL SELECT z.id,z.parent_id FROM equipment.storage_zones z JOIN ancestors a ON z.id=a.parent_id) SELECT 1 FROM ancestors WHERE id=$2 LIMIT 1`,[parentId,id]);
+        if(cycle)throw BadRequest("нельзя создать циклическую иерархию зон");
+      }
+      const row = await one<StorageZoneRow>(db, `UPDATE equipment.storage_zones SET parent_id=$2,name=$3,code=$4,kind=$5,active=$6,sort_order=$7 WHERE id=$1 RETURNING *`, [id,parentId,input.name??existing.name,input.code??existing.code,input.kind??existing.kind,input.active??existing.active,input.sortOrder??existing.sort_order]);
+      return storageZoneDTO(row!);
     },
 
     // ── Catalog: types ──
@@ -409,6 +481,11 @@ export function createEquipmentService(
       const existing = await one<ModelRow>(db, `SELECT * FROM equipment.models WHERE id=$1`, [id]);
       if (!existing) throw NotFound("model", id);
       if (input.typeId && !await one(db, `SELECT id FROM equipment.types WHERE id=$1`, [input.typeId])) throw NotFound("type", input.typeId);
+      if (input.requiredComponentModelIds?.includes(id)) throw BadRequest("модель не может требовать саму себя");
+      if (input.requiredComponentModelIds) {
+        const found = await query<{ id: string }>(db, `SELECT id FROM equipment.models WHERE id=ANY($1::uuid[])`, [input.requiredComponentModelIds]);
+        if (found.length !== new Set(input.requiredComponentModelIds).size) throw BadRequest("одна из обязательных комплектующих не найдена");
+      }
       await query(
         db,
         `UPDATE equipment.models SET
@@ -417,7 +494,8 @@ export function createEquipmentService(
            manufacturer     = $4,
            unit_cost_eur    = COALESCE($5, unit_cost_eur),
            daily_price_eur  = COALESCE($6, daily_price_eur),
-           attrs            = $7
+           attrs            = $7,
+           required_component_model_ids = $8
          WHERE id=$1`,
         [
           id,
@@ -427,6 +505,7 @@ export function createEquipmentService(
           input.unitCostEUR ?? null,
           input.dailyPriceEUR ?? null,
           input.attrs === undefined ? existing.attrs : input.attrs ? JSON.stringify(input.attrs) : null,
+          input.requiredComponentModelIds === undefined ? existing.required_component_model_ids : [...new Set(input.requiredComponentModelIds)],
         ]
       );
       const row = await one<ModelRow>(db, `${MODEL_SELECT} WHERE m.id=$1`, [id]);
@@ -544,10 +623,11 @@ export function createEquipmentService(
       return tx(async (client) => {
         const warehouseId = input.warehouseId ?? await defaultWarehouseId(client);
         await assertWarehouse(warehouseId, client);
+        await assertZone(input.zoneId, warehouseId, client);
         const row = await one<UnitRow>(
           client,
-          `INSERT INTO equipment.units (model_id, asset_tag, serial, notes, warehouse_id) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-          [input.modelId, input.assetTag, input.serial ?? null, input.notes ?? null, warehouseId]
+          `INSERT INTO equipment.units (model_id, asset_tag, serial, notes, warehouse_id, zone_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+          [input.modelId, input.assetTag, input.serial ?? null, input.notes ?? null, warehouseId, input.zoneId ?? null]
         );
         await appendJournal(client, {
           unitId: row!.id,
@@ -562,13 +642,15 @@ export function createEquipmentService(
       const existing = await one<UnitRow>(db, `SELECT * FROM equipment.units WHERE id=$1`, [id]);
       if (!existing) throw NotFound("unit", id);
       if (input.modelId && !await one(db, `SELECT id FROM equipment.models WHERE id=$1`, [input.modelId])) throw NotFound("model", input.modelId);
+      await assertZone(input.zoneId, existing.warehouse_id ?? await defaultWarehouseId());
       const row = await one<UnitRow>(
         db,
         `UPDATE equipment.units SET
            model_id  = $2,
            asset_tag = $3,
            serial    = $4,
-           notes     = $5
+           notes     = $5,
+           zone_id   = $6
          WHERE id=$1 RETURNING *`,
         [
           id,
@@ -576,6 +658,7 @@ export function createEquipmentService(
           input.assetTag === undefined ? existing.asset_tag : input.assetTag,
           input.serial === undefined ? existing.serial : input.serial,
           input.notes === undefined ? existing.notes : input.notes,
+          input.zoneId === undefined ? existing.zone_id : input.zoneId,
         ]
       );
       return unitDTO(row!);
@@ -622,9 +705,9 @@ export function createEquipmentService(
 
       if (model.trackingMode === "quantity" || model.trackingMode === "cable") {
         const stock = warehouseId
-          ? await one<{ total_qty: number }>(
+          ? await one<{ total_qty: number; zone_id: string | null }>(
               db,
-              `SELECT total_qty FROM equipment.model_stock WHERE model_id=$1 AND warehouse_id=$2`,
+              `SELECT total_qty, zone_id FROM equipment.model_stock WHERE model_id=$1 AND warehouse_id=$2`,
               [modelId, warehouseId]
             )
           : await one<{ total_qty: string }>(
@@ -644,7 +727,7 @@ export function createEquipmentService(
           warehouseId ? [modelId, warehouseId] : [modelId]
         );
         const onProjects = Math.max(0, Number(moved?.out ?? 0));
-        return { modelId, warehouseId: warehouseId ?? null, total, inStock: total - onProjects, onProjects, inRepair: 0 };
+        return { modelId, warehouseId: warehouseId ?? null, zoneId: warehouseId ? (stock as { zone_id?: string | null } | null)?.zone_id ?? null : null, total, inStock: total - onProjects, onProjects, inRepair: 0 };
       }
 
       const rows = await query<{ status: Equipment.UnitStatus; count: string }>(
@@ -657,6 +740,7 @@ export function createEquipmentService(
       return {
         modelId,
         warehouseId: warehouseId ?? null,
+        zoneId: null,
         total,
         inStock: by("in_stock"),
         onProjects: by("on_project"),
@@ -665,17 +749,18 @@ export function createEquipmentService(
     },
 
     // ── Quantity (cable) stock + moves ──
-    async transferUnit(unitId, warehouseId, actorId, note) {
+    async transferUnit(unitId, warehouseId, actorId, note, zoneId) {
       await assertWarehouse(warehouseId);
+      await assertZone(zoneId, warehouseId);
       const result = await tx(async (client) => {
         const unit = await one<UnitRow>(client, `SELECT * FROM equipment.units WHERE id=$1 FOR UPDATE`, [unitId]);
         if (!unit) throw NotFound("unit", unitId);
         if (unit.status !== "in_stock") throw BadRequest("перемещать между складами можно только единицы на складе");
-        if (unit.warehouse_id === warehouseId) throw BadRequest("выберите другой склад");
+        if (unit.warehouse_id === warehouseId && unit.zone_id === (zoneId ?? null)) throw BadRequest("выберите другой склад или зону");
         const updated = await one<UnitRow>(
           client,
-          `UPDATE equipment.units SET warehouse_id=$2 WHERE id=$1 RETURNING *`,
-          [unitId, warehouseId]
+          `UPDATE equipment.units SET warehouse_id=$2, zone_id=$3 WHERE id=$1 RETURNING *`,
+          [unitId, warehouseId, zoneId ?? null]
         );
         await appendJournal(client, {
           unitId,
@@ -701,17 +786,18 @@ export function createEquipmentService(
       return result.unit;
     },
 
-    async setModelStockTotal(modelId, total, warehouseIdInput) {
+    async setModelStockTotal(modelId, total, warehouseIdInput, zoneId) {
       const model = await this.getModel(modelId);
       if (!model) throw NotFound("model", modelId);
       if (model.trackingMode !== "quantity" && model.trackingMode !== "cable") throw BadRequest("model is not quantity-tracked");
       const warehouseId = warehouseIdInput ?? await defaultWarehouseId();
       await assertWarehouse(warehouseId);
+      await assertZone(zoneId, warehouseId);
       await query(
         db,
-        `INSERT INTO equipment.model_stock (model_id, warehouse_id, total_qty) VALUES ($1,$2,$3)
-         ON CONFLICT (model_id, warehouse_id) DO UPDATE SET total_qty=$3`,
-        [modelId, warehouseId, Math.max(0, Math.trunc(total))]
+        `INSERT INTO equipment.model_stock (model_id, warehouse_id, total_qty, zone_id) VALUES ($1,$2,$3,$4)
+         ON CONFLICT (model_id, warehouse_id) DO UPDATE SET total_qty=$3, zone_id=$4`,
+        [modelId, warehouseId, Math.max(0, Math.trunc(total)), zoneId ?? null]
       );
       return this.modelStock(modelId, warehouseId);
     },
@@ -733,6 +819,7 @@ export function createEquipmentService(
           actorId: input.actorId,
           note: input.note ?? null,
         });
+        await syncProjectKitProblems(client,input.projectId);
       });
       return this.modelStock(input.modelId, warehouseId);
     },
@@ -763,6 +850,7 @@ export function createEquipmentService(
           actorId: input.actorId,
           note: input.note ?? null,
         });
+        await syncProjectKitProblems(client,input.projectId);
       });
       return this.modelStock(input.modelId, warehouseId);
     },
@@ -1008,6 +1096,8 @@ export function createEquipmentService(
           });
           results.push(unitDTO(updated!));
         }
+
+        await syncProjectKitProblems(client,input.projectId);
         return results;
       });
 
@@ -1062,6 +1152,7 @@ export function createEquipmentService(
             note: input.note ?? null,
           });
         }
+        await syncProjectKitProblems(client,input.projectId);
 
         // Missing units stay on_project; a Problem is raised but nothing blocks.
         if (missing.length === 0) return null;

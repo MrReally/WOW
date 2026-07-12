@@ -53,12 +53,29 @@ SET is_default=true
 WHERE id = (SELECT id FROM equipment.warehouses ORDER BY is_default DESC, created_at LIMIT 1)
   AND NOT EXISTS (SELECT 1 FROM equipment.warehouses WHERE is_default=true);
 
+-- Optional hierarchical addresses inside a warehouse. A warehouse remains
+-- fully usable without zones; zones only add room/rack/shelf precision.
+CREATE TABLE IF NOT EXISTS equipment.storage_zones (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  warehouse_id uuid NOT NULL REFERENCES equipment.warehouses(id),
+  parent_id    uuid REFERENCES equipment.storage_zones(id),
+  name         text NOT NULL,
+  code         text NOT NULL,
+  kind         text NOT NULL CHECK (kind IN ('room','rack','shelf','bin','floor','other')),
+  active       boolean NOT NULL DEFAULT true,
+  sort_order   integer NOT NULL DEFAULT 0,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (warehouse_id, code)
+);
+CREATE INDEX IF NOT EXISTS storage_zones_warehouse_idx ON equipment.storage_zones(warehouse_id, sort_order, code);
+
 CREATE TABLE IF NOT EXISTS equipment.units (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   model_id           uuid NOT NULL REFERENCES equipment.models(id),
   asset_tag          text NOT NULL UNIQUE,
   serial             text,
   warehouse_id       uuid REFERENCES equipment.warehouses(id),
+  zone_id            uuid REFERENCES equipment.storage_zones(id),
   status             text NOT NULL DEFAULT 'in_stock'
                      CHECK (status IN ('in_stock','reserved','on_project','in_repair','at_contractor','lost')),
   current_project_id uuid,            -- opaque id from projects module (no FK)
@@ -71,6 +88,7 @@ CREATE INDEX IF NOT EXISTS units_project_idx ON equipment.units(current_project_
 -- Per-unit free-form notes: unique defects, quirks, marks.
 ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS notes text;
 ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS warehouse_id uuid REFERENCES equipment.warehouses(id);
+ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS zone_id uuid REFERENCES equipment.storage_zones(id);
 UPDATE equipment.units
 SET warehouse_id=(SELECT id FROM equipment.warehouses ORDER BY is_default DESC, created_at LIMIT 1)
 WHERE warehouse_id IS NULL;
@@ -113,9 +131,11 @@ WHERE warehouse_id IS NULL AND model_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS equipment.model_stock (
   model_id  uuid REFERENCES equipment.models(id),
   warehouse_id uuid REFERENCES equipment.warehouses(id),
+  zone_id uuid REFERENCES equipment.storage_zones(id),
   total_qty integer NOT NULL DEFAULT 0
 );
 ALTER TABLE equipment.model_stock ADD COLUMN IF NOT EXISTS warehouse_id uuid REFERENCES equipment.warehouses(id);
+ALTER TABLE equipment.model_stock ADD COLUMN IF NOT EXISTS zone_id uuid REFERENCES equipment.storage_zones(id);
 UPDATE equipment.model_stock
 SET warehouse_id=(SELECT id FROM equipment.warehouses ORDER BY is_default DESC, created_at LIMIT 1)
 WHERE warehouse_id IS NULL;

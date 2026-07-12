@@ -655,6 +655,56 @@ describe("Tech pickup/return → некомплект", () => {
     expect(editedUnit.notes).toBe("Проверено");
   });
 
+  it("keeps optional hierarchical storage zones consistent for units and counted stock", async () => {
+    const suffix=String(Date.now());
+    const warehouse=await wiring.equipment.service.createWarehouse({name:`Zone warehouse ${suffix}`});
+    const room=await wiring.equipment.service.createStorageZone({warehouseId:warehouse.id,name:"Room",code:`R-${suffix}`,kind:"room"});
+    const shelf=await wiring.equipment.service.createStorageZone({warehouseId:warehouse.id,parentId:room.id,name:"Shelf",code:`S-${suffix}`,kind:"shelf"});
+    const type=await wiring.equipment.service.createType({name:`Zone serial ${suffix}`,trackingMode:"serial"});
+    const model=await wiring.equipment.service.createModel({typeId:type.id,name:`Zone model ${suffix}`,unitCostEUR:1,dailyPriceEUR:1});
+    const unit=await wiring.equipment.service.createUnit({modelId:model.id,assetTag:`ZONE-${suffix}`,warehouseId:warehouse.id,zoneId:shelf.id});
+    expect(unit.zoneId).toBe(shelf.id);
+    const zoneActor=await makeTech(`Zone tech ${suffix}`);
+    const moved=await wiring.equipment.service.transferUnit(unit.id,warehouse.id,zoneActor.id,"same warehouse, other address",room.id);
+    expect(moved.zoneId).toBe(room.id);
+    await expect(wiring.equipment.service.updateStorageZone(room.id,{parentId:shelf.id})).rejects.toThrow(/циклическую/);
+    const otherWarehouse=await wiring.equipment.service.createWarehouse({name:`Other zone warehouse ${suffix}`});
+    const foreignZone=await wiring.equipment.service.createStorageZone({warehouseId:otherWarehouse.id,name:"Foreign",code:`F-${suffix}`,kind:"rack"});
+    await expect(wiring.equipment.service.updateUnit(unit.id,{zoneId:foreignZone.id})).rejects.toThrow(/не относится/);
+    await expect(wiring.equipment.service.transferUnit(unit.id,warehouse.id,zoneActor.id,"same address",room.id)).rejects.toThrow(/другой склад или зону/);
+
+    const cableType=await wiring.equipment.service.createType({name:`Zone cables ${suffix}`,trackingMode:"cable"});
+    const cable=await wiring.equipment.service.createModel({typeId:cableType.id,name:`Zone cable ${suffix}`,unitCostEUR:1,dailyPriceEUR:1,attrs:{cableType:"DMX",lengthM:5,sideAConnector:"XLR5",sideAQty:1,sideBConnector:"XLR5",sideBQty:1}});
+    const stock=await wiring.equipment.service.setModelStockTotal(cable.id,12,warehouse.id,shelf.id);
+    expect(stock.zoneId).toBe(shelf.id);
+    expect(stock.total).toBe(12);
+  });
+
+  it("raises and resolves a non-blocking kit completeness problem", async () => {
+    const suffix=String(Date.now());
+    const actor=await makeTech(`Kit tech ${suffix}`);
+    const serialType=await wiring.equipment.service.createType({name:`Kit serial ${suffix}`,trackingMode:"serial"});
+    const qtyType=await wiring.equipment.service.createType({name:`Kit qty ${suffix}`,trackingMode:"quantity"});
+    const router=await wiring.equipment.service.createModel({typeId:serialType.id,name:`Router ${suffix}`,unitCostEUR:1,dailyPriceEUR:1});
+    const power=await wiring.equipment.service.createModel({typeId:qtyType.id,name:`Power ${suffix}`,unitCostEUR:1,dailyPriceEUR:1});
+    await wiring.equipment.service.setModelStockTotal(power.id,10);
+    const mixer=await wiring.equipment.service.createModel({typeId:serialType.id,name:`Mixer ${suffix}`,unitCostEUR:1,dailyPriceEUR:1,requiredComponentModelIds:[router.id,power.id]});
+    const mixerUnit=await wiring.equipment.service.createUnit({modelId:mixer.id,assetTag:`MIX-${suffix}`});
+    const routerUnit=await wiring.equipment.service.createUnit({modelId:router.id,assetTag:`RTR-${suffix}`});
+    const client=await wiring.projects.service.createClient({name:`Kit client ${suffix}`});
+    const project=await wiring.projects.service.createProject({name:`Kit project ${suffix}`,clientId:client.id,startsAt:new Date().toISOString(),endsAt:new Date(Date.now()+3600000).toISOString()});
+    await wiring.equipment.service.issueUnits({projectId:project.id,unitIds:[mixerUnit.id],actorId:actor.id});
+    expect((await wiring.equipment.service.listProblems()).some(p=>p.kind==="kit_incomplete"&&p.refs.projectId===project.id)).toBe(true);
+    await wiring.equipment.service.issueUnits({projectId:project.id,unitIds:[routerUnit.id],actorId:actor.id});
+    await wiring.equipment.service.issueQuantity({projectId:project.id,modelId:power.id,qty:1,actorId:actor.id});
+    expect((await wiring.equipment.service.listProblems()).some(p=>p.kind==="kit_incomplete"&&p.refs.projectId===project.id)).toBe(false);
+    await wiring.equipment.service.returnQuantity({projectId:project.id,modelId:power.id,qty:1,actorId:actor.id});
+    expect((await wiring.equipment.service.listProblems()).some(p=>p.kind==="kit_incomplete"&&p.refs.projectId===project.id)).toBe(true);
+    await wiring.equipment.service.issueQuantity({projectId:project.id,modelId:power.id,qty:1,actorId:actor.id});
+    await wiring.equipment.service.returnUnits({projectId:project.id,returnedUnitIds:[mixerUnit.id,routerUnit.id],expectedUnitIds:[mixerUnit.id,routerUnit.id],actorId:actor.id});
+    expect((await wiring.equipment.service.listProblems()).some(p=>p.kind==="kit_incomplete"&&p.refs.projectId===project.id)).toBe(false);
+  });
+
   it("catalog keeps packaging conversions and effective recipe versions", async () => {
     const suffix = Date.now();
     const rum = await wiring.catalog.service.createItem({ sku: `RUM-${suffix}`, name: "Rum", kind: "product", baseUnit: "l" });

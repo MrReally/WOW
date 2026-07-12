@@ -1,6 +1,7 @@
 import type { ID, ISODateTime, Problem } from "./common.js";
 
 export type TrackingMode = "serial" | "quantity" | "cable";
+export type StorageZoneKind = "room" | "rack" | "shelf" | "bin" | "floor" | "other";
 
 // ── Status model (no "written off" status, by design) ────────────────────────
 
@@ -76,6 +77,8 @@ export interface EquipmentUnitDTO {
   status: UnitStatus;
   /** Current storage location for this unit when it is in our warehouse flow. */
   warehouseId: ID | null;
+  /** Optional room/rack/shelf/bin address inside the warehouse. */
+  zoneId: ID | null;
   /** Opaque id of the project the unit is currently on (or reserved for). */
   currentProjectId: ID | null;
   /** Free-form per-unit notes: unique defects, quirks, marks, accessories. */
@@ -88,6 +91,8 @@ export interface ModelStockDTO {
   modelId: ID;
   /** Null means aggregate across all warehouses. */
   warehouseId: ID | null;
+  /** Optional preferred zone for this counted stock row. */
+  zoneId: ID | null;
   total: number;
   inStock: number;
   onProjects: number;
@@ -101,6 +106,18 @@ export interface WarehouseDTO {
   name: string;
   address: string | null;
   isDefault: boolean;
+  createdAt: ISODateTime;
+}
+
+export interface StorageZoneDTO {
+  id: ID;
+  warehouseId: ID;
+  parentId: ID | null;
+  name: string;
+  code: string;
+  kind: StorageZoneKind;
+  active: boolean;
+  sortOrder: number;
   createdAt: ISODateTime;
 }
 
@@ -304,6 +321,9 @@ export interface EquipmentService {
   listWarehouses(): Promise<WarehouseDTO[]>;
   createWarehouse(input: { name: string; address?: string | null }): Promise<WarehouseDTO>;
   updateWarehouse(id: ID, input: { name?: string; address?: string | null; isDefault?: boolean }): Promise<WarehouseDTO>;
+  listStorageZones(warehouseId?: ID): Promise<StorageZoneDTO[]>;
+  createStorageZone(input: { warehouseId: ID; parentId?: ID | null; name: string; code: string; kind: StorageZoneKind; sortOrder?: number }): Promise<StorageZoneDTO>;
+  updateStorageZone(id: ID, input: { parentId?: ID | null; name?: string; code?: string; kind?: StorageZoneKind; active?: boolean; sortOrder?: number }): Promise<StorageZoneDTO>;
 
   // Catalog
   listTypes(): Promise<EquipmentTypeDTO[]>;
@@ -321,18 +341,18 @@ export interface EquipmentService {
   // Units
   listUnits(filter?: { modelId?: ID; status?: UnitStatus; projectId?: ID; warehouseId?: ID }): Promise<EquipmentUnitDTO[]>;
   getUnit(id: ID): Promise<EquipmentUnitDTO | null>;
-  createUnit(input: { modelId: ID; assetTag: string; serial?: string | null; notes?: string | null; warehouseId?: ID | null }): Promise<EquipmentUnitDTO>;
+  createUnit(input: { modelId: ID; assetTag: string; serial?: string | null; notes?: string | null; warehouseId?: ID | null; zoneId?: ID | null }): Promise<EquipmentUnitDTO>;
   /** Edit per-unit particulars (visible name/tag, serial, defects/notes). */
-  updateUnit(id: ID, input: { modelId?: ID; assetTag?: string; serial?: string | null; notes?: string | null }): Promise<EquipmentUnitDTO>;
+  updateUnit(id: ID, input: { modelId?: ID; assetTag?: string; serial?: string | null; notes?: string | null; zoneId?: ID | null }): Promise<EquipmentUnitDTO>;
   getUnitJournal(unitId: ID): Promise<JournalEntryDTO[]>;
   getJournalByActor(actorId: ID): Promise<JournalEntryDTO[]>;
   /** Cross-unit append-only movement projection for Backoffice reports. */
   listJournal(filter?: { limit?: number; projectId?: ID; warehouseId?: ID }): Promise<JournalEntryDTO[]>;
   modelStock(modelId: ID, warehouseId?: ID | null): Promise<ModelStockDTO>;
-  transferUnit(unitId: ID, warehouseId: ID, actorId: ID, note?: string | null): Promise<EquipmentUnitDTO>;
+  transferUnit(unitId: ID, warehouseId: ID, actorId: ID, note?: string | null, zoneId?: ID | null): Promise<EquipmentUnitDTO>;
 
   // Quantity (cable) stock — models whose type is tracked by quantity.
-  setModelStockTotal(modelId: ID, total: number, warehouseId?: ID | null): Promise<ModelStockDTO>;
+  setModelStockTotal(modelId: ID, total: number, warehouseId?: ID | null, zoneId?: ID | null): Promise<ModelStockDTO>;
   issueQuantity(input: QuantityMoveInput): Promise<ModelStockDTO>;
   returnQuantity(input: QuantityMoveInput): Promise<ModelStockDTO>;
   transferQuantity(input: TransferQuantityInput): Promise<ModelStockDTO>;
@@ -391,6 +411,7 @@ export interface UpdateModelInput {
   unitCostEUR?: number;
   dailyPriceEUR?: number;
   attrs?: CableAttrs | Record<string, unknown> | null;
+  requiredComponentModelIds?: ID[];
 }
 
 // ── Domain events (in-process bus now, broker later) ─────────────────────────

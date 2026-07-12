@@ -37,6 +37,7 @@ export function useBackofficeData(can: (...permissions: Permission[]) => boolean
   const types = useQuery({ enabled: warehouse, queryKey: ["bo", "types"], queryFn: () => api.get<Equipment.EquipmentTypeDTO[]>("/api/equipment/types") });
   const units = useQuery({ enabled: warehouse, queryKey: ["bo", "units"], queryFn: () => api.get<Equipment.EquipmentUnitDTO[]>("/api/equipment/units") });
   const warehouses = useQuery({ enabled: warehouse, queryKey: ["bo", "warehouses"], queryFn: () => api.get<Equipment.WarehouseDTO[]>("/api/equipment/warehouses") });
+  const storageZones = useQuery({ enabled: warehouse, queryKey:["bo","storage-zones"], queryFn:()=>api.get<Equipment.StorageZoneDTO[]>("/api/equipment/storage-zones") });
   const journal = useQuery({ enabled: warehouse, queryKey: ["bo", "journal"], queryFn: () => api.get<Equipment.JournalEntryDTO[]>("/api/equipment/journal?limit=1000") });
   const problems = useQuery({ enabled: warehouse, queryKey: ["bo", "problems"], queryFn: () => api.get<Problem[]>("/api/equipment/problems?includeResolved=true") });
   const apex = useQuery({ enabled: can("apex.view"), queryKey: ["bo", "apex"], queryFn: () => api.get<ApexDashboardDTO>("/api/apex/dashboard") });
@@ -54,7 +55,7 @@ export function useBackofficeData(can: (...permissions: Permission[]) => boolean
   const openHandovers = useQuery({ enabled:warehouse, queryKey:["bo","handovers","open"], queryFn:()=>api.get<Equipment.HandoverDTO[]>("/api/equipment/handovers/open") });
   const notifications = useQuery({ queryKey:["bo","notifications"], queryFn:()=>api.get<Notifications.NotificationDTO[]>("/api/notifications") });
   const audit = useQuery({ enabled:can("roles.manage"), queryKey:["bo","audit"], queryFn:()=>api.get<Audit.AuditEntryDTO[]>("/api/audit") });
-  return { models, types, units, warehouses, journal, problems, apex, projects, clients, people, roles, contractors, contractorItems, accounts, transactions, catalog, documents, openRepairs, openHandovers, notifications, audit };
+  return { models, types, units, warehouses, storageZones, journal, problems, apex, projects, clients, people, roles, contractors, contractorItems, accounts, transactions, catalog, documents, openRepairs, openHandovers, notifications, audit };
 }
 
 export function useCatalogItemDetail(itemId?: string) {

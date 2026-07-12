@@ -58,6 +58,20 @@ export function useWarehouses() {
   });
 }
 
+export function useStorageZones(warehouseId?: string) {
+  return useQuery({ queryKey:["equipment","storage-zones",warehouseId??"all"], queryFn:()=>api.get<Equipment.StorageZoneDTO[]>(`/api/equipment/storage-zones${warehouseId?`?warehouseId=${warehouseId}`:""}`) });
+}
+
+export function useCreateStorageZone() {
+  const qc=useQueryClient();
+  return useMutation({ mutationFn:(input:{warehouseId:string;parentId?:string|null;name:string;code:string;kind:Equipment.StorageZoneKind;sortOrder?:number})=>api.post<Equipment.StorageZoneDTO>("/api/equipment/storage-zones",input), onSuccess:()=>invalidateEquipment(qc), meta:{successMessage:"Зона хранения создана"} });
+}
+
+export function useUpdateStorageZone() {
+  const qc=useQueryClient();
+  return useMutation({ mutationFn:({id,input}:{id:string;input:Partial<Pick<Equipment.StorageZoneDTO,"parentId"|"name"|"code"|"kind"|"active"|"sortOrder">>})=>api.patch<Equipment.StorageZoneDTO>(`/api/equipment/storage-zones/${id}`,input), onSuccess:()=>invalidateEquipment(qc), meta:{successMessage:"Зона хранения обновлена"} });
+}
+
 export function useUnits(filter?: { modelId?: string; status?: Equipment.UnitStatus; projectId?: string; warehouseId?: string }) {
   const qs = new URLSearchParams();
   if (filter?.modelId) qs.set("modelId", filter.modelId);
@@ -176,7 +190,7 @@ export function useDeleteModel() {
 export function useCreateUnit() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { modelId: string; assetTag: string; serial?: string | null; warehouseId?: string | null }) =>
+    mutationFn: (input: { modelId: string; assetTag: string; serial?: string | null; warehouseId?: string | null; zoneId?:string|null }) =>
       api.post("/api/equipment/units", input),
     onSuccess: () => invalidateEquipment(qc),
   });
@@ -185,8 +199,8 @@ export function useCreateUnit() {
 export function useTransferUnit() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, warehouseId, note }: { id: string; warehouseId: string; note?: string | null }) =>
-      api.post<Equipment.EquipmentUnitDTO>(`/api/equipment/units/${id}/transfer`, { warehouseId, note }),
+    mutationFn: ({ id, warehouseId, zoneId, note }: { id: string; warehouseId: string; zoneId?:string|null; note?: string | null }) =>
+      api.post<Equipment.EquipmentUnitDTO>(`/api/equipment/units/${id}/transfer`, { warehouseId, zoneId, note }),
     meta: { successMessage: "Перемещено" },
     onSuccess: () => invalidateEquipment(qc),
   });
@@ -195,7 +209,7 @@ export function useTransferUnit() {
 export function useUpdateUnit() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: { modelId?: string; assetTag?: string; serial?: string | null; notes?: string | null } }) =>
+    mutationFn: ({ id, input }: { id: string; input: { modelId?: string; assetTag?: string; serial?: string | null; notes?: string | null; zoneId?:string|null } }) =>
       api.patch<Equipment.EquipmentUnitDTO>(`/api/equipment/units/${id}`, input),
     meta: { successMessage: "Сохранено" },
     onSuccess: () => invalidateEquipment(qc),
@@ -240,8 +254,8 @@ export function useImportCsv() {
 export function useSetModelStock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ modelId, total, warehouseId }: { modelId: string; total: number; warehouseId?: string | null }) =>
-      api.put<Equipment.ModelStockDTO>(`/api/equipment/models/${modelId}/stock${warehouseId ? `?warehouseId=${warehouseId}` : ""}`, { total }),
+    mutationFn: ({ modelId, total, warehouseId, zoneId }: { modelId: string; total: number; warehouseId?: string | null; zoneId?:string|null }) =>
+      api.put<Equipment.ModelStockDTO>(`/api/equipment/models/${modelId}/stock${warehouseId ? `?warehouseId=${warehouseId}` : ""}`, { total, zoneId }),
     onSuccess: () => invalidateEquipment(qc),
   });
 }

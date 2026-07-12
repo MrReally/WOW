@@ -37,6 +37,8 @@ export function CableMoveSheet({ model, projects, warehouses, selectedWarehouseI
   }, [defaultWarehouse, warehouseId]);
 
   if (!model) return null;
+  const available=warehouseStock.data?.inStock??stock.data?.inStock??0;
+  const exceedsAvailable=(mode==="issue"||mode==="transfer"||mode==="repair"||mode==="service")&&Number(qty)>available;
 
   const submit = () => {
     const amount = Number(qty);
@@ -95,11 +97,12 @@ export function CableMoveSheet({ model, projects, warehouses, selectedWarehouseI
         </>
       )}
       <Field label="Количество">
-        <Input type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} />
+        <Input type="number" min={1} max={mode==="return"?undefined:available} value={qty} onChange={(e) => setQty(e.target.value)} />
+        {exceedsAvailable&&<span className="field__hint">Доступно только {available}</span>}
       </Field>
       <Button
         block
-        disabled={((mode === "issue" || mode === "return") && !projectId) || !warehouseId || (mode === "transfer" && !toWarehouseId) || Number(qty) <= 0 || issue.isPending || ret.isPending || transfer.isPending || repair.isPending || service.isPending}
+        disabled={((mode === "issue" || mode === "return") && !projectId) || !warehouseId || (mode === "transfer" && !toWarehouseId) || Number(qty) <= 0 || exceedsAvailable || issue.isPending || ret.isPending || transfer.isPending || repair.isPending || service.isPending}
         onClick={submit}
       >
         {mode === "issue" ? `Выдать ${qty}` : mode === "return" ? `Принять ${qty}` : mode === "transfer" ? `Переместить ${qty}` : mode === "repair" ? `В ремонт ${qty}` : `В сервис ${qty}`}

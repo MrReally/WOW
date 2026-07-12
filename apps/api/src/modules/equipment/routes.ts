@@ -26,6 +26,9 @@ const updateWarehouseSchema = z.object({
   address: z.string().nullable().optional(),
   isDefault: z.boolean().optional(),
 });
+const zoneKindSchema = z.enum(["room","rack","shelf","bin","floor","other"]);
+const storageZoneSchema = z.object({ warehouseId:z.string().uuid(), parentId:z.string().uuid().nullable().optional(), name:z.string().min(1), code:z.string().min(1), kind:zoneKindSchema, sortOrder:z.number().int().optional() });
+const updateStorageZoneSchema = z.object({ parentId:z.string().uuid().nullable().optional(), name:z.string().min(1).optional(), code:z.string().min(1).optional(), kind:zoneKindSchema.optional(), active:z.boolean().optional(), sortOrder:z.number().int().optional() });
 
 const createModelSchema = z.object({
   typeId: z.string().uuid(),
@@ -43,6 +46,7 @@ const updateModelSchema = z.object({
   unitCostEUR: z.number().nonnegative().optional(),
   dailyPriceEUR: z.number().nonnegative().optional(),
   attrs: z.record(z.unknown()).nullable().optional(),
+  requiredComponentModelIds: z.array(z.string().uuid()).optional(),
 });
 const modelTrackingSchema = z.object({ trackingMode: z.enum(["serial", "quantity", "cable"]) });
 const modelIdParamsSchema = z.object({ id: z.string().uuid() });
@@ -53,12 +57,14 @@ const createUnitSchema = z.object({
   serial: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   warehouseId: z.string().uuid().nullable().optional(),
+  zoneId: z.string().uuid().nullable().optional(),
 });
 const updateUnitSchema = z.object({
   modelId: z.string().uuid().optional(),
   assetTag: z.string().min(1).optional(),
   serial: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  zoneId: z.string().uuid().nullable().optional(),
 });
 
 const issueSchema = z.object({
@@ -79,7 +85,7 @@ const statusSchema = z.object({
   note: z.string().optional(),
 });
 
-const stockSchema = z.object({ total: z.number().int().nonnegative() });
+const stockSchema = z.object({ total: z.number().int().nonnegative(), zoneId:z.string().uuid().nullable().optional() });
 
 const qtyMoveSchema = z.object({
   projectId: z.string().uuid(),
@@ -104,6 +110,7 @@ const qtyTransferSchema = z.object({
 });
 const unitTransferSchema = z.object({
   warehouseId: z.string().uuid(),
+  zoneId: z.string().uuid().nullable().optional(),
   note: z.string().nullable().optional(),
 });
 
@@ -168,6 +175,9 @@ export function registerEquipmentRoutes(
     requirePermission(auth, "warehouse.catalog.manage");
     return service.updateWarehouse(req.params.id, updateWarehouseSchema.parse(req.body));
   });
+  app.get<{ Querystring:{warehouseId?:string} }>("/api/equipment/storage-zones", async req=>{await ctx.auth(req);return service.listStorageZones(req.query.warehouseId);});
+  app.post("/api/equipment/storage-zones", async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.catalog.manage");return service.createStorageZone(storageZoneSchema.parse(req.body));});
+  app.patch<{Params:{id:string}}>("/api/equipment/storage-zones/:id", async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.catalog.manage");return service.updateStorageZone(req.params.id,updateStorageZoneSchema.parse(req.body));});
 
   // ── Types ──
   app.get("/api/equipment/types", async (req) => {
@@ -229,7 +239,8 @@ export function registerEquipmentRoutes(
     const { id } = modelIdParamsSchema.parse(req.params);
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.catalog.manage");
-    return service.setModelStockTotal(id, stockSchema.parse(req.body).total, (req.query as { warehouseId?: string }).warehouseId);
+    const body=stockSchema.parse(req.body);
+    return service.setModelStockTotal(id, body.total, (req.query as { warehouseId?: string }).warehouseId, body.zoneId);
   });
 
   // ── Catalog import (CSV) ──
@@ -326,7 +337,7 @@ export function registerEquipmentRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.catalog.manage");
     const body = unitTransferSchema.parse(req.body);
-    return service.transferUnit(req.params.id, body.warehouseId, auth.userId, body.note ?? null);
+    return service.transferUnit(req.params.id, body.warehouseId, auth.userId, body.note ?? null, body.zoneId);
   });
 
   // ── Operations (warehouse prepares; tech confirms on phone) ──
