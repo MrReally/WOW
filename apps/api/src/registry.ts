@@ -15,6 +15,8 @@ import { createFinanceModule } from "./modules/finance/index.js";
 import { createVenuesModule } from "./modules/venues/index.js";
 import { createPlansModule } from "./modules/plans/index.js";
 import { createNotificationsModule } from "./modules/notifications/index.js";
+import { createCatalogModule } from "./modules/catalog/index.js";
+import { createOperationsModule } from "./modules/operations/index.js";
 import { createApexService } from "./modules/apex/service.js";
 import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
@@ -31,6 +33,8 @@ export function createModules(bus: EventBus = new EventBus()) {
   const venues = createVenuesModule(pool);
   const plans = createPlansModule(pool);
   const notifications = createNotificationsModule(pool);
+  const catalog = createCatalogModule(pool);
+  const operations = createOperationsModule(pool, equipment.service);
 
   setTelegramMessageLogger(async (message) => {
     await people.service.logTelegramDialogMessage(message);
@@ -103,7 +107,7 @@ export function createModules(bus: EventBus = new EventBus()) {
     return: "Возврат",
   };
 
-  async function advancedMessage(event: DomainEvent): Promise<{ title: string; body: string; link?: string | null } | null> {
+  async function advancedMessage(event: DomainEvent): Promise<{ title: string; body: string; link?: string | null; kind?: Notifications.NotificationKind } | null> {
     switch (event.type) {
       case "project.assigned": {
         const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
@@ -120,6 +124,33 @@ export function createModules(bus: EventBus = new EventBus()) {
       case "project.invite.responded": {
         const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
         return { title: event.accepted ? "Приглашение принято" : "Приглашение отклонено", body: `${publicName(user)} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+      }
+      case "project.ping.created": {
+        const [project, user, pings] = await Promise.all([
+          projects.service.getProject(event.projectId),
+          people.service.getById(event.userId),
+          projects.service.listPings(event.projectId),
+        ]);
+        const ping = pings.find((item) => item.id === event.pingId);
+        return {
+          title: "Пинг отправлен",
+          body: `${ping?.title ?? "Пинг"} · ${project?.name ?? event.projectId}\nКому: ${publicName(user)}`,
+          link: `/projects/${event.projectId}`,
+        };
+      }
+      case "project.ping.confirmed": {
+        const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
+        return { title: "Участие по пингу подтверждено", body: `${publicName(user)} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+      }
+      case "project.ping.declined": {
+        const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
+        const changedMind = event.previousStatus === "confirmed";
+        return {
+          title: changedMind ? "Отказ после подтверждения участия" : "Отказ по пингу",
+          body: `${publicName(user)} · ${project?.name ?? event.projectId}`,
+          link: `/projects/${event.projectId}`,
+          kind: "problem",
+        };
       }
       case "project.invite.cancelled": {
         const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
@@ -168,7 +199,7 @@ export function createModules(bus: EventBus = new EventBus()) {
     const recipients = await people.service.listWithPermission("notifications.advanced");
     for (const user of recipients) {
       if (!(await notifications.service.isAdvancedEnabled(user.id, event.type as Notifications.AdvancedNotificationEvent))) continue;
-      await notifications.service.create({ userId: user.id, kind: "info", title: msg.title, body: msg.body, link: msg.link ?? null });
+      await notifications.service.create({ userId: user.id, kind: msg.kind ?? "info", title: msg.title, body: msg.body, link: msg.link ?? null });
       await sendTelegramMessage(user.telegramId, `<b>${msg.title}</b>\n${msg.body}`);
     }
   });
@@ -275,10 +306,10 @@ export function createModules(bus: EventBus = new EventBus()) {
     ]);
     const ping = pings.find((item) => item.id === e.pingId);
     if (!project || !user || !ping) return;
-    const extra = ping.message.trim() ? `\n${ping.message.trim()}` : "";
+    const extra = ping.message.trim() ? `\n${escapeHtml(ping.message.trim())}` : "";
     await sendTelegramMessage(
       user.telegramId,
-      `<b>Пинг по проекту</b>\n«${project.name}»\n🗓 ${fmtDateTime(project.startsAt)} — ${fmtDateTime(project.endsAt)}${extra}\n\nПодтверди, пожалуйста, что помнишь и будешь.`,
+      `<b>${escapeHtml(ping.title)}</b>\n«${escapeHtml(project.name)}»\n🗓 ${fmtDateTime(project.startsAt)} — ${fmtDateTime(project.endsAt)}${extra}`,
       {
         inlineKeyboard: [[
           { text: "✅ Буду", callbackData: `ping:yes:${ping.id}` },
@@ -452,6 +483,7 @@ export function createModules(bus: EventBus = new EventBus()) {
           projectId: reminder.projectId,
           userId,
           reminderId: reminder.id,
+          title: reminder.title,
           message: reminder.note ?? null,
           createdByUserId: reminder.createdByUserId,
         });
@@ -465,9 +497,9 @@ export function createModules(bus: EventBus = new EventBus()) {
     return setInterval(() => void dispatchDueReminders(), 60_000);
   }
 
-  const modules = [people, equipment, projects, finance, venues, plans, notifications];
+  const modules = [people, equipment, projects, finance, venues, plans, notifications, catalog, operations];
 
-  return { bus, people, equipment, projects, finance, venues, plans, notifications, apex, billing, modules, handleTelegramCallback, startReminderScheduler };
+  return { bus, people, equipment, projects, finance, venues, plans, notifications, catalog, operations, apex, billing, modules, handleTelegramCallback, startReminderScheduler };
 }
 
 export type Wiring = ReturnType<typeof createModules>;

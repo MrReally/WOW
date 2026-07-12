@@ -100,12 +100,14 @@ const assignmentSchema = z.object({
 });
 const pingSchema = z.object({
   userId: z.string().uuid(),
+  title: z.string().trim().min(1).nullable().optional(),
   message: z.string().nullable().optional(),
 });
 const reminderSchema = z.object({
   offsetMinutes: z.number().int().positive(),
   recipientMode: z.enum(["project_team", "selected"]).optional(),
   userIds: z.array(z.string().uuid()).optional(),
+  title: z.string().trim().min(1).nullable().optional(),
   note: z.string().nullable().optional(),
 });
 
@@ -379,7 +381,7 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.assignment.manage", "projects.manage");
     const body = pingSchema.parse(req.body);
-    return service.createPing({ projectId: req.params.id, userId: body.userId, message: body.message ?? null, createdByUserId: auth.userId });
+    return service.createPing({ projectId: req.params.id, userId: body.userId, title: body.title ?? null, message: body.message ?? null, createdByUserId: auth.userId });
   });
   app.get<{ Params: { id: string } }>("/api/projects/:id/reminders", async (req) => {
     const auth = await ctx.auth(req);

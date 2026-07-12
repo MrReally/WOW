@@ -590,6 +590,25 @@ export function createEquipmentService(
       );
       return rows.map(journalDTO);
     },
+    async listJournal(filter) {
+      const where: string[] = [];
+      const params: unknown[] = [];
+      if (filter?.projectId) {
+        params.push(filter.projectId);
+        where.push(`project_id=$${params.length}`);
+      }
+      if (filter?.warehouseId) {
+        params.push(filter.warehouseId);
+        where.push(`(warehouse_id=$${params.length} OR from_warehouse_id=$${params.length} OR to_warehouse_id=$${params.length})`);
+      }
+      params.push(Math.min(Math.max(filter?.limit ?? 500, 1), 2000));
+      const rows = await query<JournalRow>(
+        db,
+        `SELECT * FROM equipment.journal ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY at DESC LIMIT $${params.length}`,
+        params
+      );
+      return rows.map(journalDTO);
+    },
     async modelStock(modelId, warehouseId) {
       const model = await this.getModel(modelId);
       if (!model) throw NotFound("model", modelId);

@@ -162,12 +162,14 @@ export function ProjectDetailPage() {
   const [roleDrafts, setRoleDrafts] = useState<Record<string, { title: string; requiredCount: string; rateEUR: string }>>({});
   const [assignCandidates, setAssignCandidates] = useState<Record<string, string[]>>({});
   const [candidateQueries, setCandidateQueries] = useState<Record<string, string>>({});
+  const [pingTitle, setPingTitle] = useState("");
   const [pingMessage, setPingMessage] = useState("");
   const [reminderPreset, setReminderPreset] = useState("1440");
   const [reminderCustomHours, setReminderCustomHours] = useState("12");
   const [reminderMode, setReminderMode] = useState<Projects.ProjectReminderRecipientMode>("project_team");
   const [reminderUserIds, setReminderUserIds] = useState<string[]>([]);
   const [reminderQuery, setReminderQuery] = useState("");
+  const [reminderTitle, setReminderTitle] = useState("");
   const [reminderNote, setReminderNote] = useState("");
   const [resolving, setResolving] = useState<Projects.ReservationDTO | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -262,10 +264,12 @@ export function ProjectDetailPage() {
       offsetMinutes: reminderOffsetMinutes,
       recipientMode: reminderMode,
       userIds: reminderMode === "selected" ? reminderUserIds : [],
+      title: reminderTitle.trim(),
       note: reminderNote.trim() || null,
     }, {
       onSuccess: () => {
         setReminderUserIds([]);
+        setReminderTitle("");
         setReminderNote("");
       },
     });
@@ -767,9 +771,11 @@ export function ProjectDetailPage() {
           people={projectPeople}
           pings={pings.data ?? []}
           reminders={reminders.data ?? []}
+          pingTitle={pingTitle}
+          onPingTitle={setPingTitle}
           pingMessage={pingMessage}
           onPingMessage={setPingMessage}
-          onPing={(userId) => createPing.mutate({ userId, message: pingMessage.trim() || null })}
+          onPing={(userId) => createPing.mutate({ userId, title: pingTitle.trim(), message: pingMessage.trim() || null })}
           pingPending={createPing.isPending}
           reminderPreset={reminderPreset}
           onReminderPreset={setReminderPreset}
@@ -781,6 +787,8 @@ export function ProjectDetailPage() {
           onReminderUserIds={setReminderUserIds}
           reminderQuery={reminderQuery}
           onReminderQuery={setReminderQuery}
+          reminderTitle={reminderTitle}
+          onReminderTitle={setReminderTitle}
           reminderNote={reminderNote}
           onReminderNote={setReminderNote}
           onCreateReminder={createReminderFromForm}
@@ -935,6 +943,8 @@ function TeamPingPanel({
   people,
   pings,
   reminders,
+  pingTitle,
+  onPingTitle,
   pingMessage,
   onPingMessage,
   onPing,
@@ -949,6 +959,8 @@ function TeamPingPanel({
   onReminderUserIds,
   reminderQuery,
   onReminderQuery,
+  reminderTitle,
+  onReminderTitle,
   reminderNote,
   onReminderNote,
   onCreateReminder,
@@ -959,6 +971,8 @@ function TeamPingPanel({
   people: People.UserDTO[];
   pings: Projects.ProjectPingDTO[];
   reminders: Projects.ProjectReminderDTO[];
+  pingTitle: string;
+  onPingTitle: (value: string) => void;
   pingMessage: string;
   onPingMessage: (value: string) => void;
   onPing: (userId: string) => void;
@@ -973,6 +987,8 @@ function TeamPingPanel({
   onReminderUserIds: (value: string[]) => void;
   reminderQuery: string;
   onReminderQuery: (value: string) => void;
+  reminderTitle: string;
+  onReminderTitle: (value: string) => void;
   reminderNote: string;
   onReminderNote: (value: string) => void;
   onCreateReminder: () => void;
@@ -981,7 +997,7 @@ function TeamPingPanel({
   deleteReminderPending: boolean;
 }) {
   const selectedModeHasPeople = reminderMode !== "selected" || reminderUserIds.length > 0;
-  const canCreateReminder = people.length > 0 && selectedModeHasPeople && !createReminderPending;
+  const canCreateReminder = people.length > 0 && selectedModeHasPeople && !!reminderTitle.trim() && !createReminderPending;
   const toggleReminderUser = (userId: string) => {
     onReminderUserIds(reminderUserIds.includes(userId) ? reminderUserIds.filter((id) => id !== userId) : [...reminderUserIds, userId]);
   };
@@ -995,14 +1011,20 @@ function TeamPingPanel({
       </div>
 
       <div className="stack" style={{ gap: 10, marginTop: 10 }}>
-        <Input value={pingMessage} onChange={(e) => onPingMessage(e.target.value)} placeholder="Текст пинга" />
+        <p className="card__subtitle">Отправить пинг сейчас</p>
+        <Field label="Название">
+          <Input value={pingTitle} onChange={(e) => onPingTitle(e.target.value)} placeholder="Например, подтверждение участия" />
+        </Field>
+        <Field label="Описание">
+          <Input value={pingMessage} onChange={(e) => onPingMessage(e.target.value)} placeholder="Сообщение для получателя" />
+        </Field>
         <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
           {people.map((person) => (
             <button
               key={person.id}
               className="chip chip--neutral"
-              style={{ border: "none", cursor: pingPending ? "wait" : "pointer" }}
-              disabled={pingPending}
+              style={{ border: "none", cursor: pingPending || !pingTitle.trim() ? "not-allowed" : "pointer" }}
+              disabled={pingPending || !pingTitle.trim()}
               onClick={() => onPing(person.id)}
               type="button"
               title="Отправить пинг"
@@ -1015,6 +1037,13 @@ function TeamPingPanel({
       </div>
 
       <div className="stack" style={{ gap: 10, marginTop: 14 }}>
+        <p className="card__subtitle">Запланировать напоминание</p>
+        <Field label="Название">
+          <Input value={reminderTitle} onChange={(e) => onReminderTitle(e.target.value)} placeholder="Например, подтверждение участия" />
+        </Field>
+        <Field label="Описание">
+          <Input value={reminderNote} onChange={(e) => onReminderNote(e.target.value)} placeholder="Сообщение для получателя" />
+        </Field>
         <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
           {REMINDER_PRESETS.map((preset) => (
             <button
@@ -1057,7 +1086,6 @@ function TeamPingPanel({
             onToggle={toggleReminderUser}
           />
         )}
-        <Input value={reminderNote} onChange={(e) => onReminderNote(e.target.value)} placeholder="Текст напоминания" />
       </div>
 
       {reminders.length > 0 && (
@@ -1065,9 +1093,9 @@ function TeamPingPanel({
           {reminders.map((reminder) => (
             <div key={reminder.id} className="row row--between" style={{ gap: 8 }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ color: "var(--text)", fontWeight: 800 }}>{reminderOffsetLabel(reminder.offsetMinutes)} до старта</div>
+                <div style={{ color: "var(--text)", fontWeight: 800 }}>{reminder.title}</div>
                 <div className="card__subtitle">
-                  {reminder.recipientMode === "project_team" ? "вся команда" : `${reminder.userIds.length} выбрано`}
+                  {reminderOffsetLabel(reminder.offsetMinutes)} до старта · {reminder.recipientMode === "project_team" ? "вся команда" : `${reminder.userIds.length} выбрано`}
                   {reminder.sentAt ? ` · отправлено ${dateTime(reminder.sentAt)}` : ""}
                 </div>
               </div>
@@ -1088,8 +1116,8 @@ function TeamPingPanel({
             return (
               <div key={ping.id} className="row row--between" style={{ gap: 8 }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ color: "var(--text)", fontWeight: 800 }}>{nameById(ping.userId)}</div>
-                  <div className="card__subtitle">{dateTime(ping.createdAt)}</div>
+                  <div style={{ color: "var(--text)", fontWeight: 800 }}>{ping.title}</div>
+                  <div className="card__subtitle">{nameById(ping.userId)} · {dateTime(ping.createdAt)}</div>
                 </div>
                 <Chip label={status.label} tone={status.tone} />
               </div>

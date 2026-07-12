@@ -156,6 +156,7 @@ CREATE TABLE IF NOT EXISTS projects.project_reminders (
   created_by_user_id uuid,
   created_at         timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE projects.project_reminders ADD COLUMN IF NOT EXISTS title text NOT NULL DEFAULT 'Напоминание о мероприятии';
 CREATE INDEX IF NOT EXISTS project_reminders_project_idx ON projects.project_reminders(project_id, created_at);
 CREATE INDEX IF NOT EXISTS project_reminders_due_idx ON projects.project_reminders(sent_at, offset_minutes);
 
@@ -170,6 +171,7 @@ CREATE TABLE IF NOT EXISTS projects.project_pings (
   created_by_user_id  uuid,
   created_at          timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE projects.project_pings ADD COLUMN IF NOT EXISTS title text NOT NULL DEFAULT 'Пинг по проекту';
 CREATE INDEX IF NOT EXISTS project_pings_project_idx ON projects.project_pings(project_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS project_pings_user_idx ON projects.project_pings(user_id, status);
 

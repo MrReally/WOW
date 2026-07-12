@@ -17,6 +17,7 @@ import { ContractorsPage } from "../features/contractors/ContractorsPage.tsx";
 import { CrewPage } from "../features/crew/CrewPage.tsx";
 import { SettingsPage } from "../features/settings/SettingsPage.tsx";
 import { MySettingsPage } from "../features/settings/MySettingsPage.tsx";
+import { BackofficePage } from "../features/backoffice/BackofficePage.tsx";
 
 export function AppRouter() {
   const { can } = useSession();
@@ -32,6 +33,7 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to={home} replace />} />
+      <Route path="/backoffice" element={<Guard allow={["backoffice.access"]}><BackofficePage /></Guard>} />
       <Route path="/apex" element={<Guard allow={["apex.view"]}><ApexPage /></Guard>} />
       <Route path="/operations" element={<Guard allow={["operations.view"]}><OperationsPage /></Guard>} />
       <Route path="/operations/projects/:id" element={<Guard allow={["operations.view"]}><OperationsProjectPage /></Guard>} />

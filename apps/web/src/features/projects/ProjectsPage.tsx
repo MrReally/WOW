@@ -25,16 +25,24 @@ export function ProjectsPage() {
   return (
     <div className="stack">
       {canCreate && (
-        <div className="row">
-          <Button block onClick={() => setWizardOpen(true)}>Мастер</Button>
-          <Button block variant="secondary" onClick={() => setCreateOpen(true)}>+ Проект</Button>
+        <div className="page-toolbar">
+          <div className="page-toolbar__title">
+            <span className="t-label">PLANNING · ПРОЕКТЫ</span>
+            <strong>Рабочий журнал</strong>
+            <small>{list.length} проектов · сроки, клиенты и текущий статус</small>
+          </div>
+          <div className="row">
+            <Button block onClick={() => setWizardOpen(true)}>Мастер проекта</Button>
+            <Button block variant="secondary" onClick={() => setCreateOpen(true)}>+ Проект</Button>
+          </div>
         </div>
       )}
 
       {list.length === 0 ? (
         <EmptyState title="Нет проектов" hint={!canCreate ? "Вам пока не назначены проекты" : undefined} />
       ) : (
-        <div className="stack">
+        <>
+        <div className="stack mobile-project-list">
           {list.map((p) => (
             <Card key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
               <div className="row row--between">
@@ -50,6 +58,33 @@ export function ProjectsPage() {
             </Card>
           ))}
         </div>
+        <div className="data-table-wrap desktop-project-table">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Проект</th>
+                <th>Клиент</th>
+                <th>Начало</th>
+                <th>Окончание</th>
+                <th>Статус</th>
+                <th aria-label="Открыть" />
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((p) => (
+                <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
+                  <td><strong>{p.name}</strong><small>#{p.id.slice(0, 8)}</small></td>
+                  <td>{clientName(p.clientId)}</td>
+                  <td className="data-table__mono">{new Date(p.startsAt).toLocaleDateString("ru-RU")}</td>
+                  <td className="data-table__mono">{new Date(p.endsAt).toLocaleDateString("ru-RU")}</td>
+                  <td><StatusBadge tone={projectStatusTone[p.status]}>{projectStatusLabel[p.status]}</StatusBadge></td>
+                  <td className="data-table__arrow">→</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        </>
       )}
 
       {canCreate && <CreateProjectSheet open={createOpen} onClose={() => setCreateOpen(false)} />}

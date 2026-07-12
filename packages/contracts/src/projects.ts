@@ -317,6 +317,7 @@ export interface ProjectPingDTO {
   projectId: ID;
   userId: ID;
   reminderId: ID | null;
+  title: string;
   message: string;
   status: ProjectPingStatus;
   respondedAt: ISODateTime | null;
@@ -328,6 +329,7 @@ export interface CreateProjectPingInput {
   projectId: ID;
   userId: ID;
   reminderId?: ID | null;
+  title?: string | null;
   message?: string | null;
   createdByUserId?: ID | null;
 }
@@ -338,6 +340,7 @@ export interface ProjectReminderDTO {
   offsetMinutes: number;
   recipientMode: ProjectReminderRecipientMode;
   userIds: ID[];
+  title: string;
   note: string | null;
   sentAt: ISODateTime | null;
   createdByUserId: ID | null;
@@ -349,6 +352,7 @@ export interface CreateProjectReminderInput {
   offsetMinutes: number;
   recipientMode?: ProjectReminderRecipientMode;
   userIds?: ID[];
+  title?: string | null;
   note?: string | null;
   createdByUserId?: ID | null;
 }
@@ -554,6 +558,24 @@ export interface ProjectPingCreatedEvent {
   at: ISODateTime;
 }
 
+export interface ProjectPingConfirmedEvent {
+  type: "project.ping.confirmed";
+  projectId: ID;
+  pingId: ID;
+  userId: ID;
+  previousStatus: ProjectPingStatus;
+  at: ISODateTime;
+}
+
+export interface ProjectPingDeclinedEvent {
+  type: "project.ping.declined";
+  projectId: ID;
+  pingId: ID;
+  userId: ID;
+  previousStatus: ProjectPingStatus;
+  at: ISODateTime;
+}
+
 export type ProjectsEvent =
   | ProjectConfirmedEvent
   | ReservationConflictEvent
@@ -563,4 +585,6 @@ export type ProjectsEvent =
   | InviteRespondedEvent
   | InviteCancelledEvent
   | ProjectOperationStageChangedEvent
-  | ProjectPingCreatedEvent;
+  | ProjectPingCreatedEvent
+  | ProjectPingConfirmedEvent
+  | ProjectPingDeclinedEvent;

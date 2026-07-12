@@ -111,6 +111,7 @@ interface ProjectPingRow {
   project_id: string;
   user_id: string;
   reminder_id: string | null;
+  title: string;
   message: string;
   status: Projects.ProjectPingStatus;
   responded_at: Date | null;
@@ -123,6 +124,7 @@ interface ProjectReminderRow {
   offset_minutes: number;
   recipient_mode: Projects.ProjectReminderRecipientMode;
   user_ids: string[];
+  title: string;
   note: string | null;
   sent_at: Date | null;
   created_by_user_id: string | null;
@@ -255,6 +257,7 @@ const pingDTO = (r: ProjectPingRow): Projects.ProjectPingDTO => ({
   projectId: r.project_id,
   userId: r.user_id,
   reminderId: r.reminder_id,
+  title: r.title,
   message: r.message,
   status: r.status,
   respondedAt: r.responded_at ? r.responded_at.toISOString() : null,
@@ -267,6 +270,7 @@ const reminderDTO = (r: ProjectReminderRow): Projects.ProjectReminderDTO => ({
   offsetMinutes: r.offset_minutes,
   recipientMode: r.recipient_mode,
   userIds: r.user_ids,
+  title: r.title,
   note: r.note,
   sentAt: r.sent_at ? r.sent_at.toISOString() : null,
   createdByUserId: r.created_by_user_id,
@@ -1185,9 +1189,9 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       if (!project) throw NotFound("project", input.projectId);
       const row = await one<ProjectPingRow>(
         db,
-        `INSERT INTO projects.project_pings (project_id, user_id, reminder_id, message, created_by_user_id)
-         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-        [input.projectId, input.userId, input.reminderId ?? null, input.message?.trim() ?? "", input.createdByUserId ?? null]
+        `INSERT INTO projects.project_pings (project_id, user_id, reminder_id, title, message, created_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [input.projectId, input.userId, input.reminderId ?? null, input.title?.trim() || "Пинг по проекту", input.message?.trim() ?? "", input.createdByUserId ?? null]
       );
       const dto = pingDTO(row!);
       await bus.publish({ type: "project.ping.created", projectId: dto.projectId, pingId: dto.id, userId: dto.userId, at: new Date().toISOString() });
@@ -1204,7 +1208,18 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
          WHERE id=$1 RETURNING *`,
         [id, status]
       );
-      return pingDTO(row!);
+      const dto = pingDTO(row!);
+      if (existing.status !== status) {
+        await bus.publish({
+          type: status === "confirmed" ? "project.ping.confirmed" : "project.ping.declined",
+          projectId: dto.projectId,
+          pingId: dto.id,
+          userId: dto.userId,
+          previousStatus: existing.status,
+          at: new Date().toISOString(),
+        });
+      }
+      return dto;
     },
     async listReminders(projectId) {
       const rows = await query<ProjectReminderRow>(
@@ -1220,13 +1235,14 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       const row = await one<ProjectReminderRow>(
         db,
         `INSERT INTO projects.project_reminders
-           (project_id, offset_minutes, recipient_mode, user_ids, note, created_by_user_id)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+           (project_id, offset_minutes, recipient_mode, user_ids, title, note, created_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
         [
           input.projectId,
           input.offsetMinutes,
           input.recipientMode ?? "project_team",
           input.userIds ?? [],
+          input.title?.trim() || "Напоминание о мероприятии",
           input.note?.trim() || null,
           input.createdByUserId ?? null,
         ]

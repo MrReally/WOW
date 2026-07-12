@@ -326,6 +326,8 @@ export interface EquipmentService {
   updateUnit(id: ID, input: { assetTag?: string; serial?: string | null; notes?: string | null }): Promise<EquipmentUnitDTO>;
   getUnitJournal(unitId: ID): Promise<JournalEntryDTO[]>;
   getJournalByActor(actorId: ID): Promise<JournalEntryDTO[]>;
+  /** Cross-unit append-only movement projection for Backoffice reports. */
+  listJournal(filter?: { limit?: number; projectId?: ID; warehouseId?: ID }): Promise<JournalEntryDTO[]>;
   modelStock(modelId: ID, warehouseId?: ID | null): Promise<ModelStockDTO>;
   transferUnit(unitId: ID, warehouseId: ID, actorId: ID, note?: string | null): Promise<EquipmentUnitDTO>;
 

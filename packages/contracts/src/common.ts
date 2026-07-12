@@ -15,10 +15,11 @@ export type Role = "admin" | "warehouse" | "tech";
 
 export const ROLES: Role[] = ["admin", "warehouse", "tech"];
 
-// ── Permissions (granular, Syrve-style) ──────────────────────────────────────
+// ── Permissions (granular role-based access) ─────────────────────────────────
 // Custom roles are sets of these keys. The Owner role implicitly has all.
 
 export type Permission =
+  | "backoffice.access"
   | "apex.view"
   | "operations.view"
   | "operations.stage.back"
@@ -58,6 +59,7 @@ export interface PermissionMeta {
 
 /** Catalog used to render the role editor, grouped by area. */
 export const PERMISSIONS: PermissionMeta[] = [
+  { key: "backoffice.access", group: "Backoffice", label: "Вход в desktop/backoffice ERP-режим" },
   { key: "apex.view", group: "Apex (управление)", label: "Видеть Apex — прокаты, проблемы, долги" },
   { key: "operations.view", group: "Operations (бригада)", label: "Видеть Operations — рабочее окно бригады" },
   { key: "operations.stage.back", group: "Operations (бригада)", label: "Возвращать проект на предыдущий этап" },

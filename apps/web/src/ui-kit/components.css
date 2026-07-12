@@ -847,3 +847,126 @@
   flex: 1;
   padding: 0 16px var(--space-6);
 }
+
+/* ── Desktop ERP surfaces ─────────────────────────────────────────── */
+.page-toolbar__title,
+.desktop-project-table {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  .page-toolbar {
+    min-height: 76px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 8px;
+  }
+
+  .page-toolbar__title {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .page-toolbar__title strong {
+    font-family: var(--font-cond);
+    font-size: 28px;
+    line-height: 1.05;
+    text-transform: uppercase;
+  }
+
+  .page-toolbar__title small {
+    color: var(--text3);
+    font: 11px var(--font-mono);
+  }
+
+  .page-toolbar .btn {
+    width: auto;
+    height: 42px;
+  }
+
+  .mobile-project-list {
+    display: none;
+  }
+
+  .desktop-project-table {
+    display: block;
+  }
+
+  .data-table-wrap {
+    overflow: auto;
+    border: 1px solid var(--bdr-md);
+    border-radius: 14px;
+    background: var(--card);
+    box-shadow: var(--shadow-card);
+  }
+
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+  }
+
+  .data-table th {
+    height: 38px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--bdr-md);
+    background: var(--s1);
+    color: var(--text3);
+    font: 700 9px var(--font-mono);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .data-table td {
+    height: 58px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--bdr);
+    color: var(--text2);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .data-table tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .data-table tbody tr {
+    cursor: pointer;
+  }
+
+  .data-table tbody tr:hover td {
+    background: color-mix(in srgb, var(--accent) 5%, var(--card));
+    color: var(--text);
+  }
+
+  .data-table td strong,
+  .data-table td small {
+    display: block;
+  }
+
+  .data-table td strong {
+    color: var(--text);
+    font-size: 13px;
+  }
+
+  .data-table td small {
+    margin-top: 3px;
+    color: var(--text3);
+    font: 9px var(--font-mono);
+  }
+
+  .data-table__mono {
+    font-family: var(--font-mono);
+    font-size: 11px !important;
+  }
+
+  .data-table__arrow {
+    width: 44px;
+    color: var(--text3) !important;
+    text-align: right;
+  }
+}

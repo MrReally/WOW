@@ -266,7 +266,7 @@ export function useProjectPings(projectId: string, enabled = true) {
 export function useCreateProjectPing(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { userId: string; message?: string | null }) => api.post<Projects.ProjectPingDTO>(`/api/projects/${projectId}/pings`, input),
+    mutationFn: (input: { userId: string; title?: string | null; message?: string | null }) => api.post<Projects.ProjectPingDTO>(`/api/projects/${projectId}/pings`, input),
     meta: { successMessage: "Пинг отправлен" },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["projects", "pings", projectId] }),
   });

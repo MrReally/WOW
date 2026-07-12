@@ -9,6 +9,9 @@ export type AdvancedNotificationEvent =
   | "project.unassigned"
   | "project.invited"
   | "project.invite.responded"
+  | "project.ping.created"
+  | "project.ping.confirmed"
+  | "project.ping.declined"
   | "project.operation_stage.changed"
   | "people.application.submitted"
   | "equipment.units.issued"
@@ -22,6 +25,9 @@ export const ADVANCED_NOTIFICATION_EVENTS: AdvancedNotificationEvent[] = [
   "project.unassigned",
   "project.invited",
   "project.invite.responded",
+  "project.ping.created",
+  "project.ping.confirmed",
+  "project.ping.declined",
   "project.operation_stage.changed",
   "people.application.submitted",
   "equipment.units.issued",

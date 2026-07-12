@@ -353,6 +353,9 @@ describe("Tech pickup/return → некомплект", () => {
       "project.unassigned": false,
       "project.invited": false,
       "project.invite.responded": false,
+      "project.ping.created": false,
+      "project.ping.confirmed": false,
+      "project.ping.declined": false,
       "project.operation_stage.changed": false,
       "equipment.units.issued": false,
       "equipment.unit.returned": false,
@@ -631,5 +634,42 @@ describe("Tech pickup/return → некомплект", () => {
     expect(inv2.profitEUR).toBe(310); // 560 − 250
     const owed = await projects.service.contractorDebts();
     expect(owed.find((d) => d.contractorId === contractor.id)?.debtEUR).toBe(100);
+  });
+
+  it("catalog keeps packaging conversions and effective recipe versions", async () => {
+    const suffix = Date.now();
+    const rum = await wiring.catalog.service.createItem({ sku: `RUM-${suffix}`, name: "Rum", kind: "product", baseUnit: "l" });
+    const cola = await wiring.catalog.service.createItem({ sku: `COLA-${suffix}`, name: "Cola", kind: "product", baseUnit: "l" });
+    const drink = await wiring.catalog.service.createItem({ sku: `DRINK-${suffix}`, name: "Rum & Cola", kind: "item", baseUnit: "serving" });
+    const bottle = await wiring.catalog.service.addPackaging(rum.id, { name: "Bottle 0.7 l", coefficient: 0.7, barcode: `BAR-${suffix}`, supplierCode: null, active: true });
+    expect(bottle.coefficient).toBe(0.7);
+    const recipe = await wiring.catalog.service.createRecipe(drink.id, {
+      version: 1, validFrom: new Date().toISOString(), validTo: null, outputQty: 1, outputUnit: "serving", technology: null,
+      lines: [
+        { ingredientItemId: rum.id, unit: "l", grossQty: 0.05, netQty: 0.05, baseQty: 0.05 },
+        { ingredientItemId: cola.id, unit: "l", grossQty: 0.15, netQty: 0.15, baseQty: 0.15 },
+      ],
+    });
+    expect(recipe.lines).toHaveLength(2);
+    expect((await wiring.catalog.service.listRecipes(drink.id))[0]?.version).toBe(1);
+  });
+
+  it("operation documents persist draft, post and reversal lifecycle", async () => {
+    const tech = await makeTech("Document Tech");
+    const type = await wiring.equipment.service.createType({ name: `DOC-${Date.now()}`, trackingMode: "serial" });
+    const model = await wiring.equipment.service.createModel({ typeId: type.id, name: "Document Fixture", unitCostEUR: 100, dailyPriceEUR: 10 });
+    const unit = await wiring.equipment.service.createUnit({ modelId: model.id, assetTag: `DOC-U-${Date.now()}` });
+    const client = await wiring.projects.service.createClient({ name: `Document Client ${Date.now()}` });
+    const project = await wiring.projects.service.createProject({ name: "Document Project", clientId: client.id, startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString() });
+    const draft = await wiring.operations.service.create({ kind: "issue", projectId: project.id, unitIds: [unit.id] }, tech.id);
+    expect(draft.status).toBe("draft");
+    expect((await wiring.equipment.service.getUnit(unit.id))?.status).toBe("in_stock");
+    const posted = await wiring.operations.service.post(draft.id, tech.id);
+    expect(posted.status).toBe("posted");
+    expect((await wiring.equipment.service.getUnit(unit.id))?.status).toBe("on_project");
+    const reversed = await wiring.operations.service.reverse(draft.id, tech.id);
+    expect(reversed.status).toBe("reversed");
+    expect((await wiring.equipment.service.getUnit(unit.id))?.status).toBe("in_stock");
+    await expect(wiring.operations.service.post(draft.id, tech.id)).rejects.toThrow(/only draft/);
   });
 });

@@ -9,3 +9,4 @@ coverage/
 .vite/
 .turbo/
 pnpm-debug.log*
+.pnpm-store/

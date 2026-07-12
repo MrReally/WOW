@@ -291,6 +291,14 @@ export function registerEquipmentRoutes(
     await ctx.auth(req);
     return service.getUnitJournal(req.params.id);
   });
+  app.get<{ Querystring: { limit?: string; projectId?: string; warehouseId?: string } }>("/api/equipment/journal", async (req) => {
+    await ctx.auth(req);
+    return service.listJournal({
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+      projectId: req.query.projectId,
+      warehouseId: req.query.warehouseId,
+    });
+  });
   app.get<{ Params: { id: string } }>("/api/people/:id/equipment-journal", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "people.view", "people.manage");

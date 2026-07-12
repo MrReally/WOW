@@ -1,0 +1,108 @@
+SEVER desktop research — Syrve demo action log
+Started: 2026-07-09 (Europe/Belgrade)
+
+Purpose: short chronological record of actions performed inside the user's
+Syrve Office and Syrve HQ demo environments. Read-only inspection is logged at
+the level of screens and workflows visited; created or changed demo data is
+recorded explicitly.
+
+2026-07-09
+- Created this log before interacting with Windows App or Syrve.
+- Opened the existing Windows App session "Syrve_Kravts".
+- Inspected Syrve Office 2026 home page: left accordion navigation, tabbed
+  workspace, attention widgets, company news, persistent company/user status.
+- No Syrve demo data changed.
+- Inspected Finance navigation in Office. It is organized as operational
+  commands, reference books, payments, planning, reports, and currencies.
+- Opened Chart of Accounts. Noted hierarchical tree-table, account codes/types,
+  live balances, search, deleted toggle, and drill-down from an account into a
+  separate transaction-ledger tab.
+- Inspected an existing inventory account ledger without editing. It combines
+  period/type/search/view controls, debit/credit/running-balance columns,
+  accounting concept and change-author metadata, plus debit/credit/difference
+  totals.
+- Inspected Retail Sales navigation and Event Log. Event Log uses a persistent
+  left filter panel (saved filter, period, priority, event types, employee,
+  terminal, order and shift), a separate result search/grouping area, Excel
+  export, and optional video linkage.
+- Returned to Syrve HQ and opened Corporation → Change mode. Confirmed that
+  corporate work mode is a global scope selector: a searchable checkbox tree of
+  corporation → legal entity → stores, supporting all or selected subdivisions.
+  Entering the selector closes all open workspace tabs. Cancelled without
+  changing the selected scope.
+- No Syrve demo data changed.
+- Interaction paused: Windows App exposes the remote desktop as one opaque
+  macOS window; coordinate input is not currently reaching the Windows session.
+- Input resumed after the user focused the remote session.
+- Inspected Syrve HQ 2026 home page and expanded Inventory Management.
+  Noted navigation grouped inside a domain into reference books, internal price
+  list, documents, and reports rather than separate "apps".
+- Opened Products registry. Noted persistent tabs, compact action toolbar,
+  search, dense configurable table, and collapsed "Stores" context panel.
+- Opened existing demo product "test" for read-only inspection. Its editor opens
+  inside the current workspace, has its own close control and tabs for main
+  properties, measurement units, additional information, images, suppliers'
+  products, and nutritional value. Closed without saving or changing data.
+- Opened HQ Invoices journal. Noted period preset + explicit date range,
+  automatic refresh, deleted/history toggles, global search, drag-to-group area,
+  dense columns, state/error indicators, aggregate footer, status legend,
+  creation/copy/delete/operations toolbar, and Excel export.
+- No Syrve demo data changed.
+- Switched from Syrve HQ to the populated Syrve Office demo via the Windows
+  taskbar. Confirmed the title/company context changes while the shell and
+  domain navigation remain structurally consistent.
+- Opened Office Invoices for the current year (3 existing posted documents).
+  Inspected an existing purchase invoice without editing: document opens as a
+  new workspace tab; header contains identity, supplier, storage, receipt time,
+  accounting concept and status; line grid separates product types and shows
+  package/unit quantities, price, VAT, expense, and stock before/after; totals
+  and Save/Close/Post controls are persistent at the bottom.
+- Inspected Reports navigation. Reports are grouped by business subject
+  (finance, storage, purchasing, sales, menu/cost analysis, contractors), not
+  presented as one generic dashboard.
+- Opened "Report on unsaleable items": parameter strip above a very dense
+  result grid, quick grouping buttons, export/update actions.
+- Opened OLAP Sales report. Noted reusable report formats (including shared
+  presets), explicit period, categorized field palette, field search,
+  row/column/value drop zones, auto-update, settings and Excel export. Two OLAP
+  tabs were opened accidentally; no saved formats were changed.
+- Opened List of Employees. Noted very wide searchable/exportable registry,
+  horizontal scrolling, deleted-record toggle, and a large number of operational
+  columns rather than a card-first layout.
+- Opened Permissions. Noted a role/user × permission-code matrix with separate
+  searchable catalogs on both axes, dense visual assignment cells, and
+  permission descriptions. No permissions changed.
+- No Syrve demo data changed.
+- Returned to Syrve HQ Inventory Management and compared the reference-book
+  destinations Products, Items, Semi-Finished Products, Modifiers and Stock
+  list. Confirmed that the first four are business types/facets, while Stock
+  list is a consolidated stock-accounting projection across nomenclature.
+- Inspected product measurement-unit behavior and created two preliminary HQ
+  demo product records while testing packaging conversions:
+  - SKU 00008, base U/M l, packages 0.7 l, 1 l and 6 × 0.7 l (4.2 l);
+  - SKU 00009, base U/M l, package 0.33 l.
+- Remote keyboard input dropped characters, so the saved preliminary names are
+  currently `rm`/`cl` rather than the intended English names Rum/Cola. No
+  transactional documents reference these records yet. They must be renamed
+  before the workflow is continued.
+- Began a dedicated nomenclature model at
+  docs/syrve-nomenclature-data-model.md, separating entity types, registry
+  projections, units/packages, recipes, modifiers, documents, transactions,
+  movement and inventory reconciliation.
+2026-07-10 01:36 CEST
+- Implemented first SEVER Backoffice prototype direction in the web app.
+- Added `backoffice.access` permission to shared contracts so access can be role-gated.
+- Added `/backoffice` as a separate desktop ERP shell rather than another mobile workspace.
+- Prototype includes domain navigation, workspace tabs, dense stock-list register,
+  kit/component side peek, issue document with compact/expanded kit lines,
+  inventory movement report, inventory reconciliation document, and permissions matrix.
+- Explicitly modelled kits as operational objects with component composition:
+  users can work with `1 × DJ Set` while still expanding to players, mixer,
+  case and cables for picking, audit, shortages and inventory.
+- Full `/backoffice` route remains gated by `backoffice.access`.
+- Added local development preview `/backoffice-preview` because Docker/Postgres
+  was not running; this lets the prototype be viewed without API auth while
+  keeping the real route permission-driven.
+2026-07-12 — Backoffice readability pass: introduced a scoped desktop type/contrast scale, enlarged navigation, tables, controls and click targets, and added wide-screen scaling. Mobile tokens and screens remain unchanged. Verified TypeScript and production build; visually checked the local backoffice preview at 1280×720 with no page-level horizontal overflow.
+2026-07-12 — Added per-user Backoffice appearance profiles. Classic is the readability-first default and uses the native Segoe UI Variable/Segoe UI/Arial/Helvetica stack plus Consolas/Menlo for codes; Stylish preserves SEVER's Barlow/Barlow Condensed/JetBrains Mono identity. Selection is stored per user in localStorage and can be switched live from the top bar.
+2026-07-12 — Reworked Classic from a font swap into a complete productivity profile after UX review: neutral light Windows/Syrve-like surfaces, minimal shadows and radii, compact top bar, coherent 30–36px controls/rows with 13–14px type, restrained blue selection, and tighter information density. Moved Classic/Stylish into the user Personal settings popover.

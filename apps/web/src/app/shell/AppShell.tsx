@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { People } from "@sever/contracts";
-import { WSChip, Avatar } from "../../ui-kit/index.ts";
+import { WSChip, Avatar, BrandLogo } from "../../ui-kit/index.ts";
 import { useSession } from "../session.ts";
 import { currentWorkspace, workspacesFor, WORKSPACE_COPY } from "../workspaces.ts";
 import { useI18n } from "../i18n.tsx";
@@ -10,7 +10,7 @@ import { platform } from "../platform/telegram.ts";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher.tsx";
 import { NotificationsBell } from "../../features/notifications/NotificationsBell.tsx";
 import { api } from "../../lib/api.ts";
-import { personInitials } from "../../lib/people.ts";
+import { personInitials, personName } from "../../lib/people.ts";
 import "./shell.css";
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -28,7 +28,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const ws = currentWorkspace(location.pathname);
   const wsCopy = WORKSPACE_COPY[ws.id]?.[locale] ?? ws;
-  const count = workspacesFor(can).length;
+  const availableWorkspaces = workspacesFor(can);
+  const count = availableWorkspaces.length;
   const canReviewApplications = can("people.applications.review", "people.manage");
   const applications = useQuery({
     enabled: canReviewApplications,
@@ -58,6 +59,51 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="app-shell">
+      <aside className="desktop-sidebar">
+        <button className="desktop-brand" onClick={() => navigate(homeRoute(availableWorkspaces))} aria-label="SEVER">
+          <BrandLogo size={28} color="var(--text)" />
+          <span>SEVER</span>
+          <small>ERP</small>
+        </button>
+        {can("backoffice.access") && (
+          <button className="desktop-backoffice-link" onClick={() => navigate("/backoffice")}>
+            <strong>Backoffice</strong>
+            <small>Desktop ERP режим</small>
+          </button>
+        )}
+        <nav className="desktop-nav" aria-label={t("common.workspaces")}>
+          {availableWorkspaces.map((workspace) => {
+            const copy = WORKSPACE_COPY[workspace.id]?.[locale] ?? workspace;
+            const active = workspace.id === ws.id;
+            return (
+              <button
+                key={workspace.id}
+                className={`desktop-nav__item ${active ? "desktop-nav__item--active" : ""}`}
+                onClick={() => navigate(workspace.route)}
+                aria-current={active ? "page" : undefined}
+              >
+                <WSChip glyph={workspace.glyph} tone={workspace.tone} size={32} />
+                <span className="desktop-nav__copy">
+                  <strong>{copy.name}</strong>
+                  <small>{copy.sub}</small>
+                </span>
+                <kbd>⇧{workspace.shortcut}</kbd>
+              </button>
+            );
+          })}
+        </nav>
+        {user && (
+          <button className="desktop-profile" onClick={() => navigate("/me")}>
+            <Avatar initials={personInitials(user)} src={user.usePhotoAsAvatar ? user.photoUrl : null} size={34} />
+            <span>
+              <strong>{personName(user)}</strong>
+              <small>{t("app.mySettings")}</small>
+            </span>
+          </button>
+        )}
+      </aside>
+
+      <div className="app-workspace">
       <header className="ws-bar">
         <button className="ws-bar__id" aria-label={t("workspace.current")} onClick={() => setSwitcherOpen(true)}>
           <WSChip glyph={ws.glyph} tone={ws.tone} size={40} />
@@ -76,6 +122,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         </button>
         {user && (
           <div className="row" style={{ gap: 10 }}>
+            <div className="desktop-context">
+              <span className="desktop-context__eyebrow">SEVER / {wsCopy.name}</span>
+              <strong>{wsCopy.sub}</strong>
+            </div>
             <NotificationsBell />
             <button
               onClick={() => navigate("/me")}
@@ -89,6 +139,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       <main className="app-content">{children}</main>
+      </div>
 
       {user && (
         <WorkspaceSwitcher
@@ -101,4 +152,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
     </div>
   );
+}
+
+function homeRoute(workspaces: ReturnType<typeof workspacesFor>): string {
+  return workspaces[0]?.route ?? "/apex";
 }
