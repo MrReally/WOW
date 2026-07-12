@@ -93,6 +93,7 @@ export function useProjectReservations(projectId: string) {
 
 function invalidateEquipment(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["equipment"] });
+  qc.invalidateQueries({ queryKey: ["bo"] });
   qc.invalidateQueries({ queryKey: ["projects"] });
   qc.invalidateQueries({ queryKey: ["apex"] });
 }
@@ -194,7 +195,7 @@ export function useTransferUnit() {
 export function useUpdateUnit() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: { assetTag?: string; serial?: string | null; notes?: string | null } }) =>
+    mutationFn: ({ id, input }: { id: string; input: { modelId?: string; assetTag?: string; serial?: string | null; notes?: string | null } }) =>
       api.patch<Equipment.EquipmentUnitDTO>(`/api/equipment/units/${id}`, input),
     meta: { successMessage: "Сохранено" },
     onSuccess: () => invalidateEquipment(qc),

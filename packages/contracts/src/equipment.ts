@@ -323,7 +323,7 @@ export interface EquipmentService {
   getUnit(id: ID): Promise<EquipmentUnitDTO | null>;
   createUnit(input: { modelId: ID; assetTag: string; serial?: string | null; notes?: string | null; warehouseId?: ID | null }): Promise<EquipmentUnitDTO>;
   /** Edit per-unit particulars (visible name/tag, serial, defects/notes). */
-  updateUnit(id: ID, input: { assetTag?: string; serial?: string | null; notes?: string | null }): Promise<EquipmentUnitDTO>;
+  updateUnit(id: ID, input: { modelId?: ID; assetTag?: string; serial?: string | null; notes?: string | null }): Promise<EquipmentUnitDTO>;
   getUnitJournal(unitId: ID): Promise<JournalEntryDTO[]>;
   getJournalByActor(actorId: ID): Promise<JournalEntryDTO[]>;
   /** Cross-unit append-only movement projection for Backoffice reports. */
@@ -385,6 +385,7 @@ export interface CreateModelInput {
 }
 
 export interface UpdateModelInput {
+  typeId?: ID;
   name?: string;
   manufacturer?: string | null;
   unitCostEUR?: number;

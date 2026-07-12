@@ -408,17 +408,20 @@ export function createEquipmentService(
     async updateModel(id, input) {
       const existing = await one<ModelRow>(db, `SELECT * FROM equipment.models WHERE id=$1`, [id]);
       if (!existing) throw NotFound("model", id);
+      if (input.typeId && !await one(db, `SELECT id FROM equipment.types WHERE id=$1`, [input.typeId])) throw NotFound("type", input.typeId);
       await query(
         db,
         `UPDATE equipment.models SET
-           name             = COALESCE($2, name),
-           manufacturer     = $3,
-           unit_cost_eur    = COALESCE($4, unit_cost_eur),
-           daily_price_eur  = COALESCE($5, daily_price_eur),
-           attrs            = $6
+           type_id          = COALESCE($2, type_id),
+           name             = COALESCE($3, name),
+           manufacturer     = $4,
+           unit_cost_eur    = COALESCE($5, unit_cost_eur),
+           daily_price_eur  = COALESCE($6, daily_price_eur),
+           attrs            = $7
          WHERE id=$1`,
         [
           id,
+          input.typeId ?? null,
           input.name ?? null,
           input.manufacturer === undefined ? existing.manufacturer : input.manufacturer,
           input.unitCostEUR ?? null,
@@ -558,15 +561,18 @@ export function createEquipmentService(
     async updateUnit(id, input) {
       const existing = await one<UnitRow>(db, `SELECT * FROM equipment.units WHERE id=$1`, [id]);
       if (!existing) throw NotFound("unit", id);
+      if (input.modelId && !await one(db, `SELECT id FROM equipment.models WHERE id=$1`, [input.modelId])) throw NotFound("model", input.modelId);
       const row = await one<UnitRow>(
         db,
         `UPDATE equipment.units SET
-           asset_tag = $2,
-           serial    = $3,
-           notes     = $4
+           model_id  = $2,
+           asset_tag = $3,
+           serial    = $4,
+           notes     = $5
          WHERE id=$1 RETURNING *`,
         [
           id,
+          input.modelId === undefined ? existing.model_id : input.modelId,
           input.assetTag === undefined ? existing.asset_tag : input.assetTag,
           input.serial === undefined ? existing.serial : input.serial,
           input.notes === undefined ? existing.notes : input.notes,

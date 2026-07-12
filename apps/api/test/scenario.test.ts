@@ -636,6 +636,25 @@ describe("Tech pickup/return → некомплект", () => {
     expect(owed.find((d) => d.contractorId === contractor.id)?.debtEUR).toBe(100);
   });
 
+  it("edits a unit assignment and the shared model/type data", async () => {
+    const suffix = `${Date.now()}-${Math.random()}`;
+    const firstType = await wiring.equipment.service.createType({ name: `Edit source ${suffix}`, trackingMode: "serial" });
+    const secondType = await wiring.equipment.service.createType({ name: `Edit target ${suffix}`, trackingMode: "serial" });
+    const firstModel = await wiring.equipment.service.createModel({ typeId: firstType.id, name: `Old model ${suffix}`, unitCostEUR: 100, dailyPriceEUR: 10 });
+    const secondModel = await wiring.equipment.service.createModel({ typeId: secondType.id, name: `Second model ${suffix}`, unitCostEUR: 200, dailyPriceEUR: 20 });
+    const unit = await wiring.equipment.service.createUnit({ modelId: firstModel.id, assetTag: `EDIT-${suffix}` });
+
+    const editedModel = await wiring.equipment.service.updateModel(firstModel.id, { typeId: secondType.id, name: `Updated model ${suffix}`, manufacturer: "SEVER Test", unitCostEUR: 150, dailyPriceEUR: 15 });
+    expect(editedModel.typeId).toBe(secondType.id);
+    expect(editedModel.name).toContain("Updated model");
+    expect(editedModel.manufacturer).toBe("SEVER Test");
+
+    const editedUnit = await wiring.equipment.service.updateUnit(unit.id, { modelId: secondModel.id, serial: "SERIAL-EDITED", notes: "Проверено" });
+    expect(editedUnit.modelId).toBe(secondModel.id);
+    expect(editedUnit.serial).toBe("SERIAL-EDITED");
+    expect(editedUnit.notes).toBe("Проверено");
+  });
+
   it("catalog keeps packaging conversions and effective recipe versions", async () => {
     const suffix = Date.now();
     const rum = await wiring.catalog.service.createItem({ sku: `RUM-${suffix}`, name: "Rum", kind: "product", baseUnit: "l" });

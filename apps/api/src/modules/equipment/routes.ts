@@ -37,6 +37,7 @@ const createModelSchema = z.object({
   requiredComponentModelIds: z.array(z.string().uuid()).optional(),
 });
 const updateModelSchema = z.object({
+  typeId: z.string().uuid().optional(),
   name: z.string().min(1).optional(),
   manufacturer: z.string().nullable().optional(),
   unitCostEUR: z.number().nonnegative().optional(),
@@ -54,6 +55,7 @@ const createUnitSchema = z.object({
   warehouseId: z.string().uuid().nullable().optional(),
 });
 const updateUnitSchema = z.object({
+  modelId: z.string().uuid().optional(),
   assetTag: z.string().min(1).optional(),
   serial: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),

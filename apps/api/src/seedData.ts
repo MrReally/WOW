@@ -41,15 +41,15 @@ export async function seedDemo(s: SeedServices): Promise<{ summary: Record<strin
   const tech1 = await mkUser("tech@sever.local", "tech123", "Антон Волков", techRole.id, "tech-001", 15);
   const tech2 = await mkUser("tech2@sever.local", "tech123", "Мария Котова", techRole.id, "tech-002", 15);
 
-  // ── Consumables/menu catalog (shared by mobile and desktop) ──
-  const cola = await s.catalog.createItem({ sku: "COLA-1L", name: "Cola", kind: "product", groupName: "Бар", baseUnit: "l" });
-  const rum = await s.catalog.createItem({ sku: "RUM-1L", name: "Rum", kind: "product", groupName: "Бар", baseUnit: "l" });
-  const rumCola = await s.catalog.createItem({ sku: "RUM-COLA", name: "Rum & Cola", kind: "item", groupName: "Коктейли", baseUnit: "serving" });
-  await s.catalog.addPackaging(cola.id, { name: "Бутылка 1 л", coefficient: 1, barcode: "460000000001", supplierCode: null, active: true });
-  await s.catalog.addPackaging(rum.id, { name: "Бутылка 0,7 л", coefficient: 0.7, barcode: "460000000002", supplierCode: null, active: true });
-  await s.catalog.createRecipe(rumCola.id, { version: 1, validFrom: new Date().toISOString(), validTo: null, outputQty: 1, outputUnit: "serving", technology: "Смешать со льдом", lines: [
-    { ingredientItemId: rum.id, unit: "l", grossQty: 0.05, netQty: 0.05, baseQty: 0.05 },
-    { ingredientItemId: cola.id, unit: "l", grossQty: 0.15, netQty: 0.15, baseQty: 0.15 },
+  // ── Rental consumables and reusable kit composition (shared by mobile and desktop) ──
+  const gaffer = await s.catalog.createItem({ sku: "CON-GAFFER-BLK", name: "Скотч Gaffer чёрный", kind: "product", groupName: "Расходные материалы", baseUnit: "roll" });
+  const batteries = await s.catalog.createItem({ sku: "CON-BAT-AA", name: "Батарейки AA", kind: "product", groupName: "Расходные материалы", baseUnit: "pcs" });
+  const stageKit = await s.catalog.createItem({ sku: "KIT-STAGE-BASIC", name: "Комплект расходников для сцены", kind: "equipment_kit", groupName: "Комплекты", baseUnit: "kit" });
+  await s.catalog.addPackaging(gaffer.id, { name: "Коробка 24 рулона", coefficient: 24, barcode: "460000000101", supplierCode: null, active: true });
+  await s.catalog.addPackaging(batteries.id, { name: "Упаковка 20 штук", coefficient: 20, barcode: "460000000102", supplierCode: null, active: true });
+  await s.catalog.createRecipe(stageKit.id, { version: 1, validFrom: new Date().toISOString(), validTo: null, outputQty: 1, outputUnit: "kit", technology: "Проверить комплект перед выдачей", lines: [
+    { ingredientItemId: gaffer.id, unit: "roll", grossQty: 2, netQty: 2, baseQty: 2 },
+    { ingredientItemId: batteries.id, unit: "pcs", grossQty: 8, netQty: 8, baseQty: 8 },
   ] });
 
   // ── Catalog: types ──

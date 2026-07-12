@@ -24,6 +24,10 @@ describe.skipIf(!apiUp)("UI smoke — desktop employee walkthrough", () => {
     await user.click(within(rows[1]!).getAllByRole("cell")[0]!);
     expect(await screen.findByText("Карточка оборудования")).toBeTruthy();
     expect(await screen.findByRole("heading", { name: "Основное" })).toBeTruthy();
+    expect(await screen.findByRole("combobox", { name: "Модель оборудования" })).toBeTruthy();
+    expect(await screen.findByRole("combobox", { name: "Тип оборудования" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Сохранить единицу" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Сохранить модель и тип" })).toBeTruthy();
     expect(await screen.findByRole("heading", { name: "История" })).toBeTruthy();
   });
 
@@ -41,7 +45,7 @@ describe.skipIf(!apiUp)("UI smoke — desktop employee walkthrough", () => {
     render(<App />);
     await user.click(await screen.findByRole("button", { name: /Backoffice/i }, { timeout: 10000 }));
     expect(await screen.findByRole("heading", { name: "Обзор" })).toBeTruthy();
-    for (const label of ["Оборудование", "Проекты", "Движение", "Люди", "Подрядчики", "Финансы", "Проблемы", "Номенклатура", "Конструктор отчётов", "Права доступа"]) {
+    for (const label of ["Оборудование", "Проекты", "Движение", "Люди", "Подрядчики", "Финансы", "Проблемы", "Расходники и комплекты", "Конструктор отчётов", "Права доступа"]) {
       const nav = screen.getByRole("navigation", { name: "Разделы Backoffice" });
       await user.click(within(nav).getByRole("button", { name: new RegExp(`^${label}`) }));
       expect(await screen.findByRole("heading", { name: label })).toBeTruthy();
@@ -69,8 +73,8 @@ describe.skipIf(!apiUp)("UI smoke — desktop employee walkthrough", () => {
     await user.click(await screen.findByRole("button", { name: "Новый проект" }));
     expect(screen.getByRole("button", { name: "Создать проект" })).toBeTruthy();
 
-    await user.click(within(screen.getByRole("navigation", { name: "Разделы Backoffice" })).getByRole("button", { name: /^Номенклатура/ }));
-    await screen.findByRole("heading", { name: "Номенклатура" });
+    await user.click(within(screen.getByRole("navigation", { name: "Разделы Backoffice" })).getByRole("button", { name: /^Расходники и комплекты/ }));
+    await screen.findByRole("heading", { name: "Расходники и комплекты" });
     await user.click(await screen.findByRole("button", { name: "Новая позиция" }));
     expect(screen.getByRole("button", { name: "Создать позицию" })).toBeTruthy();
 
@@ -97,10 +101,10 @@ describe.skipIf(!apiUp)("UI smoke — desktop employee walkthrough", () => {
     expect(screen.getByRole("tab", { name: "Брони" })).toBeTruthy();
     expect(await screen.findByRole("tab", { name: "Финансы" })).toBeTruthy();
 
-    await user.click(within(nav()).getByRole("button", { name: /^Номенклатура/ }));
-    await user.click(await screen.findByText("Rum & Cola"));
+    await user.click(within(nav()).getByRole("button", { name: /^Расходники и комплекты/ }));
+    await user.click(await screen.findByText("Комплект расходников для сцены"));
     expect(await screen.findByText("Версия 1")).toBeTruthy();
-    expect(screen.getByText("Смешать со льдом")).toBeTruthy();
+    expect(screen.getByText("Проверить комплект перед выдачей")).toBeTruthy();
 
     await user.click(within(nav()).getByRole("button", { name: /^Выдача и возврат/ }));
     const scanner = await screen.findByRole("textbox", { name: "Сканер оборудования" });
