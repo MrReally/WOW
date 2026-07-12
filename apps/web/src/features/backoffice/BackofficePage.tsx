@@ -4,6 +4,7 @@ import type { Catalog, Equipment, Finance, Operations, People, Permission, Probl
 import { PERMISSIONS } from "@sever/contracts";
 import { BrandLogo, Chip } from "../../ui-kit/index.ts";
 import { useSession } from "../../app/session.ts";
+import { useTheme } from "../../app/theme.tsx";
 import { Register, type RegisterColumn } from "./Register.tsx";
 import { useBackofficeAppearance, useBackofficeCommands, useBackofficeData } from "./hooks.ts";
 import "./backoffice.css";
@@ -44,6 +45,7 @@ export function BackofficePage() {
   const [params, setParams] = useSearchParams();
   const { user, can } = useSession();
   const { view, selectView } = useBackofficeAppearance(user?.id);
+  const { theme, toggle: toggleTheme } = useTheme();
   const data = useBackofficeData(can);
   const commands = useBackofficeCommands();
   const initialDomain = domains.some((item) => item.id === params.get("domain")) ? params.get("domain") as DomainId : "overview";
@@ -77,7 +79,7 @@ export function BackofficePage() {
         <select aria-label="Склад" value={warehouseId} onChange={(event) => setWarehouseId(event.target.value)}><option value="all">Все склады</option>{(data.warehouses.data ?? []).map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select>
         <input className="bo-command" aria-label="Глобальный поиск" value={globalQuery} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Поиск записей, документов, кодов" />
         <button className="bo-icon-button" onClick={() => navigate("/apex")}>Мобильный режим</button>
-        <details className="bo-user-menu"><summary className="bo-user">{user?.displayName ?? "SEVER user"}</summary><div className="bo-user-menu__popover"><div className="bo-user-menu__title">Вид Backoffice</div><div className="bo-view-switch"><button className={view === "classic" ? "is-active" : ""} onClick={() => selectView("classic")}>Classic</button><button className={view === "stylish" ? "is-active" : ""} onClick={() => selectView("stylish")}>Stylish</button></div></div></details>
+        <details className="bo-user-menu"><summary className="bo-user">{user?.displayName ?? "SEVER user"}</summary><div className="bo-user-menu__popover"><div className="bo-user-menu__title">Вид Backoffice</div><div className="bo-user-menu__label">Оформление</div><div className="bo-view-switch" aria-label="Оформление Backoffice"><button className={view === "classic" ? "is-active" : ""} aria-pressed={view === "classic"} onClick={() => selectView("classic")}>Classic</button><button className={view === "stylish" ? "is-active" : ""} aria-pressed={view === "stylish"} onClick={() => selectView("stylish")}>Stylish</button></div><div className="bo-user-menu__label">Тема</div><div className="bo-view-switch" aria-label="Тема Backoffice"><button className={theme === "light" ? "is-active" : ""} aria-pressed={theme === "light"} onClick={() => { if (theme !== "light") toggleTheme(); }}>Светлая</button><button className={theme === "dark" ? "is-active" : ""} aria-pressed={theme === "dark"} onClick={() => { if (theme !== "dark") toggleTheme(); }}>Тёмная</button></div></div></details>
       </div></header>
       <div className="bo-tabs">{tabs.map((tab) => <button key={tab.id} className={`bo-tab ${activeTab === tab.id ? "bo-tab--active" : ""}`} onClick={() => { setActiveTab(tab.id); setParams({ domain: tab.domain, ...(tab.entityId ? { id: tab.entityId } : {}) }); }}>{tab.title}{tab.dirty ? " *" : ""}{tab.id !== "overview" && <span onClick={(event) => { event.stopPropagation(); closeTab(tab.id); }}> ×</span>}</button>)}</div>
       <main className="bo-workspace"><Workspace domain={active.domain} entityId={active.entityId} query={globalQuery} warehouseId={warehouseId} data={data} commands={commands} can={can} openDomain={openDomain} /></main>
