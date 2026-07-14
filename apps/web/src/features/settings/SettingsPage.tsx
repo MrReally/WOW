@@ -7,6 +7,7 @@ import { useSession } from "../../app/session.ts";
 import { useFxRates, useSetFxRate, useResetData, useResetStatus, useSetTelegramInboxSettings, useTelegramInboxSettings } from "./hooks.ts";
 import { RoleEditor } from "./components/RoleEditor.tsx";
 import { useCableSettings, useSetCableSettings } from "../warehouse/hooks.ts";
+import { BackupManager } from "./components/BackupManager.tsx";
 
 export function SettingsPage() {
   const { theme, toggle } = useTheme();
@@ -132,6 +133,8 @@ export function SettingsPage() {
           )}
         </>
       )}
+
+      <BackupManager canBackup={can("data.backup")} canRestore={can("data.restore")} />
 
       {canResetData && (
         <>

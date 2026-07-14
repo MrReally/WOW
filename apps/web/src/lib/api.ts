@@ -47,6 +47,25 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return (await res.json()) as T;
 }
 
+export async function authenticatedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${BASE}${path}`, { ...init, headers });
+  if (!res.ok) {
+    let code = "error";
+    let message = res.statusText;
+    try {
+      const json = await res.json();
+      code = json?.error?.code ?? code;
+      message = json?.error?.message ?? message;
+    } catch { /* non-JSON error */ }
+    if (res.status === 401 && token) clearToken();
+    throw new ApiError(code, message, res.status);
+  }
+  return res;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),

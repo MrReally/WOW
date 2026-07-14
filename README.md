@@ -87,6 +87,10 @@ disabled in production by default; `/api/admin/reset` only works when
 `ALLOW_DATA_RESET=true` is set explicitly, and the Settings reset block is hidden
 when reset is unavailable.
 
+Full database backup is available to authorized owners in **Settings → Резервные копии**.
+Restore is separately protected by `ALLOW_DATA_RESTORE=true`, automatically creates
+a pre-restore safety copy, and should be enabled only for the restore window.
+
 After deploy, run:
 
 ```bash

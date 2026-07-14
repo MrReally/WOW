@@ -62,6 +62,15 @@ describe.skipIf(!apiUp)("UI smoke — desktop employee walkthrough", () => {
     expect(stylish.getAttribute("class")).toContain("is-active");
   });
 
+  it("shows owner-only backup and restore controls in settings", async () => {
+    window.history.pushState({}, "", "/settings");
+    render(<App />);
+    expect(await screen.findByText("Резервные копии", {}, { timeout: 10000 })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Скачать резервную копию" }, { timeout: 10000 })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Восстановить базу" })).toBeTruthy();
+    expect(screen.getByPlaceholderText("ВОССТАНОВИТЬ")).toBeTruthy();
+  });
+
   it("exposes the essential desktop creation flows", async () => {
     const user = userEvent.setup();
     render(<App />);

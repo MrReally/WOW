@@ -12,6 +12,8 @@ import { registerAdminRoutes } from "./admin.js";
 import { registerCalendarRoutes } from "./calendar.js";
 import { getBotUsername } from "./core/telegramBot.js";
 import { env } from "./env.js";
+import { getMaintenanceReason } from "./core/maintenance.js";
+import { MAX_RESTORE_BYTES } from "./core/databaseBackup.js";
 
 // Where the built web bundle lives (apps/web/dist). Works from src (tsx) and
 // dist (compiled), and honors WEB_DIST override for Docker.
@@ -43,6 +45,13 @@ export async function buildApp(): Promise<BuiltApp> {
       : { transport: { target: "pino-pretty", options: { translateTime: "HH:MM:ss", ignore: "pid,hostname" } } },
   });
   await app.register(cors, { origin: true });
+  app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: MAX_RESTORE_BYTES }, (_req, body, done) => done(null, body));
+
+  app.addHook("onRequest", async (req, reply) => {
+    const reason = getMaintenanceReason();
+    if (!reason || req.url.startsWith("/health")) return;
+    return reply.status(503).send({ error: { code: "maintenance", message: "База восстанавливается. Повторите через несколько минут.", details: { reason } } });
+  });
 
   // Uniform error envelope. Set before routes so it covers every handler.
   app.setErrorHandler((err, _req, reply) => {
@@ -76,10 +85,10 @@ export async function buildApp(): Promise<BuiltApp> {
     },
   };
 
-  app.get("/health", async () => ({ ok: true, ts: new Date().toISOString() }));
+  app.get("/health", async () => ({ ok: true, ts: new Date().toISOString(), maintenance: getMaintenanceReason() }));
 
   app.addHook("onResponse", async (req, reply) => {
-    if (!req.url.startsWith("/api/") || req.method === "GET" || req.url.startsWith("/api/audit")) return;
+    if (!req.url.startsWith("/api/") || req.method === "GET" || req.url.startsWith("/api/audit") || req.url.startsWith("/api/admin/restore")) return;
     let actorId: string | null = null;
     try { actorId = (await ctx.auth(req)).userId; } catch { /* rejected requests may be anonymous */ }
     await wiring.audit.service.append({ actorId, method:req.method, path:req.url.split("?",1)[0]!, statusCode:reply.statusCode });

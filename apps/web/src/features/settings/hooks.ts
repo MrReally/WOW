@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { People, Finance } from "@sever/contracts";
-import { api } from "../../lib/api.ts";
+import { api, authenticatedFetch } from "../../lib/api.ts";
+
+export interface BackupStatus {
+  available: boolean;
+  restoreAvailable: boolean;
+  reason: string | null;
+  restoreReason: string | null;
+  maxRestoreBytes: number;
+}
 
 export function usePeople(status: People.UserListStatus = "active", enabled = true) {
   return useQuery({ enabled, queryKey: ["people", status], queryFn: () => api.get<People.UserDTO[]>(`/api/people?status=${status}`) });
@@ -50,6 +58,44 @@ export function useResetStatus(enabled: boolean) {
     enabled,
     queryKey: ["admin", "reset-status"],
     queryFn: () => api.get<{ available: boolean; reason: string | null }>("/api/admin/reset-status"),
+  });
+}
+
+export function useBackupStatus(enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: ["admin", "backup-status"],
+    queryFn: () => api.get<BackupStatus>("/api/admin/backup-status"),
+  });
+}
+
+function downloadFilename(disposition: string | null): string {
+  return disposition?.match(/filename="([^"]+)"/)?.[1] ?? `sever-backup-${new Date().toISOString().slice(0, 10)}.dump`;
+}
+
+export function useCreateBackup() {
+  return useMutation({
+    mutationFn: async () => {
+      const response = await authenticatedFetch("/api/admin/backup");
+      return { blob: await response.blob(), filename: downloadFilename(response.headers.get("content-disposition")) };
+    },
+    meta: { successMessage: "Резервная копия создана" },
+  });
+}
+
+export function useRestoreBackup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const response = await authenticatedFetch("/api/admin/restore", {
+        method: "POST",
+        headers: { "content-type": "application/octet-stream", "x-sever-restore-confirm": "RESTORE" },
+        body: file,
+      });
+      return response.json() as Promise<{ ok: true; safetyBackupFile: string; restoredAt: string }>;
+    },
+    meta: { successMessage: "База восстановлена" },
+    onSuccess: () => qc.invalidateQueries(),
   });
 }
 

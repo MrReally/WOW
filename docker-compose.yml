@@ -47,8 +47,14 @@ services:
       # With it set, notifications also deliver to Telegram and the bot links
       # accounts (Settings → Люди → «Привязать Telegram»).
       TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      # Full database backups. Restore remains disabled until explicitly enabled.
+      BACKUP_DIR: /var/lib/sever/backups
+      ALLOW_DATA_RESTORE: "${ALLOW_DATA_RESTORE:-false}"
+    volumes:
+      - sever_backups:/var/lib/sever/backups
     ports:
       - "8080:4000"
 
 volumes:
   sever_pgdata:
+  sever_backups:

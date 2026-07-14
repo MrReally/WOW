@@ -3,7 +3,8 @@
 # imports @sever/contracts as source), which is fine at this scale.
 FROM node:20-alpine
 
-RUN corepack enable
+RUN apk add --no-cache postgresql16-client && corepack enable
+RUN mkdir -p /var/lib/sever/backups
 WORKDIR /app
 
 # Install dependencies (workspace-aware) with the lockfile.
@@ -20,6 +21,7 @@ RUN pnpm --filter @sever/web build
 ENV NODE_ENV=production
 ENV PORT=4000
 ENV WEB_DIST=/app/apps/web/dist
+ENV BACKUP_DIR=/var/lib/sever/backups
 # The API serves apps/web/dist from the same origin.
 EXPOSE 4000
 

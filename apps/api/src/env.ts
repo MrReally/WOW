@@ -22,6 +22,10 @@ export const env = {
   seedOnStart: bool(process.env.SEED_ON_START, false),
   /** Destructive database reset is disabled in production unless explicitly enabled. */
   allowDataReset: bool(process.env.ALLOW_DATA_RESET, false),
+  /** Restore is separately gated because it replaces every schema and row. */
+  allowDataRestore: bool(process.env.ALLOW_DATA_RESTORE, false),
+  /** Persistent directory for automatic pre-restore safety backups. */
+  backupDir: process.env.BACKUP_DIR ?? (process.env.NODE_ENV === "production" ? "/var/lib/sever/backups" : "backups"),
   get isProd() {
     return this.nodeEnv === "production";
   },
