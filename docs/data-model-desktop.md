@@ -17,7 +17,8 @@ Desktop Backoffice не создаёт отдельную БД, отдельны
 | catalog | recipe_lines | id, recipe_id, ingredient_item_id, unit, gross_qty, net_qty, base_qty | — |
 | equipment | types | id, name, tracking_mode, created_at | — |
 | equipment | settings | id, cable_connectors, cable_name_format | — |
-| equipment | models | id, type_id, name, manufacturer, unit_cost_eur, daily_price_eur, attrs, required_component_model_ids, created_at | — |
+| equipment | models | id, type_id, name, manufacturer, <span style="background:#fef08a;color:#713f12;padding:2px 5px">image_url</span>, unit_cost_eur, daily_price_eur, attrs (включая sideAEnds/sideBEnds), required_component_model_ids, created_at | <span style="background:#fef08a;color:#713f12;padding:2px 5px">image_url — общее изображение модели для mobile и desktop; массивы концов — схема разветвлённого кабеля</span> |
+| equipment | <span style="background:#fef08a;color:#713f12;padding:2px 5px">cable_connectors</span> | <span style="background:#fef08a;color:#713f12;padding:2px 5px">id, name, designation, image_data_url, active, created_at</span> | <span style="background:#fef08a;color:#713f12;padding:2px 5px">НОВОЕ: общий архивируемый справочник разъёмов и PNG-схем</span> |
 | equipment | warehouses | id, name, address, is_default, created_at | — |
 | equipment | <span style="background:#fef08a;color:#713f12;padding:2px 5px">storage_zones</span> | <span style="background:#fef08a;color:#713f12;padding:2px 5px">id, warehouse_id, parent_id, name, code, kind, active, sort_order, created_at</span> | <span style="background:#fef08a;color:#713f12;padding:2px 5px">НОВОЕ: общая необязательная иерархия помещение → стеллаж → полка → ячейка</span> |
 | equipment | units | id, model_id, asset_tag, serial, warehouse_id, <span style="background:#fef08a;color:#713f12;padding:2px 5px">zone_id</span>, status, current_project_id, created_at, notes | <span style="background:#fef08a;color:#713f12;padding:2px 5px">zone_id — необязательный адрес хранения</span> |
@@ -56,7 +57,8 @@ Desktop Backoffice не создаёт отдельную БД, отдельны
 | people | app_settings | key, value, updated_at | — |
 | notifications | notifications | id, user_id, kind, title, body, link, read, created_at | — |
 | notifications | prefs | user_id, kind, enabled | — |
-| operations | documents | id, number, kind, status, payload, created_by, created_at, posted_at, reversed_at | — |
+| operations | documents | id, number, kind, status, payload, <span style="background:#fef08a;color:#713f12;padding:2px 5px">version</span>, created_by, created_at, <span style="background:#fef08a;color:#713f12;padding:2px 5px">updated_by, updated_at</span>, posted_at, reversed_at | <span style="background:#fef08a;color:#713f12;padding:2px 5px">версия и автор последнего изменения</span> |
+| operations | <span style="background:#fef08a;color:#713f12;padding:2px 5px">document_revisions</span> | <span style="background:#fef08a;color:#713f12;padding:2px 5px">id, document_id, version, action, payload, actor_id, created_at</span> | <span style="background:#fef08a;color:#713f12;padding:2px 5px">НОВОЕ: неизменяемая история создания, редактирования, проведения и сторно</span> |
 | plans | plans | id, project_id, venue_id, name, version, is_current, stage_w, stage_h, created_at | — |
 | plans | elements | id, plan_id, layer, kind, label, x, y, rotation, w, h, model_id, unit_id, attrs, created_at, from_id, to_id | — |
 | venues | venues | id, name, address, notes, width_m, depth_m, created_at | — |
@@ -68,10 +70,12 @@ Desktop Backoffice не создаёт отдельную БД, отдельны
 | Полная карточка оборудования | equipment.units, models, types, warehouses, repairs, handovers, journal; projects.projects; people.users |
 | Карточка номенклатуры, упаковки и рецептуры | catalog.items, packaging_units, recipe_versions, recipe_lines |
 | Полная карточка проекта | projects.projects, reservations, timings, assignments, project_roles, contractor_items, reminders, pings; equipment.units/models; finance.invoice_versions/transactions |
-| Документооборот | operations.documents; equipment.units/journal; projects.projects; people.users |
+| Документооборот | operations.documents/document_revisions; equipment.units/journal; projects.projects; people.users |
 | Сканирование | существующие equipment.units.asset_tag и equipment.units.serial; новых идентификаторов не создаётся |
 | Складские зоны | equipment.storage_zones; equipment.units.zone_id; equipment.model_stock.zone_id. Все ссылки необязательны |
-| Кабели и комплектующие | equipment.models.attrs, model_stock, journal, storage_zones; единый количественный учёт по складу |
+| Кабели | equipment.models.attrs (включая отдельные концы), cable_connectors, model_stock, journal, storage_zones |
+| Комплектующие | equipment.models с tracking_mode=quantity, model_stock, journal, storage_zones; отдельное представление без дублирования БД |
+| Изображения моделей | equipment.models.image_url; одна картинка отображается в desktop-карточках и mobile |
 | Обязательная комплектность | equipment.models.required_component_model_ids; equipment.problems с kind=kit_incomplete |
 | Контроль и уведомления | notifications.notifications/prefs; equipment.repairs/handovers/problems; projects.projects/problems; finance.transactions |
 | Импорт CSV | существующий endpoint оборудования и существующие equipment.types/models/units/warehouses |

@@ -9,5 +9,7 @@ export type OperationPayload =
   | { kind: "return"; projectId: ID; returnedUnitIds: ID[]; expectedUnitIds: ID[]; note?: string | null }
   | { kind: "transfer"; unitId: ID; warehouseId: ID; fromWarehouseId?: ID | null; note?: string | null }
   | { kind: "inventory"; warehouseId?: ID | null; lines: InventoryLine[]; note?: string | null };
-export interface OperationDocumentDTO { id: ID; number: string; kind: OperationDocumentKind; status: OperationDocumentStatus; payload: OperationPayload; createdBy: ID; createdAt: ISODateTime; postedAt: ISODateTime | null; reversedAt: ISODateTime | null }
-export interface OperationsService { list(): Promise<OperationDocumentDTO[]>; get(id: ID): Promise<OperationDocumentDTO | null>; create(payload: OperationPayload, actorId: ID): Promise<OperationDocumentDTO>; post(id: ID, actorId: ID): Promise<OperationDocumentDTO>; reverse(id: ID, actorId: ID): Promise<OperationDocumentDTO> }
+export interface OperationDocumentDTO { id: ID; number: string; kind: OperationDocumentKind; status: OperationDocumentStatus; payload: OperationPayload; version: number; createdBy: ID; createdAt: ISODateTime; updatedBy: ID; updatedAt: ISODateTime; postedAt: ISODateTime | null; reversedAt: ISODateTime | null }
+export type OperationRevisionAction="created"|"edited"|"posted"|"reversed";
+export interface OperationRevisionDTO { id:ID; documentId:ID; version:number; action:OperationRevisionAction; payload:OperationPayload; actorId:ID; createdAt:ISODateTime }
+export interface OperationsService { list(): Promise<OperationDocumentDTO[]>; get(id: ID): Promise<OperationDocumentDTO | null>; history(id:ID):Promise<OperationRevisionDTO[]>; create(payload: OperationPayload, actorId: ID): Promise<OperationDocumentDTO>; update(id:ID,payload:OperationPayload,actorId:ID):Promise<OperationDocumentDTO>; post(id: ID, actorId: ID): Promise<OperationDocumentDTO>; reverse(id: ID, actorId: ID): Promise<OperationDocumentDTO> }

@@ -64,6 +64,8 @@ export function useCatalogItemDetail(itemId?: string) {
   return { packaging, recipes };
 }
 
+export function useOperationHistory(documentId?:string){return useQuery({enabled:!!documentId,queryKey:["bo","documents",documentId,"history"],queryFn:()=>api.get<Operations.OperationRevisionDTO[]>(`/api/operations/documents/${documentId}/history`)});}
+
 function invalidateBackoffice(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: ["bo"] });
   void qc.invalidateQueries({ queryKey: ["equipment"] });
@@ -89,7 +91,8 @@ export function useBackofficeCommands() {
   const createRecipe = useMutation({ mutationFn: ({ itemId, input }: { itemId:string; input:Omit<Catalog.RecipeVersionDTO,"id"|"itemId"|"lines"> & {lines:Omit<Catalog.RecipeLineDTO,"id">[]} }) => api.post(`/api/catalog/items/${itemId}/recipes`, input), onSuccess:()=>invalidateBackoffice(qc) });
   const importEquipmentCsv = useMutation({ mutationFn:(csv:string)=>api.post<Equipment.ImportResult>("/api/equipment/import",{csv}), onSuccess:()=>invalidateBackoffice(qc) });
   const createDocument = useMutation({ mutationFn: (input: Operations.OperationPayload) => api.post<Operations.OperationDocumentDTO>("/api/operations/documents", input), onSuccess: () => invalidateBackoffice(qc) });
+  const updateDocument = useMutation({ mutationFn: ({id,input}:{id:string;input:Operations.OperationPayload}) => api.patch<Operations.OperationDocumentDTO>(`/api/operations/documents/${id}`, input), onSuccess: () => invalidateBackoffice(qc),meta:{successMessage:"Черновик обновлён"} });
   const postDocument = useMutation({ mutationFn: (id: string) => api.post<Operations.OperationDocumentDTO>(`/api/operations/documents/${id}/post`, {}), onSuccess: () => invalidateBackoffice(qc) });
   const reverseDocument = useMutation({ mutationFn: (id: string) => api.post<Operations.OperationDocumentDTO>(`/api/operations/documents/${id}/reverse`, {}), onSuccess: () => invalidateBackoffice(qc) });
-  return { issue, returnUnits, transfer, resolveProblem, createProject, updateProject, createTransaction, updateRole, createCatalogItem, createPerson, updatePerson, createContractor, addPackaging, createRecipe, importEquipmentCsv, createDocument, postDocument, reverseDocument };
+  return { issue, returnUnits, transfer, resolveProblem, createProject, updateProject, createTransaction, updateRole, createCatalogItem, createPerson, updatePerson, createContractor, addPackaging, createRecipe, importEquipmentCsv, createDocument, updateDocument, postDocument, reverseDocument };
 }

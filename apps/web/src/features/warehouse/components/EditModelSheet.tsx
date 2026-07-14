@@ -3,7 +3,8 @@ import type { Equipment } from "@sever/contracts";
 import { Sheet, Field, Input, Button, Select, Chip } from "../../../ui-kit/index.ts";
 import { useSession } from "../../../app/session.ts";
 import { cableAttrs, formatCableModel } from "../cables.ts";
-import { useCableSettings, useDeleteModel, useSetModelTrackingMode, useUpdateModel } from "../hooks.ts";
+import { useCableConnectors, useCableSettings, useDeleteModel, useSetModelTrackingMode, useUpdateModel } from "../hooks.ts";
+import { CableDesigner, ModelImageInput } from "../../backoffice/CableDesigner.tsx";
 
 export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentModelDTO | null; onClose: () => void }) {
   const { can } = useSession();
@@ -11,8 +12,10 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
   const setTracking = useSetModelTrackingMode();
   const deleteModel = useDeleteModel();
   const cableSettings = useCableSettings(!!model);
+  const connectorCatalog=useCableConnectors();
   const [name, setName] = useState("");
   const [manufacturer, setManufacturer] = useState("");
+  const [imageUrl,setImageUrl]=useState<string|null>(null);
   const [unitCost, setUnitCost] = useState("");
   const [dailyPrice, setDailyPrice] = useState("");
   const [nextMode, setNextMode] = useState<Equipment.TrackingMode>("serial");
@@ -22,12 +25,14 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
   const [sideAConnector, setSideAConnector] = useState("");
   const [sideBQty, setSideBQty] = useState("1");
   const [sideBConnector, setSideBConnector] = useState("");
+  const [sideAEnds,setSideAEnds]=useState<string[]>([""]),[sideBEnds,setSideBEnds]=useState<string[]>([""]);
 
   useEffect(() => {
     if (model) {
       const attrs = cableAttrs(model);
       setName(model.name);
       setManufacturer(model.manufacturer ?? "");
+      setImageUrl(model.imageUrl);
       setUnitCost(String(model.unitCostEUR));
       setDailyPrice(String(model.dailyPriceEUR));
       setNextMode(model.trackingMode);
@@ -37,6 +42,8 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
       setSideAConnector(attrs?.sideAConnector ?? "");
       setSideBQty(String(attrs?.sideBQty ?? 1));
       setSideBConnector(attrs?.sideBConnector ?? "");
+      setSideAEnds(attrs?.sideAEnds?.length?attrs.sideAEnds:Array.from({length:attrs?.sideAQty??1},()=>attrs?.sideAConnector??""));
+      setSideBEnds(attrs?.sideBEnds?.length?attrs.sideBEnds:Array.from({length:attrs?.sideBQty??1},()=>attrs?.sideBConnector??""));
     }
   }, [model]);
 
@@ -49,6 +56,8 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
     sideAQty: Math.max(1, Math.trunc(Number(sideAQty) || 1)),
     sideBConnector: sideBConnector.trim(),
     sideBQty: Math.max(1, Math.trunc(Number(sideBQty) || 1)),
+    sideAEnds,
+    sideBEnds,
     connectors: null,
   };
   const cablePreview = formatCableModel({ ...model, attrs: nextCableAttrs }, cableSettings.data?.nameFormat);
@@ -59,6 +68,7 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
         input: {
           name: name.trim() || undefined,
           manufacturer: manufacturer.trim() || null,
+          imageUrl,
           unitCostEUR: unitCost === "" ? undefined : Number(unitCost),
           dailyPriceEUR: dailyPrice === "" ? undefined : Number(dailyPrice),
           attrs: model.trackingMode === "cable" ? nextCableAttrs : undefined,
@@ -87,27 +97,14 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
       </div>
       <Field label="Название"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
       <Field label="Производитель"><Input value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} placeholder="—" /></Field>
+      <ModelImageInput value={imageUrl} onChange={setImageUrl}/>
       <div className="row">
         <Field label="Стоимость (замена), €"><Input type="number" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} /></Field>
         <Field label="Аренда / сутки, €"><Input type="number" step="0.01" value={dailyPrice} onChange={(e) => setDailyPrice(e.target.value)} /></Field>
       </div>
       {model.trackingMode === "cable" && (
         <>
-          <div className="row">
-            <Field label="Тип кабеля"><Input value={cableType} onChange={(e) => setCableType(e.target.value)} /></Field>
-            <Field label="Длина, м"><Input type="number" value={lengthM} onChange={(e) => setLengthM(e.target.value)} /></Field>
-          </div>
-          <div className="row">
-            <Field label="Сторона A"><Input value={sideAConnector} onChange={(e) => setSideAConnector(e.target.value)} list="edit-cable-connectors" /></Field>
-            <Field label="Кол-во"><Input type="number" value={sideAQty} onChange={(e) => setSideAQty(e.target.value)} /></Field>
-          </div>
-          <div className="row">
-            <Field label="Сторона B"><Input value={sideBConnector} onChange={(e) => setSideBConnector(e.target.value)} list="edit-cable-connectors" /></Field>
-            <Field label="Кол-во"><Input type="number" value={sideBQty} onChange={(e) => setSideBQty(e.target.value)} /></Field>
-          </div>
-          <datalist id="edit-cable-connectors">
-            {(cableSettings.data?.connectors ?? []).map((connector) => <option key={connector} value={connector} />)}
-          </datalist>
+          <CableDesigner value={nextCableAttrs} connectors={connectorCatalog.data??[]} onChange={value=>{setCableType(value.cableType);setLengthM(String(value.lengthM||""));setSideAQty(String(value.sideAQty));setSideAConnector(value.sideAConnector);setSideBQty(String(value.sideBQty));setSideBConnector(value.sideBConnector);setSideAEnds(value.sideAEnds??[value.sideAConnector]);setSideBEnds(value.sideBEnds??[value.sideBConnector]);}}/>
           <p className="card__subtitle">{cablePreview}</p>
         </>
       )}

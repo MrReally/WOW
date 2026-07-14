@@ -14,6 +14,9 @@ const cableSettingsSchema = z.object({
   connectors: z.array(z.string().min(1)).max(200),
   nameFormat: z.array(z.string().min(1)).max(12),
 });
+const imageSchema=z.string().max(2_000_000).refine(value=>value.startsWith("data:image/png;base64,")||value.startsWith("data:image/jpeg;base64,")||value.startsWith("https://"),"используйте PNG/JPEG до 1,5 МБ");
+const connectorSchema=z.object({name:z.string().min(1),designation:z.string().min(1).max(24),imageDataUrl:imageSchema.nullable().optional()});
+const updateConnectorSchema=connectorSchema.partial().extend({active:z.boolean().optional()});
 const updateTypeSchema = z.object({
   name: z.string().min(1).optional(),
 });
@@ -34,6 +37,7 @@ const createModelSchema = z.object({
   typeId: z.string().uuid(),
   name: z.string().min(1),
   manufacturer: z.string().nullable().optional(),
+  imageUrl: imageSchema.nullable().optional(),
   unitCostEUR: z.number().nonnegative(),
   dailyPriceEUR: z.number().nonnegative(),
   attrs: z.record(z.unknown()).nullable().optional(),
@@ -43,6 +47,7 @@ const updateModelSchema = z.object({
   typeId: z.string().uuid().optional(),
   name: z.string().min(1).optional(),
   manufacturer: z.string().nullable().optional(),
+  imageUrl: imageSchema.nullable().optional(),
   unitCostEUR: z.number().nonnegative().optional(),
   dailyPriceEUR: z.number().nonnegative().optional(),
   attrs: z.record(z.unknown()).nullable().optional(),
@@ -159,6 +164,9 @@ export function registerEquipmentRoutes(
     requirePermission(auth, "warehouse.catalog.manage");
     return service.updateCableSettings(cableSettingsSchema.parse(req.body));
   });
+  app.get<{Querystring:{includeArchived?:string}}>("/api/equipment/cable-connectors",async req=>{await ctx.auth(req);return service.listCableConnectors(req.query.includeArchived==="true");});
+  app.post("/api/equipment/cable-connectors",async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.catalog.manage");return service.createCableConnector(connectorSchema.parse(req.body));});
+  app.patch<{Params:{id:string}}>("/api/equipment/cable-connectors/:id",async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.catalog.manage");return service.updateCableConnector(req.params.id,updateConnectorSchema.parse(req.body));});
 
   // ── Warehouses ──
   app.get("/api/equipment/warehouses", async (req) => {

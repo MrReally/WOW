@@ -126,7 +126,7 @@ export function UnitDetailPage() {
         <div className="row row--between">
           <div style={{ minWidth: 0 }}>
             <p className="card__title" style={{ fontSize: "var(--fs-lg)" }}>{u.assetTag}</p>
-            <p className="card__subtitle">{model?.name ?? "—"}{model?.manufacturer ? ` · ${model.manufacturer}` : ""}</p>
+            {model?.imageUrl&&<img className="equipment-model-image" src={model.imageUrl} alt={model.name}/>}<p className="card__subtitle">{model?.name ?? "—"}{model?.manufacturer ? ` · ${model.manufacturer}` : ""}</p>
           </div>
           <StatusBadge tone={unitStatusTone[u.status]}>{unitStatusLabel[u.status]}</StatusBadge>
         </div>

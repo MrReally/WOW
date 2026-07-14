@@ -17,6 +17,7 @@ interface ModelRow {
   tracking_mode: Equipment.TrackingMode;
   name: string;
   manufacturer: string | null;
+  image_url: string | null;
   unit_cost_eur: string;
   daily_price_eur: string;
   attrs: unknown;
@@ -73,6 +74,7 @@ interface EquipmentSettingsRow {
   cable_connectors: string[];
   cable_name_format: string[];
 }
+interface CableConnectorRow { id:string; name:string; designation:string; image_data_url:string|null; active:boolean; created_at:Date }
 interface ProblemRow {
   id: string;
   kind: Problem["kind"];
@@ -97,6 +99,7 @@ const modelDTO = (r: ModelRow): Equipment.EquipmentModelDTO => ({
   trackingMode: r.tracking_mode,
   name: r.name,
   manufacturer: r.manufacturer,
+  imageUrl: r.image_url,
   unitCostEUR: Number(r.unit_cost_eur),
   dailyPriceEUR: Number(r.daily_price_eur),
   attrs: (r.attrs as Equipment.CableAttrs | null) ?? null,
@@ -153,6 +156,7 @@ const cableSettingsDTO = (r: EquipmentSettingsRow): Equipment.CableSettingsDTO =
   connectors: r.cable_connectors,
   nameFormat: r.cable_name_format,
 });
+const cableConnectorDTO = (r:CableConnectorRow):Equipment.CableConnectorDTO => ({ id:r.id,name:r.name,designation:r.designation,imageDataUrl:r.image_data_url,active:r.active,createdAt:r.created_at.toISOString() });
 const problemDTO = (r: ProblemRow): Problem => ({
   id: r.id,
   kind: r.kind,
@@ -420,6 +424,19 @@ export function createEquipmentService(
       );
       return cableSettingsDTO(row!);
     },
+    async listCableConnectors(includeArchived=false) {
+      return (await query<CableConnectorRow>(db, `SELECT * FROM equipment.cable_connectors ${includeArchived ? "" : "WHERE active=true"} ORDER BY active DESC,name`)).map(cableConnectorDTO);
+    },
+    async createCableConnector(input) {
+      const row=await one<CableConnectorRow>(db,`INSERT INTO equipment.cable_connectors(name,designation,image_data_url) VALUES($1,$2,$3) RETURNING *`,[input.name,input.designation,input.imageDataUrl??null]);
+      return cableConnectorDTO(row!);
+    },
+    async updateCableConnector(id,input) {
+      const existing=await one<CableConnectorRow>(db,`SELECT * FROM equipment.cable_connectors WHERE id=$1`,[id]);
+      if(!existing)throw NotFound("cable connector",id);
+      const row=await one<CableConnectorRow>(db,`UPDATE equipment.cable_connectors SET name=$2,designation=$3,image_data_url=$4,active=$5 WHERE id=$1 RETURNING *`,[id,input.name??existing.name,input.designation??existing.designation,input.imageDataUrl===undefined?existing.image_data_url:input.imageDataUrl,input.active??existing.active]);
+      return cableConnectorDTO(row!);
+    },
     async listTypes() {
       const rows = await query<TypeRow>(db, `SELECT * FROM equipment.types ORDER BY name`);
       return rows.map(typeDTO);
@@ -458,12 +475,13 @@ export function createEquipmentService(
       await query(
         db,
         `INSERT INTO equipment.models
-           (type_id, name, manufacturer, unit_cost_eur, daily_price_eur, attrs, required_component_model_ids)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+           (type_id, name, manufacturer, image_url, unit_cost_eur, daily_price_eur, attrs, required_component_model_ids)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [
           input.typeId,
           input.name,
           input.manufacturer ?? null,
+          input.imageUrl ?? null,
           input.unitCostEUR,
           input.dailyPriceEUR,
           input.attrs ? JSON.stringify(input.attrs) : null,
@@ -492,16 +510,18 @@ export function createEquipmentService(
            type_id          = COALESCE($2, type_id),
            name             = COALESCE($3, name),
            manufacturer     = $4,
-           unit_cost_eur    = COALESCE($5, unit_cost_eur),
-           daily_price_eur  = COALESCE($6, daily_price_eur),
-           attrs            = $7,
-           required_component_model_ids = $8
+           image_url        = $5,
+           unit_cost_eur    = COALESCE($6, unit_cost_eur),
+           daily_price_eur  = COALESCE($7, daily_price_eur),
+           attrs            = $8,
+           required_component_model_ids = $9
          WHERE id=$1`,
         [
           id,
           input.typeId ?? null,
           input.name ?? null,
           input.manufacturer === undefined ? existing.manufacturer : input.manufacturer,
+          input.imageUrl === undefined ? existing.image_url : input.imageUrl,
           input.unitCostEUR ?? null,
           input.dailyPriceEUR ?? null,
           input.attrs === undefined ? existing.attrs : input.attrs ? JSON.stringify(input.attrs) : null,

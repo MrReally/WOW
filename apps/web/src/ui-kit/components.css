@@ -980,3 +980,6 @@ h1,
 .fatal-error { max-width:680px; margin:10vh auto; padding:28px; border:1px solid var(--bdr-md); border-radius:16px; background:var(--card); color:var(--text); }
 .fatal-error p { color:var(--text2); }.fatal-error code { display:block; margin:8px 0; padding:10px; border-radius:8px; background:var(--s2); }
 .fatal-error button { min-height:42px; margin-top:16px; padding:0 16px; border:0; border-radius:10px; background:var(--accent); color:var(--accent-text); }
+/* Shared model imagery: the same source is used in mobile and Backoffice. */
+.equipment-model-image{display:block;width:100%;max-width:260px;height:150px;object-fit:contain;margin:0 auto var(--space-3);border:1px solid var(--bdr);border-radius:var(--radius-md);background:var(--s1)}
+.equipment-model-thumb{float:left;width:44px;height:38px;object-fit:contain;margin-right:10px;border:1px solid var(--bdr);border-radius:7px;background:var(--s1)}

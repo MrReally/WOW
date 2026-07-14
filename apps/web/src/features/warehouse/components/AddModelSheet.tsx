@@ -92,6 +92,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
       trackingMode: "cable",
       name: modelName.trim(),
       manufacturer: null,
+      imageUrl: null,
       unitCostEUR: 0,
       dailyPriceEUR: 0,
       attrs: cableAttrs,

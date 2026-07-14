@@ -89,7 +89,7 @@ function ModelRow({ model, units, last, onEdit }: { model: Equipment.EquipmentMo
   return (
     <div className={`lrow ${onEdit ? "card--tappable" : ""}`} style={{ borderBottom: last ? "none" : undefined }} onClick={onEdit}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="lrow__title">{model.name}</div>
+        {model.imageUrl&&<img className="equipment-model-thumb" src={model.imageUrl} alt=""/>}<div className="lrow__title">{model.name}</div>
         <div className="lrow__detail">{model.manufacturer ?? "—"} · {eur(model.dailyPriceEUR)}/день</div>
       </div>
       <span className="t-mono" style={{ fontSize: 12, color: "var(--text2)" }}>×{mine.length}</span>

@@ -31,12 +31,27 @@ CREATE TABLE IF NOT EXISTS equipment.models (
   type_id                      uuid NOT NULL REFERENCES equipment.types(id),
   name                         text NOT NULL,
   manufacturer                 text,
+  image_url                    text,
   unit_cost_eur                numeric(12,2) NOT NULL DEFAULT 0,
   daily_price_eur              numeric(12,2) NOT NULL DEFAULT 0,
   attrs                        jsonb,
   required_component_model_ids uuid[] NOT NULL DEFAULT '{}',
   created_at                   timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE equipment.models ADD COLUMN IF NOT EXISTS image_url text;
+
+CREATE TABLE IF NOT EXISTS equipment.cable_connectors (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name           text NOT NULL UNIQUE,
+  designation    text NOT NULL,
+  image_data_url text,
+  active         boolean NOT NULL DEFAULT true,
+  created_at     timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO equipment.cable_connectors (name, designation)
+SELECT connector, upper(left(regexp_replace(connector, '[^a-zA-Z0-9]+', '', 'g'), 8))
+FROM equipment.settings, unnest(cable_connectors) connector
+ON CONFLICT (name) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS equipment.warehouses (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),

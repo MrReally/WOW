@@ -12,7 +12,9 @@ const payload=z.discriminatedUnion("kind",[
 ]);
 export function registerOperationsRoutes(app:FastifyInstance,ctx:RouteContext,service:Operations.OperationsService){
  app.get("/api/operations/documents",async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.view");return service.list();});
+ app.get<{Params:{id:string}}>("/api/operations/documents/:id/history",async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.view");return service.history(req.params.id);});
  app.post("/api/operations/documents",async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.issue","warehouse.catalog.manage");return service.create(payload.parse(req.body),auth.userId);});
+ app.patch<{Params:{id:string}}>("/api/operations/documents/:id",async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.issue","warehouse.catalog.manage");return service.update(req.params.id,payload.parse(req.body),auth.userId);});
  app.post<{Params:{id:string}}>("/api/operations/documents/:id/post",async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.issue","warehouse.catalog.manage");return service.post(req.params.id,auth.userId);});
  app.post<{Params:{id:string}}>("/api/operations/documents/:id/reverse",async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.issue","warehouse.catalog.manage");return service.reverse(req.params.id,auth.userId);});
 }

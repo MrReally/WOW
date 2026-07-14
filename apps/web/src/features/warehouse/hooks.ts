@@ -31,6 +31,18 @@ export function useSetCableSettings() {
   });
 }
 
+export function useCableConnectors(includeArchived=false) {
+  return useQuery({ queryKey:["equipment","cable-connectors",includeArchived], queryFn:()=>api.get<Equipment.CableConnectorDTO[]>(`/api/equipment/cable-connectors${includeArchived?"?includeArchived=true":""}`) });
+}
+export function useCreateCableConnector() {
+  const qc=useQueryClient();
+  return useMutation({mutationFn:(input:{name:string;designation:string;imageDataUrl?:string|null})=>api.post<Equipment.CableConnectorDTO>("/api/equipment/cable-connectors",input),onSuccess:()=>invalidateEquipment(qc),meta:{successMessage:"Разъём добавлен"}});
+}
+export function useUpdateCableConnector() {
+  const qc=useQueryClient();
+  return useMutation({mutationFn:({id,input}:{id:string;input:Partial<Pick<Equipment.CableConnectorDTO,"name"|"designation"|"imageDataUrl"|"active">>})=>api.patch<Equipment.CableConnectorDTO>(`/api/equipment/cable-connectors/${id}`,input),onSuccess:()=>invalidateEquipment(qc),meta:{successMessage:"Разъём обновлён"}});
+}
+
 export function useModels() {
   return useQuery({ queryKey: ["equipment", "models"], queryFn: () => api.get<Equipment.EquipmentModelDTO[]>("/api/equipment/models") });
 }
@@ -153,7 +165,7 @@ export function useUpdateWarehouse() {
 export function useCreateModel() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: Equipment.CreateModelInput) => api.post("/api/equipment/models", input),
+    mutationFn: (input: Equipment.CreateModelInput) => api.post<Equipment.EquipmentModelDTO>("/api/equipment/models", input),
     onSuccess: () => invalidateEquipment(qc),
   });
 }

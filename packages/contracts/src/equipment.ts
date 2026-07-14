@@ -41,6 +41,8 @@ export interface EquipmentModelDTO {
   trackingMode: TrackingMode;
   name: string;
   manufacturer: string | null;
+  /** Optional model photo shared by mobile and desktop. PNG/JPEG data URL or hosted URL. */
+  imageUrl: string | null;
   /** Purchase/replacement cost in EUR — basis for payback. */
   unitCostEUR: number;
   /** Default daily rental price in EUR. */
@@ -59,6 +61,9 @@ export interface CableAttrs {
   sideAQty: number;
   sideBConnector: string;
   sideBQty: number;
+  /** Each physical branch can have its own connector; legacy single-connector fields remain supported. */
+  sideAEnds?: string[];
+  sideBEnds?: string[];
   /** Legacy/import compatibility. */
   connectors?: string | null;
 }
@@ -66,6 +71,15 @@ export interface CableAttrs {
 export interface CableSettingsDTO {
   connectors: string[];
   nameFormat: string[];
+}
+
+export interface CableConnectorDTO {
+  id: ID;
+  name: string;
+  designation: string;
+  imageDataUrl: string | null;
+  active: boolean;
+  createdAt: ISODateTime;
 }
 
 export interface EquipmentUnitDTO {
@@ -329,6 +343,9 @@ export interface EquipmentService {
   listTypes(): Promise<EquipmentTypeDTO[]>;
   getCableSettings(): Promise<CableSettingsDTO>;
   updateCableSettings(input: CableSettingsDTO): Promise<CableSettingsDTO>;
+  listCableConnectors(includeArchived?: boolean): Promise<CableConnectorDTO[]>;
+  createCableConnector(input: { name: string; designation: string; imageDataUrl?: string | null }): Promise<CableConnectorDTO>;
+  updateCableConnector(id: ID, input: { name?: string; designation?: string; imageDataUrl?: string | null; active?: boolean }): Promise<CableConnectorDTO>;
   createType(input: { name: string; trackingMode: TrackingMode }): Promise<EquipmentTypeDTO>;
   updateType(id: ID, input: { name?: string }): Promise<EquipmentTypeDTO>;
   listModels(typeId?: ID): Promise<EquipmentModelDTO[]>;
@@ -398,6 +415,7 @@ export interface CreateModelInput {
   typeId: ID;
   name: string;
   manufacturer?: string | null;
+  imageUrl?: string | null;
   unitCostEUR: number;
   dailyPriceEUR: number;
   attrs?: CableAttrs | Record<string, unknown> | null;
@@ -408,6 +426,7 @@ export interface UpdateModelInput {
   typeId?: ID;
   name?: string;
   manufacturer?: string | null;
+  imageUrl?: string | null;
   unitCostEUR?: number;
   dailyPriceEUR?: number;
   attrs?: CableAttrs | Record<string, unknown> | null;
