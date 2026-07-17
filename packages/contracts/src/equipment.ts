@@ -54,6 +54,27 @@ export interface EquipmentModelDTO {
   createdAt: ISODateTime;
 }
 
+/** Reusable visual designation of a model on technical plans. */
+export interface StageSymbol {
+  shape: "circle" | "square" | "rectangle" | "bar" | "diamond";
+  /** Short stable label used when a placed element has no custom label. */
+  code: string;
+  /** Default footprint on the plan, in plan units. */
+  width: number;
+  height: number;
+  /** Optional CSS hex color. The UI falls back to the layer color. */
+  color?: string | null;
+}
+
+/** Common model attributes. Other technical attributes remain extensible. */
+export interface ModelAttrs extends Record<string, unknown> {
+  stageSymbol?: StageSymbol;
+  /** Nominal consumption copied into a newly placed plan element. */
+  powerW?: number;
+  /** Default DMX footprint copied into a newly placed plan element. */
+  dmxChannels?: number | string;
+}
+
 export interface CableAttrs {
   cableType: string; // e.g. "DMX", "Power", "Audio"
   lengthM: number;
@@ -66,6 +87,8 @@ export interface CableAttrs {
   sideBEnds?: string[];
   /** Legacy/import compatibility. */
   connectors?: string | null;
+  /** Cable models can also have a custom appearance in plan cards. */
+  stageSymbol?: StageSymbol;
 }
 
 export interface CableSettingsDTO {

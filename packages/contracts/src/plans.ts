@@ -13,6 +13,24 @@ export const PLAN_LAYERS: PlanLayer[] = ["light", "sound", "dmx", "power", "audi
 // linking two devices (fromId → toId) rather than as standalone markers.
 export type PlanElementKind = "fixture" | "truss" | "power" | "audio" | "label" | "cable";
 
+/** All values are entered manually; totals in the UI are derived from them. */
+export interface PlanElementAttrs extends Record<string, unknown> {
+  note?: string;
+  dmxUniverse?: number;
+  dmxAddress?: number;
+  dmxChannels?: number;
+  powerW?: number;
+  requiredOutlets?: number;
+  /** For a power source/distribution point. */
+  availableOutlets?: number;
+  voltage?: number;
+  maxPowerW?: number;
+  circuit?: string;
+  /** Manual override when the selected cable model length is unsuitable. */
+  cableLengthM?: number;
+  cableQuantity?: number;
+}
+
 export interface PlanElementDTO {
   id: ID;
   planId: ID;
@@ -32,7 +50,7 @@ export interface PlanElementDTO {
   /** Opaque equipment ids — what physical model/unit this represents. */
   modelId: ID | null;
   unitId: ID | null;
-  attrs: Record<string, unknown> | null;
+  attrs: PlanElementAttrs | null;
   createdAt: ISODateTime;
 }
 
@@ -82,7 +100,7 @@ export interface AddElementInput {
   toId?: ID | null;
   modelId?: ID | null;
   unitId?: ID | null;
-  attrs?: Record<string, unknown> | null;
+  attrs?: PlanElementAttrs | null;
 }
 
 export interface UpdateElementInput {
@@ -97,7 +115,7 @@ export interface UpdateElementInput {
   toId?: ID | null;
   modelId?: ID | null;
   unitId?: ID | null;
-  attrs?: Record<string, unknown> | null;
+  attrs?: PlanElementAttrs | null;
 }
 
 export interface PlansService {

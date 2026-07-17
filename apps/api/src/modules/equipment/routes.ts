@@ -32,6 +32,8 @@ const updateWarehouseSchema = z.object({
 const zoneKindSchema = z.enum(["room","rack","shelf","bin","floor","other"]);
 const storageZoneSchema = z.object({ warehouseId:z.string().uuid(), parentId:z.string().uuid().nullable().optional(), name:z.string().min(1), code:z.string().min(1), kind:zoneKindSchema, sortOrder:z.number().int().optional() });
 const updateStorageZoneSchema = z.object({ parentId:z.string().uuid().nullable().optional(), name:z.string().min(1).optional(), code:z.string().min(1).optional(), kind:zoneKindSchema.optional(), active:z.boolean().optional(), sortOrder:z.number().int().optional() });
+const stageSymbolSchema=z.object({shape:z.enum(["circle","square","rectangle","bar","diamond"]),code:z.string().max(16),width:z.number().min(4).max(2000),height:z.number().min(4).max(2000),color:z.string().regex(/^#[0-9a-f]{6}$/i).nullable().optional()});
+const modelAttrsSchema=z.object({stageSymbol:stageSymbolSchema.optional(),powerW:z.number().nonnegative().max(1_000_000).optional(),dmxChannels:z.union([z.number().int().min(1).max(512),z.string().max(80)]).optional()}).passthrough();
 
 const createModelSchema = z.object({
   typeId: z.string().uuid(),
@@ -40,7 +42,7 @@ const createModelSchema = z.object({
   imageUrl: imageSchema.nullable().optional(),
   unitCostEUR: z.number().nonnegative(),
   dailyPriceEUR: z.number().nonnegative(),
-  attrs: z.record(z.unknown()).nullable().optional(),
+  attrs: modelAttrsSchema.nullable().optional(),
   requiredComponentModelIds: z.array(z.string().uuid()).optional(),
 });
 const updateModelSchema = z.object({
@@ -50,7 +52,7 @@ const updateModelSchema = z.object({
   imageUrl: imageSchema.nullable().optional(),
   unitCostEUR: z.number().nonnegative().optional(),
   dailyPriceEUR: z.number().nonnegative().optional(),
-  attrs: z.record(z.unknown()).nullable().optional(),
+  attrs: modelAttrsSchema.nullable().optional(),
   requiredComponentModelIds: z.array(z.string().uuid()).optional(),
 });
 const modelTrackingSchema = z.object({ trackingMode: z.enum(["serial", "quantity", "cable"]) });

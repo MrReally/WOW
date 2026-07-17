@@ -1,15 +1,8 @@
 import { useRef, useState } from "react";
-import type { Plans } from "@sever/contracts";
+import type { Equipment, Plans } from "@sever/contracts";
+import { elementLabel, LAYER_COLOR, stageSymbol } from "./planUtils.ts";
 
 type PlanLayer = Plans.PlanLayer;
-
-const LAYER_COLOR: Record<PlanLayer, string> = {
-  light: "var(--accent)",
-  sound: "var(--ok)",
-  dmx: "var(--info)",
-  power: "var(--alert)",
-  audio: "var(--warn)",
-};
 
 interface Props {
   plan: Plans.PlanDTO;
@@ -20,40 +13,44 @@ interface Props {
   onSelect: (id: string | null) => void;
   onDrag: (id: string, x: number, y: number) => void;
   onDrop: (id: string) => void;
+  models: Equipment.EquipmentModelDTO[];
 }
 
-function Marker({ el, color, selected }: { el: Plans.PlanElementDTO; color: string; selected: boolean }) {
-  const ring = selected ? <circle r={18} fill="none" stroke={color} strokeWidth={1.5} opacity={0.6} /> : null;
+function Marker({ el, model, color, selected, muted }: { el: Plans.PlanElementDTO; model?: Equipment.EquipmentModelDTO; color: string; selected: boolean; muted: boolean }) {
+  const symbol = stageSymbol(model);
+  const width = el.w ?? symbol.width;
+  const height = el.h ?? symbol.height;
+  const paint = symbol.color ?? color;
+  const labelOffset = height / 2 + 13;
+  const ring = selected ? <rect x={-width / 2 - 5} y={-height / 2 - 5} width={width + 10} height={height + 10} rx={5} fill="none" stroke={paint} strokeWidth={1.5} opacity={0.7} /> : null;
   let shape;
   if (el.kind === "fixture") {
-    shape = (
-      <>
-        <circle r={11} fill={color + "26"} stroke={color} strokeWidth={1.6} />
-        <circle r={3} fill={color} />
-      </>
-    );
+    if (symbol.shape === "circle") shape = <ellipse rx={width / 2} ry={height / 2} fill={paint} fillOpacity={0.14} stroke={paint} strokeWidth={1.6} />;
+    else if (symbol.shape === "diamond") shape = <rect x={-width / 2} y={-height / 2} width={width} height={height} rx={2} fill={paint} fillOpacity={0.14} stroke={paint} strokeWidth={1.6} transform="rotate(45)" />;
+    else shape = <rect x={-width / 2} y={-height / 2} width={width} height={height} rx={symbol.shape === "bar" ? Math.min(4, height / 2) : 2} fill={paint} fillOpacity={0.14} stroke={paint} strokeWidth={1.6} />;
   } else if (el.kind === "truss") {
     const w = el.w ?? 120;
-    shape = <rect x={-w / 2} y={-5} width={w} height={10} rx={2} fill={color + "26"} stroke={color} strokeWidth={1.4} />;
+    shape = <rect x={-w / 2} y={-5} width={w} height={10} rx={2} fill={paint} fillOpacity={0.14} stroke={paint} strokeWidth={1.4} />;
   } else if (el.kind === "label") {
     shape = null;
   } else {
-    shape = <rect x={-7} y={-7} width={14} height={14} rx={2} fill={color + "26"} stroke={color} strokeWidth={1.4} transform="rotate(45)" />;
+    shape = <rect x={-width / 2} y={-height / 2} width={width} height={height} rx={2} fill={paint} fillOpacity={0.14} stroke={paint} strokeWidth={1.4} />;
   }
+  const label = elementLabel(el, model);
   return (
-    <g transform={`translate(${el.x},${el.y}) rotate(${el.rotation})`}>
+    <g transform={`translate(${el.x},${el.y}) rotate(${el.rotation})`} opacity={muted ? 0.45 : 1}>
       {ring}
       {shape}
-      {el.label && (
-        <text y={22} textAnchor="middle" fontSize={9} fill={color} fontFamily="var(--font-mono)" transform={`rotate(${-el.rotation})`}>
-          {el.label}
+      {label && (
+        <text y={labelOffset} textAnchor="middle" fontSize={9} fill={paint} fontFamily="var(--font-mono)" transform={`rotate(${-el.rotation})`}>
+          {label}
         </text>
       )}
     </g>
   );
 }
 
-export function StageCanvas({ plan, elements, visible, editable, selectedId, onSelect, onDrag, onDrop }: Props) {
+export function StageCanvas({ plan, elements, visible, editable, selectedId, onSelect, onDrag, onDrop, models }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState<string | null>(null);
 
@@ -65,8 +62,10 @@ export function StageCanvas({ plan, elements, visible, editable, selectedId, onS
   };
 
   const byId = new Map(elements.map((e) => [e.id, e]));
+  const modelById = new Map(models.map((model) => [model.id, model]));
   const cables = elements.filter((e) => e.kind === "cable" && visible.has(e.layer));
   const points = elements.filter((e) => e.kind !== "cable");
+  const visibleCableEndpoints = new Set(cables.flatMap((cable) => [cable.fromId, cable.toId]).filter((id): id is string => !!id));
 
   return (
     <svg
@@ -128,7 +127,7 @@ export function StageCanvas({ plan, elements, visible, editable, selectedId, onS
       })}
 
       {points
-        .filter((el) => visible.has(el.layer))
+        .filter((el) => visible.has(el.layer) || visibleCableEndpoints.has(el.id))
         .map((el) => (
           <g
             key={el.id}
@@ -141,11 +140,9 @@ export function StageCanvas({ plan, elements, visible, editable, selectedId, onS
               }
             }}
           >
-            <Marker el={el} color={LAYER_COLOR[el.layer]} selected={selectedId === el.id} />
+            <Marker el={el} model={el.modelId ? modelById.get(el.modelId) : undefined} color={LAYER_COLOR[el.layer]} selected={selectedId === el.id} muted={!visible.has(el.layer)} />
           </g>
         ))}
     </svg>
   );
 }
-
-export { LAYER_COLOR };

@@ -470,6 +470,38 @@ describe("Tech pickup/return → некомплект", () => {
     expect(cable.toId).not.toBe(b.id);
   });
 
+  it("technical plans reject corrupt geometry and connections and cascade dependent cables", async () => {
+    const { plans, projects } = wiring;
+    const client = await projects.service.createClient({ name: `Plan hardening ${Date.now()}` });
+    const project = await projects.service.createProject({ name: "Hardened plan", clientId: client.id, startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString() });
+    const otherProject = await projects.service.createProject({ name: "Other plan", clientId: client.id, startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString() });
+    const plan = await plans.service.createPlan({ projectId: project.id, name: "Main", stageW: 400, stageH: 300 });
+    const otherPlan = await plans.service.createPlan({ projectId: otherProject.id, name: "Other" });
+    const fixture = await plans.service.addElement({ planId: plan.id, layer: "light", kind: "fixture", label: "BAR1", x: 50, y: 50, attrs: { dmxUniverse: 1, dmxAddress: 1, dmxChannels: 16, powerW: 240, requiredOutlets: 1 } });
+    const power = await plans.service.addElement({ planId: plan.id, layer: "power", kind: "power", label: "PWR", x: 100, y: 100, attrs: { availableOutlets: 6, maxPowerW: 3500 } });
+    const foreign = await plans.service.addElement({ planId: otherPlan.id, layer: "light", kind: "fixture", label: "FOREIGN", x: 20, y: 20 });
+
+    await expect(plans.service.addElement({ planId: plan.id, layer: "light", kind: "fixture", label: "outside", x: 401, y: 10 })).rejects.toThrow(/пределах сцены/);
+    await expect(plans.service.addElement({ planId: plan.id, layer: "light", kind: "fixture", label: "dmx overflow", x: 10, y: 10, attrs: { dmxAddress: 510, dmxChannels: 4 } })).rejects.toThrow(/512/);
+    await expect(plans.service.addElement({ planId: plan.id, layer: "dmx", kind: "cable", label: "missing", x: 10, y: 10 })).rejects.toThrow(/обе точки/);
+    await expect(plans.service.addElement({ planId: plan.id, layer: "dmx", kind: "cable", label: "self", x: 10, y: 10, fromId: fixture.id, toId: fixture.id })).rejects.toThrow(/самим собой/);
+    await expect(plans.service.addElement({ planId: plan.id, layer: "light", kind: "cable", label: "wrong layer", x: 10, y: 10, fromId: fixture.id, toId: power.id })).rejects.toThrow(/слое DMX/);
+    await expect(plans.service.addElement({ planId: plan.id, layer: "power", kind: "cable", label: "foreign", x: 10, y: 10, fromId: power.id, toId: foreign.id })).rejects.toThrow(/этому плану/);
+
+    const cable = await plans.service.addElement({ planId: plan.id, layer: "power", kind: "cable", label: "Schuko", x: 75, y: 75, fromId: power.id, toId: fixture.id, attrs: { cableLengthM: 10, cableQuantity: 1 } });
+    await expect(plans.service.updateElement(cable.id, { fromId: cable.id })).rejects.toThrow(/другому кабелю/);
+    await expect(plans.service.moveElements(plan.id, [{ id: foreign.id, x: 20, y: 20 }])).rejects.toThrow(/другого плана/);
+    await expect(plans.service.moveElements(plan.id, [{ id: fixture.id, x: 20, y: 20 }, { id: fixture.id, x: 30, y: 30 }])).rejects.toThrow(/более одного раза/);
+    await expect(plans.service.updatePlan(plan.id, { stageW: 40 })).rejects.toThrow(/переместите элементы/);
+
+    const version = await plans.service.newVersion(plan.id);
+    expect(version.elements.find((element) => element.label === "BAR1")?.attrs).toMatchObject({ dmxAddress: 1, powerW: 240 });
+    const versionFixture = version.elements.find((element) => element.label === "BAR1")!;
+    await plans.service.deleteElement(versionFixture.id);
+    const afterDelete = await plans.service.getPlan(version.id);
+    expect(afterDelete?.elements.some((element) => element.fromId === versionFixture.id || element.toId === versionFixture.id)).toBe(false);
+  });
+
   it("timing assignees: whole timing vs only-my-events filtering", async () => {
     const { projects } = wiring;
     const alice = await makeTech("Alice Timing");

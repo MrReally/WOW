@@ -14,6 +14,19 @@ CREATE TABLE IF NOT EXISTS plans.plans (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS plans_project_idx ON plans.plans(project_id);
+-- Keep version/current selection deterministic even under concurrent requests.
+WITH ranked AS (
+  SELECT id,row_number() OVER (PARTITION BY project_id ORDER BY version,created_at,id) AS next_version
+  FROM plans.plans
+)
+UPDATE plans.plans p SET version=ranked.next_version FROM ranked WHERE p.id=ranked.id AND p.version<>ranked.next_version;
+WITH ranked AS (
+  SELECT id,row_number() OVER (PARTITION BY project_id ORDER BY is_current DESC,version DESC,created_at DESC,id DESC) AS priority
+  FROM plans.plans
+)
+UPDATE plans.plans p SET is_current=false FROM ranked WHERE p.id=ranked.id AND ranked.priority>1 AND p.is_current=true;
+CREATE UNIQUE INDEX IF NOT EXISTS plans_project_version_idx ON plans.plans(project_id, version);
+CREATE UNIQUE INDEX IF NOT EXISTS plans_one_current_idx ON plans.plans(project_id) WHERE is_current=true;
 
 CREATE TABLE IF NOT EXISTS plans.elements (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -36,4 +49,6 @@ CREATE INDEX IF NOT EXISTS elements_plan_idx ON plans.elements(plan_id);
 -- Cable endpoints: a 'cable' element links two other elements on the same plan.
 ALTER TABLE plans.elements ADD COLUMN IF NOT EXISTS from_id uuid;
 ALTER TABLE plans.elements ADD COLUMN IF NOT EXISTS to_id   uuid;
+CREATE INDEX IF NOT EXISTS elements_from_idx ON plans.elements(from_id) WHERE from_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS elements_to_idx ON plans.elements(to_id) WHERE to_id IS NOT NULL;
 `;

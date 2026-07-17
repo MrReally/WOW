@@ -26,6 +26,10 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
   const [sideBQty, setSideBQty] = useState("1");
   const [sideBConnector, setSideBConnector] = useState("");
   const [sideAEnds,setSideAEnds]=useState<string[]>([""]),[sideBEnds,setSideBEnds]=useState<string[]>([""]);
+  const [symbolShape,setSymbolShape]=useState<Equipment.StageSymbol["shape"]>("circle");
+  const [symbolCode,setSymbolCode]=useState("");
+  const [symbolWidth,setSymbolWidth]=useState("24"),[symbolHeight,setSymbolHeight]=useState("24"),[symbolColor,setSymbolColor]=useState("#6f8cff");
+  const [powerW,setPowerW]=useState(""),[dmxChannels,setDmxChannels]=useState("");
 
   useEffect(() => {
     if (model) {
@@ -44,6 +48,10 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
       setSideBConnector(attrs?.sideBConnector ?? "");
       setSideAEnds(attrs?.sideAEnds?.length?attrs.sideAEnds:Array.from({length:attrs?.sideAQty??1},()=>attrs?.sideAConnector??""));
       setSideBEnds(attrs?.sideBEnds?.length?attrs.sideBEnds:Array.from({length:attrs?.sideBQty??1},()=>attrs?.sideBConnector??""));
+      const common=model.attrs as Equipment.ModelAttrs|null;
+      const symbol=common?.stageSymbol;
+      setSymbolShape(symbol?.shape??"circle");setSymbolCode(symbol?.code??"");setSymbolWidth(String(symbol?.width??24));setSymbolHeight(String(symbol?.height??24));setSymbolColor(symbol?.color??"#6f8cff");
+      setPowerW(typeof common?.powerW==="number"?String(common.powerW):"");setDmxChannels(typeof common?.dmxChannels==="number"?String(common.dmxChannels):"");
     }
   }, [model]);
 
@@ -61,6 +69,10 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
     connectors: null,
   };
   const cablePreview = formatCableModel({ ...model, attrs: nextCableAttrs }, cableSettings.data?.nameFormat);
+  const stageSymbol:Equipment.StageSymbol={shape:symbolShape,code:symbolCode.trim(),width:Math.max(4,Number(symbolWidth)||24),height:Math.max(4,Number(symbolHeight)||24),color:/^#[0-9a-f]{6}$/i.test(symbolColor)?symbolColor:null};
+  const commonAttrs:Equipment.ModelAttrs={...((model.attrs??{}) as Equipment.ModelAttrs),stageSymbol};
+  if(powerW!=="")commonAttrs.powerW=Math.max(0,Number(powerW)||0);else delete commonAttrs.powerW;
+  if(dmxChannels!=="")commonAttrs.dmxChannels=Math.max(1,Math.trunc(Number(dmxChannels)||1));else delete commonAttrs.dmxChannels;
   const save = () =>
     update.mutate(
       {
@@ -71,7 +83,7 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
           imageUrl,
           unitCostEUR: unitCost === "" ? undefined : Number(unitCost),
           dailyPriceEUR: dailyPrice === "" ? undefined : Number(dailyPrice),
-          attrs: model.trackingMode === "cable" ? nextCableAttrs : undefined,
+          attrs: model.trackingMode === "cable" ? { ...nextCableAttrs, stageSymbol } : commonAttrs,
         },
       },
       { onSuccess: onClose }
@@ -108,6 +120,15 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
           <p className="card__subtitle">{cablePreview}</p>
         </>
       )}
+      <div className="stack" style={{gap:8,margin:"14px 0"}}>
+        <p className="card__title">Обозначение на схеме сцены</p>
+        <div className="row">
+          <Field label="Форма"><Select value={symbolShape} onChange={e=>setSymbolShape(e.target.value as Equipment.StageSymbol["shape"])} options={[{value:"circle",label:"Круг"},{value:"square",label:"Квадрат"},{value:"rectangle",label:"Прямоугольник"},{value:"bar",label:"Длинный прибор / LED bar"},{value:"diamond",label:"Ромб"}]}/></Field>
+          <Field label="Короткий код"><Input value={symbolCode} maxLength={16} onChange={e=>setSymbolCode(e.target.value)} placeholder="BAR, MH, SUB"/></Field>
+        </div>
+        <div className="row"><Field label="Ширина"><Input type="number" min="4" value={symbolWidth} onChange={e=>setSymbolWidth(e.target.value)}/></Field><Field label="Высота"><Input type="number" min="4" value={symbolHeight} onChange={e=>setSymbolHeight(e.target.value)}/></Field><Field label="Цвет"><Input type="color" value={symbolColor} onChange={e=>setSymbolColor(e.target.value)}/></Field></div>
+        {model.trackingMode!=="cable"&&<div className="row"><Field label="Потребление по умолчанию, Вт"><Input type="number" min="0" value={powerW} onChange={e=>setPowerW(e.target.value)}/></Field><Field label="DMX-каналов по умолчанию"><Input type="number" min="1" max="512" value={dmxChannels} onChange={e=>setDmxChannels(e.target.value)}/></Field></div>}
+      </div>
       <Button block disabled={!name || update.isPending} onClick={save}>Сохранить</Button>
       {can("warehouse.model.convert") && (
         <div className="stack" style={{ gap: 8, marginTop: 14 }}>

@@ -7,6 +7,24 @@ import { requirePermission } from "../../core/auth.js";
 
 const layerEnum = z.enum(PLAN_LAYERS as [string, ...string[]]);
 const kindEnum = z.enum(["fixture", "truss", "power", "audio", "label", "cable"]);
+const attrsSchema = z.object({
+  note: z.string().max(2000).optional(),
+  dmxUniverse: z.number().int().min(1).max(64).optional(),
+  dmxAddress: z.number().int().min(1).max(512).optional(),
+  dmxChannels: z.number().int().min(1).max(512).optional(),
+  powerW: z.number().nonnegative().max(1_000_000).optional(),
+  requiredOutlets: z.number().int().min(1).max(1000).optional(),
+  availableOutlets: z.number().int().min(1).max(1000).optional(),
+  voltage: z.number().positive().max(100_000).optional(),
+  maxPowerW: z.number().positive().max(10_000_000).optional(),
+  circuit: z.string().max(120).optional(),
+  cableLengthM: z.number().positive().max(100_000).optional(),
+  cableQuantity: z.number().int().min(1).max(1000).optional(),
+}).passthrough().superRefine((attrs, ctx) => {
+  if (attrs.dmxAddress != null && attrs.dmxChannels != null && attrs.dmxAddress + attrs.dmxChannels - 1 > 512) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["dmxChannels"], message: "диапазон DMX выходит за адрес 512" });
+  }
+});
 
 const createPlanSchema = z.object({
   projectId: z.string().uuid(),
@@ -35,7 +53,7 @@ const addElementSchema = z.object({
   toId: z.string().uuid().nullable().optional(),
   modelId: z.string().uuid().nullable().optional(),
   unitId: z.string().uuid().nullable().optional(),
-  attrs: z.record(z.unknown()).nullable().optional(),
+  attrs: attrsSchema.nullable().optional(),
 });
 const updateElementSchema = z.object({
   layer: layerEnum.optional(),
@@ -49,7 +67,7 @@ const updateElementSchema = z.object({
   toId: z.string().uuid().nullable().optional(),
   modelId: z.string().uuid().nullable().optional(),
   unitId: z.string().uuid().nullable().optional(),
-  attrs: z.record(z.unknown()).nullable().optional(),
+  attrs: attrsSchema.nullable().optional(),
 });
 const moveSchema = z.object({
   items: z.array(z.object({ id: z.string().uuid(), x: z.number(), y: z.number(), rotation: z.number().optional() })),

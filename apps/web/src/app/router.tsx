@@ -41,7 +41,7 @@ export function AppRouter() {
       <Route path="/warehouse/units/:id" element={<Guard allow={["warehouse.view"]}><UnitDetailPage /></Guard>} />
       <Route path="/projects" element={<Guard allow={["projects.view"]}><ProjectsPage /></Guard>} />
       <Route path="/projects/:id" element={<Guard allow={["projects.view"]}><ProjectDetailPage /></Guard>} />
-      <Route path="/projects/:id/plan" element={<Guard allow={["plans.view", "operations.view"]}><StagePlanPage /></Guard>} />
+      <Route path="/projects/:id/plan" element={<Guard allow={["plans.view", "plans.manage", "operations.view"]}><StagePlanPage /></Guard>} />
       <Route path="/projects/:id/invoice" element={<Guard allow={["finance.view"]}><InvoicePage /></Guard>} />
       <Route path="/contractors" element={<Guard allow={["projects.reservation.manage", "finance.view"]}><ContractorsPage /></Guard>} />
       <Route path="/crew" element={<Guard allow={["people.view"]}><CrewPage /></Guard>} />

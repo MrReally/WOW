@@ -110,7 +110,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const canAssign = can("projects.assignment.manage");
   const canViewPeople = can("people.view");
   const canFinance = can("finance.view");
-  const canPlans = can("plans.view");
+  const canPlans = can("plans.view", "plans.manage");
 
   const project = useProject(id);
   const clients = useClients();
@@ -319,7 +319,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             </div>
           </Card>
           {canPlans && (
-            <ProjectActionButton icon="plan" label="План сцены" meta="недоступно" onClick={() => alert("Схема сцены временно недоступна.")} />
+            <ProjectActionButton icon="plan" label="План сцены" meta="схема" onClick={() => navigate(`/projects/${projectId}/plan`)} />
           )}
           {canFinance && invoice.data && (
             <ProjectActionButton icon="invoice" label="Счёт" meta="PDF" onClick={() => navigate(`/projects/${p.id}/invoice`)} />

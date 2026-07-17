@@ -1,6 +1,7 @@
 import type { Plans } from "@sever/contracts";
 import { one, query, tx, type Sql } from "../../core/db.js";
-import { NotFound } from "../../core/errors.js";
+import { BadRequest, NotFound } from "../../core/errors.js";
+import { validateCableShape, validatePlanAttrs, validatePlanGeometry } from "./validation.js";
 
 interface PlanRow {
   id: string;
@@ -64,6 +65,31 @@ const planBase = (r: PlanRow) => ({
 });
 
 export function createPlansService(db: Sql): Plans.PlansService {
+  async function getPlanRow(id: string, sql: Sql = db): Promise<PlanRow> {
+    const row = await one<PlanRow>(sql, `SELECT * FROM plans.plans WHERE id=$1`, [id]);
+    if (!row) throw NotFound("plan", id);
+    return row;
+  }
+
+  async function validateCable(
+    sql: Sql,
+    planId: string,
+    layer: Plans.PlanLayer,
+    kind: Plans.PlanElementKind,
+    fromId: string | null,
+    toId: string | null,
+  ): Promise<void> {
+    validateCableShape(layer, kind, fromId, toId);
+    if (kind !== "cable") return;
+    const endpoints = await query<{ id: string; kind: Plans.PlanElementKind }>(
+      sql,
+      `SELECT id,kind FROM plans.elements WHERE plan_id=$1 AND id=ANY($2::uuid[])`,
+      [planId, [fromId, toId]],
+    );
+    if (endpoints.length !== 2) throw BadRequest("точки подключения должны принадлежать этому плану");
+    if (endpoints.some((endpoint) => endpoint.kind === "cable")) throw BadRequest("кабель нельзя подключить к другому кабелю");
+  }
+
   async function withElements(plan: PlanRow, sql: Sql = db): Promise<Plans.PlanDTO> {
     const els = await query<ElementRow>(sql, `SELECT * FROM plans.elements WHERE plan_id=$1 ORDER BY created_at`, [plan.id]);
     return { ...planBase(plan), elements: els.map(elementDTO) };
@@ -104,6 +130,7 @@ export function createPlansService(db: Sql): Plans.PlansService {
 
     async createPlan(input) {
       return tx(async (client) => {
+        await query(client, `SELECT pg_advisory_xact_lock(hashtext($1))`, [input.projectId]);
         await query(client, `UPDATE plans.plans SET is_current=false WHERE project_id=$1`, [input.projectId]);
         const max = await one<{ v: number | null }>(
           client,
@@ -125,6 +152,7 @@ export function createPlansService(db: Sql): Plans.PlansService {
       return tx(async (client) => {
         const src = await one<PlanRow>(client, `SELECT * FROM plans.plans WHERE id=$1`, [planId]);
         if (!src) throw NotFound("plan", planId);
+        await query(client, `SELECT pg_advisory_xact_lock(hashtext($1))`, [src.project_id]);
         await query(client, `UPDATE plans.plans SET is_current=false WHERE project_id=$1`, [src.project_id]);
         const max = await one<{ v: number }>(client, `SELECT max(version) AS v FROM plans.plans WHERE project_id=$1`, [src.project_id]);
         const version = (max?.v ?? src.version) + 1;
@@ -169,6 +197,7 @@ export function createPlansService(db: Sql): Plans.PlansService {
       return tx(async (client) => {
         const plan = await one<PlanRow>(client, `SELECT * FROM plans.plans WHERE id=$1`, [id]);
         if (!plan) throw NotFound("plan", id);
+        await query(client, `SELECT pg_advisory_xact_lock(hashtext($1))`, [plan.project_id]);
         await query(client, `UPDATE plans.plans SET is_current=false WHERE project_id=$1`, [plan.project_id]);
         const row = await one<PlanRow>(client, `UPDATE plans.plans SET is_current=true WHERE id=$1 RETURNING *`, [id]);
         return withElements(row!, client);
@@ -178,6 +207,10 @@ export function createPlansService(db: Sql): Plans.PlansService {
     async updatePlan(id, input) {
       const existing = await one<PlanRow>(db, `SELECT * FROM plans.plans WHERE id=$1`, [id]);
       if (!existing) throw NotFound("plan", id);
+      const nextW = input.stageW ?? existing.stage_w;
+      const nextH = input.stageH ?? existing.stage_h;
+      const outside = await one<{ id: string }>(db, `SELECT id FROM plans.elements WHERE plan_id=$1 AND (x>$2 OR y>$3 OR w>$2 OR h>$3) LIMIT 1`, [id, nextW, nextH]);
+      if (outside) throw BadRequest("сначала переместите элементы внутрь нового размера сцены");
       const row = await one<PlanRow>(
         db,
         `UPDATE plans.plans SET
@@ -192,10 +225,19 @@ export function createPlansService(db: Sql): Plans.PlansService {
     },
 
     async deletePlan(id) {
-      await query(db, `DELETE FROM plans.plans WHERE id=$1`, [id]);
+      await tx(async (client) => {
+        const plan = await getPlanRow(id, client);
+        await query(client, `SELECT pg_advisory_xact_lock(hashtext($1))`, [plan.project_id]);
+        await query(client, `DELETE FROM plans.plans WHERE id=$1`, [id]);
+        if (plan.is_current) await query(client, `UPDATE plans.plans SET is_current=true WHERE id=(SELECT id FROM plans.plans WHERE project_id=$1 ORDER BY version DESC LIMIT 1)`, [plan.project_id]);
+      });
     },
 
     async addElement(input) {
+      const plan = await getPlanRow(input.planId);
+      validatePlanGeometry(plan, input);
+      validatePlanAttrs(input.attrs);
+      await validateCable(db, input.planId, input.layer, input.kind, input.fromId ?? null, input.toId ?? null);
       const row = await one<ElementRow>(
         db,
         `INSERT INTO plans.elements (plan_id, layer, kind, label, x, y, rotation, w, h, from_id, to_id, model_id, unit_id, attrs)
@@ -223,6 +265,23 @@ export function createPlansService(db: Sql): Plans.PlansService {
     async updateElement(id, input) {
       const existing = await one<ElementRow>(db, `SELECT * FROM plans.elements WHERE id=$1`, [id]);
       if (!existing) throw NotFound("element", id);
+      const plan = await getPlanRow(existing.plan_id);
+      const next = {
+        x: input.x ?? Number(existing.x),
+        y: input.y ?? Number(existing.y),
+        w: input.w === undefined ? (existing.w === null ? null : Number(existing.w)) : input.w,
+        h: input.h === undefined ? (existing.h === null ? null : Number(existing.h)) : input.h,
+      };
+      validatePlanGeometry(plan, next);
+      validatePlanAttrs(input.attrs === undefined ? existing.attrs as Plans.PlanElementAttrs | null : input.attrs);
+      await validateCable(
+        db,
+        existing.plan_id,
+        input.layer ?? existing.layer,
+        existing.kind,
+        input.fromId === undefined ? existing.from_id : input.fromId,
+        input.toId === undefined ? existing.to_id : input.toId,
+      );
       const row = await one<ElementRow>(
         db,
         `UPDATE plans.elements SET
@@ -252,7 +311,13 @@ export function createPlansService(db: Sql): Plans.PlansService {
     async moveElements(planId, items) {
       if (items.length === 0) return;
       await tx(async (client) => {
+        const plan = await getPlanRow(planId, client);
+        const ids = [...new Set(items.map((item) => item.id))];
+        if (ids.length !== items.length) throw BadRequest("элемент указан для перемещения более одного раза");
+        const found = await query<{ id: string }>(client, `SELECT id FROM plans.elements WHERE plan_id=$1 AND id=ANY($2::uuid[])`, [planId, ids]);
+        if (found.length !== ids.length) throw BadRequest("в запросе есть элементы другого плана");
         for (const it of items) {
+          validatePlanGeometry(plan, it);
           await query(
             client,
             `UPDATE plans.elements SET x=$2, y=$3, rotation=COALESCE($4,rotation) WHERE id=$1 AND plan_id=$5`,
@@ -263,7 +328,14 @@ export function createPlansService(db: Sql): Plans.PlansService {
     },
 
     async deleteElement(id) {
-      await query(db, `DELETE FROM plans.elements WHERE id=$1`, [id]);
+      await tx(async (client) => {
+        const existing = await one<ElementRow>(client, `SELECT * FROM plans.elements WHERE id=$1`, [id]);
+        if (!existing) throw NotFound("element", id);
+        if (existing.kind !== "cable") {
+          await query(client, `DELETE FROM plans.elements WHERE plan_id=$1 AND kind='cable' AND (from_id=$2 OR to_id=$2)`, [existing.plan_id, id]);
+        }
+        await query(client, `DELETE FROM plans.elements WHERE id=$1`, [id]);
+      });
     },
   };
 }
