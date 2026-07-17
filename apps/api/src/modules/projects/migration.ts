@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS projects.reservations (
   resolved_unit_ids uuid[] NOT NULL DEFAULT '{}',
   created_at        timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE projects.reservations ADD COLUMN IF NOT EXISTS is_reserve boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS reservations_model_idx ON projects.reservations(model_id, starts_at, ends_at);
 
 CREATE TABLE IF NOT EXISTS projects.timings (

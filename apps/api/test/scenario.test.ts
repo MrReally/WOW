@@ -612,12 +612,15 @@ describe("Tech pickup/return → некомплект", () => {
     const type = await equipment.service.createType({ name: `INV-${Date.now()}`, trackingMode: "serial" });
     const model = await equipment.service.createModel({ typeId: type.id, name: "Inv Fixture", unitCostEUR: 500, dailyPriceEUR: 100 });
     await projects.service.createReservation({ projectId: project.id, modelId: model.id, qty: 2, startsAt: start, endsAt: end });
+    const reserve = await projects.service.createReservation({ projectId: project.id, modelId: model.id, qty: 1, isReserve: true, startsAt: start, endsAt: end });
+    expect(reserve.isReserve).toBe(true);
     const role = await projects.service.createProjectRole({ projectId: project.id, title: "Свет", requiredCount: 1, rateEUR: 150 });
     await projects.service.addAssignment({ projectId: project.id, roleId: role.id, userId: guest.id });
 
     const inv = await billing.projectInvoice(project.id);
     expect(inv.days).toBe(2);
     expect(inv.rentalEUR).toBe(400); // 100 €/сут × 2 шт × 2 сут
+    expect(inv.rentalLines).toHaveLength(1); // reserve gear is prepared but not billed
     expect(inv.invoiceEUR).toBe(400);
     expect(inv.laborEUR).toBe(150);
     expect(inv.costEUR).toBe(150);

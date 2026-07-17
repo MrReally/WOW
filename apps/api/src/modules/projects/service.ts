@@ -31,6 +31,7 @@ interface ReservationRow {
   project_id: string;
   model_id: string;
   qty: number;
+  is_reserve: boolean;
   starts_at: Date;
   ends_at: Date;
   resolved_unit_ids: string[];
@@ -177,6 +178,7 @@ const reservationDTO = (r: ReservationRow): Projects.ReservationDTO => ({
   projectId: r.project_id,
   modelId: r.model_id,
   qty: r.qty,
+  isReserve: r.is_reserve ?? false,
   startsAt: r.starts_at.toISOString(),
   endsAt: r.ends_at.toISOString(),
   resolvedUnitIds: r.resolved_unit_ids,
@@ -709,9 +711,9 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       assertRange(input.startsAt, input.endsAt);
       const row = await one<ReservationRow>(
         db,
-        `INSERT INTO projects.reservations (project_id, model_id, qty, starts_at, ends_at)
-         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-        [input.projectId, input.modelId, input.qty, input.startsAt, input.endsAt]
+        `INSERT INTO projects.reservations (project_id, model_id, qty, is_reserve, starts_at, ends_at)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [input.projectId, input.modelId, input.qty, input.isReserve ?? false, input.startsAt, input.endsAt]
       );
       await syncReservationAvailabilityProblems(input.modelId, input.startsAt, input.endsAt);
       return reservationDTO(row!);

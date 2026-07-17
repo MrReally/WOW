@@ -69,6 +69,8 @@ export interface ReservationDTO {
   projectId: ID;
   modelId: ID;
   qty: number;
+  /** Operational spare: reserved and prepared, but never billed to the client. */
+  isReserve: boolean;
   startsAt: ISODateTime;
   endsAt: ISODateTime;
   /** Specific unit ids once resolved at prep; empty while model-level. */
@@ -90,6 +92,8 @@ export interface CreateReservationInput {
   projectId: ID;
   modelId: ID;
   qty: number;
+  /** Reserve equipment participates in availability but is excluded from billing. */
+  isReserve?: boolean;
   startsAt: ISODateTime;
   endsAt: ISODateTime;
 }

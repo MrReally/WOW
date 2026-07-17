@@ -42,7 +42,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
     const contractorName = new Map(contractors.map((c) => [c.id, c.name]));
     const projectDays = daysBetween(project.startsAt, project.endsAt);
 
-    const ownLines: Finance.InvoiceLineDTO[] = reservations.map((r) => {
+    const ownLines: Finance.InvoiceLineDTO[] = reservations.filter((r) => !r.isReserve).map((r) => {
       const m = modelMap.get(r.modelId);
       const price = m?.dailyPriceEUR ?? 0;
       return {

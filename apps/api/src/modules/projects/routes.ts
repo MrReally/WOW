@@ -35,6 +35,7 @@ const reservationSchema = z.object({
   projectId: z.string().uuid(),
   modelId: z.string().uuid(),
   qty: z.number().int().positive(),
+  isReserve: z.boolean().optional(),
   startsAt: z.string().datetime(),
   endsAt: z.string().datetime(),
 });

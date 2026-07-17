@@ -148,6 +148,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [debouncedResModelQuery, setDebouncedResModelQuery] = useState("");
   const [resModelOpen, setResModelOpen] = useState(false);
   const [resQty, setResQty] = useState("1");
+  const [resIsReserve, setResIsReserve] = useState(false);
   const selectedReservationAvailability = useReservationAvailability(
     resModel,
     project.data?.startsAt ?? "",
@@ -351,6 +352,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                     {availability?.shortage ? "дефицит" : issued ? "выдано" : resolved ? "распределено" : "по модели"}
                   </StatusBadge>
                 </div>
+                {r.isReserve && <Chip label="Резерв · не в счёт" tone="neutral" />}
                 {availability && (
                   <ReservationAvailabilityLine availability={availability} compact />
                 )}
@@ -410,7 +412,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       )}
       {canReserve && (models.data ?? []).length > 0 && (
         <Card>
-          <div className="row">
+          <div className="stack" style={{ gap: 10 }}>
+            <div className="row">
             <div style={{ flex: 2 }}>
               <ModelAutocomplete
                 models={models.data ?? []}
@@ -435,6 +438,14 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             <div style={{ width: 80 }}>
               <Input type="number" value={resQty} onChange={(e) => setResQty(e.target.value)} />
             </div>
+            </div>
+            <div className="row row--between">
+            <label style={{ cursor: "pointer" }}>
+              <span className="row" style={{ gap: 6, whiteSpace: "nowrap" }}>
+                <input type="checkbox" checked={resIsReserve} onChange={(e) => setResIsReserve(e.target.checked)} />
+                В резерв · не добавлять в счёт
+              </span>
+            </label>
             <Button
               disabled={!resModel || addReservation.isPending}
               onClick={() =>
@@ -442,13 +453,15 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   projectId: p.id,
                   modelId: resModel,
                   qty: Number(resQty),
+                  isReserve: resIsReserve,
                   startsAt: p.startsAt,
                   endsAt: p.endsAt,
-                }, { onSuccess: () => { setResModel(""); setResModelQuery(""); setResQty("1"); setResModelOpen(false); } })
+                }, { onSuccess: () => { setResModel(""); setResModelQuery(""); setResQty("1"); setResIsReserve(false); setResModelOpen(false); } })
               }
             >
               + Бронь
             </Button>
+            </div>
           </div>
           {selectedReservationAvailability.data && (
             <ReservationAvailabilityLine availability={selectedReservationAvailability.data} requested={Number(resQty) || 0} />

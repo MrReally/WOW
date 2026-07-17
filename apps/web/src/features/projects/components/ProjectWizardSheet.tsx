@@ -30,6 +30,7 @@ interface Props {
 interface ReservationDraft {
   modelId: string;
   qty: string;
+  isReserve: boolean;
 }
 
 interface CrewDraft {
@@ -90,7 +91,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const [venueAddress, setVenueAddress] = useState("");
   const [starts, setStarts] = useState(localFromDate(new Date(Date.now() + 86_400_000)));
   const [ends, setEnds] = useState(localFromDate(new Date(Date.now() + 2 * 86_400_000)));
-  const [reservationDrafts, setReservationDrafts] = useState<ReservationDraft[]>([{ modelId: "", qty: "1" }]);
+  const [reservationDrafts, setReservationDrafts] = useState<ReservationDraft[]>([{ modelId: "", qty: "1", isReserve: false }]);
   const [crewDrafts, setCrewDrafts] = useState<CrewDraft[]>([{ title: "", count: "1", rate: "" }]);
   const [contractorDrafts, setContractorDrafts] = useState<ContractorDraft[]>([{ contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }]);
   const [financeDrafts, setFinanceDrafts] = useState<FinanceDraft[]>([{ name: "", client: "", cost: "" }]);
@@ -121,7 +122,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       setVenueAddress("");
       setStarts(localFromDate(new Date(Date.now() + 86_400_000)));
       setEnds(localFromDate(new Date(Date.now() + 2 * 86_400_000)));
-      setReservationDrafts([{ modelId: "", qty: "1" }]);
+      setReservationDrafts([{ modelId: "", qty: "1", isReserve: false }]);
       setCrewDrafts([{ title: "", count: "1", rate: "" }]);
       setContractorDrafts([{ contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }]);
       setFinanceDrafts([{ name: "", client: "", cost: "" }]);
@@ -191,7 +192,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
     try {
       for (const draft of reservationDrafts) {
         if (!draft.modelId || Number(draft.qty) <= 0) continue;
-        await createReservation.mutateAsync({ projectId: p.id, modelId: draft.modelId, qty: Number(draft.qty), startsAt: p.startsAt, endsAt: p.endsAt });
+        await createReservation.mutateAsync({ projectId: p.id, modelId: draft.modelId, qty: Number(draft.qty), isReserve: draft.isReserve, startsAt: p.startsAt, endsAt: p.endsAt });
       }
       await next();
     } finally {
@@ -291,9 +292,13 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
             <DraftCard key={idx}>
               <Select value={draft.modelId} onChange={(e) => patchReservation(idx, { modelId: e.target.value })} options={[{ value: "", label: "Модель" }, ...(models.data ?? []).map((m) => ({ value: m.id, label: modelLabel(m) }))]} />
               <Input type="number" value={draft.qty} onChange={(e) => patchReservation(idx, { qty: e.target.value })} placeholder="Кол-во" />
+              <label className="row" style={{ gap: 8 }}>
+                <input type="checkbox" checked={draft.isReserve} onChange={(e) => patchReservation(idx, { isReserve: e.target.checked })} />
+                <span>В резерв · не добавлять в счёт</span>
+              </label>
             </DraftCard>
           ))}
-          <Button variant="secondary" onClick={() => setReservationDrafts((x) => [...x, { modelId: "", qty: "1" }])}>+</Button>
+          <Button variant="secondary" onClick={() => setReservationDrafts((x) => [...x, { modelId: "", qty: "1", isReserve: false }])}>+</Button>
         </WizardScreen>
       )}
 
