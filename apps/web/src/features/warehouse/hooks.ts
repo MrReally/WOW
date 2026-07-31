@@ -14,6 +14,12 @@ export function useTypes() {
   return useQuery({ queryKey: ["equipment", "types"], queryFn: () => api.get<Equipment.EquipmentTypeDTO[]>("/api/equipment/types") });
 }
 
+export function useCategories(includeArchived=false) {
+  return useQuery({queryKey:["equipment","categories",includeArchived],queryFn:()=>api.get<Equipment.EquipmentCategoryDTO[]>(`/api/equipment/categories${includeArchived?"?includeArchived=true":""}`)});
+}
+export function useCreateCategory(){const qc=useQueryClient();return useMutation({mutationFn:(input:{name:string;sortOrder?:number})=>api.post<Equipment.EquipmentCategoryDTO>("/api/equipment/categories",input),onSuccess:()=>invalidateEquipment(qc),meta:{successMessage:"Категория добавлена"}});}
+export function useUpdateCategory(){const qc=useQueryClient();return useMutation({mutationFn:({id,input}:{id:string;input:Partial<Pick<Equipment.EquipmentCategoryDTO,"name"|"active"|"sortOrder">>})=>api.patch<Equipment.EquipmentCategoryDTO>(`/api/equipment/categories/${id}`,input),onSuccess:()=>invalidateEquipment(qc),meta:{successMessage:"Категория обновлена"}});}
+
 export function useCableSettings(enabled = true) {
   return useQuery({
     enabled,

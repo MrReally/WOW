@@ -6,7 +6,7 @@ import { cableAttrs, formatCableModel } from "../cables.ts";
 import { useCableConnectors, useCableSettings, useDeleteModel, useSetModelTrackingMode, useUpdateModel } from "../hooks.ts";
 import { CableDesigner, ModelImageInput } from "../../backoffice/CableDesigner.tsx";
 
-export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentModelDTO | null; onClose: () => void }) {
+export function EditModelSheet({ model, categories = [], onClose }: { model: Equipment.EquipmentModelDTO | null; categories?: Equipment.EquipmentCategoryDTO[]; onClose: () => void }) {
   const { can } = useSession();
   const update = useUpdateModel();
   const setTracking = useSetModelTrackingMode();
@@ -14,6 +14,7 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
   const cableSettings = useCableSettings(!!model);
   const connectorCatalog=useCableConnectors();
   const [name, setName] = useState("");
+  const [categoryId,setCategoryId]=useState("");
   const [manufacturer, setManufacturer] = useState("");
   const [imageUrl,setImageUrl]=useState<string|null>(null);
   const [unitCost, setUnitCost] = useState("");
@@ -35,6 +36,7 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
     if (model) {
       const attrs = cableAttrs(model);
       setName(model.name);
+      setCategoryId(model.categoryId??"");
       setManufacturer(model.manufacturer ?? "");
       setImageUrl(model.imageUrl);
       setUnitCost(String(model.unitCostEUR));
@@ -79,6 +81,7 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
         id: model.id,
         input: {
           name: name.trim() || undefined,
+          categoryId: categoryId || null,
           manufacturer: manufacturer.trim() || null,
           imageUrl,
           unitCostEUR: unitCost === "" ? undefined : Number(unitCost),
@@ -108,6 +111,7 @@ export function EditModelSheet({ model, onClose }: { model: Equipment.EquipmentM
         <Chip label={model.trackingMode === "cable" ? "кабель" : model.trackingMode === "quantity" ? "количество" : "серийный учёт"} tone={model.trackingMode === "serial" ? "info" : "warn"} />
       </div>
       <Field label="Название"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
+      <Field label="Категория"><Select value={categoryId} onChange={e=>setCategoryId(e.target.value)} options={[{value:"",label:"Без категории"},...categories.map(category=>({value:category.id,label:category.name}))]}/></Field>
       <Field label="Производитель"><Input value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} placeholder="—" /></Field>
       <ModelImageInput value={imageUrl} onChange={setImageUrl}/>
       <div className="row">

@@ -28,6 +28,7 @@ import {
   useUpdateWarehouse,
   useUpdateType,
   useCableSettings,
+  useCategories,
 } from "./hooks.ts";
 import { formatCableModel } from "./cables.ts";
 import { AddModelSheet } from "./components/AddModelSheet.tsx";
@@ -150,6 +151,7 @@ export function WarehousePage() {
   const openRepairs = useOpenRepairs();
   const openHandovers = useOpenHandovers();
   const cableSettings = useCableSettings();
+  const categories=useCategories();
 
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -164,6 +166,7 @@ export function WarehousePage() {
   const [search, setSearch] = useState("");
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<WarehouseTab>("dashboard");
+  const [categoryFilter,setCategoryFilter]=useState("all");
 
   useEffect(() => {
     if (warehouseFilter === "all") return;
@@ -177,6 +180,7 @@ export function WarehousePage() {
   const allUnits = units.data ?? [];
   const warehouseList = warehouses.data ?? [];
   const allModels = models.data ?? [];
+  const visibleModels=categoryFilter==="all"?allModels:allModels.filter(model=>categoryFilter==="none"?!model.categoryId:model.categoryId===categoryFilter);
   const getTypeName = (tid: string | undefined) => (types.data ?? []).find((t) => t.id === tid)?.name ?? "Без типа";
   const warehouseName = (id: string | null | undefined) => warehouseList.find((w) => w.id === id)?.name ?? "—";
   const selectedWarehouse = warehouseList.find((w) => w.id === warehouseFilter) ?? null;
@@ -223,12 +227,12 @@ export function WarehousePage() {
     const m = allModels.find((x) => x.id === u.modelId);
     return !query || [u.assetTag, u.serial ?? "", m?.name ?? "", m?.manufacturer ?? "", getTypeName(m?.typeId)].some((v) => v.toLowerCase().includes(query));
   };
-  const serialModels = allModels.filter((m) => m.trackingMode === "serial" && modelMatches(m));
-  const quantityModels = allModels.filter((m) => m.trackingMode === "quantity" && modelMatches(m));
-  const cableModels = allModels.filter((m) => m.trackingMode === "cable" && modelMatches(m));
+  const serialModels = visibleModels.filter((m) => m.trackingMode === "serial" && modelMatches(m));
+  const quantityModels = visibleModels.filter((m) => m.trackingMode === "quantity" && modelMatches(m));
+  const cableModels = visibleModels.filter((m) => m.trackingMode === "cable" && modelMatches(m));
   const filteredByWarehouse = warehouseFilter === "all" ? allUnits : allUnits.filter((u) => u.warehouseId === warehouseFilter);
   const filteredByStatus = statusFilter === "all" ? filteredByWarehouse : filteredByWarehouse.filter((u) => u.status === statusFilter);
-  const filtered = filteredByStatus.filter(unitMatches);
+  const filtered = filteredByStatus.filter(unit=>visibleModels.some(model=>model.id===unit.modelId)).filter(unitMatches);
   const statuses: (Equipment.UnitStatus | "all")[] = ["all", "in_stock", "on_project", "in_repair", "reserved", "lost"];
 
   const repairTone = (s: Equipment.UnitStatus) => (s === "in_repair" ? "alert" : "warn");
@@ -328,6 +332,7 @@ export function WarehousePage() {
       </div>
     </>
   );
+  const categorySelector=<><SectionHead label="Категории" meta={categoryFilter==="all"?"ВСЕ":categories.data?.find(category=>category.id===categoryFilter)?.name??"БЕЗ КАТЕГОРИИ"}/><div className="card" style={{padding:"10px 12px",marginBottom:12,display:"flex",gap:6,flexWrap:"wrap"}}><button className={`chip ${categoryFilter==="all"?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>setCategoryFilter("all")}>Все</button>{(categories.data??[]).map(category=><button key={category.id} className={`chip ${categoryFilter===category.id?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>setCategoryFilter(category.id)}>{category.name}</button>)}<button className={`chip ${categoryFilter==="none"?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>setCategoryFilter("none")}>Без категории</button></div></>;
   const repairSection = (
     <>
       <SectionHead label="Ремонты и сервисные выдачи" meta={`${repairCount}`} />
@@ -502,6 +507,7 @@ export function WarehousePage() {
 
   return (
     <div style={{ paddingBottom: 92 }}>
+      {categorySelector}
       {activeTab === "dashboard" && (
         <>
           <PrepHero units={allUnits} onOps={canIssue ? () => setOpsOpen(true) : () => navigate("/operations")} />
@@ -528,7 +534,7 @@ export function WarehousePage() {
       {canIssue && (
         <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} projects={projects.data ?? []} models={allModels} />
       )}
-      {canCatalog && <EditModelSheet model={editModel} onClose={() => setEditModel(null)} />}
+      {canCatalog && <EditModelSheet model={editModel} categories={categories.data??[]} onClose={() => setEditModel(null)} />}
       <CableMoveSheet model={cableModel} projects={projects.data ?? []} warehouses={warehouseList} selectedWarehouseId={warehouseFilter === "all" ? null : warehouseFilter} onClose={() => setCableModel(null)} />
       <div className="project-tabbar" role="tablist" aria-label="Warehouse">
         {WAREHOUSE_TABS.map((tab) => {

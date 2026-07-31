@@ -40,6 +40,26 @@ CREATE TABLE IF NOT EXISTS equipment.models (
 );
 ALTER TABLE equipment.models ADD COLUMN IF NOT EXISTS image_url text;
 
+CREATE TABLE IF NOT EXISTS equipment.categories (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       text NOT NULL UNIQUE,
+  active     boolean NOT NULL DEFAULT true,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO equipment.categories(name,sort_order) VALUES
+  ('Оборудование',10),('Комплекты',20),('Кабели',30),('Комплектующие',40)
+ON CONFLICT(name) DO NOTHING;
+ALTER TABLE equipment.models ADD COLUMN IF NOT EXISTS category_id uuid REFERENCES equipment.categories(id);
+UPDATE equipment.models m SET category_id=c.id
+FROM equipment.categories c JOIN equipment.types t ON true
+WHERE m.category_id IS NULL AND t.id=m.type_id AND c.name=CASE
+  WHEN cardinality(m.required_component_model_ids)>0 THEN 'Комплекты'
+  WHEN t.tracking_mode='cable' THEN 'Кабели'
+  WHEN t.tracking_mode='quantity' THEN 'Комплектующие'
+  ELSE 'Оборудование' END;
+CREATE INDEX IF NOT EXISTS models_category_idx ON equipment.models(category_id);
+
 CREATE TABLE IF NOT EXISTS equipment.cable_connectors (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name           text NOT NULL UNIQUE,

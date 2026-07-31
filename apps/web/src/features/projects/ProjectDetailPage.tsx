@@ -26,7 +26,6 @@ import {
   useCreateProjectRole,
   useUpdateProjectRole,
   useDeleteProjectRole,
-  useIssueResolvedUnits,
   useAllUnits,
   useProjectInvoice,
   useCreateProjectPing,
@@ -105,7 +104,6 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const { t } = useI18n();
   const canManage = can("projects.manage");
   const canReserve = can("projects.reservation.manage");
-  const canIssue = can("warehouse.issue");
   const canTiming = can("projects.timing.manage");
   const canAssign = can("projects.assignment.manage");
   const canViewPeople = can("people.view");
@@ -138,7 +136,6 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const createProjectRole = useCreateProjectRole();
   const updateProjectRole = useUpdateProjectRole();
   const deleteProjectRole = useDeleteProjectRole();
-  const issueResolved = useIssueResolvedUnits();
   const createPing = useCreateProjectPing(id);
   const createReminder = useCreateProjectReminder(id);
   const deleteReminder = useDeleteProjectReminder(id);
@@ -319,7 +316,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             </div>
           </Card>
           {canPlans && (
-            <ProjectActionButton icon="plan" label="План сцены" meta="схема" onClick={() => navigate(`/projects/${projectId}/plan`)} />
+            <ProjectActionButton icon="plan" label="План сцены" meta="схема" onClick={() => navigate(`/projects/${p.id}/plan`)} />
           )}
           {canFinance && invoice.data && (
             <ProjectActionButton icon="invoice" label="Счёт" meta="PDF" onClick={() => navigate(`/projects/${p.id}/invoice`)} />
@@ -366,38 +363,20 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                     ))}
                   </div>
                 )}
-                {(canReserve || canIssue) && (
+                {canReserve && (
                   <div className="row" style={{ marginTop: 10 }}>
-                    {canReserve && (
-                      <Button variant="secondary" block disabled={issued} onClick={() => setResolving(r)}>
-                        {resolved ? "Изменить" : "Распределить"}
-                      </Button>
-                    )}
-                    {resolved && canIssue &&
-                      (issued ? (
-                        <Button block variant="ghost" disabled>
-                          ✓ Выдано
-                        </Button>
-                      ) : (
-                        <Button
-                          block
-                          disabled={issueResolved.isPending}
-                          onClick={() => issueResolved.mutate({ projectId: p.id, unitIds: r.resolvedUnitIds })}
-                        >
-                          Выдать
-                        </Button>
-                      ))}
-                    {canReserve && (
-                      <button
-                        className="icon-btn icon-btn--danger"
-                        aria-label="Удалить бронь"
-                        title="Удалить"
-                        disabled={deleteReservation.isPending || issuedCount > 0}
-                        onClick={() => confirm("Удалить эту бронь?") && deleteReservation.mutate(r.id)}
-                      >
-                        <ProjectGlyph type="close" />
-                      </button>
-                    )}
+                    <Button variant="secondary" block disabled={issued} onClick={() => setResolving(r)}>
+                      {resolved ? "Изменить" : "Распределить"}
+                    </Button>
+                    <button
+                      className="icon-btn icon-btn--danger"
+                      aria-label="Удалить бронь"
+                      title="Удалить"
+                      disabled={deleteReservation.isPending || issuedCount > 0}
+                      onClick={() => confirm("Удалить эту бронь?") && deleteReservation.mutate(r.id)}
+                    >
+                      <ProjectGlyph type="close" />
+                    </button>
                   </div>
                 )}
                 {issuedCount > 0 && canReserve && (

@@ -20,6 +20,8 @@ const updateConnectorSchema=connectorSchema.partial().extend({active:z.boolean()
 const updateTypeSchema = z.object({
   name: z.string().min(1).optional(),
 });
+const categorySchema=z.object({name:z.string().trim().min(1).max(120),sortOrder:z.number().int().optional()});
+const updateCategorySchema=categorySchema.partial().extend({active:z.boolean().optional()});
 const warehouseSchema = z.object({
   name: z.string().min(1),
   address: z.string().nullable().optional(),
@@ -37,6 +39,7 @@ const modelAttrsSchema=z.object({stageSymbol:stageSymbolSchema.optional(),powerW
 
 const createModelSchema = z.object({
   typeId: z.string().uuid(),
+  categoryId: z.string().uuid().nullable().optional(),
   name: z.string().min(1),
   manufacturer: z.string().nullable().optional(),
   imageUrl: imageSchema.nullable().optional(),
@@ -47,6 +50,7 @@ const createModelSchema = z.object({
 });
 const updateModelSchema = z.object({
   typeId: z.string().uuid().optional(),
+  categoryId: z.string().uuid().nullable().optional(),
   name: z.string().min(1).optional(),
   manufacturer: z.string().nullable().optional(),
   imageUrl: imageSchema.nullable().optional(),
@@ -190,6 +194,10 @@ export function registerEquipmentRoutes(
   app.patch<{Params:{id:string}}>("/api/equipment/storage-zones/:id", async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.catalog.manage");return service.updateStorageZone(req.params.id,updateStorageZoneSchema.parse(req.body));});
 
   // ── Types ──
+  app.get<{Querystring:{includeArchived?:string}}>("/api/equipment/categories",async req=>{await ctx.auth(req);return service.listCategories(req.query.includeArchived==="true");});
+  app.post("/api/equipment/categories",async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.catalog.manage");return service.createCategory(categorySchema.parse(req.body));});
+  app.patch<{Params:{id:string}}>("/api/equipment/categories/:id",async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.catalog.manage");return service.updateCategory(req.params.id,updateCategorySchema.parse(req.body));});
+
   app.get("/api/equipment/types", async (req) => {
     await ctx.auth(req);
     return service.listTypes();

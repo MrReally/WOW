@@ -11,9 +11,11 @@ interface TypeRow {
   tracking_mode: Equipment.TrackingMode;
   created_at: Date;
 }
+interface CategoryRow { id:string; name:string; active:boolean; sort_order:number; created_at:Date }
 interface ModelRow {
   id: string;
   type_id: string;
+  category_id: string | null;
   tracking_mode: Equipment.TrackingMode;
   name: string;
   manufacturer: string | null;
@@ -93,9 +95,11 @@ const typeDTO = (r: TypeRow): Equipment.EquipmentTypeDTO => ({
   trackingMode: r.tracking_mode,
   createdAt: r.created_at.toISOString(),
 });
+const categoryDTO=(r:CategoryRow):Equipment.EquipmentCategoryDTO=>({id:r.id,name:r.name,active:r.active,sortOrder:r.sort_order,createdAt:r.created_at.toISOString()});
 const modelDTO = (r: ModelRow): Equipment.EquipmentModelDTO => ({
   id: r.id,
   typeId: r.type_id,
+  categoryId: r.category_id,
   trackingMode: r.tracking_mode,
   name: r.name,
   manufacturer: r.manufacturer,
@@ -437,6 +441,20 @@ export function createEquipmentService(
       const row=await one<CableConnectorRow>(db,`UPDATE equipment.cable_connectors SET name=$2,designation=$3,image_data_url=$4,active=$5 WHERE id=$1 RETURNING *`,[id,input.name??existing.name,input.designation??existing.designation,input.imageDataUrl===undefined?existing.image_data_url:input.imageDataUrl,input.active??existing.active]);
       return cableConnectorDTO(row!);
     },
+    async listCategories(includeArchived=false) {
+      const rows=await query<CategoryRow>(db,`SELECT * FROM equipment.categories ${includeArchived?"":"WHERE active=true"} ORDER BY sort_order,name`);
+      return rows.map(categoryDTO);
+    },
+    async createCategory(input) {
+      const row=await one<CategoryRow>(db,`INSERT INTO equipment.categories(name,sort_order) VALUES($1,$2) RETURNING *`,[input.name,input.sortOrder??0]);
+      return categoryDTO(row!);
+    },
+    async updateCategory(id,input) {
+      const existing=await one<CategoryRow>(db,`SELECT * FROM equipment.categories WHERE id=$1`,[id]);
+      if(!existing)throw NotFound("category",id);
+      const row=await one<CategoryRow>(db,`UPDATE equipment.categories SET name=$2,active=$3,sort_order=$4 WHERE id=$1 RETURNING *`,[id,input.name??existing.name,input.active??existing.active,input.sortOrder??existing.sort_order]);
+      return categoryDTO(row!);
+    },
     async listTypes() {
       const rows = await query<TypeRow>(db, `SELECT * FROM equipment.types ORDER BY name`);
       return rows.map(typeDTO);
@@ -472,13 +490,16 @@ export function createEquipmentService(
       return row ? modelDTO(row) : null;
     },
     async createModel(input) {
+      const defaultCategoryName=input.requiredComponentModelIds?.length?"Комплекты":(await one<TypeRow>(db,`SELECT * FROM equipment.types WHERE id=$1`,[input.typeId]))?.tracking_mode==="cable"?"Кабели":(await one<TypeRow>(db,`SELECT * FROM equipment.types WHERE id=$1`,[input.typeId]))?.tracking_mode==="quantity"?"Комплектующие":"Оборудование";
+      const categoryId=input.categoryId??(await one<{id:string}>(db,`SELECT id FROM equipment.categories WHERE name=$1 AND active=true`,[defaultCategoryName]))?.id??null;
       await query(
         db,
         `INSERT INTO equipment.models
-           (type_id, name, manufacturer, image_url, unit_cost_eur, daily_price_eur, attrs, required_component_model_ids)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+           (type_id, category_id, name, manufacturer, image_url, unit_cost_eur, daily_price_eur, attrs, required_component_model_ids)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
         [
           input.typeId,
+          categoryId,
           input.name,
           input.manufacturer ?? null,
           input.imageUrl ?? null,
@@ -499,6 +520,7 @@ export function createEquipmentService(
       const existing = await one<ModelRow>(db, `SELECT * FROM equipment.models WHERE id=$1`, [id]);
       if (!existing) throw NotFound("model", id);
       if (input.typeId && !await one(db, `SELECT id FROM equipment.types WHERE id=$1`, [input.typeId])) throw NotFound("type", input.typeId);
+      if (input.categoryId && !await one(db, `SELECT id FROM equipment.categories WHERE id=$1`, [input.categoryId])) throw NotFound("category", input.categoryId);
       if (input.requiredComponentModelIds?.includes(id)) throw BadRequest("модель не может требовать саму себя");
       if (input.requiredComponentModelIds) {
         const found = await query<{ id: string }>(db, `SELECT id FROM equipment.models WHERE id=ANY($1::uuid[])`, [input.requiredComponentModelIds]);
@@ -508,17 +530,19 @@ export function createEquipmentService(
         db,
         `UPDATE equipment.models SET
            type_id          = COALESCE($2, type_id),
-           name             = COALESCE($3, name),
-           manufacturer     = $4,
-           image_url        = $5,
-           unit_cost_eur    = COALESCE($6, unit_cost_eur),
-           daily_price_eur  = COALESCE($7, daily_price_eur),
-           attrs            = $8,
-           required_component_model_ids = $9
+           category_id      = $3,
+           name             = COALESCE($4, name),
+           manufacturer     = $5,
+           image_url        = $6,
+           unit_cost_eur    = COALESCE($7, unit_cost_eur),
+           daily_price_eur  = COALESCE($8, daily_price_eur),
+           attrs            = $9,
+           required_component_model_ids = $10
          WHERE id=$1`,
         [
           id,
           input.typeId ?? null,
+          input.categoryId === undefined ? existing.category_id : input.categoryId,
           input.name ?? null,
           input.manufacturer === undefined ? existing.manufacturer : input.manufacturer,
           input.imageUrl === undefined ? existing.image_url : input.imageUrl,

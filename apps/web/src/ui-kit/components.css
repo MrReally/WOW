@@ -902,7 +902,10 @@ h1,
   }
 
   .data-table-wrap {
+    max-height: calc(100dvh - 190px);
     overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
     border: 1px solid var(--bdr-md);
     border-radius: 14px;
     background: var(--card);

@@ -34,9 +34,19 @@ export interface EquipmentTypeDTO {
   createdAt: ISODateTime;
 }
 
+/** User-managed top-level grouping used to build catalog views and filters. */
+export interface EquipmentCategoryDTO {
+  id: ID;
+  name: string;
+  active: boolean;
+  sortOrder: number;
+  createdAt: ISODateTime;
+}
+
 export interface EquipmentModelDTO {
   id: ID;
   typeId: ID;
+  categoryId?: ID | null;
   /** Inherited from the model's type — serial units vs counted quantity. */
   trackingMode: TrackingMode;
   name: string;
@@ -363,6 +373,9 @@ export interface EquipmentService {
   updateStorageZone(id: ID, input: { parentId?: ID | null; name?: string; code?: string; kind?: StorageZoneKind; active?: boolean; sortOrder?: number }): Promise<StorageZoneDTO>;
 
   // Catalog
+  listCategories(includeArchived?: boolean): Promise<EquipmentCategoryDTO[]>;
+  createCategory(input: { name: string; sortOrder?: number }): Promise<EquipmentCategoryDTO>;
+  updateCategory(id: ID, input: { name?: string; active?: boolean; sortOrder?: number }): Promise<EquipmentCategoryDTO>;
   listTypes(): Promise<EquipmentTypeDTO[]>;
   getCableSettings(): Promise<CableSettingsDTO>;
   updateCableSettings(input: CableSettingsDTO): Promise<CableSettingsDTO>;
@@ -436,6 +449,7 @@ export interface EquipmentService {
 
 export interface CreateModelInput {
   typeId: ID;
+  categoryId?: ID | null;
   name: string;
   manufacturer?: string | null;
   imageUrl?: string | null;
@@ -447,6 +461,7 @@ export interface CreateModelInput {
 
 export interface UpdateModelInput {
   typeId?: ID;
+  categoryId?: ID | null;
   name?: string;
   manufacturer?: string | null;
   imageUrl?: string | null;

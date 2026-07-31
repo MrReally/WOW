@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { Equipment } from "@sever/contracts";
 import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
 import { formatCableModel } from "../cables.ts";
-import { useCableSettings, useCreateModel, useCreateType, useCreateUnit, useModelStockAtWarehouse, useSetModelStock, useWarehouses } from "../hooks.ts";
+import { useCableSettings, useCategories, useCreateModel, useCreateType, useCreateUnit, useModelStockAtWarehouse, useSetModelStock, useWarehouses } from "../hooks.ts";
 
 interface Props {
   open: boolean;
@@ -18,6 +18,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
   const setModelStock = useSetModelStock();
   const warehouses = useWarehouses();
   const cableSettings = useCableSettings(open);
+  const categories=useCategories();
 
   const [tab, setTab] = useState<"type" | "model" | "unit">("model");
 
@@ -27,6 +28,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
 
   // model form
   const [typeId, setTypeId] = useState(types[0]?.id ?? "");
+  const [categoryId,setCategoryId]=useState("");
   const [modelName, setModelName] = useState("");
   const [unitCost, setUnitCost] = useState("0");
   const [dailyPrice, setDailyPrice] = useState("0");
@@ -158,6 +160,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
           <Field label="Тип">
             <Select value={effTypeId} onChange={(e) => setTypeId(e.target.value)} options={types.map((t) => ({ value: t.id, label: t.name }))} />
           </Field>
+          <Field label="Категория"><Select value={categoryId} onChange={e=>setCategoryId(e.target.value)} options={[{value:"",label:"Без категории"},...(categories.data??[]).map(category=>({value:category.id,label:category.name}))]}/></Field>
           <Field label="Название модели">
             <Input value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder={selectedType?.trackingMode === "cable" ? cablePreview : "Robe MegaPointe"} />
           </Field>
@@ -208,6 +211,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
               createModel.mutate(
                 {
                   typeId: effTypeId,
+                  categoryId: categoryId || null,
                   name: selectedType?.trackingMode === "cable" ? (modelName.trim() || cablePreview) : modelName,
                   unitCostEUR: Number(unitCost),
                   dailyPriceEUR: Number(dailyPrice),
