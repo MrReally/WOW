@@ -278,18 +278,6 @@ export function InvoicePage() {
       if (!res.ok) throw new Error((await res.text()) || res.statusText);
       const blob = await res.blob();
       const filename = `${number || "estimate"}.pdf`;
-      const file = new File([blob], filename, { type: "application/pdf" });
-
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file] });
-          return;
-        } catch (shareError) {
-          if (shareError instanceof DOMException && shareError.name === "AbortError") return;
-          // Fall back to a regular browser download when file sharing is unavailable.
-        }
-      }
-
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
