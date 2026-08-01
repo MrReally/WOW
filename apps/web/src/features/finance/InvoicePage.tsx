@@ -277,18 +277,26 @@ export function InvoicePage() {
       });
       if (!res.ok) throw new Error((await res.text()) || res.statusText);
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const tg = (window as { Telegram?: { WebApp?: { openLink?: (url: string) => void } } }).Telegram?.WebApp;
-      if (tg?.openLink) {
-        tg.openLink(url);
-      } else {
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${number || "estimate"}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+      const filename = `${number || "estimate"}.pdf`;
+      const file = new File([blob], filename, { type: "application/pdf" });
+
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+        try {
+          await navigator.share({ files: [file], title: filename });
+          return;
+        } catch (shareError) {
+          if (shareError instanceof DOMException && shareError.name === "AbortError") return;
+          // Fall back to a regular browser download when file sharing is unavailable.
+        }
       }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (err) {
       setPdfError(err instanceof Error ? err.message : "PDF error");
