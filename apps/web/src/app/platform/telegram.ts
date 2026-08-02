@@ -16,6 +16,7 @@ interface TelegramWebApp {
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
   disableVerticalSwipes?: () => void;
+  openLink?: (url: string) => void;
   BackButton?: TelegramBackButton;
   HapticFeedback?: { impactOccurred: (style: string) => void };
 }
@@ -32,6 +33,8 @@ export interface Platform {
   initData: string;
   colorScheme: "dark" | "light";
   haptic: (style?: "light" | "medium" | "heavy") => void;
+  /** Opens a real HTTPS URL through the Telegram host; false in a regular browser. */
+  openExternalUrl: (url: string) => boolean;
   /** Native Telegram back button; no-op in PWA. Returns an unsubscribe fn. */
   backButton: (visible: boolean, onClick?: () => void) => () => void;
 }
@@ -54,6 +57,11 @@ export function detectPlatform(): Platform {
       initData: tg.initData,
       colorScheme: tg.colorScheme ?? "dark",
       haptic: (style = "light") => tg.HapticFeedback?.impactOccurred(style),
+      openExternalUrl: (url) => {
+        if (!tg.openLink) return false;
+        tg.openLink(url);
+        return true;
+      },
       backButton: (visible, onClick) => {
         const bb = tg.BackButton;
         if (!bb) return () => {};
@@ -73,6 +81,7 @@ export function detectPlatform(): Platform {
     initData: "",
     colorScheme: "dark",
     haptic: () => {},
+    openExternalUrl: () => false,
     backButton: () => () => {},
   };
 }

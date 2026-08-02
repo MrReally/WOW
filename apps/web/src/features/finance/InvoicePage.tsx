@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import type { Currency, Finance } from "@sever/contracts";
 import { Card, Button, Field, Input, Textarea, Select, Loading, ErrorState, BrandLogo, Chip } from "../../ui-kit/index.ts";
 import { getToken } from "../../lib/api.ts";
+import { platform } from "../../app/platform/telegram.ts";
 import { useProject, useClients, useProjectInvoice } from "../projects/hooks.ts";
 import { useVenues } from "../plans/hooks.ts";
 import { useCreateInvoiceVersion, useFxRates, useInvoiceCompanySettings, useInvoiceVersions, useSetInvoiceCompanySettings } from "./hooks.ts";
@@ -270,22 +271,21 @@ export function InvoicePage() {
     try {
       await saveVersion();
       const token = getToken();
-      const res = await fetch(`/api/projects/${id}/invoice/pdf`, {
+      const res = await fetch(`/api/projects/${id}/invoice/pdf-link`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(payload()),
       });
       if (!res.ok) throw new Error((await res.text()) || res.statusText);
-      const blob = await res.blob();
-      const filename = `${number || "estimate"}.pdf`;
-      const url = URL.createObjectURL(blob);
+      const download = await res.json() as { url: string; filename: string };
+      const url = new URL(download.url, window.location.origin).href;
+      if (platform.openExternalUrl(url)) return;
       const a = document.createElement("a");
       a.href = url;
-      a.download = filename;
+      a.download = download.filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (err) {
       setPdfError(err instanceof Error ? err.message : "PDF error");
     } finally {
