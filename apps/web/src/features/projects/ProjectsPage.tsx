@@ -6,6 +6,30 @@ import { useSession } from "../../app/session.ts";
 import { useProjects, useClients } from "./hooks.ts";
 import { CreateProjectSheet } from "./components/CreateProjectSheet.tsx";
 import { ProjectWizardSheet } from "./components/ProjectWizardSheet.tsx";
+import { splitMobileProjects } from "./projectList.ts";
+
+type ProjectCardProps = {
+  project: NonNullable<ReturnType<typeof useProjects>["data"]>[number];
+  clientName: (id: string) => string;
+  onOpen: () => void;
+};
+
+function ProjectCard({ project, clientName, onOpen }: ProjectCardProps) {
+  return (
+    <Card onClick={onOpen}>
+      <div className="row row--between">
+        <div>
+          <p className="card__title">{project.name}</p>
+          <p className="card__subtitle">{clientName(project.clientId)}</p>
+        </div>
+        <StatusBadge tone={projectStatusTone[project.status]}>{projectStatusLabel[project.status]}</StatusBadge>
+      </div>
+      <p className="card__subtitle" style={{ marginTop: "var(--space-2)" }}>
+        {dateRange(project.startsAt, project.endsAt)}
+      </p>
+    </Card>
+  );
+}
 
 export function ProjectsPage() {
   const { can } = useSession();
@@ -21,6 +45,7 @@ export function ProjectsPage() {
 
   const clientName = (id: string) => (clients.data ?? []).find((c) => c.id === id)?.name ?? "—";
   const list = projects.data ?? [];
+  const mobileProjects = splitMobileProjects(list);
 
   return (
     <div className="stack">
@@ -43,20 +68,32 @@ export function ProjectsPage() {
       ) : (
         <>
         <div className="stack mobile-project-list">
-          {list.map((p) => (
-            <Card key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
-              <div className="row row--between">
-                <div>
-                  <p className="card__title">{p.name}</p>
-                  <p className="card__subtitle">{clientName(p.clientId)}</p>
-                </div>
-                <StatusBadge tone={projectStatusTone[p.status]}>{projectStatusLabel[p.status]}</StatusBadge>
-              </div>
-              <p className="card__subtitle" style={{ marginTop: "var(--space-2)" }}>
-                {dateRange(p.startsAt, p.endsAt)}
-              </p>
-            </Card>
+          {mobileProjects.active.map((project) => (
+            <ProjectCard
+              key={project.id}
+              project={project}
+              clientName={clientName}
+              onOpen={() => navigate(`/projects/${project.id}`)}
+            />
           ))}
+          {mobileProjects.archived.length > 0 && (
+            <details className="mobile-project-archive">
+              <summary>
+                <span>Проведённые и отменённые</span>
+                <span className="mobile-project-archive__count">{mobileProjects.archived.length}</span>
+              </summary>
+              <div className="stack mobile-project-archive__list">
+                {mobileProjects.archived.map((project) => (
+                  <ProjectCard
+                    key={project.id}
+                    project={project}
+                    clientName={clientName}
+                    onOpen={() => navigate(`/projects/${project.id}`)}
+                  />
+                ))}
+              </div>
+            </details>
+          )}
         </div>
         <div className="data-table-wrap desktop-project-table">
           <table className="data-table">
