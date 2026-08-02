@@ -43,7 +43,7 @@ export function registerBillingRoutes(app: FastifyInstance, ctx: RouteContext, s
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.view", "finance.manage");
     const body = invoicePdfSchema.parse(req.body) as Finance.EstimatePdfRequestDTO;
-    const pdf = renderEstimatePdf(body);
+    const pdf = await renderEstimatePdf(body);
     const safeNumber = (body.number || `estimate-${req.params.id}`).replace(/[^a-z0-9_-]+/gi, "-").slice(0, 80);
     return reply
       .header("Content-Type", "application/pdf")

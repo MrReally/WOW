@@ -1,15 +1,39 @@
+import { createRequire } from "node:module";
+import PDFDocument from "pdfkit";
 import type { Finance } from "@sever/contracts";
 
-const PAGE_W = 595.28;
-const PAGE_H = 841.89;
-const M = 46;
-const FONT = "F1";
-const FONT_BOLD = "F2";
+// The preview is 816 x 1056 CSS pixels: US Letter at the browser's 96 dpi.
+// Rendering at 72 dpi keeps the PDF geometry identical to the preview.
+const SCALE = 72 / 96;
+const PAGE_W = 612;
+const PAGE_H = 792;
+const MARGIN_X = 78 * SCALE;
+const MARGIN_TOP = 92 * SCALE;
+const CONTENT_W = PAGE_W - MARGIN_X * 2;
+const require = createRequire(import.meta.url);
+const FONTS = {
+  latin: {
+    regular: require.resolve("@fontsource/roboto-condensed/files/roboto-condensed-latin-400-normal.woff"),
+    bold: require.resolve("@fontsource/roboto-condensed/files/roboto-condensed-latin-700-normal.woff"),
+  },
+  latinExt: {
+    regular: require.resolve("@fontsource/roboto-condensed/files/roboto-condensed-latin-ext-400-normal.woff"),
+    bold: require.resolve("@fontsource/roboto-condensed/files/roboto-condensed-latin-ext-700-normal.woff"),
+  },
+  cyrillic: {
+    regular: require.resolve("@fontsource/roboto-condensed/files/roboto-condensed-cyrillic-400-normal.woff"),
+    bold: require.resolve("@fontsource/roboto-condensed/files/roboto-condensed-cyrillic-700-normal.woff"),
+  },
+};
 
-const labels: Record<Finance.InvoiceLang, { title: string; date: string; place: string; client: string; name: string; count: string; price: string; comment: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
-  EN: { title: "Purchase Order", date: "Date", place: "Place", client: "Client", name: "Name", count: "Count", price: "Price", comment: "Comment", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
-  RU: { title: "Смета", date: "Дата", place: "Место", client: "Заказчик", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
-  RS: { title: "Ponuda", date: "Datum", place: "Mesto", client: "Klijent", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
+const CARD = "M 0 -100 L 17 -17 L 100 0 L 17 17 L 0 100 L -17 17 L -100 0 L -17 -17 Z";
+const DIAG = "M 39.6 -39.6 L 16 0 L 39.6 39.6 L 0 16 L -39.6 39.6 L -16 0 L -39.6 -39.6 L 0 -16 Z";
+const HOLE = "M 0 -15 L 2.8 -2.8 L 15 0 L 2.8 2.8 L 0 15 L -2.8 2.8 L -15 0 L -2.8 -2.8 Z";
+
+const labels: Record<Finance.InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
+  EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
+  RU: { title: "Смета", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
+  RS: { title: "Ponuda", date: "Datum", place: "Mesto", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -18,119 +42,169 @@ const currencyAmount = (eur: number, req: Finance.EstimatePdfRequestDTO) =>
   req.currency === "EUR" || !req.rateToEUR ? eur : eur / req.rateToEUR;
 const money = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(n));
 
-function pdfText(text: string): string {
-  const bytes: number[] = [0xfe, 0xff];
-  for (const ch of text) {
-    const code = ch.charCodeAt(0);
-    bytes.push((code >> 8) & 255, code & 255);
+type Align = "left" | "center" | "right";
+
+type FontFamily = keyof typeof FONTS;
+
+function familyFor(value: string): FontFamily {
+  if (/[\u0400-\u04ff]/.test(value)) return "cyrillic";
+  if (/[\u0100-\u024f]/.test(value)) return "latinExt";
+  return "latin";
+}
+
+function setFont(doc: PDFKit.PDFDocument, value: string, size: number, bold = false): void {
+  const family = FONTS[familyFor(value)];
+  doc.font(bold ? family.bold : family.regular).fontSize(size);
+}
+
+function textHeight(doc: PDFKit.PDFDocument, value: string, width: number, size: number): number {
+  if (!value) return 0;
+  setFont(doc, value, size);
+  return doc.heightOfString(value, { width, lineGap: 0 });
+}
+
+function textRuns(value: string): { value: string; family: FontFamily }[] {
+  const result: { value: string; family: FontFamily }[] = [];
+  for (const char of value) {
+    const family = familyFor(char);
+    const last = result[result.length - 1];
+    if (last?.family === family) last.value += char;
+    else result.push({ value: char, family });
   }
-  return `<${bytes.map((b) => b.toString(16).padStart(2, "0")).join("")}>`;
+  return result;
 }
 
-function esc(text: string): string {
-  return pdfText(text);
-}
+function drawText(
+  doc: PDFKit.PDFDocument,
+  value: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  options: { size: number; bold?: boolean; align?: Align; color?: string; padding?: number },
+): void {
+  const padding = options.padding ?? 6;
+  const innerW = Math.max(1, width - padding * 2);
+  if (!value) return;
+  const text = value;
+  setFont(doc, text, options.size, options.bold);
+  const h = doc.heightOfString(text, { width: innerW, lineGap: 0 });
+  const tx = x + padding;
+  const ty = y + Math.max(0, (height - h) / 2);
+  const config = { width: innerW, height: Math.max(h, height), align: options.align ?? "center", lineGap: 0, ellipsis: true } as const;
 
-function approxWidth(text: string, size: number): number {
-  return [...text].reduce((sum, ch) => sum + (/[A-ZА-Я]/.test(ch) ? 0.62 : /[ilI1\.\s]/.test(ch) ? 0.28 : 0.52) * size, 0);
-}
-
-function wrap(text: string, maxWidth: number, size: number): string[] {
-  const words = clean(text || "—").split(" ");
-  const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (approxWidth(next, size) <= maxWidth || !current) current = next;
-    else {
-      lines.push(current);
-      current = word;
+  const runs = textRuns(text);
+  if (runs.length > 1 && !text.includes("\n")) {
+    const widths = runs.map((run) => {
+      const family = FONTS[run.family];
+      doc.font(options.bold ? family.bold : family.regular).fontSize(options.size);
+      return doc.widthOfString(run.value);
+    });
+    const totalWidth = widths.reduce((sum, width) => sum + width, 0);
+    if (totalWidth <= innerW) {
+      const align = options.align ?? "center";
+      let cursor = align === "left" ? tx : align === "right" ? tx + innerW - totalWidth : tx + (innerW - totalWidth) / 2;
+      doc.fillColor(options.color ?? "#111111");
+      runs.forEach((run, index) => {
+        const family = FONTS[run.family];
+        doc.font(options.bold ? family.bold : family.regular).fontSize(options.size).text(run.value, cursor, ty, { lineBreak: false });
+        cursor += widths[index]!;
+      });
+      return;
     }
   }
-  if (current) lines.push(current);
-  return lines.slice(0, 4);
+  doc.fillColor(options.color ?? "#111111").text(text, tx, ty, config);
 }
 
-class PdfCanvas {
-  private chunks: string[] = [];
-  y = PAGE_H - M;
-
-  raw(s: string) { this.chunks.push(s); }
-  line(x1: number, y1: number, x2: number, y2: number) { this.raw(`${x1} ${y1} m ${x2} ${y2} l S\n`); }
-  rect(x: number, y: number, w: number, h: number, fill?: string) {
-    if (fill) this.raw(`${fill} rg ${x} ${y} ${w} ${h} re f 0 g\n`);
-    this.raw(`${x} ${y} ${w} ${h} re S\n`);
-  }
-  fillRect(x: number, y: number, w: number, h: number, gray = 0) { this.raw(`${gray} g ${x} ${y} ${w} ${h} re f 0 g\n`); }
-  text(text: string, x: number, y: number, size = 10, font = FONT, color = "0 0 0") {
-    this.raw(`BT /${font} ${size} Tf ${color} rg ${x} ${y} Td ${esc(text)} Tj ET\n`);
-  }
-  centered(text: string, x: number, y: number, w: number, size = 10, font = FONT) {
-    const tx = x + Math.max(0, (w - approxWidth(text, size)) / 2);
-    this.text(text, tx, y, size, font);
-  }
-  content() { return this.chunks.join(""); }
+function cell(
+  doc: PDFKit.PDFDocument,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  options: { fill?: string; border?: string; borderWidth?: number } = {},
+): void {
+  if (options.fill) doc.save().fillColor(options.fill).rect(x, y, width, height).fill().restore();
+  doc.save().lineWidth(options.borderWidth ?? 0.75).strokeColor(options.border ?? "#000000").rect(x, y, width, height).stroke().restore();
 }
 
-function sectionClass(section: string): string {
-  const s = section.toLowerCase();
-  if (s.includes("sound") || s.includes("звук")) return "0.86 0.93 0.82";
-  if (s.includes("light") || s.includes("свет")) return "1 0.95 0.8";
-  if (s.includes("staff") || s.includes("crew") || s.includes("команд")) return "0.96 0.8 0.8";
-  if (s.includes("delivery") || s.includes("transport")) return "0.85 0.92 0.94";
-  return "0.93 0.93 0.93";
+function sectionColor(section: string): string {
+  // Keep this mapping in lockstep with sectionTone() / invoice.css in Preview.
+  const key = section.toLowerCase();
+  if (key.includes("sound")) return "#dcebd6";
+  if (key.includes("light")) return "#fff2cc";
+  if (key.includes("other")) return "#fce5cd";
+  if (key.includes("staff") || key.includes("crew")) return "#f4cccc";
+  if (key.includes("delivery") || key.includes("transport")) return "#d9e9ec";
+  return "#eeeeee";
 }
 
-function drawBrand(c: PdfCanvas, x: number, y: number, w: number) {
-  const cx = x + w / 2;
-  const cy = y - 42;
-  const s = 22;
-  const pts: [number, number][] = [
-    [0, -2.15], [0.35, -0.35], [2.15, 0], [0.35, 0.35],
-    [0, 2.15], [-0.35, 0.35], [-2.15, 0], [-0.35, -0.35],
-  ];
-  c.raw(`${cx + pts[0]![0] * s} ${cy - pts[0]![1] * s} m `);
-  for (const [px, py] of pts.slice(1)) c.raw(`${cx + px * s} ${cy - py * s} l `);
-  c.raw("h f\n");
-  c.centered("SEVER", x, y - 104, w, 30, FONT_BOLD);
-  c.centered("EVENT RENTAL", x, y - 124, w, 10, FONT);
+function drawStar(doc: PDFKit.PDFDocument, x: number, y: number, size: number): void {
+  doc.save().translate(x + size / 2, y + size / 2).scale(size / 224);
+  doc.fillColor("#000000").path(CARD).fill().path(DIAG).fill();
+  doc.fillColor("#ffffff").path(HOLE).fill();
+  doc.restore();
 }
 
-function drawHeader(c: PdfCanvas, req: Finance.EstimatePdfRequestDTO) {
+function drawHeader(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO): number {
   const l = labels[req.lang];
-  const leftW = 260;
-  const logoX = M + leftW;
-  const topY = PAGE_H - 92;
-  c.fillRect(M, topY, leftW, 58, 0);
-  c.centered(l.title, M, topY + 20, leftW, 22, FONT_BOLD);
-  c.raw(`1 1 1 rg BT /${FONT_BOLD} 24 Tf ${M + 45} ${topY + 20} Td ${esc(l.title)} Tj ET 0 g\n`);
-  c.rect(M, topY - 58, leftW, 58);
-  c.text(l.date, M + 18, topY - 24, 14, FONT_BOLD);
-  c.text(req.date.split("-").reverse().join("/"), M + 150, topY - 24, 13, FONT_BOLD);
-  c.rect(M, topY - 98, leftW, 40);
-  c.text(l.client, M + 18, topY - 82, 12, FONT_BOLD);
-  for (const [i, line] of wrap(req.clientName || "—", 112, 10.5).entries()) c.text(line, M + 130, topY - 82 - i * 12, 10.5, FONT_BOLD);
-  c.rect(M, topY - 150, leftW, 52);
-  c.text(l.place, M + 18, topY - 120, 12, FONT_BOLD);
-  for (const [i, line] of wrap(req.place || "—", 112, 11).entries()) c.text(line, M + 130, topY - 120 - i * 13, 11, FONT_BOLD);
-  c.rect(logoX, topY - 132, PAGE_W - M - logoX, 190);
-  drawBrand(c, logoX, topY + 10, PAGE_W - M - logoX);
-  c.y = topY - 170;
+  const leftW = 355 * SCALE;
+  const rightW = CONTENT_W - leftW;
+  const titleH = 98 * SCALE;
+  const dateH = 92 * SCALE;
+  const placeH = 132 * SCALE;
+  const headH = titleH + dateH + placeH;
+  const valueW = 118 * SCALE;
+  const labelW = leftW - valueW;
+  const x = MARGIN_X;
+  const y = MARGIN_TOP;
+
+  cell(doc, x, y, leftW, titleH, { fill: "#000000", borderWidth: 1.5 });
+  drawText(doc, l.title, x, y, leftW, titleH, { size: 22.5, bold: true, color: "#ffffff" });
+
+  cell(doc, x, y + titleH, labelW, dateH, { borderWidth: 1.5 });
+  cell(doc, x + labelW, y + titleH, valueW, dateH, { borderWidth: 1.5 });
+  drawText(doc, l.date, x, y + titleH, labelW, dateH, { size: 15, bold: true });
+  drawText(doc, req.date.split("-").reverse().join("/"), x + labelW, y + titleH, valueW, dateH, { size: 13.5, bold: true, padding: 3 });
+
+  cell(doc, x, y + titleH + dateH, labelW, placeH, { borderWidth: 1.5 });
+  cell(doc, x + labelW, y + titleH + dateH, valueW, placeH, { borderWidth: 1.5 });
+  drawText(doc, l.place, x, y + titleH + dateH, labelW, placeH, { size: 15, bold: true });
+  drawText(doc, clean(req.place) || "—", x + labelW, y + titleH + dateH, valueW, placeH, { size: 13.5, bold: true, padding: 4 });
+
+  cell(doc, x + leftW, y, rightW, headH, { border: "#d2d2d2", borderWidth: 0.75 });
+  const logoSize = 170 * SCALE;
+  drawStar(doc, x + leftW + (rightW - logoSize) / 2, y + (headH - logoSize) / 2, logoSize);
+  return y + headH;
 }
 
-function drawTable(c: PdfCanvas, req: Finance.EstimatePdfRequestDTO) {
+function drawTable(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO, startY: number): number {
   const l = labels[req.lang];
-  const x = M;
-  const cols: [number, number, number, number] = [250, 58, 82, PAGE_W - M * 2 - 250 - 58 - 82];
-  const totalW = cols.reduce((a, b) => a + b, 0);
-  const headerH = 24;
-  c.rect(x, c.y - headerH, totalW, headerH);
-  c.text(l.name, x + 8, c.y - 16, 10, FONT_BOLD);
-  c.centered(l.count, x + cols[0], c.y - 16, cols[1], 10, FONT_BOLD);
-  c.centered(l.price, x + cols[0] + cols[1], c.y - 16, cols[2], 10, FONT_BOLD);
-  c.text(l.comment, x + cols[0] + cols[1] + cols[2] + 8, c.y - 16, 10, FONT_BOLD);
-  c.y -= headerH;
+  const x = MARGIN_X;
+  const cols = [CONTENT_W * 0.39, CONTENT_W * 0.14, CONTENT_W * 0.19, CONTENT_W * 0.28];
+  const headerH = 33 * SCALE;
+  const sectionH = 31 * SCALE;
+  let y = startY + 26 * SCALE;
 
+  const tableHeader = () => {
+    const values = [l.name, l.count, l.price, l.comment];
+    let cx = x;
+    values.forEach((value, index) => {
+      cell(doc, cx, y, cols[index]!, headerH);
+      drawText(doc, value, cx, y, cols[index]!, headerH, { size: 15, bold: true, padding: 4 });
+      cx += cols[index]!;
+    });
+    y += headerH;
+  };
+
+  const ensureRoom = (height: number) => {
+    if (y + height <= PAGE_H - 42) return;
+    doc.addPage();
+    y = 42;
+    tableHeader();
+  };
+
+  tableHeader();
   const grouped = new Map<string, Finance.EstimatePdfLineDTO[]>();
   for (const line of req.lines) {
     const section = clean(line.section) || "Equipment";
@@ -139,85 +213,89 @@ function drawTable(c: PdfCanvas, req: Finance.EstimatePdfRequestDTO) {
   }
 
   for (const [section, items] of grouped) {
-    const h = 22;
-    c.raw(`${sectionClass(section)} rg ${x} ${c.y - h} ${totalW} ${h} re f 0 g\n`);
-    c.rect(x, c.y - h, totalW, h);
-    c.centered(section, x, c.y - 15, totalW, 11, FONT_BOLD);
-    c.y -= h;
+    ensureRoom(sectionH + 24);
+    cell(doc, x, y, CONTENT_W, sectionH, { fill: sectionColor(section) });
+    drawText(doc, section, x, y, CONTENT_W, sectionH, { size: 15, bold: true, padding: 5 });
+    y += sectionH;
+
     for (const line of items) {
-      const nameLines = wrap(line.name || "—", cols[0] - 14, 10);
-      const commentLines = wrap(line.comment || "", cols[3] - 14, 9);
-      const rowH = Math.max(24, Math.max(nameLines.length, commentLines.length) * 12 + 10);
-      if (c.y - rowH < 120) break;
-      c.rect(x, c.y - rowH, totalW, rowH);
+      const size = 14.25;
+      const nameH = textHeight(doc, clean(line.name) || "—", cols[0]! - 14, size);
+      const commentH = textHeight(doc, clean(line.comment) || "", cols[3]! - 14, size);
+      const rowH = Math.max(31.5 * SCALE, Math.max(nameH, commentH) + 8);
+      ensureRoom(rowH);
+      const values = [clean(line.name) || "—", clean(line.count) || "1", money(currencyAmount(line.priceEUR, req)), clean(line.comment)];
       let cx = x;
-      for (let i = 0; i < cols.length - 1; i++) {
-        cx += cols[i]!;
-        c.line(cx, c.y, cx, c.y - rowH);
-      }
-      nameLines.forEach((t, i) => c.text(t, x + 7, c.y - 15 - i * 12, 9.5));
-      c.centered(clean(line.count) || "1", x + cols[0], c.y - 15, cols[1], 9.5);
-      c.centered(money(currencyAmount(line.priceEUR, req)), x + cols[0] + cols[1], c.y - 15, cols[2], 9.5);
-      commentLines.forEach((t, i) => c.text(t, x + cols[0] + cols[1] + cols[2] + 7, c.y - 15 - i * 12, 8.5));
-      c.y -= rowH;
+      values.forEach((value, index) => {
+        cell(doc, cx, y, cols[index]!, rowH);
+        drawText(doc, value, cx, y, cols[index]!, rowH, { size, padding: 5 });
+        cx += cols[index]!;
+      });
+      y += rowH;
     }
   }
 
+  const totalH = 30 * SCALE;
+  ensureRoom(totalH);
   const total = req.lines.reduce((sum, line) => sum + currencyAmount(line.priceEUR, req), 0);
-  c.fillRect(x + cols[0], c.y - 24, totalW - cols[0], 24, 0);
-  c.raw(`1 1 1 rg BT /${FONT_BOLD} 12 Tf ${x + cols[0] + 10} ${c.y - 16} Td ${esc(l.total)} Tj ET\n`);
-  c.raw(`1 1 1 rg BT /${FONT_BOLD} 12 Tf ${x + cols[0] + cols[1] + 8} ${c.y - 16} Td ${esc(money(total))} Tj ET\n`);
-  c.raw(`1 1 1 rg BT /${FONT} 11 Tf ${x + cols[0] + cols[1] + cols[2] + 8} ${c.y - 16} Td ${esc(req.currency)} Tj ET 0 g\n`);
-  c.y -= 42;
+  cell(doc, x, y, cols[0]!, totalH);
+  let cx = x + cols[0]!;
+  [l.total, money(total), req.currency].forEach((value, index) => {
+    const width = cols[index + 1]!;
+    cell(doc, cx, y, width, totalH, { fill: "#000000" });
+    drawText(doc, value, cx, y, width, totalH, { size: index === 2 ? 12 : 13.5, bold: index !== 2, align: "left", color: "#ffffff", padding: index === 0 ? 13.5 : 7 });
+    cx += width;
+  });
+  return y + totalH;
 }
 
-function drawFooter(c: PdfCanvas, req: Finance.EstimatePdfRequestDTO) {
+function drawFooter(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO, startY: number): void {
   const l = labels[req.lang];
+  let y = startY;
   if (req.note.trim()) {
-    for (const [i, line] of wrap(req.note, PAGE_W - M * 2, 9).entries()) c.text(line, M, c.y - i * 11, 8.5);
-    c.y -= 48;
+    y += 14 * SCALE;
+    setFont(doc, req.note, 10.5);
+    const noteH = doc.heightOfString(req.note, { width: CONTENT_W });
+    if (y + noteH > PAGE_H - 42) { doc.addPage(); y = 42; }
+    drawText(doc, req.note, MARGIN_X, y, CONTENT_W, noteH, { size: 10.5, align: "left", padding: 0 });
+    y += noteH;
   }
-  const w = 280;
-  const x = PAGE_W - M - w;
-  const rowH = 22;
+
+  y += 30 * SCALE;
+  const w = CONTENT_W * 0.61;
+  const x = MARGIN_X + CONTENT_W - w;
+  const headerH = 34 * SCALE;
+  const rowH = 38 * SCALE;
+  if (y + headerH + rowH * 3 > PAGE_H - 36) { doc.addPage(); y = 42; }
+
+  cell(doc, x, y, w, headerH);
+  drawText(doc, l.contacts, x, y, w, headerH, { size: 13.5, bold: true });
+  y += headerH;
+  const labelW = w * 0.28;
   const rows: [string, string][] = [[l.phone, req.company.phone], [l.email, req.company.email], [l.telegram, req.company.telegram]];
-  c.rect(x, 58 + rows.length * rowH, w, rowH);
-  c.centered(l.contacts, x, 58 + rows.length * rowH + 7, w, 10, FONT_BOLD);
-  rows.forEach((row, idx) => {
-    const y = 58 + (rows.length - idx - 1) * rowH;
-    c.rect(x, y, w, rowH);
-    c.line(x + 82, y + rowH, x + 82, y);
-    c.centered(row[0], x, y + 7, 82, 9, FONT_BOLD);
-    c.text(row[1], x + 92, y + 7, 9);
+  rows.forEach(([label, value]) => {
+    cell(doc, x, y, labelW, rowH);
+    cell(doc, x + labelW, y, w - labelW, rowH);
+    drawText(doc, label, x, y, labelW, rowH, { size: 12, bold: true, padding: 4 });
+    drawText(doc, value, x + labelW, y, w - labelW, rowH, { size: 10.5, bold: label === l.telegram, padding: 5 });
+    y += rowH;
   });
 }
 
-function makePdf(content: string): Buffer {
-  const objects = [
-    `<< /Type /Catalog /Pages 2 0 R >>`,
-    `<< /Type /Pages /Kids [3 0 R] /Count 1 >>`,
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /${FONT} 4 0 R /${FONT_BOLD} 5 0 R >> >> /Contents 6 0 R >>`,
-    `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>`,
-    `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>`,
-    `<< /Length ${Buffer.byteLength(content, "binary")} >>\nstream\n${content}\nendstream`,
-  ];
-  let body = "%PDF-1.4\n";
-  const offsets = [0];
-  objects.forEach((obj, i) => {
-    offsets.push(Buffer.byteLength(body, "binary"));
-    body += `${i + 1} 0 obj\n${obj}\nendobj\n`;
+export async function renderEstimatePdf(req: Finance.EstimatePdfRequestDTO): Promise<Buffer> {
+  return await new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({ size: "LETTER", margin: 0, autoFirstPage: true, compress: true, info: { Title: req.number || labels[req.lang].title, Author: req.company.name || "SEVER" } });
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+    try {
+      const headerBottom = drawHeader(doc, req);
+      const tableBottom = drawTable(doc, req, headerBottom);
+      drawFooter(doc, req, tableBottom);
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
   });
-  const xref = Buffer.byteLength(body, "binary");
-  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (let i = 1; i <= objects.length; i++) body += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
-  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-  return Buffer.from(body, "binary");
-}
-
-export function renderEstimatePdf(req: Finance.EstimatePdfRequestDTO): Buffer {
-  const canvas = new PdfCanvas();
-  drawHeader(canvas, req);
-  drawTable(canvas, req);
-  drawFooter(canvas, req);
-  return makePdf(canvas.content());
 }
