@@ -48,6 +48,11 @@ const timingSchema = z.object({
   assigneeIds: z.array(z.string().uuid()).optional(),
 });
 const timingAssigneesSchema = z.object({ userIds: z.array(z.string().uuid()) });
+const updateTimingSchema = z.object({
+  title: z.string().min(1).optional(),
+  startsAt: z.string().datetime().optional(),
+  endsAt: z.string().datetime().optional(),
+});
 const taskSchema = z.object({
   projectId: z.string().uuid(),
   title: z.string().min(1),
@@ -80,6 +85,8 @@ const contractorItemSchema = z.object({
   costEUR: z.number().nonnegative(),
   note: z.string().nullable().optional(),
 });
+const updateContractorItemSchema = contractorItemSchema.omit({ projectId: true }).partial().extend({ booked: z.boolean().optional() });
+const contractorBookedSchema = z.object({ projectId: z.string().uuid(), contractorId: z.string().uuid(), booked: z.boolean() });
 const projectRoleSchema = z.object({
   projectId: z.string().uuid(),
   title: z.string().trim().min(1),
@@ -232,6 +239,11 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.timing.manage");
     return service.setTimingAssignees(req.params.id, timingAssigneesSchema.parse(req.body).userIds);
+  });
+  app.patch<{ Params: { id: string } }>("/api/timings/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.timing.manage");
+    return service.updateTiming(req.params.id, updateTimingSchema.parse(req.body));
   });
   app.delete<{ Params: { id: string } }>("/api/timings/:id", async (req) => {
     const auth = await ctx.auth(req);
@@ -421,6 +433,17 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.reservation.manage");
     return service.addContractorItem(contractorItemSchema.parse(req.body) as Projects.AddContractorItemInput);
+  });
+  app.patch<{ Params: { id: string } }>("/api/contractor-items/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.reservation.manage");
+    return service.updateContractorItem(req.params.id, updateContractorItemSchema.parse(req.body));
+  });
+  app.put("/api/contractor-items/booked", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.reservation.manage");
+    const body = contractorBookedSchema.parse(req.body);
+    return service.setContractorItemsBooked(body.projectId, body.contractorId, body.booked);
   });
   app.delete<{ Params: { id: string } }>("/api/contractor-items/:id", async (req) => {
     const auth = await ctx.auth(req);

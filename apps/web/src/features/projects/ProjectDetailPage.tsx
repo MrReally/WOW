@@ -19,6 +19,7 @@ import {
   useCreateReservation,
   useDeleteReservation,
   useAddTiming,
+  useUpdateTiming,
   useSetTimingAssignees,
   useDeleteTiming,
   useAddAssignment,
@@ -35,6 +36,7 @@ import {
   useProjectReminders,
   useReservationAvailabilities,
   useReservationAvailability,
+  useContractorItems,
 } from "./hooks.ts";
 import { ResolveReservationSheet } from "./components/ResolveReservationSheet.tsx";
 import { EditProjectSheet } from "./components/EditProjectSheet.tsx";
@@ -124,11 +126,13 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const pings = useProjectPings(id, canAssign);
   const reminders = useProjectReminders(id, canAssign);
   const reservationAvailabilities = useReservationAvailabilities(reservations.data ?? []);
+  const contractorItems = useContractorItems(id);
 
   const setStatus = useSetProjectStatus();
   const addReservation = useCreateReservation();
   const deleteReservation = useDeleteReservation();
   const addTiming = useAddTiming();
+  const updateTiming = useUpdateTiming();
   const setTimingAssignees = useSetTimingAssignees();
   const deleteTiming = useDeleteTiming();
   const addAssignment = useAddAssignment();
@@ -155,6 +159,10 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [timingTitle, setTimingTitle] = useState("");
   const [timingStart, setTimingStart] = useState("");
   const [timingEnd, setTimingEnd] = useState("");
+  const [editingTimingId, setEditingTimingId] = useState("");
+  const [timingEditTitle, setTimingEditTitle] = useState("");
+  const [timingEditStart, setTimingEditStart] = useState("");
+  const [timingEditEnd, setTimingEditEnd] = useState("");
   const [roleTitle, setRoleTitle] = useState("");
   const [roleCount, setRoleCount] = useState("1");
   const [roleRate, setRoleRate] = useState("");
@@ -231,11 +239,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
     : (assignments.data ?? []).filter((a) => a.status === "added" || a.status === "accepted").length;
   const contractorCost = invoice.data?.contractorCostEUR ?? 0;
   const projectPayableCost = (invoice.data?.contractorCostEUR ?? 0) + (invoice.data?.laborEUR ?? 0);
-  const contractorCount = new Set(
-    (invoice.data?.rentalLines ?? [])
-      .filter((line) => line.section.startsWith("Vendor:"))
-      .map((line) => line.section)
-  ).size;
+  const contractorCount = new Set((contractorItems.data ?? []).map((item) => item.contractorId)).size;
   const tabCount = (kind?: "reservations" | "timing" | "team" | "contractors") => {
     if (kind === "reservations") return reservationCount;
     if (kind === "timing") return timingCount;
@@ -472,14 +476,28 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
           const candidates = onProject.filter((uid) => !t.assigneeIds.includes(uid));
           return (
             <Card key={t.id}>
+              {editingTimingId === t.id ? (
+                <div className="stack" style={{ gap: 8 }}>
+                  <Input value={timingEditTitle} onChange={(e) => setTimingEditTitle(e.target.value)} placeholder="Название события" />
+                  <div className="row">
+                    <Input type="datetime-local" value={timingEditStart} onChange={(e) => setTimingEditStart(e.target.value)} />
+                    <Input type="datetime-local" value={timingEditEnd} onChange={(e) => setTimingEditEnd(e.target.value)} />
+                  </div>
+                  <div className="row">
+                    <Button block disabled={!timingEditTitle.trim() || new Date(timingEditEnd).getTime() <= new Date(timingEditStart).getTime() || updateTiming.isPending} onClick={() => updateTiming.mutate({ id: t.id, input: { title: timingEditTitle.trim(), startsAt: isoFromLocal(timingEditStart), endsAt: isoFromLocal(timingEditEnd) } }, { onSuccess: () => setEditingTimingId("") })}>Сохранить</Button>
+                    <Button block variant="ghost" onClick={() => setEditingTimingId("")}>Отмена</Button>
+                  </div>
+                </div>
+              ) : <>
               <div className="row row--between">
                 <div style={{ minWidth: 0 }}>
                   <p className="card__title">{t.title}</p>
                   <p className="card__subtitle">{dateTime(t.startsAt)} – {dateTime(t.endsAt)}</p>
                 </div>
-                <button className="icon-btn icon-btn--danger" aria-label="Удалить тайминг" title="Удалить" onClick={() => deleteTiming.mutate(t.id)}>
-                  <ProjectGlyph type="close" />
-                </button>
+                <div className="row" style={{ gap: 6 }}>
+                  <Button variant="ghost" onClick={() => { setEditingTimingId(t.id); setTimingEditTitle(t.title); setTimingEditStart(toLocalInput(t.startsAt)); setTimingEditEnd(toLocalInput(t.endsAt)); }}>Изменить</Button>
+                  <button className="icon-btn icon-btn--danger" aria-label="Удалить тайминг" title="Удалить" onClick={() => deleteTiming.mutate(t.id)}><ProjectGlyph type="close" /></button>
+                </div>
               </div>
               <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                 {t.assigneeIds.length === 0 && <span className="card__subtitle">Никого не назначено</span>}
@@ -506,6 +524,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   </div>
                 </div>
               )}
+              <Button block variant="secondary" disabled={t.assigneeIds.length === 0 || createPing.isPending} onClick={() => void Promise.all(t.assigneeIds.map((userId) => createPing.mutateAsync({ userId, title: t.title, message: `${dateTime(t.startsAt)} – ${dateTime(t.endsAt)}` })))}>Пинг в ТГ всем участникам</Button>
+              </>}
             </Card>
           );
         })}

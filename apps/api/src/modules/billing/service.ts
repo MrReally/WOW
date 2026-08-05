@@ -27,7 +27,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
     const project = await deps.projects.getProject(projectId);
     if (!project) throw NotFound("project", projectId);
 
-    const [reservations, assignments, projectRoles, models, types, txs, contractorItems, contractors] = await Promise.all([
+    const [reservations, assignments, projectRoles, models, types, txs, contractorItems] = await Promise.all([
       deps.projects.listReservations(projectId),
       deps.projects.listAssignments(projectId),
       deps.projects.listProjectRoles(projectId),
@@ -35,11 +35,9 @@ export function createBillingService(deps: BillingDeps): BillingService {
       deps.equipment.listTypes(),
       deps.finance.listTransactions({ projectId }),
       deps.projects.listContractorItems(projectId),
-      deps.equipment.listContractors(),
     ]);
     const modelMap = new Map(models.map((m) => [m.id, m]));
     const typeName = new Map(types.map((t) => [t.id, t.name]));
-    const contractorName = new Map(contractors.map((c) => [c.id, c.name]));
     const projectDays = daysBetween(project.startsAt, project.endsAt);
 
     const ownLines: Finance.InvoiceLineDTO[] = reservations.filter((r) => !r.isReserve).map((r) => {
@@ -61,7 +59,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
       [it.kind === "delivery" ? "delivery" : it.kind === "setup" ? "setup" : "subrent", it.note].filter(Boolean).join(" · ");
     const contractorLines: Finance.InvoiceLineDTO[] = contractorItems.map((it) => ({
       refId: it.id,
-      section: `Vendor: ${contractorName.get(it.contractorId) ?? "—"}`,
+      section: it.kind === "delivery" ? "Delivery" : it.kind === "setup" ? "Setup" : "Equipment",
       label: it.name,
       detail: contractorKindDetail(it),
       qty: it.qty,
@@ -78,12 +76,11 @@ export function createBillingService(deps: BillingDeps): BillingService {
       ? projectRoles
           .filter((role) => role.rateEUR != null)
           .map((role) => {
-            const filled = assignments.filter((a) => a.roleId === role.id && (a.status === "added" || a.status === "accepted")).length;
             return {
               refId: role.id,
               section: "Crew",
               label: role.title,
-              detail: `${filled}/${role.requiredCount} confirmed`,
+              detail: "",
               qty: role.requiredCount,
               unitEUR: round2(role.rateEUR ?? 0),
               periods: 1,
@@ -97,7 +94,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
             refId: a.id,
             section: "Crew",
             label: a.roleNote || "crew",
-            detail: a.status,
+            detail: "",
             qty: 1,
             unitEUR: round2(a.rateEUR ?? 0),
             periods: 1,

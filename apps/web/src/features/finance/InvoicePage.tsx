@@ -170,6 +170,7 @@ export function InvoicePage() {
     comment: l.comment.trim(),
   })), [lines]);
   const sections = useMemo(() => groupLines(normalizedLines), [normalizedLines]);
+  const categorySuggestions = useMemo(() => [...new Set(lines.map((line) => cleanText(line.section)).filter(Boolean))], [lines]);
 
   if (project.isLoading || invoice.isLoading) return <Loading />;
   if (invoice.error) return <ErrorState error={invoice.error} onRetry={invoice.refetch} />;
@@ -378,7 +379,7 @@ export function InvoicePage() {
               </div>
               <div className="stack" style={{ marginTop: 10 }}>
                 {sec.items.map((line) => (
-                  <LineEditor key={line.id} line={line} setLine={setLine} removeLine={removeLine} />
+                  <LineEditor key={line.id} line={line} setLine={setLine} removeLine={removeLine} categorySuggestions={categorySuggestions} />
                 ))}
               </div>
               <Button block variant="ghost" onClick={() => addLine(sec.section)}>+ сюда</Button>
@@ -462,7 +463,9 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: s
   return <div><div className="card__subtitle">{label}</div><div className="card__title" style={{ color: tone }}>{value}</div></div>;
 }
 
-function LineEditor({ line, setLine, removeLine }: { line: Line; setLine: (id: string, patch: Partial<Line>) => void; removeLine: (id: string) => void }) {
+function LineEditor({ line, setLine, removeLine, categorySuggestions }: { line: Line; setLine: (id: string, patch: Partial<Line>) => void; removeLine: (id: string) => void; categorySuggestions: string[] }) {
+  const [sectionDraft, setSectionDraft] = useState(line.section);
+  const suggestionId = `invoice-categories-${line.id}`;
   return (
     <div className="invoice-line">
       <div className="row" style={{ gap: 6 }}>
@@ -470,10 +473,11 @@ function LineEditor({ line, setLine, removeLine }: { line: Line; setLine: (id: s
         <button className="icon-btn icon-btn--danger" onClick={() => removeLine(line.id)} aria-label="Удалить" title="Удалить">×</button>
       </div>
       <div className="invoice-line-grid">
-        <Input value={line.section} onChange={(e) => setLine(line.id, { section: e.target.value })} placeholder="Section" />
-        <Input value={line.count} onChange={(e) => setLine(line.id, { count: e.target.value })} placeholder="Qty" />
-        <Input type="number" step="0.01" value={line.price} onChange={(e) => setLine(line.id, { price: num(e.target.value) })} placeholder="Price" />
-        <Input type="number" step="0.01" value={line.cost} onChange={(e) => setLine(line.id, { cost: num(e.target.value) })} placeholder="Cost" />
+        <Input value={sectionDraft} list={suggestionId} onChange={(e) => setSectionDraft(e.target.value)} onBlur={() => setLine(line.id, { section: sectionDraft })} placeholder="Категория" autoComplete="on" />
+        <datalist id={suggestionId}>{categorySuggestions.map((value) => <option key={value} value={value} />)}</datalist>
+        <Input value={line.count} onChange={(e) => setLine(line.id, { count: e.target.value })} placeholder="К · количество" />
+        <Input type="number" step="0.01" value={line.price} onChange={(e) => setLine(line.id, { price: num(e.target.value) })} placeholder="Ц · цена" />
+        <Input type="number" step="0.01" value={line.cost} onChange={(e) => setLine(line.id, { cost: num(e.target.value) })} placeholder="СС · себестоимость" />
       </div>
       <Input value={line.comment} onChange={(e) => setLine(line.id, { comment: e.target.value })} placeholder="Комментарий" />
     </div>

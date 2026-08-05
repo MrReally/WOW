@@ -130,6 +130,16 @@ export function useAddTiming() {
   });
 }
 
+export function useUpdateTiming() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Projects.UpdateTimingInput }) =>
+      api.patch<Projects.TimingDTO>(`/api/timings/${id}`, input),
+    meta: { successMessage: "Событие обновлено" },
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
 export function useSetTimingAssignees() {
   const qc = useQueryClient();
   return useMutation({
@@ -213,6 +223,27 @@ export function useAddContractorItem() {
       qc.invalidateQueries({ queryKey: ["projects", "contractor-items"] });
       qc.invalidateQueries({ queryKey: ["projects", "contractor-debts"] });
     },
+  });
+}
+export function useUpdateContractorItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Projects.UpdateContractorItemInput }) =>
+      api.patch<Projects.ContractorItemDTO>(`/api/contractor-items/${id}`, input),
+    meta: { successMessage: "Позиция подрядчика сохранена" },
+    onSuccess: () => {
+      invalidateProjects(qc);
+      qc.invalidateQueries({ queryKey: ["projects", "contractor-items"] });
+      qc.invalidateQueries({ queryKey: ["projects", "contractor-debts"] });
+    },
+  });
+}
+export function useSetContractorItemsBooked() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { projectId: string; contractorId: string; booked: boolean }) =>
+      api.put<Projects.ContractorItemDTO[]>("/api/contractor-items/booked", input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects", "contractor-items"] }),
   });
 }
 export function useRemoveContractorItem() {

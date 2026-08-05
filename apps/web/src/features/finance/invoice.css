@@ -253,6 +253,16 @@
   box-shadow: 0 12px 30px rgba(0, 0, 0, .28);
 }
 
+@media (max-width: 700px) {
+  .invoice-workspace { padding-bottom: 76px; }
+  .invoice-bottom-actions {
+    position: fixed;
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+  }
+}
+
 .invoice-version-row {
   display: flex;
   justify-content: space-between;

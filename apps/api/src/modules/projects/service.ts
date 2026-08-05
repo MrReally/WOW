@@ -142,6 +142,7 @@ interface ContractorItemRow {
   cost_eur: string;
   note: string | null;
   returned_at: Date | null;
+  booked: boolean;
   created_at: Date;
 }
 interface ProblemRow {
@@ -289,6 +290,7 @@ const contractorItemDTO = (r: ContractorItemRow): Projects.ContractorItemDTO => 
   costEUR: Number(r.cost_eur),
   note: r.note,
   returnedAt: r.returned_at ? r.returned_at.toISOString() : null,
+  booked: r.booked ?? false,
   createdAt: r.created_at.toISOString(),
 });
 const problemDTO = (r: ProblemRow): Problem => ({
@@ -793,6 +795,20 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         await query(db, `INSERT INTO projects.timing_assignees (timing_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [row!.id, uid]);
       }
       return timingDTO({ ...row!, assignee_ids: assignees });
+    },
+    async updateTiming(id, input) {
+      const existing = await one<TimingRow>(db, `SELECT * FROM projects.timings WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("timing", id);
+      const startsAt = input.startsAt ?? existing.starts_at.toISOString();
+      const endsAt = input.endsAt ?? existing.ends_at.toISOString();
+      assertRange(startsAt, endsAt);
+      const row = await one<TimingRow>(
+        db,
+        `UPDATE projects.timings SET title=$2, starts_at=$3, ends_at=$4 WHERE id=$1 RETURNING *`,
+        [id, input.title ?? existing.title, startsAt, endsAt]
+      );
+      const assignees = await query<{ user_id: string }>(db, `SELECT user_id FROM projects.timing_assignees WHERE timing_id=$1`, [id]);
+      return timingDTO({ ...row!, assignee_ids: assignees.map((x) => x.user_id) });
     },
     async setTimingAssignees(timingId, userIds) {
       const timing = await one<TimingRow>(db, `SELECT * FROM projects.timings WHERE id=$1`, [timingId]);
@@ -1315,6 +1331,24 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         ]
       );
       return contractorItemDTO(row!);
+    },
+    async updateContractorItem(id, input) {
+      const existing = await one<ContractorItemRow>(db, `SELECT * FROM projects.contractor_items WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("contractor item", id);
+      const row = await one<ContractorItemRow>(
+        db,
+        `UPDATE projects.contractor_items SET contractor_id=$2, kind=$3, name=$4, qty=$5, price_eur=$6, cost_eur=$7, note=$8, booked=$9 WHERE id=$1 RETURNING *`,
+        [id, input.contractorId ?? existing.contractor_id, input.kind ?? existing.kind, input.name ?? existing.name, input.qty ?? existing.qty, input.priceEUR ?? Number(existing.price_eur), input.costEUR ?? Number(existing.cost_eur), input.note === undefined ? existing.note : input.note, input.booked ?? existing.booked]
+      );
+      return contractorItemDTO(row!);
+    },
+    async setContractorItemsBooked(projectId, contractorId, booked) {
+      const rows = await query<ContractorItemRow>(
+        db,
+        `UPDATE projects.contractor_items SET booked=$3 WHERE project_id=$1 AND contractor_id=$2 RETURNING *`,
+        [projectId, contractorId, booked]
+      );
+      return rows.map(contractorItemDTO);
     },
     async returnContractorItem(id) {
       const row = await one<ContractorItemRow>(

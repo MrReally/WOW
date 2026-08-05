@@ -1,7 +1,8 @@
 import { useState } from "react";
+import type { Projects } from "@sever/contracts";
 import { Card, Button, Field, Input, Select, EmptyState } from "../../../ui-kit/index.ts";
 import { useI18n } from "../../../app/i18n.tsx";
-import { useContractorItems, useContractors, useContractorItemHistory, useAddContractorItem, useRemoveContractorItem, useReturnContractorItem, useCreateContractor } from "../hooks.ts";
+import { useContractorItems, useContractors, useContractorItemHistory, useAddContractorItem, useUpdateContractorItem, useSetContractorItemsBooked, useRemoveContractorItem, useReturnContractorItem, useCreateContractor } from "../hooks.ts";
 
 const ITEM_KINDS: ("equipment" | "delivery" | "setup")[] = ["equipment", "delivery", "setup"];
 
@@ -12,6 +13,8 @@ export function ContractorEquipment({ projectId, canManage }: { projectId: strin
   const items = useContractorItems(projectId);
   const contractors = useContractors();
   const add = useAddContractorItem();
+  const update = useUpdateContractorItem();
+  const setAllBooked = useSetContractorItemsBooked();
   const remove = useRemoveContractorItem();
   const markReturned = useReturnContractorItem();
   const createContractor = useCreateContractor();
@@ -25,6 +28,7 @@ export function ContractorEquipment({ projectId, canManage }: { projectId: strin
   const [note, setNote] = useState("");
   const [newContractorName, setNewContractorName] = useState("");
   const [newContractorContacts, setNewContractorContacts] = useState("");
+  const [editing, setEditing] = useState<Projects.ContractorItemDTO | null>(null);
 
   const list = contractors.data ?? [];
   const contractorName = (id: string) => list.find((c) => c.id === id)?.name ?? "—";
@@ -73,10 +77,26 @@ export function ContractorEquipment({ projectId, canManage }: { projectId: strin
       ) : (
         (items.data ?? []).map((it) => (
           <Card key={it.id}>
+            {editing?.id === it.id ? (
+              <div className="stack" style={{ gap: 8 }}>
+                <Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Позиция" />
+                <div className="row">
+                  <Input type="number" value={editing.qty} onChange={(e) => setEditing({ ...editing, qty: Number(e.target.value) || 1 })} placeholder="К · количество" />
+                  <Input type="number" value={editing.priceEUR} onChange={(e) => setEditing({ ...editing, priceEUR: Number(e.target.value) || 0 })} placeholder="Ц · цена" />
+                  <Input type="number" value={editing.costEUR} onChange={(e) => setEditing({ ...editing, costEUR: Number(e.target.value) || 0 })} placeholder="СС · себестоимость" />
+                </div>
+                <Input value={editing.note ?? ""} onChange={(e) => setEditing({ ...editing, note: e.target.value || null })} placeholder="Комментарий" />
+                <div className="row">
+                  <Button block disabled={!editing.name.trim() || update.isPending} onClick={() => update.mutate({ id: editing.id, input: { name: editing.name.trim(), qty: editing.qty, priceEUR: editing.priceEUR, costEUR: editing.costEUR, note: editing.note } }, { onSuccess: () => setEditing(null) })}>Сохранить</Button>
+                  <Button block variant="ghost" onClick={() => setEditing(null)}>Отмена</Button>
+                </div>
+              </div>
+            ) : (<>
             <div className="row row--between">
               <p className="card__title">{it.name} × {it.qty}</p>
               {canManage && (
                 <div className="row" style={{ gap: 6 }}>
+                  <Button variant="ghost" onClick={() => setEditing(it)}>Изменить</Button>
                   {it.kind === "equipment" && !it.returnedAt && <Button variant="secondary" onClick={() => markReturned.mutate(it.id)}>{t("contractors.return")}</Button>}
                   <Button variant="ghost" onClick={() => remove.mutate(it.id)}>{t("common.close")}</Button>
                 </div>
@@ -93,9 +113,23 @@ export function ContractorEquipment({ projectId, canManage }: { projectId: strin
             <p className="card__subtitle" style={{ marginTop: 2 }}>
               {t("contractors.clientPrice")} / unit {eur(it.priceEUR)} · {t("common.cost")} / unit {eur(it.costEUR)}
             </p>
+            <label className="row" style={{ gap: 8, marginTop: 8 }}>
+              <input type="checkbox" checked={it.booked} disabled={!canManage} onChange={(e) => update.mutate({ id: it.id, input: { booked: e.target.checked } })} />
+              <span>Забронирован</span>
+            </label>
+            </>)}
           </Card>
         ))
       )}
+
+      {canManage && [...new Set((items.data ?? []).map((it) => it.contractorId))].map((id) => {
+        const group = (items.data ?? []).filter((it) => it.contractorId === id);
+        const allBooked = group.length > 0 && group.every((it) => it.booked);
+        return <label key={id} className="row row--between card" style={{ gap: 8 }}>
+          <span>Все позиции · {contractorName(id)}</span>
+          <input type="checkbox" checked={allBooked} onChange={(e) => setAllBooked.mutate({ projectId, contractorId: id, booked: e.target.checked })} />
+        </label>;
+      })}
 
       {canManage && (
         <Card>

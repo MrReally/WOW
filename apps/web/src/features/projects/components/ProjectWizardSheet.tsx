@@ -7,6 +7,7 @@ import {
   useAddContractorItem,
   useClients,
   useContractors,
+  useCreateContractor,
   useCreateClient,
   useCreateProject,
   useCreateProjectRole,
@@ -80,6 +81,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const createReservation = useCreateReservation();
   const createRole = useCreateProjectRole();
   const addContractorItem = useAddContractorItem();
+  const createContractor = useCreateContractor();
 
   const [stepIndex, setStepIndex] = useState(0);
   const [project, setProject] = useState<Projects.ProjectDTO | null>(null);
@@ -94,6 +96,8 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const [reservationDrafts, setReservationDrafts] = useState<ReservationDraft[]>([{ modelId: "", qty: "1", isReserve: false }]);
   const [crewDrafts, setCrewDrafts] = useState<CrewDraft[]>([{ title: "", count: "1", rate: "" }]);
   const [contractorDrafts, setContractorDrafts] = useState<ContractorDraft[]>([{ contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }]);
+  const [newContractorName, setNewContractorName] = useState("");
+  const [newContractorContacts, setNewContractorContacts] = useState("");
   const [financeDrafts, setFinanceDrafts] = useState<FinanceDraft[]>([{ name: "", client: "", cost: "" }]);
   const [busy, setBusy] = useState(false);
 
@@ -125,12 +129,14 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       setReservationDrafts([{ modelId: "", qty: "1", isReserve: false }]);
       setCrewDrafts([{ title: "", count: "1", rate: "" }]);
       setContractorDrafts([{ contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }]);
+      setNewContractorName("");
+      setNewContractorContacts("");
       setFinanceDrafts([{ name: "", client: "", cost: "" }]);
     }, 150);
   };
 
-  const ensureProject = async (): Promise<Projects.ProjectDTO | null> => {
-    if (project) return project;
+  const createEverything = async () => {
+    if (project || busy) return;
     setBusy(true);
     try {
       let cid = clientId;
@@ -139,7 +145,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
         cid = client.id;
         setClientId(cid);
       }
-      if (!cid) return null;
+      if (!cid) return;
       let vid = venueId || null;
       if (!vid && venueName.trim()) {
         const venue = await createVenue.mutateAsync({ name: venueName.trim(), address: venueAddress.trim() || null });
@@ -153,92 +159,38 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
         startsAt: new Date(starts).toISOString(),
         endsAt: new Date(ends).toISOString(),
       });
+      let createdContractorId = "";
+      if (newContractorName.trim()) {
+        const contractor = await createContractor.mutateAsync({ name: newContractorName.trim(), contacts: newContractorContacts.trim() || null });
+        createdContractorId = contractor.id;
+      }
+      for (const draft of reservationDrafts) {
+        if (!draft.modelId || Number(draft.qty) <= 0) continue;
+        await createReservation.mutateAsync({ projectId: created.id, modelId: draft.modelId, qty: Number(draft.qty), isReserve: draft.isReserve, startsAt: created.startsAt, endsAt: created.endsAt });
+      }
+      for (const draft of crewDrafts) {
+        if (!draft.title.trim()) continue;
+        await createRole.mutateAsync({ projectId: created.id, input: { title: draft.title.trim(), requiredCount: Number(draft.count) || 1, rateEUR: draft.rate ? Number(draft.rate) || 0 : null } });
+      }
+      for (const draft of contractorDrafts) {
+        const contractorId = draft.contractorId === "__new__" || (!draft.contractorId && createdContractorId) ? createdContractorId : draft.contractorId;
+        if (!contractorId || !draft.name.trim()) continue;
+        await addContractorItem.mutateAsync({ projectId: created.id, contractorId, kind: draft.kind, name: draft.name.trim(), qty: Number(draft.qty) || 1, priceEUR: Number(draft.price) || 0, costEUR: Number(draft.cost) || 0 });
+      }
+      const lines = financeDrafts.filter((line) => line.name.trim() && ((Number(line.client) || 0) > 0 || (Number(line.cost) || 0) > 0)).map((line) => ({
+        id: `wizard-${Math.random().toString(36).slice(2, 9)}`, section: "Project extras", name: line.name.trim(), count: "1", price: Number(line.client) || 0, cost: Number(line.cost) || 0, comment: "planned",
+      }));
+      localStorage.setItem(wizardInvoiceKey(created.id), JSON.stringify(lines));
       setProject(created);
-      return created;
     } finally {
       setBusy(false);
     }
   };
 
-  const next = async () => {
-    if (step.id === "time") {
-      const created = await ensureProject();
-      if (!created) return;
-    }
-    if (step.id === "finance") {
-      const p = await ensureProject();
-      if (!p) return;
-      const lines = financeDrafts
-        .filter((line) => line.name.trim() && ((Number(line.client) || 0) > 0 || (Number(line.cost) || 0) > 0))
-        .map((line) => ({
-          id: `wizard-${Math.random().toString(36).slice(2, 9)}`,
-          section: "Project extras",
-          name: line.name.trim(),
-          count: "1",
-          price: Number(line.client) || 0,
-          cost: Number(line.cost) || 0,
-          comment: "planned",
-        }));
-      localStorage.setItem(wizardInvoiceKey(p.id), JSON.stringify(lines));
-    }
+  const next = () => {
     setStepIndex((i) => Math.min(i + 1, steps.length - 1));
   };
   const skip = () => setStepIndex((i) => Math.min(i + 1, steps.length - 1));
-
-  const saveReservations = async () => {
-    const p = await ensureProject();
-    if (!p) return;
-    setBusy(true);
-    try {
-      for (const draft of reservationDrafts) {
-        if (!draft.modelId || Number(draft.qty) <= 0) continue;
-        await createReservation.mutateAsync({ projectId: p.id, modelId: draft.modelId, qty: Number(draft.qty), isReserve: draft.isReserve, startsAt: p.startsAt, endsAt: p.endsAt });
-      }
-      await next();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const saveCrew = async () => {
-    const p = await ensureProject();
-    if (!p) return;
-    setBusy(true);
-    try {
-      for (const draft of crewDrafts) {
-        if (!draft.title.trim()) continue;
-        await createRole.mutateAsync({ projectId: p.id, input: { title: draft.title.trim(), requiredCount: Number(draft.count) || 1, rateEUR: draft.rate ? Number(draft.rate) || 0 : null } });
-      }
-      await next();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const saveContractors = async () => {
-    const p = await ensureProject();
-    if (!p) return;
-    setBusy(true);
-    try {
-      const fallbackContractor = contractors.data?.[0]?.id;
-      for (const draft of contractorDrafts) {
-        const contractorId = draft.contractorId || fallbackContractor;
-        if (!contractorId || !draft.name.trim()) continue;
-        await addContractorItem.mutateAsync({
-          projectId: p.id,
-          contractorId,
-          kind: draft.kind,
-          name: draft.name.trim(),
-          qty: Number(draft.qty) || 1,
-          priceEUR: Number(draft.price) || 0,
-          costEUR: Number(draft.cost) || 0,
-        });
-      }
-      await next();
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const canContinue =
     step.id === "name" ? !!projectName.trim() :
@@ -319,10 +271,13 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
 
       {step.id === "contractors" && (
         <WizardScreen title="Подрядчики">
-          {contractors.data?.length === 0 && <p className="card__subtitle">Сначала добавьте подрядчика в Contractors.</p>}
+          <DraftCard>
+            <Input value={newContractorName} onChange={(e) => setNewContractorName(e.target.value)} placeholder="+ Новый подрядчик" />
+            <Input value={newContractorContacts} onChange={(e) => setNewContractorContacts(e.target.value)} placeholder="Контакты" />
+          </DraftCard>
           {contractorDrafts.map((draft, idx) => (
             <DraftCard key={idx}>
-              <Select value={draft.contractorId} onChange={(e) => patchContractor(idx, { contractorId: e.target.value })} options={[{ value: "", label: "Подрядчик" }, ...(contractors.data ?? []).map((c) => ({ value: c.id, label: c.name }))]} />
+              <Select value={draft.contractorId} onChange={(e) => patchContractor(idx, { contractorId: e.target.value })} options={[{ value: "", label: "Подрядчик" }, ...(newContractorName.trim() ? [{ value: "__new__", label: `Новый: ${newContractorName.trim()}` }] : []), ...(contractors.data ?? []).map((c) => ({ value: c.id, label: c.name }))]} />
               <Select value={draft.kind} onChange={(e) => patchContractor(idx, { kind: e.target.value as Projects.ContractorItemKind })} options={[{ value: "equipment", label: "Оборудование" }, { value: "delivery", label: "Доставка" }, { value: "setup", label: "Монтаж" }]} />
               <Input value={draft.name} onChange={(e) => patchContractor(idx, { name: e.target.value })} placeholder="Позиция" />
               <div className="row">
@@ -356,7 +311,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       )}
 
       {step.id === "finish" && (
-        <WizardScreen title="Проект создан">
+        <WizardScreen title={project ? "Проект создан" : "Проверьте и создайте"}>
           <Card>
             <p className="card__title">{project?.name ?? projectName}</p>
             <p className="card__subtitle">{selectedClientName || "Клиент"} · можно открыть проект или сразу перейти к смете.</p>
@@ -365,21 +320,13 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       )}
 
       <div className="row" style={{ marginTop: 12 }}>
-        {stepIndex > 0 && <Button variant="ghost" onClick={() => setStepIndex((i) => Math.max(project ? 4 : 0, i - 1))}>Назад</Button>}
+        {stepIndex > 0 && !project && <Button variant="ghost" onClick={() => setStepIndex((i) => Math.max(0, i - 1))}>Назад</Button>}
         {step.skip && step.id !== "finish" && <Button variant="ghost" onClick={skip}>Пропустить</Button>}
-        {step.id === "reservations" ? (
-          <Button block disabled={busy} onClick={saveReservations}>Дальше</Button>
-        ) : step.id === "crew" ? (
-          <Button block disabled={busy} onClick={saveCrew}>Дальше</Button>
-        ) : step.id === "contractors" ? (
-          <Button block disabled={busy} onClick={saveContractors}>Дальше</Button>
-        ) : step.id === "finance" ? (
-          <Button block disabled={busy} onClick={next}>Дальше</Button>
-        ) : step.id === "finish" ? (
-          <>
+        {step.id === "finish" ? (
+          project ? <>
             <Button block variant="secondary" disabled={!project} onClick={() => project && navigate(`/projects/${project.id}`)}>Проект</Button>
             <Button block disabled={!project} onClick={() => project && navigate(`/projects/${project.id}/invoice`)}>Смета</Button>
-          </>
+          </> : <Button block disabled={busy} onClick={() => void createEverything()}>{busy ? "Создаём…" : "Создать проект"}</Button>
         ) : (
           <Button block disabled={!canContinue || busy} onClick={next}>Дальше</Button>
         )}

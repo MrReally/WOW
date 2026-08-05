@@ -118,6 +118,12 @@ export interface AddTimingInput {
   assigneeIds?: ID[];
 }
 
+export interface UpdateTimingInput {
+  title?: string;
+  startsAt?: ISODateTime;
+  endsAt?: ISODateTime;
+}
+
 // ── Operations tasks + field checklist ──────────────────────────────────────
 
 export type ProjectTaskStatus = "todo" | "in_progress" | "done";
@@ -383,6 +389,8 @@ export interface ContractorItemDTO {
   note: string | null;
   /** Null means we still need to return this rented contractor gear. */
   returnedAt: ISODateTime | null;
+  /** Operational booking confirmation; internal and never printed for a client. */
+  booked: boolean;
   createdAt: ISODateTime;
 }
 
@@ -396,6 +404,10 @@ export interface AddContractorItemInput {
   costEUR: number;
   note?: string | null;
 }
+
+export type UpdateContractorItemInput = Partial<Omit<AddContractorItemInput, "projectId">> & {
+  booked?: boolean;
+};
 
 /** What we owe a contractor, summed across projects. */
 export interface ContractorDebtDTO {
@@ -435,6 +447,7 @@ export interface ProjectsService {
   /** When opts.forUserId is set, only timings that user is assigned to. */
   listTimings(projectId: ID, opts?: { forUserId?: ID }): Promise<TimingDTO[]>;
   addTiming(input: AddTimingInput): Promise<TimingDTO>;
+  updateTiming(id: ID, input: UpdateTimingInput): Promise<TimingDTO>;
   setTimingAssignees(timingId: ID, userIds: ID[]): Promise<TimingDTO>;
   deleteTiming(id: ID): Promise<void>;
   listTasks(projectId: ID, opts?: { forUserId?: ID }): Promise<ProjectTaskDTO[]>;
@@ -474,6 +487,8 @@ export interface ProjectsService {
   listContractorItemsByContractor(contractorId: ID): Promise<ContractorItemDTO[]>;
   listOpenContractorItems(): Promise<ContractorItemDTO[]>;
   addContractorItem(input: AddContractorItemInput): Promise<ContractorItemDTO>;
+  updateContractorItem(id: ID, input: UpdateContractorItemInput): Promise<ContractorItemDTO>;
+  setContractorItemsBooked(projectId: ID, contractorId: ID, booked: boolean): Promise<ContractorItemDTO[]>;
   returnContractorItem(id: ID): Promise<ContractorItemDTO>;
   removeContractorItem(id: ID): Promise<void>;
   /** Owed-to-contractor totals (cost × qty) grouped by contractor. */
