@@ -88,9 +88,41 @@ export interface ProjectFinanceDTO {
   debtEUR: number;
 }
 
-// ── Project invoice / cost estimate (composed from plan + recorded money) ─────
-// Not stored: computed on demand from reservations (× daily price × days),
-// crew rates, and the project's recorded transactions.
+export type ProjectEstimateLineSource = "equipment" | "contractor" | "labor" | "manual";
+
+/** Editable project economics. This is the source of truth for both the € tab
+ * and client-facing estimate; invoice versions are read-only snapshots. */
+export interface ProjectEstimateLineDTO {
+  id: ID;
+  projectId: ID;
+  source: ProjectEstimateLineSource;
+  sourceRefId: ID | null;
+  section: string;
+  name: string;
+  qty: number;
+  priceEUR: number;
+  costEUR: number;
+  comment: string;
+  sortOrder: number;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+export interface SaveProjectEstimateLineInput {
+  id?: ID;
+  source?: ProjectEstimateLineSource;
+  sourceRefId?: ID | null;
+  section: string;
+  name: string;
+  qty: number;
+  priceEUR: number;
+  costEUR: number;
+  comment?: string;
+}
+
+// ── Project invoice / cost estimate ──────────────────────────────────────────
+// Seeded from reservations/crew/contractors, then overridden by the stored
+// project estimate lines maintained in the € tab.
 
 export interface InvoiceLineDTO {
   refId: ID;
@@ -226,6 +258,10 @@ export interface FinanceService {
   projectFinance(projectId: ID): Promise<ProjectFinanceDTO>;
   /** Projects with outstanding client debt, for Apex. */
   outstandingDebts(): Promise<ProjectFinanceDTO[]>;
+
+  // Editable project economics (€ tab is the only writer).
+  listProjectEstimateLines(projectId: ID): Promise<ProjectEstimateLineDTO[]>;
+  replaceProjectEstimateLines(projectId: ID, lines: SaveProjectEstimateLineInput[]): Promise<ProjectEstimateLineDTO[]>;
 
   // Estimate document settings + versions
   getInvoiceCompanySettings(): Promise<InvoiceCompanySettingsDTO>;

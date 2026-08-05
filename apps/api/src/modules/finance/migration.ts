@@ -71,6 +71,23 @@ CREATE TABLE IF NOT EXISTS finance.invoice_versions (
 );
 CREATE INDEX IF NOT EXISTS invoice_versions_project_idx ON finance.invoice_versions(project_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS finance.project_estimate_lines (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id    uuid NOT NULL,
+  source        text NOT NULL DEFAULT 'manual' CHECK (source IN ('equipment','contractor','labor','manual')),
+  source_ref_id uuid,
+  section       text NOT NULL,
+  name          text NOT NULL,
+  qty           numeric(12,2) NOT NULL DEFAULT 1 CHECK (qty > 0),
+  price_eur     numeric(14,2) NOT NULL DEFAULT 0,
+  cost_eur      numeric(14,2) NOT NULL DEFAULT 0,
+  comment       text NOT NULL DEFAULT '',
+  sort_order    integer NOT NULL DEFAULT 0,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS project_estimate_lines_project_idx ON finance.project_estimate_lines(project_id, sort_order);
+
 -- EUR is the base currency; its rate is always 1.
 INSERT INTO finance.fx_rates (currency, rate_to_eur) VALUES ('EUR', 1)
   ON CONFLICT (currency) DO NOTHING;

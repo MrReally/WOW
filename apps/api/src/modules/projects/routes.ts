@@ -112,7 +112,8 @@ const pingSchema = z.object({
   message: z.string().nullable().optional(),
 });
 const reminderSchema = z.object({
-  offsetMinutes: z.number().int().positive(),
+  timingId: z.string().uuid().nullable().optional(),
+  offsetMinutes: z.number().int().nonnegative(),
   recipientMode: z.enum(["project_team", "selected"]).optional(),
   userIds: z.array(z.string().uuid()).optional(),
   title: z.string().trim().min(1).nullable().optional(),

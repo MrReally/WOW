@@ -66,6 +66,21 @@ interface InvoiceVersionRow {
   note: string;
   created_at: Date;
 }
+interface ProjectEstimateLineRow {
+  id: string;
+  project_id: string;
+  source: Finance.ProjectEstimateLineSource;
+  source_ref_id: string | null;
+  section: string;
+  name: string;
+  qty: string;
+  price_eur: string;
+  cost_eur: string;
+  comment: string;
+  sort_order: number;
+  created_at: Date;
+  updated_at: Date;
+}
 
 const fxDTO = (r: FxRow): Finance.FxRateDTO => ({
   currency: r.currency,
@@ -114,6 +129,21 @@ const invoiceVersionDTO = (r: InvoiceVersionRow): Finance.InvoiceVersionDTO => (
   lines: r.lines,
   note: r.note,
   createdAt: r.created_at.toISOString(),
+});
+const estimateLineDTO = (r: ProjectEstimateLineRow): Finance.ProjectEstimateLineDTO => ({
+  id: r.id,
+  projectId: r.project_id,
+  source: r.source,
+  sourceRefId: r.source_ref_id,
+  section: r.section,
+  name: r.name,
+  qty: Number(r.qty),
+  priceEUR: Number(r.price_eur),
+  costEUR: Number(r.cost_eur),
+  comment: r.comment,
+  sortOrder: r.sort_order,
+  createdAt: r.created_at.toISOString(),
+  updatedAt: r.updated_at.toISOString(),
 });
 
 export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceService {
@@ -291,6 +321,28 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
           };
         })
         .filter((f) => f.debtEUR > 0);
+    },
+
+    async listProjectEstimateLines(projectId) {
+      const rows = await query<ProjectEstimateLineRow>(db, `SELECT * FROM finance.project_estimate_lines WHERE project_id=$1 ORDER BY sort_order, created_at`, [projectId]);
+      return rows.map(estimateLineDTO);
+    },
+
+    async replaceProjectEstimateLines(projectId, lines) {
+      return tx(async (client) => {
+        await query(client, `DELETE FROM finance.project_estimate_lines WHERE project_id=$1`, [projectId]);
+        const saved: ProjectEstimateLineRow[] = [];
+        for (const [sortOrder, line] of lines.entries()) {
+          const row = await one<ProjectEstimateLineRow>(client,
+            `INSERT INTO finance.project_estimate_lines
+               (id, project_id, source, source_ref_id, section, name, qty, price_eur, cost_eur, comment, sort_order)
+             VALUES (COALESCE($1::uuid, gen_random_uuid()),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+            [line.id ?? null, projectId, line.source ?? "manual", line.sourceRefId ?? null, line.section.trim() || "Прочее", line.name.trim(), line.qty, line.priceEUR, line.costEUR, line.comment?.trim() ?? "", sortOrder]
+          );
+          saved.push(row!);
+        }
+        return saved.map(estimateLineDTO);
+      });
     },
 
     async getInvoiceCompanySettings() {

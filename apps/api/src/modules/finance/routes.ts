@@ -58,6 +58,17 @@ const invoiceVersionSchema = z.object({
   lines: z.array(invoiceVersionLineSchema),
   note: z.string().optional(),
 });
+const estimateLineSchema = z.object({
+  id: z.string().uuid().optional(),
+  source: z.enum(["equipment", "contractor", "labor", "manual"]).optional(),
+  sourceRefId: z.string().uuid().nullable().optional(),
+  section: z.string(),
+  name: z.string().trim().min(1),
+  qty: z.number().positive(),
+  priceEUR: z.number(),
+  costEUR: z.number(),
+  comment: z.string().optional(),
+});
 
 export function registerFinanceRoutes(
   app: FastifyInstance,
@@ -114,6 +125,17 @@ export function registerFinanceRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.view");
     return service.outstandingDebts();
+  });
+  app.get<{ Params: { id: string } }>("/api/projects/:id/estimate-lines", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.view", "finance.manage");
+    return service.listProjectEstimateLines(req.params.id);
+  });
+  app.put<{ Params: { id: string } }>("/api/projects/:id/estimate-lines", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.manage");
+    const body = z.object({ lines: z.array(estimateLineSchema) }).parse(req.body);
+    return service.replaceProjectEstimateLines(req.params.id, body.lines as Finance.SaveProjectEstimateLineInput[]);
   });
 
   app.get("/api/finance/invoice-company", async (req) => {

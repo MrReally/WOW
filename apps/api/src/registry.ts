@@ -468,9 +468,10 @@ export function createModules(bus: EventBus = new EventBus()) {
   async function dispatchDueReminders() {
     const due = await projects.service.listDueReminders(new Date().toISOString());
     for (const reminder of due) {
-      const [project, assignments] = await Promise.all([
+      const [project, assignments, timings] = await Promise.all([
         projects.service.getProject(reminder.projectId),
         projects.service.listAssignments(reminder.projectId),
+        projects.service.listTimings(reminder.projectId),
       ]);
       if (!project) {
         await projects.service.markReminderSent(reminder.id);
@@ -479,13 +480,14 @@ export function createModules(bus: EventBus = new EventBus()) {
       const dynamicIds = assignments
         .filter((a) => a.status === "added" || a.status === "accepted")
         .map((a) => a.userId);
-      const recipientIds = reminder.recipientMode === "selected" ? reminder.userIds : dynamicIds;
+      const timing = reminder.timingId ? timings.find((item) => item.id === reminder.timingId) : null;
+      const recipientIds = timing ? timing.assigneeIds : reminder.recipientMode === "selected" ? reminder.userIds : dynamicIds;
       for (const userId of [...new Set(recipientIds)]) {
         await projects.service.createPing({
           projectId: reminder.projectId,
           userId,
           reminderId: reminder.id,
-          title: reminder.title,
+          title: timing?.title ?? reminder.title,
           message: reminder.note ?? null,
           createdByUserId: reminder.createdByUserId,
         });

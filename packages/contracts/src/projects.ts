@@ -347,6 +347,8 @@ export interface CreateProjectPingInput {
 export interface ProjectReminderDTO {
   id: ID;
   projectId: ID;
+  /** Optional timing event; null means the reminder is relative to project start. */
+  timingId: ID | null;
   offsetMinutes: number;
   recipientMode: ProjectReminderRecipientMode;
   userIds: ID[];
@@ -359,6 +361,7 @@ export interface ProjectReminderDTO {
 
 export interface CreateProjectReminderInput {
   projectId: ID;
+  timingId?: ID | null;
   offsetMinutes: number;
   recipientMode?: ProjectReminderRecipientMode;
   userIds?: ID[];

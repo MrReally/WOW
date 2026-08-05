@@ -1,8 +1,9 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Equipment, Projects } from "@sever/contracts";
+import type { Equipment, Finance, Projects } from "@sever/contracts";
 import { Button, Card, Chip, Field, Input, Select, Sheet } from "../../../ui-kit/index.ts";
 import { eur } from "../../../lib/labels.ts";
+import { api } from "../../../lib/api.ts";
 import {
   useAddContractorItem,
   useClients,
@@ -66,8 +67,6 @@ const steps: { id: StepId; label: string; skip?: boolean }[] = [
   { id: "finance", label: "Финансы", skip: true },
   { id: "finish", label: "Готово" },
 ];
-
-const wizardInvoiceKey = (projectId: string) => `sever.invoice.wizardLines.${projectId}`;
 
 export function ProjectWizardSheet({ open, onClose }: Props) {
   const navigate = useNavigate();
@@ -177,10 +176,19 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
         if (!contractorId || !draft.name.trim()) continue;
         await addContractorItem.mutateAsync({ projectId: created.id, contractorId, kind: draft.kind, name: draft.name.trim(), qty: Number(draft.qty) || 1, priceEUR: Number(draft.price) || 0, costEUR: Number(draft.cost) || 0 });
       }
-      const lines = financeDrafts.filter((line) => line.name.trim() && ((Number(line.client) || 0) > 0 || (Number(line.cost) || 0) > 0)).map((line) => ({
-        id: `wizard-${Math.random().toString(36).slice(2, 9)}`, section: "Project extras", name: line.name.trim(), count: "1", price: Number(line.client) || 0, cost: Number(line.cost) || 0, comment: "planned",
+      const derived = await api.get<Finance.ProjectInvoiceDTO>(`/api/projects/${created.id}/invoice`);
+      const lines: Finance.SaveProjectEstimateLineInput[] = [...derived.rentalLines, ...derived.laborLines].map((line) => ({
+        source: line.section === "Crew" ? "labor" : "equipment",
+        sourceRefId: line.refId,
+        section: line.section,
+        name: line.label,
+        qty: line.qty,
+        priceEUR: line.amountEUR,
+        costEUR: line.costEUR,
+        comment: line.detail,
       }));
-      localStorage.setItem(wizardInvoiceKey(created.id), JSON.stringify(lines));
+      lines.push(...financeDrafts.filter((line) => line.name.trim() && ((Number(line.client) || 0) !== 0 || (Number(line.cost) || 0) !== 0)).map((line) => ({ source: "manual" as const, section: "Прочее", name: line.name.trim(), qty: 1, priceEUR: Number(line.client) || 0, costEUR: Number(line.cost) || 0, comment: "" })));
+      if (lines.length > 0) await api.put(`/api/projects/${created.id}/estimate-lines`, { lines });
       setProject(created);
     } finally {
       setBusy(false);

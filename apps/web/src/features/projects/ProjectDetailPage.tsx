@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams, useNavigate, useSearchParams } from "react-router-dom";
-import type { Equipment, People, Projects } from "@sever/contracts";
+import type { Equipment, Finance, People, Projects } from "@sever/contracts";
 import { PROJECT_STATUSES } from "@sever/contracts";
 import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
 import { projectStatusLabel, projectStatusTone, dateRange, dateTime, eur } from "../../lib/labels.ts";
@@ -44,7 +44,7 @@ import { TimingTimeline } from "./components/TimingTimeline.tsx";
 import { ContractorEquipment } from "./components/ContractorEquipment.tsx";
 import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
 import { personName } from "../../lib/people.ts";
-import { useInvoiceVersions } from "../finance/hooks.ts";
+import { useInvoiceVersions, useProjectEstimateLines, useReplaceProjectEstimateLines } from "../finance/hooks.ts";
 
 const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "ok" | "info" | "warn" | "neutral" }> = {
   added: { label: "в команде", tone: "ok" },
@@ -69,6 +69,15 @@ const REMINDER_PRESETS = [
   { label: "7д", minutes: 7 * 24 * 60 },
   { label: "свой", minutes: 0 },
 ];
+const TIMING_REMINDER_OPTIONS = [
+  { label: "В момент события", minutes: 0 },
+  { label: "За 5 минут", minutes: 5 },
+  { label: "За 15 минут", minutes: 15 },
+  { label: "За 30 минут", minutes: 30 },
+  { label: "За 1 час", minutes: 60 },
+  { label: "За 2 часа", minutes: 120 },
+  { label: "За 1 день", minutes: 1440 },
+];
 
 type ProjectTab = "overview" | "reservations" | "timing" | "team" | "contractors" | "finance";
 type ProjectTabIcon = ProjectTab | "plan" | "invoice" | "back" | "close";
@@ -92,6 +101,18 @@ interface StoredInvoiceVersion {
   createdAt: string;
 }
 
+interface FinanceDraftLine {
+  id: string;
+  source: Finance.ProjectEstimateLineSource;
+  sourceRefId: string | null;
+  section: string;
+  name: string;
+  qty: string;
+  priceEUR: string;
+  costEUR: string;
+  comment: string;
+}
+
 function projectTabFrom(value: string | null): ProjectTab {
   return PROJECT_TABS.some((tab) => tab.id === value) ? (value as ProjectTab) : "overview";
 }
@@ -110,6 +131,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const canAssign = can("projects.assignment.manage");
   const canViewPeople = can("people.view");
   const canFinance = can("finance.view");
+  const canManageFinance = can("finance.manage");
   const canPlans = can("plans.view", "plans.manage");
 
   const project = useProject(id);
@@ -123,6 +145,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const allUnits = useAllUnits();
   const invoice = useProjectInvoice(id, canFinance);
   const serverInvoiceVersions = useInvoiceVersions(id, canFinance);
+  const estimateLines = useProjectEstimateLines(id, canFinance);
+  const replaceEstimateLines = useReplaceProjectEstimateLines(id);
   const pings = useProjectPings(id, canAssign);
   const reminders = useProjectReminders(id, canAssign);
   const reservationAvailabilities = useReservationAvailabilities(reservations.data ?? []);
@@ -181,6 +205,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [resolving, setResolving] = useState<Projects.ReservationDTO | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [invoiceVersions, setInvoiceVersions] = useState<StoredInvoiceVersion[]>([]);
+  const [estimateDrafts, setEstimateDrafts] = useState<FinanceDraftLine[]>([]);
+  const [estimateSeeded, setEstimateSeeded] = useState(false);
   const activeTab = projectTabFrom(searchParams.get("tab"));
 
   useEffect(() => {
@@ -195,6 +221,35 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
     if (!serverInvoiceVersions.data) return;
     setInvoiceVersions(serverInvoiceVersions.data);
   }, [serverInvoiceVersions.data]);
+
+  useEffect(() => {
+    if (estimateSeeded || !invoice.data || !estimateLines.data) return;
+    const saved = estimateLines.data;
+    const missingDerived = invoice.data.rentalLines.filter((line) => !saved.some((item) => item.id === line.refId)).map((line) => ({
+      id: line.refId,
+      source: line.section === "Crew" ? "labor" as const : "equipment" as const,
+      sourceRefId: line.refId,
+      section: line.section,
+      name: line.label,
+      qty: line.qty,
+      priceEUR: line.amountEUR,
+      costEUR: line.costEUR,
+      comment: line.detail,
+    }));
+    const source = saved.length > 0 ? [...saved, ...missingDerived] : [...invoice.data.rentalLines, ...invoice.data.laborLines].map((line) => ({
+      id: line.refId,
+      source: line.section === "Crew" ? "labor" as const : "equipment" as const,
+      sourceRefId: line.refId,
+      section: line.section,
+      name: line.label,
+      qty: line.qty,
+      priceEUR: line.amountEUR,
+      costEUR: line.costEUR,
+      comment: line.detail,
+    }));
+    setEstimateDrafts(source.map((line) => ({ id: line.id, source: line.source, sourceRefId: line.sourceRefId, section: line.section, name: line.name, qty: String(line.qty), priceEUR: String(line.priceEUR), costEUR: String(line.costEUR), comment: line.comment })));
+    setEstimateSeeded(true);
+  }, [estimateLines.data, estimateSeeded, invoice.data]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedResModelQuery(resModelQuery), 500);
@@ -276,6 +331,18 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
         setReminderNote("");
       },
     });
+  };
+  const setTimingReminderOffsets = async (timing: Projects.TimingDTO, offsets: number[]) => {
+    const existing = (reminders.data ?? []).filter((reminder) => reminder.timingId === timing.id && !reminder.sentAt);
+    await Promise.all(existing.map((reminder) => deleteReminder.mutateAsync(reminder.id)));
+    await Promise.all([...new Set(offsets)].map((offsetMinutes) => createReminder.mutateAsync({
+      timingId: timing.id,
+      offsetMinutes,
+      recipientMode: "selected",
+      userIds: timing.assigneeIds,
+      title: timing.title,
+      note: `${dateTime(timing.startsAt)} – ${dateTime(timing.endsAt)}`,
+    })));
   };
 
   return (
@@ -474,6 +541,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             .filter((a) => a.status === "added" || a.status === "accepted")
             .map((a) => a.userId);
           const candidates = onProject.filter((uid) => !t.assigneeIds.includes(uid));
+          const timingReminders = (reminders.data ?? []).filter((reminder) => reminder.timingId === t.id && !reminder.sentAt);
+          const timingOffsets = timingReminders.map((reminder) => reminder.offsetMinutes);
           return (
             <Card key={t.id}>
               {editingTimingId === t.id ? (
@@ -524,7 +593,21 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   </div>
                 </div>
               )}
-              <Button block variant="secondary" disabled={t.assigneeIds.length === 0 || createPing.isPending} onClick={() => void Promise.all(t.assigneeIds.map((userId) => createPing.mutateAsync({ userId, title: t.title, message: `${dateTime(t.startsAt)} – ${dateTime(t.endsAt)}` })))}>Пинг в ТГ всем участникам</Button>
+              <div className="row row--between" style={{ marginTop: 8, alignItems: "flex-start" }}>
+                <label className="row" style={{ gap: 8 }}>
+                  <input type="checkbox" checked={timingOffsets.length > 0} disabled={t.assigneeIds.length === 0 || createReminder.isPending || deleteReminder.isPending} onChange={(e) => void setTimingReminderOffsets(t, e.target.checked ? [60] : [])} />
+                  <span>Пинг в ТГ</span>
+                </label>
+                {timingOffsets.length > 0 && <details>
+                  <summary className="btn btn--secondary">Когда напомнить · {timingOffsets.length}</summary>
+                  <div className="card stack" style={{ marginTop: 6, gap: 7 }}>
+                    {TIMING_REMINDER_OPTIONS.map((option) => <label className="row" style={{ gap: 8 }} key={option.minutes}>
+                      <input type="checkbox" checked={timingOffsets.includes(option.minutes)} onChange={(e) => void setTimingReminderOffsets(t, e.target.checked ? [...timingOffsets, option.minutes] : timingOffsets.filter((minutes) => minutes !== option.minutes))} />
+                      <span>{option.label}</span>
+                    </label>)}
+                  </div>
+                </details>}
+              </div>
               </>}
             </Card>
           );
@@ -834,7 +917,36 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
         );
         return (
           <>
-            <SectionTitle>Смета и счёт</SectionTitle>
+            <SectionTitle>Экономика проекта · €</SectionTitle>
+            <Card>
+              <div className="row row--between">
+                <div>
+                  <p className="card__title">Себестоимость и цена клиенту</p>
+                  <p className="card__subtitle">Это единственный источник строк для счёта.</p>
+                </div>
+                {canManageFinance && <Button variant="secondary" onClick={() => setEstimateDrafts((lines) => [...lines, { id: `manual-${Date.now()}`, source: "manual", sourceRefId: null, section: "Прочее", name: "", qty: "1", priceEUR: "0", costEUR: "0", comment: "" }])}>+ Позиция</Button>}
+              </div>
+              <div className="stack" style={{ marginTop: 10 }}>
+                {estimateDrafts.map((line, index) => (
+                  <div className="invoice-line" key={line.id}>
+                    <div className="row" style={{ gap: 6 }}>
+                      <Input disabled={!canManageFinance} value={line.name} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, name: e.target.value } : row))} placeholder="Наименование" />
+                      {canManageFinance && <button className="icon-btn icon-btn--danger" onClick={() => setEstimateDrafts((rows) => rows.filter((_, i) => i !== index))} aria-label="Удалить позицию">×</button>}
+                    </div>
+                    <div className="invoice-line-grid">
+                      <Input disabled={!canManageFinance} value={line.section} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, section: e.target.value } : row))} placeholder="Категория" />
+                      <Input disabled={!canManageFinance} type="number" value={line.qty} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, qty: e.target.value } : row))} placeholder="К" />
+                      <Input disabled={!canManageFinance} type="number" step="0.01" value={line.priceEUR} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, priceEUR: e.target.value } : row))} placeholder="Ц · клиенту" />
+                      <Input disabled={!canManageFinance} type="number" step="0.01" value={line.costEUR} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, costEUR: e.target.value } : row))} placeholder="СС" />
+                    </div>
+                    <Input disabled={!canManageFinance} value={line.comment} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, comment: e.target.value } : row))} placeholder="Комментарий" />
+                  </div>
+                ))}
+              </div>
+              {canManageFinance && <Button block disabled={replaceEstimateLines.isPending || estimateDrafts.some((line) => !line.name.trim() || !(Number(line.qty) > 0))} onClick={() => replaceEstimateLines.mutate(estimateDrafts.map((line) => ({
+                ...(line.id.startsWith("manual-") ? {} : { id: line.id }), source: line.source, sourceRefId: line.sourceRefId, section: line.section.trim(), name: line.name.trim(), qty: Number(line.qty), priceEUR: Number(line.priceEUR) || 0, costEUR: Number(line.costEUR) || 0, comment: line.comment,
+              })))}>Сохранить €</Button>}
+            </Card>
             <Card>
               <p className="card__title">Деньги по проекту</p>
               <div className="project-stat-grid">
@@ -896,7 +1008,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             </Card>
 
             <Button block variant="secondary" onClick={() => navigate(`/projects/${p.id}/invoice`)}>
-              Счёт
+              Сформировать счёт
             </Button>
             {invoiceVersions.length > 0 && (
               <Card>

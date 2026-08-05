@@ -122,6 +122,7 @@ interface ProjectPingRow {
 interface ProjectReminderRow {
   id: string;
   project_id: string;
+  timing_id: string | null;
   offset_minutes: number;
   recipient_mode: Projects.ProjectReminderRecipientMode;
   user_ids: string[];
@@ -270,6 +271,7 @@ const pingDTO = (r: ProjectPingRow): Projects.ProjectPingDTO => ({
 const reminderDTO = (r: ProjectReminderRow): Projects.ProjectReminderDTO => ({
   id: r.id,
   projectId: r.project_id,
+  timingId: r.timing_id,
   offsetMinutes: r.offset_minutes,
   recipientMode: r.recipient_mode,
   userIds: r.user_ids,
@@ -1253,10 +1255,11 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       const row = await one<ProjectReminderRow>(
         db,
         `INSERT INTO projects.project_reminders
-           (project_id, offset_minutes, recipient_mode, user_ids, title, note, created_by_user_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+           (project_id, timing_id, offset_minutes, recipient_mode, user_ids, title, note, created_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
         [
           input.projectId,
+          input.timingId ?? null,
           input.offsetMinutes,
           input.recipientMode ?? "project_team",
           input.userIds ?? [],
@@ -1277,10 +1280,11 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
         `SELECT r.*
          FROM projects.project_reminders r
          JOIN projects.projects p ON p.id = r.project_id
+         LEFT JOIN projects.timings t ON t.id = r.timing_id
          WHERE r.sent_at IS NULL
            AND p.status <> 'cancelled'
-           AND p.starts_at - (r.offset_minutes || ' minutes')::interval <= $1::timestamptz
-         ORDER BY p.starts_at, r.offset_minutes DESC`,
+           AND COALESCE(t.starts_at, p.starts_at) - (r.offset_minutes || ' minutes')::interval <= $1::timestamptz
+         ORDER BY COALESCE(t.starts_at, p.starts_at), r.offset_minutes DESC`,
         [nowIso]
       );
       return rows.map(reminderDTO);

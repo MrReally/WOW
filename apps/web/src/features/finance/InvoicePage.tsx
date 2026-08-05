@@ -39,12 +39,10 @@ type InvoiceLang = Finance.InvoiceLang;
 type Panel = "doc" | "lines" | "summary";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
-const num = (v: string) => (v === "" ? 0 : Number(v) || 0);
 const uid = () => Math.random().toString(36).slice(2, 9);
 const money = (n: number, cur = "EUR") => `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(n))} ${cur}`;
 const amount = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(n));
 const cleanText = (value: string) => value.trim().replace(/\s+/g, " ");
-const wizardInvoiceKey = (projectId: string) => `sever.invoice.wizardLines.${projectId}`;
 
 const DOC_LABELS: Record<InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
   EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
@@ -122,12 +120,6 @@ export function InvoicePage() {
 
   useEffect(() => {
     if (!seeded && invoice.data) {
-      let wizardLines: Line[] = [];
-      try {
-        wizardLines = JSON.parse(localStorage.getItem(wizardInvoiceKey(id)) || "[]") as Line[];
-      } catch {
-        wizardLines = [];
-      }
       setLines([...invoice.data.rentalLines.map((l) => ({
         id: l.refId,
         section: l.section,
@@ -136,7 +128,7 @@ export function InvoicePage() {
         price: l.amountEUR,
         cost: l.costEUR,
         comment: l.detail,
-      })), ...wizardLines]);
+      }))]);
       setSeeded(true);
     }
   }, [id, invoice.data, seeded]);
@@ -170,24 +162,10 @@ export function InvoicePage() {
     comment: l.comment.trim(),
   })), [lines]);
   const sections = useMemo(() => groupLines(normalizedLines), [normalizedLines]);
-  const categorySuggestions = useMemo(() => [...new Set(lines.map((line) => cleanText(line.section)).filter(Boolean))], [lines]);
 
   if (project.isLoading || invoice.isLoading) return <Loading />;
   if (invoice.error) return <ErrorState error={invoice.error} onRetry={invoice.refetch} />;
 
-  const setLine = (lineId: string, patch: Partial<Line>) => setLines((prev) => prev.map((l) => (l.id === lineId ? { ...l, ...patch } : l)));
-  const removeLine = (lineId: string) => setLines((prev) => prev.filter((l) => l.id !== lineId));
-  const addLine = (section = lines[lines.length - 1]?.section ?? "Equipment") =>
-    setLines((prev) => [...prev, { id: uid(), section, name: "", count: "1", price: 0, cost: 0, comment: "" }]);
-  const addCrew = () => {
-    setLines((prev) => {
-      const have = new Set(prev.map((l) => l.id));
-      const crew = (invoice.data?.laborLines ?? [])
-        .filter((l) => !have.has(l.refId))
-        .map((l) => ({ id: l.refId, section: l.section, name: l.label, count: String(l.qty), price: 0, cost: l.costEUR, comment: l.detail }));
-      return [...prev, ...crew];
-    });
-  };
   const saveCompany = (patch: Partial<Company>) => {
     const next = { ...company, ...patch };
     setCompanyTouched(true);
@@ -367,10 +345,7 @@ export function InvoicePage() {
 
       {panel === "lines" && (
         <>
-          <div className="row">
-            <Button block variant="secondary" onClick={() => addLine()}>+ Строка</Button>
-            <Button block variant="secondary" onClick={addCrew}>+ Команда</Button>
-          </div>
+          <p className="card__subtitle">Позиции редактируются в разделе проекта «€». Здесь формируется только отображение счёта.</p>
           {sections.map((sec) => (
             <Card key={sec.section}>
               <div className="row row--between">
@@ -379,10 +354,18 @@ export function InvoicePage() {
               </div>
               <div className="stack" style={{ marginTop: 10 }}>
                 {sec.items.map((line) => (
-                  <LineEditor key={line.id} line={line} setLine={setLine} removeLine={removeLine} categorySuggestions={categorySuggestions} />
+                  <div className="row row--between" key={line.id} style={{ gap: 10, padding: "7px 0", borderBottom: "1px solid var(--bdr)" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div>{line.name || "—"} · К {line.count}</div>
+                      {line.comment && <div className="card__subtitle">{line.comment}</div>}
+                    </div>
+                    <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <div>Ц {money(line.price)}</div>
+                      <div className="card__subtitle">СС {money(line.cost)}</div>
+                    </div>
+                  </div>
                 ))}
               </div>
-              <Button block variant="ghost" onClick={() => addLine(sec.section)}>+ сюда</Button>
             </Card>
           ))}
         </>
@@ -461,27 +444,6 @@ function groupLines(lines: Line[]) {
 
 function Metric({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return <div><div className="card__subtitle">{label}</div><div className="card__title" style={{ color: tone }}>{value}</div></div>;
-}
-
-function LineEditor({ line, setLine, removeLine, categorySuggestions }: { line: Line; setLine: (id: string, patch: Partial<Line>) => void; removeLine: (id: string) => void; categorySuggestions: string[] }) {
-  const [sectionDraft, setSectionDraft] = useState(line.section);
-  const suggestionId = `invoice-categories-${line.id}`;
-  return (
-    <div className="invoice-line">
-      <div className="row" style={{ gap: 6 }}>
-        <Input value={line.name} onChange={(e) => setLine(line.id, { name: e.target.value })} placeholder="Наименование" />
-        <button className="icon-btn icon-btn--danger" onClick={() => removeLine(line.id)} aria-label="Удалить" title="Удалить">×</button>
-      </div>
-      <div className="invoice-line-grid">
-        <Input value={sectionDraft} list={suggestionId} onChange={(e) => setSectionDraft(e.target.value)} onBlur={() => setLine(line.id, { section: sectionDraft })} placeholder="Категория" autoComplete="on" />
-        <datalist id={suggestionId}>{categorySuggestions.map((value) => <option key={value} value={value} />)}</datalist>
-        <Input value={line.count} onChange={(e) => setLine(line.id, { count: e.target.value })} placeholder="К · количество" />
-        <Input type="number" step="0.01" value={line.price} onChange={(e) => setLine(line.id, { price: num(e.target.value) })} placeholder="Ц · цена" />
-        <Input type="number" step="0.01" value={line.cost} onChange={(e) => setLine(line.id, { cost: num(e.target.value) })} placeholder="СС · себестоимость" />
-      </div>
-      <Input value={line.comment} onChange={(e) => setLine(line.id, { comment: e.target.value })} placeholder="Комментарий" />
-    </div>
-  );
 }
 
 function InvoiceTopbar({ lang, currency, onLang, onCurrency, onBack, onPdf, pdfBusy, canConvert }: { lang: InvoiceLang; currency: Currency; onLang: (v: InvoiceLang) => void; onCurrency: (v: Currency) => void; onBack: () => void; onPdf: () => void; pdfBusy: boolean; canConvert: boolean }) {

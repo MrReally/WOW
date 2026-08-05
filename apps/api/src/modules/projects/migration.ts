@@ -158,6 +158,9 @@ CREATE TABLE IF NOT EXISTS projects.project_reminders (
   created_at         timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE projects.project_reminders ADD COLUMN IF NOT EXISTS title text NOT NULL DEFAULT 'Напоминание о мероприятии';
+ALTER TABLE projects.project_reminders ADD COLUMN IF NOT EXISTS timing_id uuid REFERENCES projects.timings(id) ON DELETE CASCADE;
+ALTER TABLE projects.project_reminders DROP CONSTRAINT IF EXISTS project_reminders_offset_minutes_check;
+ALTER TABLE projects.project_reminders ADD CONSTRAINT project_reminders_offset_minutes_check CHECK (offset_minutes >= 0);
 CREATE INDEX IF NOT EXISTS project_reminders_project_idx ON projects.project_reminders(project_id, created_at);
 CREATE INDEX IF NOT EXISTS project_reminders_due_idx ON projects.project_reminders(sent_at, offset_minutes);
 

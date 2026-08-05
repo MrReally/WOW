@@ -45,6 +45,29 @@ export function useInvoiceVersions(projectId: string, enabled = true) {
   });
 }
 
+export function useProjectEstimateLines(projectId: string, enabled = true) {
+  return useQuery({
+    enabled: enabled && !!projectId,
+    queryKey: ["projects", "estimate-lines", projectId],
+    queryFn: () => api.get<Finance.ProjectEstimateLineDTO[]>(`/api/projects/${projectId}/estimate-lines`),
+  });
+}
+
+export function useReplaceProjectEstimateLines(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (lines: Finance.SaveProjectEstimateLineInput[]) =>
+      api.put<Finance.ProjectEstimateLineDTO[]>(`/api/projects/${projectId}/estimate-lines`, { lines }),
+    meta: { successMessage: "Экономика проекта сохранена" },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects", "estimate-lines", projectId] });
+      qc.invalidateQueries({ queryKey: ["projects", "invoice", projectId] });
+      qc.invalidateQueries({ queryKey: ["finance"] });
+      qc.invalidateQueries({ queryKey: ["apex"] });
+    },
+  });
+}
+
 export function useCreateInvoiceVersion(projectId: string) {
   const qc = useQueryClient();
   return useMutation({

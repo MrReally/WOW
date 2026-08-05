@@ -27,7 +27,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
     const project = await deps.projects.getProject(projectId);
     if (!project) throw NotFound("project", projectId);
 
-    const [reservations, assignments, projectRoles, models, types, txs, contractorItems] = await Promise.all([
+    const [reservations, assignments, projectRoles, models, types, txs, contractorItems, estimateLines] = await Promise.all([
       deps.projects.listReservations(projectId),
       deps.projects.listAssignments(projectId),
       deps.projects.listProjectRoles(projectId),
@@ -35,6 +35,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
       deps.equipment.listTypes(),
       deps.finance.listTransactions({ projectId }),
       deps.projects.listContractorItems(projectId),
+      deps.finance.listProjectEstimateLines(projectId),
     ]);
     const modelMap = new Map(models.map((m) => [m.id, m]));
     const typeName = new Map(types.map((t) => [t.id, t.name]));
@@ -68,8 +69,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
       amountEUR: round2(it.priceEUR * it.qty),
       costEUR: round2(it.costEUR * it.qty),
     }));
-    const rentalLines = [...ownLines, ...contractorLines];
-    const rentalEUR = round2(rentalLines.reduce((s, l) => s + l.amountEUR, 0));
+    const derivedRentalLines = [...ownLines, ...contractorLines];
     const contractorCostEUR = round2(contractorLines.reduce((s, l) => s + l.costEUR, 0));
 
     const laborLines: Finance.InvoiceLineDTO[] = projectRoles.length > 0
@@ -102,6 +102,34 @@ export function createBillingService(deps: BillingDeps): BillingService {
             costEUR: round2(a.rateEUR ?? 0),
           }));
     const laborEUR = round2(laborLines.reduce((s, l) => s + l.amountEUR, 0));
+    const estimateBySource = new Map(estimateLines.filter((line) => line.sourceRefId).map((line) => [line.sourceRefId!, line]));
+    const effectiveDerived = [...derivedRentalLines, ...laborLines].map((derived) => {
+      const saved = estimateBySource.get(derived.refId);
+      return saved ? {
+        refId: saved.id,
+        section: saved.section,
+        label: saved.name,
+        detail: saved.comment,
+        qty: saved.qty,
+        unitEUR: saved.qty ? round2(saved.priceEUR / saved.qty) : saved.priceEUR,
+        periods: 1,
+        amountEUR: saved.priceEUR,
+        costEUR: saved.costEUR,
+      } : derived;
+    });
+    const manualLines: Finance.InvoiceLineDTO[] = estimateLines.filter((line) => line.source === "manual").map((line) => ({
+      refId: line.id,
+      section: line.section,
+      label: line.name,
+      detail: line.comment,
+      qty: line.qty,
+      unitEUR: line.qty ? round2(line.priceEUR / line.qty) : line.priceEUR,
+      periods: 1,
+      amountEUR: line.priceEUR,
+      costEUR: line.costEUR,
+    }));
+    const rentalLines: Finance.InvoiceLineDTO[] = estimateLines.length > 0 ? [...effectiveDerived, ...manualLines] : derivedRentalLines;
+    const rentalEUR = round2(rentalLines.reduce((sum, line) => sum + line.amountEUR, 0));
 
     let paidEUR = 0;
     let recordedIncomeEUR = 0;
@@ -116,7 +144,10 @@ export function createBillingService(deps: BillingDeps): BillingService {
     recordedExpenseEUR = round2(recordedExpenseEUR);
 
     const invoiceEUR = rentalEUR;
-    const costEUR = round2(laborEUR + recordedExpenseEUR + contractorCostEUR);
+    const plannedCostEUR = estimateLines.length > 0
+      ? round2(rentalLines.reduce((sum, line) => sum + line.costEUR, 0))
+      : round2(laborEUR + contractorCostEUR);
+    const costEUR = round2(plannedCostEUR + recordedExpenseEUR);
 
     return {
       projectId,
