@@ -661,7 +661,7 @@ describe("Tech pickup/return → некомплект", () => {
 
     // Add contractor (subrent) gear: billed to the client, costs us money owed.
     const contractor = await equipment.service.createContractor({ name: `Sub ${Date.now()}` });
-    await projects.service.addContractorItem({ projectId: project.id, contractorId: contractor.id, name: "Sub MH", qty: 2, priceEUR: 80, costEUR: 50 });
+    const contractorItem = await projects.service.addContractorItem({ projectId: project.id, contractorId: contractor.id, name: "Sub MH", qty: 2, priceEUR: 80, costEUR: 50 });
     const inv2 = await billing.projectInvoice(project.id);
     expect(inv2.rentalEUR).toBe(560); // 400 + 80×2 contractor
     expect(inv2.contractorCostEUR).toBe(100); // 50×2
@@ -669,6 +669,11 @@ describe("Tech pickup/return → некомплект", () => {
     expect(inv2.profitEUR).toBe(310); // 560 − 250
     const owed = await projects.service.contractorDebts();
     expect(owed.find((d) => d.contractorId === contractor.id)?.debtEUR).toBe(100);
+    expect((await projects.service.setContractorItemsBooked(project.id, contractor.id, true))[0]?.booked).toBe(true);
+    expect((await projects.service.returnContractorItems(project.id, contractor.id))[0]?.returnedAt).not.toBeNull();
+    expect((await projects.service.setContractorItemsPaid(project.id, contractor.id, true))[0]?.paidAt).not.toBeNull();
+    expect((await projects.service.contractorDebts()).find((d) => d.contractorId === contractor.id)).toBeUndefined();
+    expect((await projects.service.listContractorItems(project.id)).find((item) => item.id === contractorItem.id)?.paidAt).not.toBeNull();
   });
 
   it("edits a unit assignment and the shared model/type data", async () => {

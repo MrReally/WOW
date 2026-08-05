@@ -900,7 +900,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       {currentTab === "contractors" && (canReserve || (invoice.data && (invoice.data.contractorCostEUR > 0))) && (
         <>
           <SectionTitle>{t("contractors.title")}</SectionTitle>
-          <ContractorEquipment projectId={id} canManage={canReserve} />
+          <ContractorEquipment projectId={id} projectEndsAt={p.endsAt} canManage={canReserve} canManageFinance={canManageFinance} />
         </>
       )}
 

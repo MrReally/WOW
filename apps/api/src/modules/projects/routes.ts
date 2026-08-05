@@ -87,6 +87,8 @@ const contractorItemSchema = z.object({
 });
 const updateContractorItemSchema = contractorItemSchema.omit({ projectId: true }).partial().extend({ booked: z.boolean().optional() });
 const contractorBookedSchema = z.object({ projectId: z.string().uuid(), contractorId: z.string().uuid(), booked: z.boolean() });
+const contractorGroupSchema = z.object({ projectId: z.string().uuid(), contractorId: z.string().uuid() });
+const contractorPaidSchema = contractorGroupSchema.extend({ paid: z.boolean() });
 const projectRoleSchema = z.object({
   projectId: z.string().uuid(),
   title: z.string().trim().min(1),
@@ -445,6 +447,18 @@ export function registerProjectsRoutes(
     requirePermission(auth, "projects.reservation.manage");
     const body = contractorBookedSchema.parse(req.body);
     return service.setContractorItemsBooked(body.projectId, body.contractorId, body.booked);
+  });
+  app.post("/api/contractor-items/return-all", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.reservation.manage");
+    const body = contractorGroupSchema.parse(req.body);
+    return service.returnContractorItems(body.projectId, body.contractorId);
+  });
+  app.put("/api/contractor-items/paid", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.manage");
+    const body = contractorPaidSchema.parse(req.body);
+    return service.setContractorItemsPaid(body.projectId, body.contractorId, body.paid);
   });
   app.delete<{ Params: { id: string } }>("/api/contractor-items/:id", async (req) => {
     const auth = await ctx.auth(req);

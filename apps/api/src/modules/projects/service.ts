@@ -143,6 +143,7 @@ interface ContractorItemRow {
   cost_eur: string;
   note: string | null;
   returned_at: Date | null;
+  paid_at: Date | null;
   booked: boolean;
   created_at: Date;
 }
@@ -292,6 +293,7 @@ const contractorItemDTO = (r: ContractorItemRow): Projects.ContractorItemDTO => 
   costEUR: Number(r.cost_eur),
   note: r.note,
   returnedAt: r.returned_at ? r.returned_at.toISOString() : null,
+  paidAt: r.paid_at ? r.paid_at.toISOString() : null,
   booked: r.booked ?? false,
   createdAt: r.created_at.toISOString(),
 });
@@ -1354,6 +1356,22 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       );
       return rows.map(contractorItemDTO);
     },
+    async returnContractorItems(projectId, contractorId) {
+      const rows = await query<ContractorItemRow>(
+        db,
+        `UPDATE projects.contractor_items SET returned_at=COALESCE(returned_at, now()) WHERE project_id=$1 AND contractor_id=$2 AND kind='equipment' RETURNING *`,
+        [projectId, contractorId]
+      );
+      return rows.map(contractorItemDTO);
+    },
+    async setContractorItemsPaid(projectId, contractorId, paid) {
+      const rows = await query<ContractorItemRow>(
+        db,
+        `UPDATE projects.contractor_items SET paid_at=CASE WHEN $3 THEN COALESCE(paid_at, now()) ELSE NULL END WHERE project_id=$1 AND contractor_id=$2 RETURNING *`,
+        [projectId, contractorId, paid]
+      );
+      return rows.map(contractorItemDTO);
+    },
     async returnContractorItem(id) {
       const row = await one<ContractorItemRow>(
         db,
@@ -1370,7 +1388,7 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       const rows = await query<{ contractor_id: string; debt: string }>(
         db,
         `SELECT contractor_id, COALESCE(SUM(cost_eur * qty),0)::text AS debt
-         FROM projects.contractor_items GROUP BY contractor_id`
+         FROM projects.contractor_items WHERE paid_at IS NULL GROUP BY contractor_id`
       );
       return rows
         .map((r) => ({ contractorId: r.contractor_id, debtEUR: Math.round(Number(r.debt) * 100) / 100 }))

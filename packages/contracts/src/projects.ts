@@ -392,6 +392,8 @@ export interface ContractorItemDTO {
   note: string | null;
   /** Null means we still need to return this rented contractor gear. */
   returnedAt: ISODateTime | null;
+  /** Null means the contractor cost is still payable. */
+  paidAt: ISODateTime | null;
   /** Operational booking confirmation; internal and never printed for a client. */
   booked: boolean;
   createdAt: ISODateTime;
@@ -492,6 +494,8 @@ export interface ProjectsService {
   addContractorItem(input: AddContractorItemInput): Promise<ContractorItemDTO>;
   updateContractorItem(id: ID, input: UpdateContractorItemInput): Promise<ContractorItemDTO>;
   setContractorItemsBooked(projectId: ID, contractorId: ID, booked: boolean): Promise<ContractorItemDTO[]>;
+  returnContractorItems(projectId: ID, contractorId: ID): Promise<ContractorItemDTO[]>;
+  setContractorItemsPaid(projectId: ID, contractorId: ID, paid: boolean): Promise<ContractorItemDTO[]>;
   returnContractorItem(id: ID): Promise<ContractorItemDTO>;
   removeContractorItem(id: ID): Promise<void>;
   /** Owed-to-contractor totals (cost × qty) grouped by contractor. */

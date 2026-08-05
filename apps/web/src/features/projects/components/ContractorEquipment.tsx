@@ -1,26 +1,45 @@
 import { useState } from "react";
 import type { Projects } from "@sever/contracts";
-import { Card, Button, Field, Input, Select, EmptyState } from "../../../ui-kit/index.ts";
+import { Card, Button, Field, Input, Select, EmptyState, StatusBadge } from "../../../ui-kit/index.ts";
 import { useI18n } from "../../../app/i18n.tsx";
-import { useContractorItems, useContractors, useContractorItemHistory, useAddContractorItem, useUpdateContractorItem, useSetContractorItemsBooked, useRemoveContractorItem, useReturnContractorItem, useCreateContractor } from "../hooks.ts";
+import {
+  useContractorItems,
+  useContractors,
+  useContractorItemHistory,
+  useAddContractorItem,
+  useUpdateContractorItem,
+  useSetContractorItemsBooked,
+  useReturnContractorItems,
+  useSetContractorItemsPaid,
+  useRemoveContractorItem,
+  useReturnContractorItem,
+  useCreateContractor,
+} from "../hooks.ts";
 
-const ITEM_KINDS: ("equipment" | "delivery" | "setup")[] = ["equipment", "delivery", "setup"];
+const ITEM_KINDS: Projects.ContractorItemKind[] = ["equipment", "delivery", "setup"];
 
-// Subrent gear on a project: external equipment that isn't in our warehouse.
-// Each item has a client price and our cost to the contractor (source).
-export function ContractorEquipment({ projectId, canManage }: { projectId: string; canManage: boolean }) {
+interface Props {
+  projectId: string;
+  projectEndsAt: string;
+  canManage: boolean;
+  canManageFinance: boolean;
+}
+
+export function ContractorEquipment({ projectId, projectEndsAt, canManage, canManageFinance }: Props) {
   const { t, eur, dateTime } = useI18n();
   const items = useContractorItems(projectId);
   const contractors = useContractors();
   const add = useAddContractorItem();
   const update = useUpdateContractorItem();
   const setAllBooked = useSetContractorItemsBooked();
+  const returnAll = useReturnContractorItems();
+  const setAllPaid = useSetContractorItemsPaid();
   const remove = useRemoveContractorItem();
   const markReturned = useReturnContractorItem();
   const createContractor = useCreateContractor();
 
   const [contractorId, setContractorId] = useState("");
-  const [kind, setKind] = useState<"equipment" | "delivery" | "setup">("equipment");
+  const [kind, setKind] = useState<Projects.ContractorItemKind>("equipment");
   const [name, setName] = useState("");
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("");
@@ -31,172 +50,145 @@ export function ContractorEquipment({ projectId, canManage }: { projectId: strin
   const [editing, setEditing] = useState<Projects.ContractorItemDTO | null>(null);
 
   const list = contractors.data ?? [];
-  const contractorName = (id: string) => list.find((c) => c.id === id)?.name ?? "—";
-  const sel = contractorId || list[0]?.id || "";
-  const history = useContractorItemHistory(sel);
-  const qtyNum = Number(qty) || 1;
-  const priceNum = price ? Number(price) || 0 : 0;
-  const costNum = cost ? Number(cost) || 0 : 0;
-  const clientTotal = priceNum * qtyNum;
-  const costTotal = costNum * qtyNum;
-  const marginTotal = clientTotal - costTotal;
-  const kindName = (value: typeof kind) =>
+  const rows = items.data ?? [];
+  const contractorName = (id: string) => list.find((contractor) => contractor.id === id)?.name ?? "—";
+  const selectedContractorId = contractorId || list[0]?.id || "";
+  const history = useContractorItemHistory(selectedContractorId);
+  const kindName = (value: Projects.ContractorItemKind) =>
     value === "delivery" ? t("contractors.kindDelivery") : value === "setup" ? t("contractors.kindSetup") : t("contractors.kindEquipment");
-  const itemName = name.trim() || (kind === "delivery" || kind === "setup" ? kindName(kind) : "");
+  const itemName = name.trim() || (kind === "equipment" ? "" : kindName(kind));
+  const contractorIds = [...new Set(rows.map((item) => item.contractorId))];
 
-  const submit = () =>
-    add.mutate(
-      {
-        projectId,
-        contractorId: sel,
-        kind,
-        name: itemName,
-        qty: Number(qty) || 1,
-        priceEUR: priceNum,
-        costEUR: costNum,
-        note: note.trim() || null,
-      },
-      { onSuccess: () => { setKind("equipment"); setName(""); setQty("1"); setPrice(""); setCost(""); setNote(""); } }
-    );
-  const submitContractor = () =>
-    createContractor.mutate(
-      { name: newContractorName.trim(), contacts: newContractorContacts.trim() || null },
-      {
-        onSuccess: (c) => {
-          setContractorId(c.id);
-          setNewContractorName("");
-          setNewContractorContacts("");
-        },
-      }
-    );
+  const submit = () => add.mutate({
+    projectId,
+    contractorId: selectedContractorId,
+    kind,
+    name: itemName,
+    qty: Number(qty) || 1,
+    priceEUR: Number(price) || 0,
+    costEUR: Number(cost) || 0,
+    note: note.trim() || null,
+  }, { onSuccess: () => { setKind("equipment"); setName(""); setQty("1"); setPrice(""); setCost(""); setNote(""); } });
 
   return (
     <div className="stack">
-      {(items.data ?? []).length === 0 ? (
-        <EmptyState title={t("contractors.empty")} />
-      ) : (
-        (items.data ?? []).map((it) => (
-          <Card key={it.id}>
-            {editing?.id === it.id ? (
-              <div className="stack" style={{ gap: 8 }}>
-                <Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Позиция" />
-                <div className="row">
-                  <Input type="number" value={editing.qty} onChange={(e) => setEditing({ ...editing, qty: Number(e.target.value) || 1 })} placeholder="К · количество" />
-                  <Input type="number" value={editing.priceEUR} onChange={(e) => setEditing({ ...editing, priceEUR: Number(e.target.value) || 0 })} placeholder="Ц · цена" />
-                  <Input type="number" value={editing.costEUR} onChange={(e) => setEditing({ ...editing, costEUR: Number(e.target.value) || 0 })} placeholder="СС · себестоимость" />
-                </div>
-                <Input value={editing.note ?? ""} onChange={(e) => setEditing({ ...editing, note: e.target.value || null })} placeholder="Комментарий" />
-                <div className="row">
-                  <Button block disabled={!editing.name.trim() || update.isPending} onClick={() => update.mutate({ id: editing.id, input: { name: editing.name.trim(), qty: editing.qty, priceEUR: editing.priceEUR, costEUR: editing.costEUR, note: editing.note } }, { onSuccess: () => setEditing(null) })}>Сохранить</Button>
-                  <Button block variant="ghost" onClick={() => setEditing(null)}>Отмена</Button>
-                </div>
-              </div>
-            ) : (<>
-            <div className="row row--between">
-              <p className="card__title">{it.name} × {it.qty}</p>
-              {canManage && (
-                <div className="row" style={{ gap: 6 }}>
-                  <Button variant="ghost" onClick={() => setEditing(it)}>Изменить</Button>
-                  {it.kind === "equipment" && !it.returnedAt && <Button variant="secondary" onClick={() => markReturned.mutate(it.id)}>{t("contractors.return")}</Button>}
-                  <Button variant="ghost" onClick={() => remove.mutate(it.id)}>{t("common.close")}</Button>
-                </div>
-              )}
-            </div>
-            <p className="card__subtitle" style={{ marginTop: 2 }}>
-              {kindName(it.kind)} · {contractorName(it.contractorId)} · {t("contractors.clientPrice")} {eur(it.priceEUR * it.qty)} · {t("common.cost")} {eur(it.costEUR * it.qty)}
-              {" · "}{t("common.margin")} {eur((it.priceEUR - it.costEUR) * it.qty)}
-              {it.note ? ` · ${it.note}` : ""}
-            </p>
-            <p className="card__subtitle" style={{ marginTop: 2 }}>
-              {it.kind !== "equipment" ? t("contractors.noReturnNeeded") : it.returnedAt ? `${t("common.returned")} ${dateTime(it.returnedAt)}` : t("contractors.returnDue")}
-            </p>
-            <p className="card__subtitle" style={{ marginTop: 2 }}>
-              {t("contractors.clientPrice")} / unit {eur(it.priceEUR)} · {t("common.cost")} / unit {eur(it.costEUR)}
-            </p>
-            <label className="row" style={{ gap: 8, marginTop: 8 }}>
-              <input type="checkbox" checked={it.booked} disabled={!canManage} onChange={(e) => update.mutate({ id: it.id, input: { booked: e.target.checked } })} />
-              <span>Забронирован</span>
-            </label>
-            </>)}
-          </Card>
-        ))
-      )}
+      {rows.length === 0 ? <EmptyState title={t("contractors.empty")} /> : contractorIds.map((id) => {
+        const group = rows.filter((item) => item.contractorId === id);
+        const allBooked = group.every((item) => item.booked);
+        const someBooked = group.some((item) => item.booked);
+        const equipment = group.filter((item) => item.kind === "equipment");
+        const outstandingEquipment = equipment.filter((item) => !item.returnedAt);
+        const allPaid = group.every((item) => item.paidAt || item.costEUR * item.qty === 0);
+        const afterProject = Date.now() > Date.parse(projectEndsAt);
+        const status = allBooked && outstandingEquipment.length === 0 && allPaid
+          ? { label: "Закрыто", tone: "ok" as const }
+          : afterProject && outstandingEquipment.length > 0
+          ? { label: "Нужно вернуть", tone: "warn" as const }
+          : someBooked && !allBooked
+          ? { label: "Частично забронировано", tone: "warn" as const }
+          : allBooked
+          ? { label: "Забронировано", tone: "info" as const }
+          : { label: "Черновик", tone: "neutral" as const };
+        const clientTotal = group.reduce((sum, item) => sum + item.priceEUR * item.qty, 0);
+        const costTotal = group.reduce((sum, item) => sum + item.costEUR * item.qty, 0);
 
-      {canManage && [...new Set((items.data ?? []).map((it) => it.contractorId))].map((id) => {
-        const group = (items.data ?? []).filter((it) => it.contractorId === id);
-        const allBooked = group.length > 0 && group.every((it) => it.booked);
-        return <label key={id} className="row row--between card" style={{ gap: 8 }}>
-          <span>Все позиции · {contractorName(id)}</span>
-          <input type="checkbox" checked={allBooked} onChange={(e) => setAllBooked.mutate({ projectId, contractorId: id, booked: e.target.checked })} />
-        </label>;
+        return (
+          <Card key={id}>
+            <div className="row row--between">
+              <div>
+                <p className="card__title">{contractorName(id)}</p>
+                <p className="card__subtitle">СС {eur(costTotal)} · клиенту {eur(clientTotal)} · маржа {eur(clientTotal - costTotal)}</p>
+              </div>
+              <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+            </div>
+
+            <div className="stack" style={{ marginTop: 10, gap: 6 }}>
+              {group.map((item) => editing?.id === item.id ? (
+                <div className="invoice-line" key={item.id}>
+                  <Input value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} placeholder="Позиция" />
+                  <div className="invoice-line-grid">
+                    <Input type="number" value={editing.qty} onChange={(event) => setEditing({ ...editing, qty: Number(event.target.value) || 1 })} placeholder="К" />
+                    <Input type="number" value={editing.costEUR} onChange={(event) => setEditing({ ...editing, costEUR: Number(event.target.value) || 0 })} placeholder="СС" />
+                    <Input type="number" value={editing.priceEUR} onChange={(event) => setEditing({ ...editing, priceEUR: Number(event.target.value) || 0 })} placeholder="Ц" />
+                  </div>
+                  <Select value={editing.kind} onChange={(event) => setEditing({ ...editing, kind: event.target.value as Projects.ContractorItemKind })} options={ITEM_KINDS.map((value) => ({ value, label: kindName(value) }))} />
+                  <Input value={editing.note ?? ""} onChange={(event) => setEditing({ ...editing, note: event.target.value || null })} placeholder="Комментарий" />
+                  <div className="row">
+                    <Button block disabled={!editing.name.trim() || update.isPending} onClick={() => update.mutate({ id: editing.id, input: { name: editing.name.trim(), kind: editing.kind, qty: editing.qty, priceEUR: editing.priceEUR, costEUR: editing.costEUR, note: editing.note } }, { onSuccess: () => setEditing(null) })}>Сохранить</Button>
+                    <Button block variant="ghost" onClick={() => setEditing(null)}>Отмена</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="lrow" key={item.id} style={{ paddingLeft: 0, paddingRight: 0 }}>
+                  <label className="row" style={{ gap: 8, flex: 1, minWidth: 0 }}>
+                    <input type="checkbox" checked={item.booked} disabled={!canManage} onChange={(event) => update.mutate({ id: item.id, input: { booked: event.target.checked } })} />
+                    <span style={{ minWidth: 0 }}>
+                      <span className="lrow__title">{item.name}</span>
+                      <span className="lrow__detail">К {item.qty} · СС {eur(item.costEUR * item.qty)} · Ц {eur(item.priceEUR * item.qty)}</span>
+                    </span>
+                  </label>
+                  <details>
+                    <summary className="btn btn--ghost">Подробнее</summary>
+                    <div className="stack" style={{ marginTop: 6, gap: 6 }}>
+                      <span className="card__subtitle">{kindName(item.kind)}{item.note ? ` · ${item.note}` : ""}</span>
+                      {item.kind === "equipment" && <span className="card__subtitle">{item.returnedAt ? `Возвращено ${dateTime(item.returnedAt)}` : "Ожидает возврата"}</span>}
+                      <span className="card__subtitle">{item.paidAt ? `Оплачено ${dateTime(item.paidAt)}` : "Не оплачено"}</span>
+                      {canManage && <div className="row">
+                        <Button variant="ghost" onClick={() => setEditing(item)}>Изменить</Button>
+                        {item.kind === "equipment" && !item.returnedAt && <Button variant="secondary" onClick={() => markReturned.mutate(item.id)}>Вернуть</Button>}
+                        <Button variant="ghost" onClick={() => remove.mutate(item.id)}>Удалить</Button>
+                      </div>}
+                    </div>
+                  </details>
+                </div>
+              ))}
+            </div>
+
+            {(canManage || canManageFinance) && <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
+              {canManage && <Button variant={allBooked ? "ghost" : "primary"} onClick={() => setAllBooked.mutate({ projectId, contractorId: id, booked: !allBooked })}>{allBooked ? "Снять бронь" : "Забронировать всё"}</Button>}
+              {canManage && outstandingEquipment.length > 0 && <Button variant="secondary" onClick={() => returnAll.mutate({ projectId, contractorId: id })}>Вернуть всё оборудование</Button>}
+              {canManageFinance && <Button variant={allPaid ? "ghost" : "secondary"} onClick={() => setAllPaid.mutate({ projectId, contractorId: id, paid: !allPaid })}>{allPaid ? "Отменить оплату" : "Оплачено"}</Button>}
+            </div>}
+          </Card>
+        );
       })}
 
-      {canManage && (
-        <Card>
-          {list.length > 0 && (
-            <Field label={t("contractors.title")}>
-              <Select value={sel} onChange={(e) => setContractorId(e.target.value)} options={list.map((c) => ({ value: c.id, label: c.name }))} />
-            </Field>
-          )}
-          <div className="row">
-            <Field label={t("contractors.new")}>
-              <Input value={newContractorName} onChange={(e) => setNewContractorName(e.target.value)} placeholder="Название компании / человека" />
-            </Field>
-            <Field label={t("common.contacts")}>
-              <Input value={newContractorContacts} onChange={(e) => setNewContractorContacts(e.target.value)} placeholder="телефон, Telegram" />
-            </Field>
+      {canManage && <Card>
+        <div className="row row--between">
+          <div><p className="card__title">Добавить позицию</p><p className="card__subtitle">Подрядчик → позиция → бронь</p></div>
+        </div>
+        {list.length > 0 && <Field label="Подрядчик"><Select value={selectedContractorId} onChange={(event) => setContractorId(event.target.value)} options={list.map((contractor) => ({ value: contractor.id, label: contractor.name }))} /></Field>}
+        <Field label="Наименование"><Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Moving head X" /></Field>
+        <div className="row">
+          <Field label="К"><Input type="number" value={qty} onChange={(event) => setQty(event.target.value)} /></Field>
+          <Field label="СС, €"><Input type="number" value={cost} onChange={(event) => setCost(event.target.value)} /></Field>
+          <Field label="Ц, €"><Input type="number" value={price} onChange={(event) => setPrice(event.target.value)} /></Field>
+        </div>
+        <details>
+          <summary className="btn btn--ghost">Подробнее</summary>
+          <div className="stack" style={{ marginTop: 8 }}>
+            <Field label="Тип"><Select value={kind} onChange={(event) => setKind(event.target.value as Projects.ContractorItemKind)} options={ITEM_KINDS.map((value) => ({ value, label: kindName(value) }))} /></Field>
+            <Field label="Комментарий"><Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Комплект, питание, условия" /></Field>
           </div>
-          <Button
-            block
-            variant="secondary"
-            disabled={!newContractorName.trim() || createContractor.isPending}
-            onClick={submitContractor}
-          >
-            {t("contractors.add")}
-          </Button>
-          <Field label={t("common.type")}>
-            <Select
-              value={kind}
-              onChange={(e) => {
-                const next = e.target.value as "equipment" | "delivery" | "setup";
-                setKind(next);
-                if (next !== "equipment") setQty("1");
-              }}
-              options={ITEM_KINDS.map((value) => ({ value, label: kindName(value) }))}
-            />
-          </Field>
-          <Field label={t("common.name")}><Input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "equipment" ? "Moving head X" : kindName(kind)} /></Field>
-          <div className="row">
-            <Field label="Кол-во"><Input type="number" value={qty} onChange={(e) => setQty(e.target.value)} disabled={kind !== "equipment"} /></Field>
-            <Field label={`${t("contractors.clientPrice")}, €`}><Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} /></Field>
-            <Field label={`${t("common.cost")}, €`}><Input type="number" value={cost} onChange={(e) => setCost(e.target.value)} /></Field>
+        </details>
+        <Button block disabled={!selectedContractorId || !itemName || add.isPending} onClick={submit}>Добавить</Button>
+
+        <details style={{ marginTop: 8 }}>
+          <summary className="btn btn--ghost">+ Новый подрядчик</summary>
+          <div className="stack" style={{ marginTop: 8 }}>
+            <Input value={newContractorName} onChange={(event) => setNewContractorName(event.target.value)} placeholder="Название компании / человека" />
+            <Input value={newContractorContacts} onChange={(event) => setNewContractorContacts(event.target.value)} placeholder="Телефон, Telegram" />
+            <Button variant="secondary" disabled={!newContractorName.trim() || createContractor.isPending} onClick={() => createContractor.mutate({ name: newContractorName.trim(), contacts: newContractorContacts.trim() || null }, { onSuccess: (contractor) => { setContractorId(contractor.id); setNewContractorName(""); setNewContractorContacts(""); } })}>Добавить подрядчика</Button>
           </div>
-          <Field label={t("common.note")}><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Power, connectors, kit..." /></Field>
-          <p className="card__subtitle" style={{ margin: "4px 0 8px" }}>
-            {t("common.total")}: {t("contractors.clientPrice")} {eur(clientTotal)} · {t("contractors.vendorCost")} {eur(costTotal)} · {t("common.margin")} {eur(marginTotal)}
-          </p>
-          <Button block disabled={!sel || !itemName || add.isPending} onClick={submit}>{t("common.add")}</Button>
-          {(history.data ?? []).length > 0 && (
-            <div style={{ marginTop: 12 }}>
-              <p className="card__title">{t("contractors.prices")}</p>
-              <div className="stack" style={{ marginTop: 8 }}>
-                {(history.data ?? []).slice(0, 8).map((h) => (
-                  <div key={h.id} className="lrow" style={{ paddingLeft: 0, paddingRight: 0 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="lrow__title">{h.name} × {h.qty}</div>
-                      <div className="lrow__detail">{kindName(h.kind)} · {h.note || t("common.noNote")}</div>
-                    </div>
-                    <span className="card__subtitle" style={{ textAlign: "right" }}>
-                      {t("contractors.clientPrice")} {eur(h.priceEUR * h.qty)}<br />
-                      {t("common.cost")} {eur(h.costEUR * h.qty)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </Card>
-      )}
+        </details>
+
+        {(history.data ?? []).length > 0 && <details style={{ marginTop: 8 }}>
+          <summary className="btn btn--ghost">История цен</summary>
+          <div className="stack" style={{ marginTop: 8 }}>
+            {(history.data ?? []).slice(0, 8).map((item) => <div className="lrow" key={item.id}><span>{item.name} × {item.qty}</span><span className="card__subtitle">Ц {eur(item.priceEUR * item.qty)} · СС {eur(item.costEUR * item.qty)}</span></div>)}
+          </div>
+        </details>}
+      </Card>}
     </div>
   );
 }

@@ -218,6 +218,7 @@ CREATE TABLE IF NOT EXISTS projects.contractor_items (
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS returned_at timestamptz;
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'equipment';
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS booked boolean NOT NULL DEFAULT false;
+ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS paid_at timestamptz;
 ALTER TABLE projects.contractor_items DROP CONSTRAINT IF EXISTS contractor_items_kind_check;
 ALTER TABLE projects.contractor_items ADD CONSTRAINT contractor_items_kind_check CHECK (kind IN ('equipment','delivery','setup'));
 CREATE INDEX IF NOT EXISTS contractor_items_project_idx ON projects.contractor_items(project_id);

@@ -246,6 +246,28 @@ export function useSetContractorItemsBooked() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["projects", "contractor-items"] }),
   });
 }
+export function useReturnContractorItems() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { projectId: string; contractorId: string }) =>
+      api.post<Projects.ContractorItemDTO[]>("/api/contractor-items/return-all", input),
+    meta: { successMessage: "Оборудование подрядчика возвращено" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects", "contractor-items"] }),
+  });
+}
+export function useSetContractorItemsPaid() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { projectId: string; contractorId: string; paid: boolean }) =>
+      api.put<Projects.ContractorItemDTO[]>("/api/contractor-items/paid", input),
+    meta: { successMessage: "Статус оплаты обновлён" },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects", "contractor-items"] });
+      qc.invalidateQueries({ queryKey: ["projects", "contractor-debts"] });
+      qc.invalidateQueries({ queryKey: ["finance"] });
+    },
+  });
+}
 export function useRemoveContractorItem() {
   const qc = useQueryClient();
   return useMutation({
