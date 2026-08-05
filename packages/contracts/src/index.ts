@@ -9,6 +9,7 @@ export * as Notifications from "./notifications.js";
 export * as Catalog from "./catalog.js";
 export * as Operations from "./operations.js";
 export * as Audit from "./audit.js";
+export * as Transport from "./transport.js";
 
 // Runtime constants surfaced at top level for convenience (route validation).
 export { UNIT_STATUSES } from "./equipment.js";

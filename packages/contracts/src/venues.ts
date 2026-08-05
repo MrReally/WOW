@@ -8,6 +8,15 @@ export interface VenueDTO {
   /** Stage area in metres, used as a default canvas size for plans. */
   widthM: number | null;
   depthM: number | null;
+  /** A place can be used as a project venue, a warehouse, or both. */
+  isVenue: boolean;
+  isWarehouse: boolean;
+  contacts: string | null;
+  workingHours: string | null;
+  googlePlaceId: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  addressVerified: boolean;
   createdAt: ISODateTime;
 }
 
@@ -17,6 +26,26 @@ export interface CreateVenueInput {
   notes?: string | null;
   widthM?: number | null;
   depthM?: number | null;
+  isVenue?: boolean;
+  isWarehouse?: boolean;
+  contacts?: string | null;
+  workingHours?: string | null;
+  googlePlaceId?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  addressVerified?: boolean;
+}
+
+export interface AddressSuggestionDTO {
+  placeId: string;
+  label: string;
+}
+
+export interface ResolvedAddressDTO {
+  placeId: string;
+  address: string;
+  latitude: number;
+  longitude: number;
 }
 
 export type UpdateVenueInput = Partial<CreateVenueInput>;

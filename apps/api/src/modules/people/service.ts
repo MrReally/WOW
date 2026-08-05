@@ -41,6 +41,7 @@ interface UserRow {
   use_photo_as_avatar: boolean;
   birth_date: Date | string | null;
   operations_show_all_projects: boolean;
+  driving_license_categories: string[];
   active: boolean;
   created_at: Date;
 }
@@ -114,6 +115,7 @@ const userDTO = (r: UserRow): People.UserDTO => ({
   photoUrl: r.photo_url,
   usePhotoAsAvatar: r.use_photo_as_avatar,
   birthDate: r.birth_date ? (typeof r.birth_date === "string" ? r.birth_date : r.birth_date.toISOString().slice(0, 10)) : null,
+  drivingLicenseCategories: r.driving_license_categories ?? [],
   operationsShowAllProjects: r.operations_show_all_projects,
   active: r.active,
   mustChangePassword: r.must_change_password,
@@ -504,8 +506,8 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
         `INSERT INTO people.users
            (email, telegram_id, display_name, role_id, hourly_rate_eur, password_hash, must_change_password,
             document_number, document_photo_url, languages, about, source, photo_url, use_photo_as_avatar, birth_date,
-            first_name, last_name, patronymic, nickname)
-         VALUES (lower($1), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
+            first_name, last_name, patronymic, nickname, driving_license_categories)
+         VALUES (lower($1), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING id`,
         [
           input.email ?? null,
           input.telegramId ?? null,
@@ -526,6 +528,7 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
           input.lastName ?? null,
           input.patronymic ?? null,
           input.nickname ?? null,
+          input.drivingLicenseCategories ?? [],
         ]
       );
       const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [row!.id]);
@@ -556,7 +559,8 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
            patronymic      = $16,
            nickname        = $17,
            document_photo_url = $18,
-           use_photo_as_avatar = COALESCE($19, use_photo_as_avatar)
+           use_photo_as_avatar = COALESCE($19, use_photo_as_avatar),
+           driving_license_categories = $20
          WHERE id=$1 RETURNING id`,
         [
           id,
@@ -578,6 +582,7 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
           input.nickname === undefined ? existing.nickname : input.nickname,
           input.documentPhotoUrl === undefined ? existing.document_photo_url : input.documentPhotoUrl,
           input.usePhotoAsAvatar ?? null,
+          input.drivingLicenseCategories === undefined ? existing.driving_license_categories : input.drivingLicenseCategories,
         ]
       );
       const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [row!.id]);

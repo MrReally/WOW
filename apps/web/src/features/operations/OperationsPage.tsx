@@ -1,11 +1,8 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Projects } from "@sever/contracts";
-import { Card, Button, SectionHead, Chip, Dot, VenueTrace, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
+import { Card, SectionHead, Chip, Dot, VenueTrace, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
 import { dateRange, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
-import { useSession } from "../../app/session.ts";
-import { OpsSheet } from "../warehouse/components/OpsSheet.tsx";
-import { useMyProjects, useOpsModels } from "./hooks.ts";
+import { useMyProjects } from "./hooks.ts";
 
 function isLive(p: Projects.ProjectDTO): boolean {
   const now = Date.now();
@@ -20,11 +17,8 @@ function operationsProjectSort(a: Projects.ProjectDTO, b: Projects.ProjectDTO): 
 }
 
 export function OperationsPage() {
-  const { can } = useSession();
   const navigate = useNavigate();
   const projects = useMyProjects();
-  const models = useOpsModels();
-  const [opsOpen, setOpsOpen] = useState(false);
 
   if (projects.isLoading) return <Loading />;
   if (projects.error) return <ErrorState error={projects.error} onRetry={projects.refetch} />;
@@ -53,12 +47,6 @@ export function OperationsPage() {
         </div>
       </div>
 
-      {can("warehouse.issue") && (
-        <div style={{ marginBottom: 12 }}>
-          <Button block variant="primary" onClick={() => setOpsOpen(true)}>+ Перемещение</Button>
-        </div>
-      )}
-
       <SectionHead label="Мои проекты" meta={`${list.length}`} />
       {list.length === 0 ? (
         <EmptyState title="Вам пока не назначены проекты" />
@@ -78,7 +66,6 @@ export function OperationsPage() {
         </div>
       )}
 
-      <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} projects={list} models={models.data ?? []} />
     </div>
   );
 }

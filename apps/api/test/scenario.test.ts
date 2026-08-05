@@ -770,6 +770,7 @@ describe("Tech pickup/return → некомплект", () => {
     const unit = await wiring.equipment.service.createUnit({ modelId: model.id, assetTag: `DOC-U-${Date.now()}` });
     const client = await wiring.projects.service.createClient({ name: `Document Client ${Date.now()}` });
     const project = await wiring.projects.service.createProject({ name: "Document Project", clientId: client.id, startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString() });
+    await wiring.projects.service.setOperationStage(project.id, "pickup", tech.id);
     const draft = await wiring.operations.service.create({ kind: "issue", projectId: project.id, unitIds: [unit.id] }, tech.id);
     expect(draft.status).toBe("draft");
     expect(draft.version).toBe(1);

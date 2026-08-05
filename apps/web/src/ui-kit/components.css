@@ -847,6 +847,29 @@ h1,
   color: var(--text3);
   margin-top: 2px;
 }
+.contractor-item-row__summary > span {
+  display: grid;
+  min-width: 0;
+}
+.contractor-item-row__title,
+.contractor-item-row__detail {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .contractor-item-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .contractor-item-row__summary,
+  .contractor-item-row__details {
+    width: 100%;
+  }
+  .contractor-item-row__details > summary {
+    width: 100%;
+    justify-content: center;
+  }
+}
 
 /* App content shell */
 .app-content {
@@ -1038,3 +1061,8 @@ h1,
 /* Shared model imagery: the same source is used in mobile and Backoffice. */
 .equipment-model-image{display:block;width:100%;max-width:260px;height:150px;object-fit:contain;margin:0 auto var(--space-3);border:1px solid var(--bdr);border-radius:var(--radius-md);background:var(--s1)}
 .equipment-model-thumb{float:left;width:44px;height:38px;object-fit:contain;margin-right:10px;border:1px solid var(--bdr);border-radius:7px;background:var(--s1)}
+.address-input { position: relative; width: 100%; }
+.address-input__suggestions { position: absolute; z-index: 80; left: 0; right: 0; top: calc(100% + 4px); display: grid; padding: 6px; border: 1px solid var(--bdr); border-radius: 10px; background: var(--panel); box-shadow: 0 14px 30px rgba(0,0,0,.28); }
+.address-input__suggestions button { border: 0; border-radius: 7px; padding: 10px; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.address-input__suggestions button:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.address-input__suggestions span { padding: 4px 10px 2px; color: var(--muted); font-size: 10px; text-align: right; }

@@ -150,6 +150,8 @@ export interface ModelStockDTO {
 
 export interface WarehouseDTO {
   id: ID;
+  /** Opaque id of the canonical place in the venues module. */
+  placeId: ID | null;
   name: string;
   address: string | null;
   isDefault: boolean;
@@ -366,8 +368,8 @@ export interface SendToContractorInput {
 export interface EquipmentService {
   // Warehouses
   listWarehouses(): Promise<WarehouseDTO[]>;
-  createWarehouse(input: { name: string; address?: string | null }): Promise<WarehouseDTO>;
-  updateWarehouse(id: ID, input: { name?: string; address?: string | null; isDefault?: boolean }): Promise<WarehouseDTO>;
+  createWarehouse(input: { name: string; address?: string | null; placeId?: ID | null }): Promise<WarehouseDTO>;
+  updateWarehouse(id: ID, input: { name?: string; address?: string | null; placeId?: ID | null; isDefault?: boolean }): Promise<WarehouseDTO>;
   listStorageZones(warehouseId?: ID): Promise<StorageZoneDTO[]>;
   createStorageZone(input: { warehouseId: ID; parentId?: ID | null; name: string; code: string; kind: StorageZoneKind; sortOrder?: number }): Promise<StorageZoneDTO>;
   updateStorageZone(id: ID, input: { parentId?: ID | null; name?: string; code?: string; kind?: StorageZoneKind; active?: boolean; sortOrder?: number }): Promise<StorageZoneDTO>;

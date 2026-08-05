@@ -119,15 +119,15 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
                   </div>
                 </div>
               ) : (
-                <div className="lrow" key={item.id} style={{ paddingLeft: 0, paddingRight: 0 }}>
-                  <label className="row" style={{ gap: 8, flex: 1, minWidth: 0 }}>
+                <div className="lrow contractor-item-row" key={item.id} style={{ paddingLeft: 0, paddingRight: 0 }}>
+                  <label className="row contractor-item-row__summary" style={{ gap: 8, flex: 1, minWidth: 0 }}>
                     <input type="checkbox" checked={item.booked} disabled={!canManage} onChange={(event) => update.mutate({ id: item.id, input: { booked: event.target.checked } })} />
                     <span style={{ minWidth: 0 }}>
                       <span className="lrow__title">{item.name}</span>
                       <span className="lrow__detail">К {item.qty} · СС {eur(item.costEUR * item.qty)} · Ц {eur(item.priceEUR * item.qty)}</span>
                     </span>
                   </label>
-                  <details>
+                  <details className="contractor-item-row__details">
                     <summary className="btn btn--ghost">Подробнее</summary>
                     <div className="stack" style={{ marginTop: 6, gap: 6 }}>
                       <span className="card__subtitle">{kindName(item.kind)}{item.note ? ` · ${item.note}` : ""}</span>

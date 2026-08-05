@@ -20,6 +20,7 @@ export const env = {
   webDist: process.env.WEB_DIST ?? "",
   /** On boot, load demo data if the database is empty (first container run). */
   seedOnStart: bool(process.env.SEED_ON_START, false),
+  googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? "",
   /** Destructive database reset is disabled in production unless explicitly enabled. */
   allowDataReset: bool(process.env.ALLOW_DATA_RESET, false),
   /** Restore is separately gated because it replaces every schema and row. */

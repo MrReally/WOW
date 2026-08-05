@@ -18,6 +18,7 @@ import { createNotificationsModule } from "./modules/notifications/index.js";
 import { createCatalogModule } from "./modules/catalog/index.js";
 import { createOperationsModule } from "./modules/operations/index.js";
 import { createAuditModule } from "./modules/audit/index.js";
+import { createTransportModule } from "./modules/transport/index.js";
 import { createApexService } from "./modules/apex/service.js";
 import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
@@ -28,15 +29,16 @@ import type { DomainEvent } from "./core/eventBus.js";
 
 export function createModules(bus: EventBus = new EventBus()) {
   const people = createPeopleModule(pool, bus);
-  const equipment = createEquipmentModule(pool, bus);
   const projects = createProjectsModule(pool, bus);
+  const equipment = createEquipmentModule(pool, bus, async (projectId) => (await projects.service.getProject(projectId))?.operationStage === "pickup");
   const finance = createFinanceModule(pool, bus);
   const venues = createVenuesModule(pool);
   const plans = createPlansModule(pool);
   const notifications = createNotificationsModule(pool);
   const catalog = createCatalogModule(pool);
-  const operations = createOperationsModule(pool, equipment.service);
+  const operations = createOperationsModule(pool, equipment.service, projects.service);
   const audit = createAuditModule(pool);
+  const transport = createTransportModule(pool);
 
   setTelegramMessageLogger(async (message) => {
     await people.service.logTelegramDialogMessage(message);
@@ -501,9 +503,9 @@ export function createModules(bus: EventBus = new EventBus()) {
     return setInterval(() => void dispatchDueReminders(), 60_000);
   }
 
-  const modules = [people, equipment, projects, finance, venues, plans, notifications, catalog, operations, audit];
+  const modules = [people, equipment, projects, finance, venues, plans, notifications, catalog, operations, transport, audit];
 
-  return { bus, people, equipment, projects, finance, venues, plans, notifications, catalog, operations, audit, apex, billing, modules, handleTelegramCallback, startReminderScheduler };
+  return { bus, people, equipment, projects, finance, venues, plans, notifications, catalog, operations, transport, audit, apex, billing, modules, handleTelegramCallback, startReminderScheduler };
 }
 
 export type Wiring = ReturnType<typeof createModules>;

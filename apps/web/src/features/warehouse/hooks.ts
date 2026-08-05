@@ -152,7 +152,7 @@ export function useUpdateType() {
 export function useCreateWarehouse() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name: string; address?: string | null }) => api.post<Equipment.WarehouseDTO>("/api/equipment/warehouses", input),
+    mutationFn: (input: { name: string; address?: string | null; placeId?: string | null }) => api.post<Equipment.WarehouseDTO>("/api/equipment/warehouses", input),
     meta: { successMessage: "Склад добавлен" },
     onSuccess: () => invalidateEquipment(qc),
   });
@@ -161,7 +161,7 @@ export function useCreateWarehouse() {
 export function useUpdateWarehouse() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: { name?: string; address?: string | null; isDefault?: boolean } }) =>
+    mutationFn: ({ id, input }: { id: string; input: { name?: string; address?: string | null; placeId?: string | null; isDefault?: boolean } }) =>
       api.patch<Equipment.WarehouseDTO>(`/api/equipment/warehouses/${id}`, input),
     meta: { successMessage: "Склад обновлён" },
     onSuccess: () => invalidateEquipment(qc),

@@ -5,6 +5,7 @@ import { UNIT_STATUSES } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
 import { requirePermission } from "../../core/auth.js";
 import { parseCatalogCsv } from "./csv.js";
+import { BadRequest } from "../../core/errors.js";
 
 const createTypeSchema = z.object({
   name: z.string().min(1),
@@ -25,11 +26,13 @@ const updateCategorySchema=categorySchema.partial().extend({active:z.boolean().o
 const warehouseSchema = z.object({
   name: z.string().min(1),
   address: z.string().nullable().optional(),
+  placeId: z.string().uuid().nullable().optional(),
 });
 const updateWarehouseSchema = z.object({
   name: z.string().min(1).optional(),
   address: z.string().nullable().optional(),
   isDefault: z.boolean().optional(),
+  placeId: z.string().uuid().nullable().optional(),
 });
 const zoneKindSchema = z.enum(["room","rack","shelf","bin","floor","other"]);
 const storageZoneSchema = z.object({ warehouseId:z.string().uuid(), parentId:z.string().uuid().nullable().optional(), name:z.string().min(1), code:z.string().min(1), kind:zoneKindSchema, sortOrder:z.number().int().optional() });
@@ -154,7 +157,8 @@ const returnHandoverSchema = z.object({ note: z.string().nullable().optional() }
 export function registerEquipmentRoutes(
   app: FastifyInstance,
   ctx: RouteContext,
-  service: Equipment.EquipmentService
+  service: Equipment.EquipmentService,
+  canIssueProject: (projectId: string) => Promise<boolean>
 ): void {
   const canViewCosts = (auth: Awaited<ReturnType<RouteContext["auth"]>>) =>
     auth.isOwner || auth.permissions.includes("warehouse.costs.view");
@@ -274,6 +278,7 @@ export function registerEquipmentRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.issue");
     const body = qtyMoveSchema.parse(req.body);
+    if (!(await canIssueProject(body.projectId))) throw BadRequest("выдача доступна только в Operations на этапе «Забор»");
     return service.issueQuantity({ ...body, actorId: auth.userId });
   });
   app.post("/api/equipment/return-qty", async (req) => {
@@ -363,6 +368,7 @@ export function registerEquipmentRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "warehouse.issue");
     const body = issueSchema.parse(req.body);
+    if (!(await canIssueProject(body.projectId))) throw BadRequest("выдача доступна только в Operations на этапе «Забор»");
     return service.issueUnits({ ...body, actorId: auth.userId });
   });
   app.post("/api/equipment/return", async (req) => {

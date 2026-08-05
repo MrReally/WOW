@@ -56,6 +56,7 @@ interface JournalRow {
 }
 interface WarehouseRow {
   id: string;
+  place_id: string | null;
   name: string;
   address: string | null;
   is_default: boolean;
@@ -140,6 +141,7 @@ const journalDTO = (r: JournalRow): Equipment.JournalEntryDTO => ({
 });
 const warehouseDTO = (r: WarehouseRow): Equipment.WarehouseDTO => ({
   id: r.id,
+  placeId: r.place_id,
   name: r.name,
   address: r.address,
   isDefault: r.is_default,
@@ -358,8 +360,8 @@ export function createEquipmentService(
     async createWarehouse(input) {
       const row = await one<WarehouseRow>(
         db,
-        `INSERT INTO equipment.warehouses (name, address) VALUES ($1,$2) RETURNING *`,
-        [input.name, input.address ?? null]
+        `INSERT INTO equipment.warehouses (name, address, place_id) VALUES ($1,$2,$3) RETURNING *`,
+        [input.name, input.address ?? null, input.placeId ?? null]
       );
       return warehouseDTO(row!);
     },
@@ -375,13 +377,15 @@ export function createEquipmentService(
           `UPDATE equipment.warehouses SET
              name=$2,
              address=$3,
-             is_default=$4
+             is_default=$4,
+             place_id=$5
            WHERE id=$1 RETURNING *`,
           [
             id,
             input.name ?? existing.name,
             input.address === undefined ? existing.address : input.address,
             input.isDefault === undefined ? existing.is_default : input.isDefault,
+            input.placeId === undefined ? existing.place_id : input.placeId,
           ]
         );
         return warehouseDTO(row!);

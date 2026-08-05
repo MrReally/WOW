@@ -93,3 +93,8 @@ export function useCreateVenue() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["venues"] }),
   });
 }
+
+export function useUpdateVenue() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: ({ id, input }: { id: string; input: Venues.UpdateVenueInput }) => api.patch<Venues.VenueDTO>(`/api/venues/${id}`, input), onSuccess: () => qc.invalidateQueries({ queryKey: ["venues"] }) });
+}

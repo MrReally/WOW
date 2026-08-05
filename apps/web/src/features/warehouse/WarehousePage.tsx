@@ -36,6 +36,8 @@ import { EditModelSheet } from "./components/EditModelSheet.tsx";
 import { ImportSheet } from "./components/ImportSheet.tsx";
 import { CableMoveSheet, CableRow } from "./components/CableMoveSheet.tsx";
 import { OpsSheet } from "./components/OpsSheet.tsx";
+import { AddressInput } from "../places/AddressInput.tsx";
+import { useCreateVenue, useUpdateVenue } from "../plans/hooks.ts";
 
 function PrepStat({ tone, value, label }: { tone: Tone; value: number; label: string }) {
   return (
@@ -146,6 +148,8 @@ export function WarehousePage() {
   const warehouses = useWarehouses();
   const createWarehouse = useCreateWarehouse();
   const updateWarehouse = useUpdateWarehouse();
+  const createPlace = useCreateVenue();
+  const updatePlace = useUpdateVenue();
   const updateType = useUpdateType();
   const projects = useProjectsForOps();
   const openRepairs = useOpenRepairs();
@@ -199,26 +203,23 @@ export function WarehousePage() {
     setWarehouseNameDraft("");
     setWarehouseAddressDraft("");
   };
-  const saveWarehouse = () => {
+  const saveWarehouse = async () => {
     const name = warehouseNameDraft.trim();
     if (!name) return;
     const address = warehouseAddressDraft.trim() || null;
     if (warehouseForm?.mode === "edit" && warehouseForm.id) {
-      updateWarehouse.mutate(
-        { id: warehouseForm.id, input: { name, address } },
-        { onSuccess: closeWarehouseForm }
-      );
+      const existing = warehouseList.find((warehouse) => warehouse.id === warehouseForm.id);
+      let placeId = existing?.placeId ?? null;
+      if (placeId) await updatePlace.mutateAsync({ id: placeId, input: { name, address, isWarehouse: true } });
+      else placeId = (await createPlace.mutateAsync({ name, address, isVenue: false, isWarehouse: true })).id;
+      await updateWarehouse.mutateAsync({ id: warehouseForm.id, input: { name, address, placeId } });
+      closeWarehouseForm();
       return;
     }
-    createWarehouse.mutate(
-      { name, address },
-      {
-        onSuccess: (warehouse) => {
-          setWarehouseFilter(warehouse.id);
-          closeWarehouseForm();
-        },
-      }
-    );
+    const place = await createPlace.mutateAsync({ name, address, isVenue: false, isWarehouse: true });
+    const warehouse = await createWarehouse.mutateAsync({ name, address, placeId: place.id });
+    setWarehouseFilter(warehouse.id);
+    closeWarehouseForm();
   };
   const query = search.trim().toLowerCase();
   const modelMatches = (m: Equipment.EquipmentModelDTO) =>
@@ -315,13 +316,13 @@ export function WarehousePage() {
               <Input value={warehouseNameDraft} onChange={(e) => setWarehouseNameDraft(e.target.value)} placeholder="Main warehouse" />
             </Field>
             <Field label="Адрес">
-              <Input value={warehouseAddressDraft} onChange={(e) => setWarehouseAddressDraft(e.target.value)} placeholder="Город, улица, помещение" />
+              <AddressInput value={warehouseAddressDraft} onChange={setWarehouseAddressDraft} placeholder="Адрес — можно вставить или найти" />
             </Field>
             <div className="row" style={{ marginTop: 8 }}>
               <Button
                 block
                 disabled={!warehouseNameDraft.trim() || createWarehouse.isPending || updateWarehouse.isPending}
-                onClick={saveWarehouse}
+                onClick={() => void saveWarehouse()}
               >
                 Сохранить
               </Button>
@@ -532,7 +533,7 @@ export function WarehousePage() {
         </>
       )}
       {canIssue && (
-        <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} projects={projects.data ?? []} models={allModels} />
+        <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} projects={projects.data ?? []} models={allModels} allowedModes={["transfer"]} />
       )}
       {canCatalog && <EditModelSheet model={editModel} categories={categories.data??[]} onClose={() => setEditModel(null)} />}
       <CableMoveSheet model={cableModel} projects={projects.data ?? []} warehouses={warehouseList} selectedWarehouseId={warehouseFilter === "all" ? null : warehouseFilter} onClose={() => setCableModel(null)} />

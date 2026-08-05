@@ -36,6 +36,7 @@ const createUserSchema = z.object({
   photoUrl: z.string().nullable().optional(),
   usePhotoAsAvatar: z.boolean().optional(),
   birthDate: z.string().nullable().optional(),
+  drivingLicenseCategories: z.array(z.string().trim().min(1).max(4)).max(12).optional(),
 });
 const updateUserSchema = z.object({
   displayName: z.string().min(1).optional(),
@@ -55,6 +56,7 @@ const updateUserSchema = z.object({
   photoUrl: z.string().nullable().optional(),
   usePhotoAsAvatar: z.boolean().optional(),
   birthDate: z.string().nullable().optional(),
+  drivingLicenseCategories: z.array(z.string().trim().min(1).max(4)).max(12).optional(),
   active: z.boolean().optional(),
 });
 

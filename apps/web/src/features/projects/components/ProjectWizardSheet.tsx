@@ -16,6 +16,7 @@ import {
   useEquipmentModels,
 } from "../hooks.ts";
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
+import { AddressInput } from "../../places/AddressInput.tsx";
 
 function localFromDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -90,6 +91,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const [venueId, setVenueId] = useState("");
   const [venueName, setVenueName] = useState("");
   const [venueAddress, setVenueAddress] = useState("");
+  const [venueGeo, setVenueGeo] = useState<{ placeId: string; latitude: number; longitude: number } | null>(null);
   const [starts, setStarts] = useState(localFromDate(new Date(Date.now() + 86_400_000)));
   const [ends, setEnds] = useState(localFromDate(new Date(Date.now() + 2 * 86_400_000)));
   const [reservationDrafts, setReservationDrafts] = useState<ReservationDraft[]>([{ modelId: "", qty: "1", isReserve: false }]);
@@ -123,6 +125,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       setVenueId("");
       setVenueName("");
       setVenueAddress("");
+      setVenueGeo(null);
       setStarts(localFromDate(new Date(Date.now() + 86_400_000)));
       setEnds(localFromDate(new Date(Date.now() + 2 * 86_400_000)));
       setReservationDrafts([{ modelId: "", qty: "1", isReserve: false }]);
@@ -147,7 +150,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       if (!cid) return;
       let vid = venueId || null;
       if (!vid && venueName.trim()) {
-        const venue = await createVenue.mutateAsync({ name: venueName.trim(), address: venueAddress.trim() || null });
+        const venue = await createVenue.mutateAsync({ name: venueName.trim(), address: venueAddress.trim() || null, isVenue: true, googlePlaceId: venueGeo?.placeId ?? null, latitude: venueGeo?.latitude ?? null, longitude: venueGeo?.longitude ?? null, addressVerified: !!venueGeo });
         vid = venue.id;
         setVenueId(venue.id);
       }
@@ -228,11 +231,11 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
 
       {step.id === "venue" && (
         <WizardScreen title="Площадка">
-          <Select value={venueId} onChange={(e) => setVenueId(e.target.value)} options={[{ value: "", label: "Новая / пропустить" }, ...(venues.data ?? []).map((v) => ({ value: v.id, label: v.name }))]} />
+          <Select value={venueId} onChange={(e) => setVenueId(e.target.value)} options={[{ value: "", label: "Новая / пропустить" }, ...(venues.data ?? []).filter((v) => v.isVenue).map((v) => ({ value: v.id, label: v.name }))]} />
           {!venueId && (
             <>
               <Input value={venueName} onChange={(e) => setVenueName(e.target.value)} placeholder="Название площадки" />
-              <Input value={venueAddress} onChange={(e) => setVenueAddress(e.target.value)} placeholder="Адрес" />
+              <AddressInput value={venueAddress} onChange={(value) => { setVenueAddress(value); setVenueGeo(null); }} onResolved={(address) => setVenueGeo({ placeId: address.placeId, latitude: address.latitude, longitude: address.longitude })} placeholder="Адрес — можно вставить или найти" />
             </>
           )}
         </WizardScreen>

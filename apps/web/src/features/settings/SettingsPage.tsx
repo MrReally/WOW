@@ -8,6 +8,8 @@ import { useFxRates, useSetFxRate, useResetData, useResetStatus, useSetTelegramI
 import { RoleEditor } from "./components/RoleEditor.tsx";
 import { useCableSettings, useSetCableSettings } from "../warehouse/hooks.ts";
 import { BackupManager } from "./components/BackupManager.tsx";
+import { FleetManager } from "./components/FleetManager.tsx";
+import { PlacesManager } from "./components/PlacesManager.tsx";
 
 export function SettingsPage() {
   const { theme, toggle } = useTheme();
@@ -49,6 +51,9 @@ export function SettingsPage() {
       </Card>
 
       {can("roles.manage") && <RoleEditor />}
+
+      {can("venues.manage") && <><SectionTitle>Места</SectionTitle><PlacesManager /></>}
+      {can("finance.manage", "projects.manage") && <><SectionTitle>Автопарк</SectionTitle><FleetManager /></>}
 
       {canTelegramInbox && (
         <>

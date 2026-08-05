@@ -22,7 +22,7 @@ describe("billing reserve equipment", () => {
         listTypes: async () => [{ id: "type", name: "Light" }],
         listContractors: async () => [],
       },
-      finance: { listTransactions: async () => [] },
+      finance: { listTransactions: async () => [], listProjectEstimateLines: async () => [] },
       people: {},
     } as unknown as BillingDeps);
 

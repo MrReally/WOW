@@ -5,8 +5,8 @@ import { Avatar, Button, Card, Chip, EmptyState, ErrorState, Input, Loading, Sec
 import { dateRange, dateTime, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
 import { personInitials, personName } from "../../lib/people.ts";
 import { useSession } from "../../app/session.ts";
-import { useAllUnits, useEquipmentModels, usePeople, useProject, useReservations } from "../projects/hooks.ts";
-import { useChangeStatus, useWarehouses } from "../warehouse/hooks.ts";
+import { useAllUnits, useEquipmentModels, useIssueResolvedUnits, usePeople, useProject, useReservations } from "../projects/hooks.ts";
+import { useChangeStatus, useReturnUnits, useWarehouses } from "../warehouse/hooks.ts";
 import {
   useClearOperationUnitMark,
   useCreateProjectTask,
@@ -239,6 +239,8 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
   const setMark = useSetOperationUnitMark(projectId);
   const clearMark = useClearOperationUnitMark(projectId);
   const changeStatus = useChangeStatus();
+  const issueUnits = useIssueResolvedUnits();
+  const returnUnits = useReturnUnits();
   const canMarkStatus = can("warehouse.unit.status");
   const shouldShow = stage !== "show";
   if (!shouldShow) return null;
@@ -252,9 +254,14 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
   }
   const warehouseName = (warehouseId: string | null | undefined) =>
     (warehouses.data ?? []).find((w) => w.id === warehouseId)?.name ?? "Склад ?";
-  const resolved = (reservations.data ?? []).flatMap((reservation) =>
-    reservation.resolvedUnitIds.map((unitId) => ({ reservation, unit: unitById.get(unitId) }))
+  const reservedRows = (reservations.data ?? []).flatMap((reservation) =>
+    reservation.resolvedUnitIds.map((unitId) => ({ key: `${reservation.id}:${unitId}`, modelId: reservation.modelId, unit: unitById.get(unitId) }))
   );
+  const reservedUnitIds = new Set(reservedRows.map((row) => row.unit?.id).filter(Boolean));
+  // Also show units that were issued without being resolved into a reservation.
+  // This is what makes legacy rentals such as Space X Wedding returnable again.
+  const issuedExtras = (units.data ?? []).filter((unit) => unit.status === "on_project" && unit.currentProjectId === projectId && !reservedUnitIds.has(unit.id)).map((unit) => ({ key: `issued:${unit.id}`, modelId: unit.modelId, unit }));
+  const resolved = [...reservedRows, ...issuedExtras];
   const byWarehouse = new Map<string, { warehouseId: string | null; rows: typeof resolved }>();
   for (const row of resolved) {
     const key = row.unit?.warehouseId ?? "none";
@@ -278,6 +285,15 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
   const markUnit = (unitId: string, status: Projects.OperationUnitMarkStatus, active: boolean) => {
     if (active) {
       clearMark.mutate({ stage, unitId, status });
+      return;
+    }
+    const unit = unitById.get(unitId);
+    if (stage === "pickup" && status === "picked" && unit && unit.status !== "on_project") {
+      issueUnits.mutate({ projectId, unitIds: [unitId] }, { onSuccess: () => setMark.mutate({ stage, unitId, status }) });
+      return;
+    }
+    if (stage === "return" && status === "returned" && unit?.status === "on_project") {
+      returnUnits.mutate({ projectId, returnedUnitIds: [unitId], expectedUnitIds: [unitId] }, { onSuccess: () => setMark.mutate({ stage, unitId, status }) });
       return;
     }
     setMark.mutate({ stage, unitId, status });
@@ -308,14 +324,14 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
                   <Chip label={`${group.rows.length}`} tone="neutral" />
                 </div>
                 <div className="stack" style={{ marginTop: 10 }}>
-                  {group.rows.map(({ reservation, unit }) => (
+                  {group.rows.map(({ key, modelId, unit }) => (
                     <UnitStageRow
-                      key={`${reservation.id}:${unit?.id ?? "missing"}`}
+                      key={key}
                       unit={unit}
-                      modelName={modelName(reservation.modelId)}
+                      modelName={modelName(modelId)}
                       marks={unit ? (marksByUnit.get(unit.id) ?? []) : []}
                       actions={actions}
-                      disabled={setMark.isPending || clearMark.isPending || changeStatus.isPending}
+                      disabled={setMark.isPending || clearMark.isPending || changeStatus.isPending || issueUnits.isPending || returnUnits.isPending}
                       onOpen={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
                       onMark={(status, active) => unit && markUnit(unit.id, status, active)}
                     />

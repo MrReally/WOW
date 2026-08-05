@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
 import { useClients, useCreateClient, useCreateProject } from "../hooks.ts";
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
+import { AddressInput } from "../../places/AddressInput.tsx";
 
 function toLocalInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -64,7 +65,7 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
         <Select
           value={venueId}
           onChange={(e) => setVenueId(e.target.value)}
-          options={[{ value: "", label: "— не выбрана —" }, ...(venues.data ?? []).map((v) => ({ value: v.id, label: v.name }))]}
+          options={[{ value: "", label: "— не выбрана —" }, ...(venues.data ?? []).filter((v) => v.isVenue).map((v) => ({ value: v.id, label: v.name }))]}
         />
       </Field>
       {!venueFormOpen ? (
@@ -75,7 +76,7 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
             <Input value={newVenue} onChange={(e) => setNewVenue(e.target.value)} placeholder="Название" />
           </Field>
           <Field label="Адрес">
-            <Input value={newVenueAddress} onChange={(e) => setNewVenueAddress(e.target.value)} placeholder="Можно позже" />
+            <AddressInput value={newVenueAddress} onChange={setNewVenueAddress} placeholder="Адрес — можно вставить или найти" />
           </Field>
           <div className="row">
             <Button
@@ -83,7 +84,7 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
               disabled={!newVenue.trim() || createVenue.isPending}
               onClick={() =>
                 createVenue.mutate(
-                  { name: newVenue.trim(), address: newVenueAddress.trim() || null },
+                  { name: newVenue.trim(), address: newVenueAddress.trim() || null, isVenue: true },
                   {
                     onSuccess: (venue) => {
                       setVenueId(venue.id);

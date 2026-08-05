@@ -75,11 +75,13 @@ ON CONFLICT (name) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS equipment.warehouses (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  place_id   uuid,
   name       text NOT NULL,
   address    text,
   is_default boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE equipment.warehouses ADD COLUMN IF NOT EXISTS place_id uuid;
 INSERT INTO equipment.warehouses (name, is_default)
 SELECT 'Main warehouse', true
 WHERE NOT EXISTS (SELECT 1 FROM equipment.warehouses);

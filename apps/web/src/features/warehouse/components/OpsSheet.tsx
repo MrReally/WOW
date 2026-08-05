@@ -10,11 +10,12 @@ interface Props {
   onClose: () => void;
   projects: Projects.ProjectDTO[];
   models: Equipment.EquipmentModelDTO[];
+  allowedModes?: ("issue" | "return" | "transfer")[];
 }
 
-export function OpsSheet({ open, onClose, projects, models }: Props) {
+export function OpsSheet({ open, onClose, projects, models, allowedModes = ["issue", "return", "transfer"] }: Props) {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"issue" | "return" | "transfer">("issue");
+  const [mode, setMode] = useState<"issue" | "return" | "transfer">(allowedModes[0] ?? "transfer");
   const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
   const [fromWarehouseId, setFromWarehouseId] = useState("");
   const [toWarehouseId, setToWarehouseId] = useState("");
@@ -130,15 +131,15 @@ export function OpsSheet({ open, onClose, projects, models }: Props) {
   return (
     <Sheet open={open} onClose={closeAll} title="Выдача / Возврат / Перемещение">
       <div className="row" style={{ marginBottom: "var(--space-4)", flexWrap: "wrap" }}>
-        <Button variant={mode === "issue" ? "primary" : "secondary"} block onClick={() => setMode("issue")}>
+        {allowedModes.includes("issue") && <Button variant={mode === "issue" ? "primary" : "secondary"} block onClick={() => setMode("issue")}>
           Выдача
-        </Button>
-        <Button variant={mode === "return" ? "primary" : "secondary"} block onClick={() => setMode("return")}>
+        </Button>}
+        {allowedModes.includes("return") && <Button variant={mode === "return" ? "primary" : "secondary"} block onClick={() => setMode("return")}>
           Возврат
-        </Button>
-        <Button variant={mode === "transfer" ? "primary" : "secondary"} block onClick={() => setMode("transfer")}>
+        </Button>}
+        {allowedModes.includes("transfer") && <Button variant={mode === "transfer" ? "primary" : "secondary"} block onClick={() => setMode("transfer")}>
           Перемещение
-        </Button>
+        </Button>}
       </div>
 
       {mode === "transfer" ? (

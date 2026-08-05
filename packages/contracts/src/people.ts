@@ -47,6 +47,8 @@ export interface UserDTO {
   photoUrl: string | null;
   usePhotoAsAvatar: boolean;
   birthDate: string | null;
+  /** Driving licence categories, e.g. B, BE, C, CE. */
+  drivingLicenseCategories: string[];
   operationsShowAllProjects: boolean;
   active: boolean;
   mustChangePassword: boolean;
@@ -72,6 +74,7 @@ export interface CreateUserInput {
   photoUrl?: string | null;
   usePhotoAsAvatar?: boolean;
   birthDate?: string | null;
+  drivingLicenseCategories?: string[];
 }
 
 export interface UpdateUserInput {
@@ -92,6 +95,7 @@ export interface UpdateUserInput {
   photoUrl?: string | null;
   usePhotoAsAvatar?: boolean;
   birthDate?: string | null;
+  drivingLicenseCategories?: string[];
   active?: boolean;
 }
 

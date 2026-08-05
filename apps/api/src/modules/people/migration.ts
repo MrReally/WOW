@@ -65,6 +65,7 @@ ALTER TABLE people.users ADD COLUMN IF NOT EXISTS last_name text;
 ALTER TABLE people.users ADD COLUMN IF NOT EXISTS patronymic text;
 ALTER TABLE people.users ADD COLUMN IF NOT EXISTS nickname text;
 ALTER TABLE people.users ADD COLUMN IF NOT EXISTS operations_show_all_projects boolean NOT NULL DEFAULT false;
+ALTER TABLE people.users ADD COLUMN IF NOT EXISTS driving_license_categories text[] NOT NULL DEFAULT '{}';
 
 CREATE TABLE IF NOT EXISTS people.crew_applications (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),

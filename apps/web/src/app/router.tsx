@@ -50,7 +50,7 @@ export function AppRouter() {
       <Route path="/me" element={<MySettingsPage />} />
       <Route
         path="/settings"
-        element={<Guard allow={["people.view", "people.manage", "roles.manage", "telegram.inbox.manage"]}><SettingsPage /></Guard>}
+        element={<Guard allow={["people.view", "people.manage", "roles.manage", "telegram.inbox.manage", "venues.manage", "finance.manage", "projects.manage"]}><SettingsPage /></Guard>}
       />
       <Route path="*" element={<Navigate to={home} replace />} />
     </Routes>

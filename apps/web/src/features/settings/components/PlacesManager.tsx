@@ -1,0 +1,14 @@
+import { useState } from "react";
+import { Button, Card, Field, Input } from "../../../ui-kit/index.ts";
+import { AddressInput } from "../../places/AddressInput.tsx";
+import { useCreateVenue, useUpdateVenue, useVenues } from "../../plans/hooks.ts";
+
+export function PlacesManager() {
+  const places = useVenues(), create = useCreateVenue(), update = useUpdateVenue();
+  const [draft, setDraft] = useState({ name: "", address: "", contacts: "", workingHours: "", isVenue: true, isWarehouse: false });
+  const save = () => create.mutate({ ...draft, address: draft.address || null, contacts: draft.contacts || null, workingHours: draft.workingHours || null }, { onSuccess: () => setDraft({ name: "", address: "", contacts: "", workingHours: "", isVenue: true, isWarehouse: false }) });
+  return <div className="stack">
+    {(places.data ?? []).map(place => <Card key={place.id}><div className="row row--between"><div><p className="card__title">{place.name}</p><p className="card__subtitle">{place.address || "Без адреса"} · {[place.isVenue && "площадка", place.isWarehouse && "склад"].filter(Boolean).join(" + ") || "без назначения"}</p>{(place.workingHours || place.contacts) && <p className="card__subtitle">{[place.workingHours, place.contacts].filter(Boolean).join(" · ")}</p>}</div><div className="row"><label className="chip chip--neutral"><input type="checkbox" checked={place.isVenue} onChange={e => update.mutate({ id: place.id, input: { isVenue: e.target.checked } })} /> площадка</label><label className="chip chip--neutral"><input type="checkbox" checked={place.isWarehouse} onChange={e => update.mutate({ id: place.id, input: { isWarehouse: e.target.checked } })} /> склад</label></div></div></Card>)}
+    <Card><p className="card__title">Новое место</p><Field label="Название"><Input value={draft.name} onChange={e => setDraft(x => ({ ...x, name: e.target.value }))} /></Field><Field label="Адрес"><AddressInput value={draft.address} onChange={value => setDraft(x => ({ ...x, address: value }))} placeholder="Вставьте или найдите адрес" /></Field><div className="row"><Field label="Время работы"><Input value={draft.workingHours} onChange={e => setDraft(x => ({ ...x, workingHours: e.target.value }))} placeholder="09:00–18:00" /></Field><Field label="Контакты"><Input value={draft.contacts} onChange={e => setDraft(x => ({ ...x, contacts: e.target.value }))} /></Field></div><div className="row"><label><input type="checkbox" checked={draft.isVenue} onChange={e => setDraft(x => ({ ...x, isVenue: e.target.checked }))} /> Площадка</label><label><input type="checkbox" checked={draft.isWarehouse} onChange={e => setDraft(x => ({ ...x, isWarehouse: e.target.checked }))} /> Склад</label></div><Button block disabled={!draft.name.trim() || create.isPending} onClick={save}>Добавить место</Button></Card>
+  </div>;
+}

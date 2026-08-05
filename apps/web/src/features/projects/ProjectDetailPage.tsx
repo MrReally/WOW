@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams, useNavigate, useSearchParams } from "react-router-dom";
-import type { Equipment, Finance, People, Projects } from "@sever/contracts";
+import type { Equipment, Finance, People, Projects, Transport } from "@sever/contracts";
 import { PROJECT_STATUSES } from "@sever/contracts";
 import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
 import { projectStatusLabel, projectStatusTone, dateRange, dateTime, eur } from "../../lib/labels.ts";
@@ -45,6 +45,9 @@ import { ContractorEquipment } from "./components/ContractorEquipment.tsx";
 import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
 import { personName } from "../../lib/people.ts";
 import { useInvoiceVersions, useProjectEstimateLines, useReplaceProjectEstimateLines } from "../finance/hooks.ts";
+import { useVenues } from "../plans/hooks.ts";
+import { useWarehouses } from "../warehouse/hooks.ts";
+import { useRouteQuote, useTransportConfig, useVehicles } from "../transport/hooks.ts";
 
 const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "ok" | "info" | "warn" | "neutral" }> = {
   added: { label: "в команде", tone: "ok" },
@@ -207,6 +210,11 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [invoiceVersions, setInvoiceVersions] = useState<StoredInvoiceVersion[]>([]);
   const [estimateDrafts, setEstimateDrafts] = useState<FinanceDraftLine[]>([]);
   const [estimateSeeded, setEstimateSeeded] = useState(false);
+  const estimateSectionSuggestions = useMemo(() => [...new Set([
+    ...(estimateLines.data ?? []).map((line) => line.section.trim()),
+    ...(invoice.data?.rentalLines ?? []).map((line) => line.section.trim()),
+    ...(invoice.data?.laborLines ?? []).map((line) => line.section.trim()),
+  ].filter(Boolean))], [estimateLines.data, invoice.data?.rentalLines, invoice.data?.laborLines]);
   const activeTab = projectTabFrom(searchParams.get("tab"));
 
   useEffect(() => {
@@ -918,6 +926,11 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
         return (
           <>
             <SectionTitle>Экономика проекта · €</SectionTitle>
+            {canManageFinance && <DeliveryCalculator venueId={p.venueId} people={projectPeople} onApply={(quote, vehicle) => setEstimateDrafts((rows) => {
+              const next = { id: `manual-delivery-${Date.now()}`, source: "manual" as const, sourceRefId: null, section: "Доставка", name: `Доставка · ${vehicle.model} ${vehicle.plateNumber}`, qty: "1", priceEUR: String(quote.fuelCostEUR), costEUR: String(quote.fuelCostEUR), comment: `${quote.distanceKm} км · ${quote.fuelLitres} л${quote.roundTrip ? " · туда и обратно" : ""}` };
+              const index = rows.findIndex((line) => line.id.startsWith("manual-delivery-") || (line.source === "manual" && line.section.toLowerCase() === "доставка"));
+              return index < 0 ? [...rows, next] : rows.map((line, i) => i === index ? { ...next, id: line.id } : line);
+            })} />}
             <Card>
               <div className="row row--between">
                 <div>
@@ -934,7 +947,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                       {canManageFinance && <button className="icon-btn icon-btn--danger" onClick={() => setEstimateDrafts((rows) => rows.filter((_, i) => i !== index))} aria-label="Удалить позицию">×</button>}
                     </div>
                     <div className="invoice-line-grid">
-                      <Input disabled={!canManageFinance} value={line.section} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, section: e.target.value } : row))} placeholder="Категория" />
+                      <Input disabled={!canManageFinance} value={line.section} list="project-estimate-sections" autoComplete="on" onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, section: e.target.value } : row))} placeholder="Категория" />
                       <Input disabled={!canManageFinance} type="number" value={line.qty} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, qty: e.target.value } : row))} placeholder="К" />
                       <Input disabled={!canManageFinance} type="number" step="0.01" value={line.priceEUR} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, priceEUR: e.target.value } : row))} placeholder="Ц · клиенту" />
                       <Input disabled={!canManageFinance} type="number" step="0.01" value={line.costEUR} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, costEUR: e.target.value } : row))} placeholder="СС" />
@@ -943,6 +956,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   </div>
                 ))}
               </div>
+              <datalist id="project-estimate-sections">{estimateSectionSuggestions.map((section) => <option key={section} value={section} />)}</datalist>
               {canManageFinance && <Button block disabled={replaceEstimateLines.isPending || estimateDrafts.some((line) => !line.name.trim() || !(Number(line.qty) > 0))} onClick={() => replaceEstimateLines.mutate(estimateDrafts.map((line) => ({
                 ...(line.id.startsWith("manual-") ? {} : { id: line.id }), source: line.source, sourceRefId: line.sourceRefId, section: line.section.trim(), name: line.name.trim(), qty: Number(line.qty), priceEUR: Number(line.priceEUR) || 0, costEUR: Number(line.costEUR) || 0, comment: line.comment,
               })))}>Сохранить €</Button>}
@@ -1062,6 +1076,31 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       </div>
     </div>
   );
+}
+
+function DeliveryCalculator({ venueId, people, onApply }: { venueId: string | null; people: People.UserDTO[]; onApply: (quote: Transport.RouteQuoteDTO, vehicle: Transport.VehicleDTO) => void }) {
+  const venues = useVenues(), warehouses = useWarehouses(), vehicles = useVehicles(), config = useTransportConfig(), quote = useRouteQuote();
+  const venue = (venues.data ?? []).find((item) => item.id === venueId);
+  const [warehouseId, setWarehouseId] = useState("");
+  const [vehicleId, setVehicleId] = useState("");
+  const [fuelPrice, setFuelPrice] = useState("1.6");
+  const [distance, setDistance] = useState("");
+  const [roundTrip, setRoundTrip] = useState(true);
+  const selectedWarehouse = (warehouses.data ?? []).find((item) => item.id === (warehouseId || warehouses.data?.find((item) => item.isDefault)?.id));
+  const selectedVehicle = (vehicles.data ?? []).find((item) => item.id === (vehicleId || vehicles.data?.[0]?.id));
+  const compatibleDrivers = selectedVehicle ? people.filter((person) => person.drivingLicenseCategories.includes(selectedVehicle.requiredLicenseCategory)) : [];
+  const calculate = () => {
+    if (!selectedWarehouse?.address || !venue?.address || !selectedVehicle) return;
+    quote.mutate({ originAddress: selectedWarehouse.address, destinationAddress: venue.address, vehicleId: selectedVehicle.id, fuelPriceEURPerL: Number(fuelPrice) || 0, roundTrip, distanceKmOverride: distance ? Number(distance) : null });
+  };
+  return <Card><div className="row row--between"><div><p className="card__title">Доставка</p><p className="card__subtitle">Маршрут, километраж и топливо по автомобилю</p></div>{config.data && <Chip label={config.data.googleMapsConfigured ? "Google Maps" : "ручной км"} tone={config.data.googleMapsConfigured ? "ok" : "warn"} />}</div>
+    <div className="row" style={{ marginTop: 10 }}><Field label="Откуда"><Select value={warehouseId || selectedWarehouse?.id || ""} onChange={e => setWarehouseId(e.target.value)} options={(warehouses.data ?? []).map(item => ({ value: item.id, label: item.name }))} /></Field><Field label="Куда"><Input disabled value={venue?.address ?? "Укажите адрес площадки"} /></Field></div>
+    <div className="row"><Field label="Автомобиль"><Select value={vehicleId || selectedVehicle?.id || ""} onChange={e => setVehicleId(e.target.value)} options={(vehicles.data ?? []).map(item => ({ value: item.id, label: `${item.plateNumber} · ${item.model} · права ${item.requiredLicenseCategory}` }))} /></Field><Field label="Топливо, €/л"><Input type="number" step="0.01" value={fuelPrice} onChange={e => setFuelPrice(e.target.value)} /></Field>{!config.data?.googleMapsConfigured && <Field label="Км в одну сторону"><Input type="number" step="0.1" value={distance} onChange={e => setDistance(e.target.value)} placeholder="25" /></Field>}</div>
+    {selectedVehicle && <p className="card__subtitle" style={{ marginBottom: 8 }}>Совместимые водители в команде: {compatibleDrivers.length ? compatibleDrivers.map(person => personName(person)).join(", ") : `нет людей с категорией ${selectedVehicle.requiredLicenseCategory}`}</p>}
+    <label className="row" style={{ marginBottom: 10 }}><input type="checkbox" checked={roundTrip} onChange={e => setRoundTrip(e.target.checked)} /> Туда и обратно</label>
+    <Button block disabled={!selectedWarehouse?.address || !venue?.address || !selectedVehicle || (!config.data?.googleMapsConfigured && !(Number(distance) > 0)) || quote.isPending} onClick={calculate}>Рассчитать доставку</Button>
+    {quote.data && <div className="row row--between" style={{ marginTop: 10 }}><span>{quote.data.distanceKm} км · {quote.data.fuelLitres} л · СС {eur(quote.data.fuelCostEUR)}</span><Button variant="secondary" onClick={() => onApply(quote.data!, selectedVehicle!)}>Добавить в €</Button></div>}
+  </Card>;
 }
 
 function TeamPingPanel({

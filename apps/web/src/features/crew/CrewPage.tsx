@@ -276,6 +276,7 @@ export function CrewPage() {
       photoUrl: selected.photoUrl,
       usePhotoAsAvatar: selected.usePhotoAsAvatar,
       birthDate: selected.birthDate,
+      drivingLicenseCategories: selected.drivingLicenseCategories,
     });
   }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -329,6 +330,7 @@ export function CrewPage() {
         photoUrl: draft.photoUrl || null,
         usePhotoAsAvatar: !!draft.usePhotoAsAvatar,
         birthDate: draft.birthDate || null,
+        drivingLicenseCategories: draft.drivingLicenseCategories ?? [],
       },
     });
   };
@@ -606,6 +608,14 @@ export function CrewPage() {
         )}
         <Field label="Документ">
           <Input value={draft.documentNumber ?? ""} onChange={(e) => setDraft((d) => ({ ...d, documentNumber: e.target.value }))} />
+        </Field>
+        <Field label="Категории водительских прав">
+          <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+            {["A", "B", "BE", "C", "CE", "D", "DE"].map((category) => {
+              const selectedCategory = (draft.drivingLicenseCategories ?? []).includes(category);
+              return <button type="button" key={category} className={`chip ${selectedCategory ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => setDraft((current) => ({ ...current, drivingLicenseCategories: selectedCategory ? (current.drivingLicenseCategories ?? []).filter((item) => item !== category) : [...(current.drivingLicenseCategories ?? []), category] }))}>{category}</button>;
+            })}
+          </div>
         </Field>
         <div className="crew-attach">
           <div style={{ minWidth: 0 }}>
