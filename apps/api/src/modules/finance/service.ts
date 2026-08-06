@@ -77,6 +77,7 @@ interface ProjectEstimateLineRow {
   price_eur: string;
   cost_eur: string;
   comment: string;
+  is_hidden: boolean;
   sort_order: number;
   created_at: Date;
   updated_at: Date;
@@ -141,6 +142,7 @@ const estimateLineDTO = (r: ProjectEstimateLineRow): Finance.ProjectEstimateLine
   priceEUR: Number(r.price_eur),
   costEUR: Number(r.cost_eur),
   comment: r.comment,
+  hidden: r.is_hidden,
   sortOrder: r.sort_order,
   createdAt: r.created_at.toISOString(),
   updatedAt: r.updated_at.toISOString(),
@@ -335,9 +337,9 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
         for (const [sortOrder, line] of lines.entries()) {
           const row = await one<ProjectEstimateLineRow>(client,
             `INSERT INTO finance.project_estimate_lines
-               (id, project_id, source, source_ref_id, section, name, qty, price_eur, cost_eur, comment, sort_order)
-             VALUES (COALESCE($1::uuid, gen_random_uuid()),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-            [line.id ?? null, projectId, line.source ?? "manual", line.sourceRefId ?? null, line.section.trim() || "Прочее", line.name.trim(), line.qty, line.priceEUR, line.costEUR, line.comment?.trim() ?? "", sortOrder]
+               (id, project_id, source, source_ref_id, section, name, qty, price_eur, cost_eur, comment, sort_order, is_hidden)
+             VALUES (COALESCE($1::uuid, gen_random_uuid()),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+            [line.id ?? null, projectId, line.source ?? "manual", line.sourceRefId ?? null, line.section.trim() || "Прочее", line.name.trim(), line.qty, line.priceEUR, line.costEUR, line.comment?.trim() ?? "", sortOrder, line.hidden ?? false]
           );
           saved.push(row!);
         }

@@ -114,6 +114,7 @@ interface FinanceDraftLine {
   priceEUR: string;
   costEUR: string;
   comment: string;
+  hidden: boolean;
 }
 
 function projectTabFrom(value: string | null): ProjectTab {
@@ -243,6 +244,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       priceEUR: line.amountEUR,
       costEUR: line.costEUR,
       comment: line.detail,
+      hidden: false,
     }));
     const source = saved.length > 0 ? [...saved, ...missingDerived] : [...invoice.data.rentalLines, ...invoice.data.laborLines].map((line) => ({
       id: line.refId,
@@ -254,8 +256,9 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       priceEUR: line.amountEUR,
       costEUR: line.costEUR,
       comment: line.detail,
+      hidden: false,
     }));
-    setEstimateDrafts(source.map((line) => ({ id: line.id, source: line.source, sourceRefId: line.sourceRefId, section: line.section, name: line.name, qty: String(line.qty), priceEUR: String(line.priceEUR), costEUR: String(line.costEUR), comment: line.comment })));
+    setEstimateDrafts(source.map((line) => ({ id: line.id, source: line.source, sourceRefId: line.sourceRefId, section: line.section, name: line.name, qty: String(line.qty), priceEUR: String(line.priceEUR), costEUR: String(line.costEUR), comment: line.comment, hidden: line.hidden ?? false })));
     setEstimateSeeded(true);
   }, [estimateLines.data, estimateSeeded, invoice.data]);
 
@@ -927,7 +930,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
           <>
             <SectionTitle>Экономика проекта · €</SectionTitle>
             {canManageFinance && <DeliveryCalculator venueId={p.venueId} people={projectPeople} onApply={(quote, vehicle) => setEstimateDrafts((rows) => {
-              const next = { id: `manual-delivery-${Date.now()}`, source: "manual" as const, sourceRefId: null, section: "Доставка", name: `Доставка · ${vehicle.model} ${vehicle.plateNumber}`, qty: "1", priceEUR: String(quote.fuelCostEUR), costEUR: String(quote.fuelCostEUR), comment: `${quote.distanceKm} км · ${quote.fuelLitres} л${quote.roundTrip ? " · туда и обратно" : ""}` };
+              const next = { id: `manual-delivery-${Date.now()}`, source: "manual" as const, sourceRefId: null, section: "Доставка", name: `Доставка · ${vehicle.model} ${vehicle.plateNumber}`, qty: "1", priceEUR: String(quote.fuelCostEUR), costEUR: String(quote.fuelCostEUR), comment: `${quote.distanceKm} км · ${quote.fuelLitres} л${quote.roundTrip ? " · туда и обратно" : ""}`, hidden: false };
               const index = rows.findIndex((line) => line.id.startsWith("manual-delivery-") || (line.source === "manual" && line.section.toLowerCase() === "доставка"));
               return index < 0 ? [...rows, next] : rows.map((line, i) => i === index ? { ...next, id: line.id } : line);
             })} />}
@@ -937,10 +940,10 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   <p className="card__title">Себестоимость и цена клиенту</p>
                   <p className="card__subtitle">Это единственный источник строк для счёта.</p>
                 </div>
-                {canManageFinance && <Button variant="secondary" onClick={() => setEstimateDrafts((lines) => [...lines, { id: `manual-${Date.now()}`, source: "manual", sourceRefId: null, section: "Прочее", name: "", qty: "1", priceEUR: "0", costEUR: "0", comment: "" }])}>+ Позиция</Button>}
+                {canManageFinance && <Button variant="secondary" onClick={() => setEstimateDrafts((lines) => [...lines, { id: `manual-${Date.now()}`, source: "manual", sourceRefId: null, section: "Прочее", name: "", qty: "1", priceEUR: "0", costEUR: "0", comment: "", hidden: false }])}>+ Позиция</Button>}
               </div>
               <div className="stack" style={{ marginTop: 10 }}>
-                {estimateDrafts.map((line, index) => (
+                {estimateDrafts.map((line, index) => !line.hidden && (
                   <div className="invoice-line" key={line.id}>
                     <div className="row" style={{ gap: 6 }}>
                       <Input disabled={!canManageFinance} value={line.name} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, name: e.target.value } : row))} placeholder="Наименование" />
@@ -958,7 +961,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
               </div>
               <datalist id="project-estimate-sections">{estimateSectionSuggestions.map((section) => <option key={section} value={section} />)}</datalist>
               {canManageFinance && <Button block disabled={replaceEstimateLines.isPending || estimateDrafts.some((line) => !line.name.trim() || !(Number(line.qty) > 0))} onClick={() => replaceEstimateLines.mutate(estimateDrafts.map((line) => ({
-                ...(line.id.startsWith("manual-") ? {} : { id: line.id }), source: line.source, sourceRefId: line.sourceRefId, section: line.section.trim(), name: line.name.trim(), qty: Number(line.qty), priceEUR: Number(line.priceEUR) || 0, costEUR: Number(line.costEUR) || 0, comment: line.comment,
+                ...(line.id.startsWith("manual-") ? {} : { id: line.id }), source: line.source, sourceRefId: line.sourceRefId, section: line.section.trim(), name: line.name.trim(), qty: Number(line.qty), priceEUR: Number(line.priceEUR) || 0, costEUR: Number(line.costEUR) || 0, comment: line.comment, hidden: line.hidden,
               })))}>Сохранить €</Button>}
             </Card>
             <Card>

@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS finance.project_estimate_lines (
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS project_estimate_lines_project_idx ON finance.project_estimate_lines(project_id, sort_order);
+ALTER TABLE finance.project_estimate_lines ADD COLUMN IF NOT EXISTS is_hidden boolean NOT NULL DEFAULT false;
 
 -- EUR is the base currency; its rate is always 1.
 INSERT INTO finance.fx_rates (currency, rate_to_eur) VALUES ('EUR', 1)

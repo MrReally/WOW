@@ -4,19 +4,23 @@ import type { Currency, Finance } from "@sever/contracts";
 import { Card, Button, Field, Input, Textarea, Select, Loading, ErrorState, BrandLogo, Chip } from "../../ui-kit/index.ts";
 import { getToken } from "../../lib/api.ts";
 import { platform } from "../../app/platform/telegram.ts";
+import { useSession } from "../../app/session.ts";
 import { useProject, useClients, useProjectInvoice } from "../projects/hooks.ts";
 import { useVenues } from "../plans/hooks.ts";
-import { useCreateInvoiceVersion, useFxRates, useInvoiceCompanySettings, useInvoiceVersions, useSetInvoiceCompanySettings } from "./hooks.ts";
+import { useCreateInvoiceVersion, useFxRates, useInvoiceCompanySettings, useInvoiceVersions, useProjectEstimateLines, useReplaceProjectEstimateLines, useSetInvoiceCompanySettings } from "./hooks.ts";
 import "./invoice.css";
 
 interface Line {
   id: string;
+  source: Finance.ProjectEstimateLineSource;
+  sourceRefId: string | null;
   section: string;
   name: string;
   count: string;
   price: number;
   cost: number;
   comment: string;
+  hidden: boolean;
 }
 
 interface Company { name: string; requisites: string; phone: string; email: string; telegram: string; }
@@ -72,6 +76,8 @@ function loadCompany(): Company {
 export function InvoicePage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const { can } = useSession();
+  const canManageFinance = can("finance.manage");
   const project = useProject(id);
   const clients = useClients();
   const invoice = useProjectInvoice(id, true);
@@ -81,6 +87,8 @@ export function InvoicePage() {
   const setCompanySettings = useSetInvoiceCompanySettings();
   const serverVersions = useInvoiceVersions(id);
   const createVersion = useCreateInvoiceVersion(id);
+  const estimateLines = useProjectEstimateLines(id);
+  const replaceEstimateLines = useReplaceProjectEstimateLines(id);
 
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [panel, setPanel] = useState<Panel>("lines");
@@ -99,6 +107,15 @@ export function InvoicePage() {
   const [versions, setVersions] = useState<StoredInvoiceVersion[]>([]);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState("");
+  const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
+  const [mergeName, setMergeName] = useState("");
+  const [mergeOpen, setMergeOpen] = useState(false);
+
+  useEffect(() => {
+    setSeeded(false);
+    setSelectedLineIds([]);
+    setMergeOpen(false);
+  }, [id]);
 
   useEffect(() => {
     try {
@@ -119,19 +136,29 @@ export function InvoicePage() {
   }, [serverVersions.data]);
 
   useEffect(() => {
-    if (!seeded && invoice.data) {
-      setLines([...invoice.data.rentalLines.map((l) => ({
-        id: l.refId,
-        section: l.section,
-        name: l.label,
-        count: String(l.qty),
-        price: l.amountEUR,
-        cost: l.costEUR,
-        comment: l.detail,
-      }))]);
+    if (!seeded && invoice.data && estimateLines.data) {
+      const saved = estimateLines.data;
+      const invoiceSource = saved.length > 0 ? invoice.data.rentalLines : [...invoice.data.rentalLines, ...invoice.data.laborLines];
+      const visible = invoiceSource.map((l) => {
+        const stored = saved.find((line) => line.id === l.refId || line.sourceRefId === l.refId);
+        return {
+          id: stored?.id ?? l.refId,
+          source: stored?.source ?? (l.section === "Crew" ? "labor" : "equipment"),
+          sourceRefId: stored?.sourceRefId ?? l.refId,
+          section: l.section,
+          name: l.label,
+          count: String(l.qty),
+          price: l.amountEUR,
+          cost: l.costEUR,
+          comment: l.detail,
+          hidden: false,
+        } satisfies Line;
+      });
+      const hidden = saved.filter((line) => line.hidden).map(lineFromEstimate);
+      setLines([...visible, ...hidden]);
       setSeeded(true);
     }
-  }, [id, invoice.data, seeded]);
+  }, [invoice.data, estimateLines.data, seeded]);
 
   useEffect(() => {
     if (project.data && !number) setNumber(`EST-${dateStr.replace(/-/g, "")}-${id.slice(0, 4).toUpperCase()}`);
@@ -151,16 +178,17 @@ export function InvoicePage() {
 
   const fxRateToEUR = currency === "EUR" ? 1 : (fx.data ?? []).find((r) => r.currency === currency)?.rateToEUR ?? null;
   const convert = (valueEUR: number) => (fxRateToEUR ? round2(valueEUR / fxRateToEUR) : valueEUR);
-  const total = useMemo(() => round2(lines.reduce((s, l) => s + l.price, 0)), [lines]);
-  const costTotal = useMemo(() => round2(lines.reduce((s, l) => s + l.cost, 0)), [lines]);
+  const visibleLines = useMemo(() => lines.filter((line) => !line.hidden), [lines]);
+  const total = useMemo(() => round2(visibleLines.reduce((s, l) => s + l.price, 0)), [visibleLines]);
+  const costTotal = useMemo(() => round2(visibleLines.reduce((s, l) => s + l.cost, 0)), [visibleLines]);
   const margin = round2(total - costTotal);
-  const normalizedLines = useMemo(() => lines.map((l) => ({
+  const normalizedLines = useMemo(() => visibleLines.map((l) => ({
     ...l,
     section: cleanText(l.section) || "Equipment",
     name: cleanText(l.name),
     count: cleanText(l.count) || "1",
     comment: l.comment.trim(),
-  })), [lines]);
+  })), [visibleLines]);
   const sections = useMemo(() => groupLines(normalizedLines), [normalizedLines]);
 
   if (project.isLoading || invoice.isLoading) return <Loading />;
@@ -236,7 +264,7 @@ export function InvoicePage() {
     setClientName(v.clientName);
     setCurrency(v.currency);
     setLang(v.lang);
-    setLines(v.lines);
+    setLines(v.lines.map((line) => ({ ...line, source: line.source ?? "manual", sourceRefId: line.sourceRefId ?? null, hidden: line.hidden ?? false })));
     setNote(v.note ?? "");
     setPanel("lines");
   };
@@ -270,6 +298,41 @@ export function InvoicePage() {
     } finally {
       setPdfBusy(false);
     }
+  };
+  const selectedLines = visibleLines.filter((line) => selectedLineIds.includes(line.id));
+  const selectedPrice = round2(selectedLines.reduce((sum, line) => sum + line.price, 0));
+  const selectedCost = round2(selectedLines.reduce((sum, line) => sum + line.cost, 0));
+  const persistMergedLine = () => {
+    const name = cleanText(mergeName);
+    if (!name || selectedLines.length < 2) return;
+    const selectedIds = new Set(selectedLineIds);
+    const retained = lines.flatMap((line) => {
+      if (!selectedIds.has(line.id)) return [line];
+      return line.source === "manual" ? [] : [{ ...line, hidden: true }];
+    });
+    const commonSection = selectedLines.every((line) => line.section === selectedLines[0]?.section)
+      ? selectedLines[0]!.section
+      : "Услуги";
+    const next: Line[] = [...retained, {
+      id: `manual-merge-${Date.now()}`,
+      source: "manual",
+      sourceRefId: null,
+      section: commonSection,
+      name,
+      count: "1",
+      price: selectedPrice,
+      cost: selectedCost,
+      comment: "",
+      hidden: false,
+    }];
+    replaceEstimateLines.mutate(next.map(lineToEstimateInput), {
+      onSuccess: (saved) => {
+        setLines(saved.map(lineFromEstimate));
+        setSelectedLineIds([]);
+        setMergeName("");
+        setMergeOpen(false);
+      },
+    });
   };
 
   if (mode === "preview") {
@@ -309,7 +372,7 @@ export function InvoicePage() {
           <Chip label={money(convert(total), currency)} tone="accent" />
         </div>
         <div className="invoice-mini-metrics">
-          <Metric label="Строк" value={String(lines.length)} />
+          <Metric label="Строк" value={String(visibleLines.length)} />
           <Metric label="Себес" value={money(costTotal)} />
           <Metric label="Маржа" value={money(margin)} tone={margin >= 0 ? "var(--ok)" : "var(--alert)"} />
         </div>
@@ -345,7 +408,24 @@ export function InvoicePage() {
 
       {panel === "lines" && (
         <>
-          <p className="card__subtitle">Позиции редактируются в разделе проекта «€». Здесь формируется только отображение счёта.</p>
+          <p className="card__subtitle">Цены и себестоимость редактируются в «€». Здесь можно объединить несколько строк и задать клиентское название.</p>
+          {canManageFinance && <Card>
+            <div className="invoice-merge-toolbar">
+              <div>
+                <p className="card__title">Объединить позиции</p>
+                <p className="card__subtitle">Выбрано: {selectedLines.length} · Ц {money(selectedPrice)} · СС {money(selectedCost)}</p>
+              </div>
+              <Button variant="secondary" disabled={selectedLines.length < 2} onClick={() => { setMergeOpen(true); if (!mergeName) setMergeName(selectedLines.map((line) => line.name).join(" + ")); }}>Объединить</Button>
+            </div>
+            {mergeOpen && <div className="invoice-merge-form">
+              <Field label="Новое название для клиента"><Input autoFocus value={mergeName} onChange={(e) => setMergeName(e.target.value)} placeholder="Монтаж + доставка" /></Field>
+              <p className="card__subtitle">Цена {money(selectedPrice)} и себестоимость {money(selectedCost)} уже сложены.</p>
+              <div className="row">
+                <Button block disabled={!mergeName.trim() || replaceEstimateLines.isPending} onClick={persistMergedLine}>{replaceEstimateLines.isPending ? "Сохраняем…" : "Сохранить объединение"}</Button>
+                <Button block variant="ghost" onClick={() => setMergeOpen(false)}>Отмена</Button>
+              </div>
+            </div>}
+          </Card>}
           {sections.map((sec) => (
             <Card key={sec.section}>
               <div className="row row--between">
@@ -355,7 +435,8 @@ export function InvoicePage() {
               <div className="stack" style={{ marginTop: 10 }}>
                 {sec.items.map((line) => (
                   <div className="row row--between" key={line.id} style={{ gap: 10, padding: "7px 0", borderBottom: "1px solid var(--bdr)" }}>
-                    <div style={{ minWidth: 0 }}>
+                    {canManageFinance && <input type="checkbox" checked={selectedLineIds.includes(line.id)} aria-label={`Выбрать ${line.name}`} onChange={(e) => setSelectedLineIds((ids) => e.target.checked ? [...ids, line.id] : ids.filter((id) => id !== line.id))} />}
+                    <div style={{ minWidth: 0, flex: 1 }}>
                       <div>{line.name || "—"} · К {line.count}</div>
                       {line.comment && <div className="card__subtitle">{line.comment}</div>}
                     </div>
@@ -396,8 +477,8 @@ export function InvoicePage() {
       )}
 
       <div className="invoice-bottom-actions">
-        <Button block variant="secondary" disabled={lines.length === 0} onClick={() => void preview()}>Preview</Button>
-        <Button block disabled={lines.length === 0 || pdfBusy || fxRateToEUR === null} onClick={downloadPdf}>{pdfBusy ? "PDF…" : "PDF"}</Button>
+        <Button block variant="secondary" disabled={visibleLines.length === 0} onClick={() => void preview()}>Preview</Button>
+        <Button block disabled={visibleLines.length === 0 || pdfBusy || fxRateToEUR === null} onClick={downloadPdf}>{pdfBusy ? "PDF…" : "PDF"}</Button>
       </div>
     </div>
   );
@@ -420,14 +501,48 @@ function versionFromDTO(v: Finance.InvoiceVersionDTO): StoredInvoiceVersion {
     createdAt: v.createdAt,
     lines: v.lines.map((line) => ({
       id: line.id,
+      source: "manual",
+      sourceRefId: null,
       section: line.section,
       name: line.name,
       count: line.count,
       price: line.priceEUR,
       cost: line.costEUR,
       comment: line.comment,
+      hidden: false,
     })),
     note: v.note,
+  };
+}
+
+function lineFromEstimate(line: Finance.ProjectEstimateLineDTO): Line {
+  return {
+    id: line.id,
+    source: line.source,
+    sourceRefId: line.sourceRefId,
+    section: line.section,
+    name: line.name,
+    count: String(line.qty),
+    price: line.priceEUR,
+    cost: line.costEUR,
+    comment: line.comment,
+    hidden: line.hidden,
+  };
+}
+
+function lineToEstimateInput(line: Line): Finance.SaveProjectEstimateLineInput {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(line.id);
+  return {
+    ...(isUuid ? { id: line.id } : {}),
+    source: line.source,
+    sourceRefId: line.sourceRefId,
+    section: cleanText(line.section) || "Прочее",
+    name: cleanText(line.name),
+    qty: Number(line.count) > 0 ? Number(line.count) : 1,
+    priceEUR: line.price,
+    costEUR: line.cost,
+    comment: line.comment.trim(),
+    hidden: line.hidden,
   };
 }
 

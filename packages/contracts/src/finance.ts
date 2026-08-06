@@ -103,6 +103,8 @@ export interface ProjectEstimateLineDTO {
   priceEUR: number;
   costEUR: number;
   comment: string;
+  /** Retained source row that must not be rendered after combining positions. */
+  hidden: boolean;
   sortOrder: number;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
@@ -118,6 +120,7 @@ export interface SaveProjectEstimateLineInput {
   priceEUR: number;
   costEUR: number;
   comment?: string;
+  hidden?: boolean;
 }
 
 // ── Project invoice / cost estimate ──────────────────────────────────────────

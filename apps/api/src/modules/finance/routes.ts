@@ -68,6 +68,7 @@ const estimateLineSchema = z.object({
   priceEUR: z.number(),
   costEUR: z.number(),
   comment: z.string().optional(),
+  hidden: z.boolean().optional(),
 });
 
 export function registerFinanceRoutes(

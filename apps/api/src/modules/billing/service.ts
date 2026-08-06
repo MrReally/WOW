@@ -103,9 +103,10 @@ export function createBillingService(deps: BillingDeps): BillingService {
           }));
     const laborEUR = round2(laborLines.reduce((s, l) => s + l.amountEUR, 0));
     const estimateBySource = new Map(estimateLines.filter((line) => line.sourceRefId).map((line) => [line.sourceRefId!, line]));
-    const effectiveDerived = [...derivedRentalLines, ...laborLines].map((derived) => {
+    const effectiveDerived = [...derivedRentalLines, ...laborLines].flatMap((derived) => {
       const saved = estimateBySource.get(derived.refId);
-      return saved ? {
+      if (saved?.hidden) return [];
+      return [saved ? {
         refId: saved.id,
         section: saved.section,
         label: saved.name,
@@ -115,9 +116,9 @@ export function createBillingService(deps: BillingDeps): BillingService {
         periods: 1,
         amountEUR: saved.priceEUR,
         costEUR: saved.costEUR,
-      } : derived;
+      } : derived];
     });
-    const manualLines: Finance.InvoiceLineDTO[] = estimateLines.filter((line) => line.source === "manual").map((line) => ({
+    const manualLines: Finance.InvoiceLineDTO[] = estimateLines.filter((line) => line.source === "manual" && !line.hidden).map((line) => ({
       refId: line.id,
       section: line.section,
       label: line.name,
