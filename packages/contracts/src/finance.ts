@@ -265,6 +265,7 @@ export interface FinanceService {
   // Editable project economics (€ tab is the only writer).
   listProjectEstimateLines(projectId: ID): Promise<ProjectEstimateLineDTO[]>;
   replaceProjectEstimateLines(projectId: ID, lines: SaveProjectEstimateLineInput[]): Promise<ProjectEstimateLineDTO[]>;
+  copyProjectEstimateLines(sourceProjectId: ID, projectId: ID, sourceRefMap?: Record<ID, ID>): Promise<ProjectEstimateLineDTO[]>;
 
   // Estimate document settings + versions
   getInvoiceCompanySettings(): Promise<InvoiceCompanySettingsDTO>;

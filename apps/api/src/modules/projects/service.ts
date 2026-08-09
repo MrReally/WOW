@@ -544,6 +544,82 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       );
       return projectDTO(row!);
     },
+    async duplicateProject(id, input) {
+      assertRange(input.startsAt, input.endsAt);
+      const source = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
+      if (!source) throw NotFound("project", id);
+      let created: ProjectRow | null = null;
+      const sourceRefMap: Record<string, string> = {};
+      await tx(async (client) => {
+        created = await one<ProjectRow>(client,
+          `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at)
+           VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+          [input.name, source.client_id, source.venue_id, input.startsAt, input.endsAt]
+        );
+        const newId = created!.id;
+        const sourceRoles = await query<ProjectRoleRow>(client, `SELECT * FROM projects.project_roles WHERE project_id=$1 ORDER BY created_at`, [id]);
+        for (const role of sourceRoles) {
+          const inserted = await one<{ id: string }>(client,
+            `INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur) VALUES ($1,$2,$3,$4) RETURNING id`,
+            [newId, role.title, role.required_count, role.rate_eur]
+          );
+          sourceRefMap[role.id] = inserted!.id;
+        }
+        const sourceReservations = await query<ReservationRow>(client, `SELECT * FROM projects.reservations WHERE project_id=$1 ORDER BY created_at`, [id]);
+        for (const reservation of sourceReservations) {
+          const inserted = await one<{ id: string }>(client,
+            `INSERT INTO projects.reservations (project_id, model_id, qty, is_reserve, starts_at, ends_at, resolved_unit_ids)
+             VALUES ($1,$2,$3,$4,$5,$6,'{}') RETURNING id`,
+            [newId, reservation.model_id, reservation.qty, reservation.is_reserve,
+              new Date(reservation.starts_at.getTime() + (Date.parse(input.startsAt) - source.starts_at.getTime())).toISOString(),
+              new Date(reservation.ends_at.getTime() + (Date.parse(input.startsAt) - source.starts_at.getTime())).toISOString()]
+          );
+          sourceRefMap[reservation.id] = inserted!.id;
+        }
+        const timingMap = new Map<string, string>();
+        const sourceTimings = await query<TimingRow>(client, `SELECT * FROM projects.timings WHERE project_id=$1 ORDER BY starts_at`, [id]);
+        const shiftMs = Date.parse(input.startsAt) - source.starts_at.getTime();
+        for (const timing of sourceTimings) {
+          const inserted = await one<{ id: string }>(client,
+            `INSERT INTO projects.timings (project_id, title, starts_at, ends_at) VALUES ($1,$2,$3,$4) RETURNING id`,
+            [newId, timing.title, new Date(timing.starts_at.getTime() + shiftMs).toISOString(), new Date(timing.ends_at.getTime() + shiftMs).toISOString()]
+          );
+          timingMap.set(timing.id, inserted!.id);
+        }
+        const sourceTasks = await query<ProjectTaskRow>(client, `SELECT * FROM projects.project_tasks WHERE project_id=$1 ORDER BY created_at`, [id]);
+        for (const task of sourceTasks) {
+          await query(client,
+            `INSERT INTO projects.project_tasks (project_id, title, status, assignee_id, timing_id)
+             VALUES ($1,$2,'todo',NULL,$3)`,
+            [newId, task.title, task.timing_id ? timingMap.get(task.timing_id) ?? null : null]
+          );
+        }
+        const sourceReminders = await query<ProjectReminderRow>(client, `SELECT * FROM projects.project_reminders WHERE project_id=$1 ORDER BY created_at`, [id]);
+        for (const reminder of sourceReminders) {
+          await query(client,
+            `INSERT INTO projects.project_reminders
+               (project_id, timing_id, offset_minutes, recipient_mode, user_ids, title, note, sent_at, created_by_user_id)
+             VALUES ($1,$2,$3,$4,'{}',$5,$6,NULL,NULL)`,
+            [newId, reminder.timing_id ? timingMap.get(reminder.timing_id) ?? null : null, reminder.offset_minutes, reminder.recipient_mode, reminder.title, reminder.note]
+          );
+        }
+        await query(client,
+          `INSERT INTO projects.project_checklist (project_id, group_key, title)
+           SELECT $2, group_key, title FROM projects.project_checklist WHERE project_id=$1`, [id, newId]);
+        const sourceContractors = await query<ContractorItemRow>(client, `SELECT * FROM projects.contractor_items WHERE project_id=$1 ORDER BY created_at`, [id]);
+        for (const item of sourceContractors) {
+          const inserted = await one<{ id: string }>(client,
+            `INSERT INTO projects.contractor_items
+               (project_id, contractor_id, kind, name, qty, price_eur, cost_eur, note, booked, returned_at, paid_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,false,NULL,NULL) RETURNING id`,
+            [newId, item.contractor_id, item.kind, item.name, item.qty, item.price_eur, item.cost_eur, item.note]
+          );
+          sourceRefMap[item.id] = inserted!.id;
+        }
+      });
+      await bus.publish({ type: "project.duplicated", sourceProjectId: id, projectId: created!.id, sourceRefMap, at: new Date().toISOString() });
+      return projectDTO(created!);
+    },
     async updateProject(id, input) {
       const existing = await this.getProject(id);
       if (!existing) throw NotFound("project", id);

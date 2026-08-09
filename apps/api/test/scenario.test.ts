@@ -40,6 +40,64 @@ afterAll(async () => {
 });
 
 describe("Tech pickup/return → некомплект", () => {
+  it("keeps the stable Telegram chat link when an admin edits the username", async () => {
+    const username = `nathy_${Date.now()}`;
+    const chatId = String(Date.now());
+    const renamedUsername = `${username}_new`;
+    const legacyUsername = `${username}_final`;
+    const created = await wiring.people.service.create({
+      displayName: "Nathy",
+      roleId: techRoleId,
+      telegramUsername: `@${username}`,
+    });
+    const linked = await wiring.people.service.resolveTelegramUser(chatId, "Nathy", username.toUpperCase());
+    expect(linked?.user.id).toBe(created.user.id);
+    expect(linked?.user.telegramId).toBe(chatId);
+    expect(linked?.user.telegramUsername).toBe(username);
+
+    const renamed = await wiring.people.service.update(created.user.id, { telegramUsername: `@${renamedUsername.toUpperCase()}` });
+    expect(renamed.telegramId).toBe(chatId);
+    expect(renamed.telegramUsername).toBe(renamedUsername);
+    const legacyClientEdit = await wiring.people.service.update(created.user.id, { telegramId: `@${legacyUsername.toUpperCase()}` });
+    expect(legacyClientEdit.telegramId).toBe(chatId);
+    expect(legacyClientEdit.telegramUsername).toBe(legacyUsername);
+  });
+
+  it("duplicates a project as an editable plan without people, unit allocations or confirmations", async () => {
+    const { projects, equipment, finance, plans } = wiring;
+    const client = await projects.service.createClient({ name: `Copy client ${Date.now()}` });
+    const start = new Date("2026-08-10T10:00:00.000Z").toISOString();
+    const end = new Date("2026-08-11T10:00:00.000Z").toISOString();
+    const source = await projects.service.createProject({ name: "Source", clientId: client.id, startsAt: start, endsAt: end });
+    const role = await projects.service.createProjectRole({ projectId: source.id, title: "Световик", requiredCount: 2, rateEUR: 180 });
+    const person = await makeTech("Copy Person");
+    await projects.service.addAssignment({ projectId: source.id, roleId: role.id, userId: person.id });
+    const type = await equipment.service.createType({ name: `Copy type ${Date.now()}`, trackingMode: "serial" });
+    const model = await equipment.service.createModel({ typeId: type.id, name: "Copy model", unitCostEUR: 100, dailyPriceEUR: 10 });
+    const unit = await equipment.service.createUnit({ modelId: model.id, assetTag: `COPY-${Date.now()}` });
+    const reservation = await projects.service.createReservation({ projectId: source.id, modelId: model.id, qty: 1, startsAt: start, endsAt: end });
+    await projects.service.resolveReservation(reservation.id, [unit.id]);
+    await projects.service.addTiming({ projectId: source.id, title: "Монтаж", startsAt: new Date("2026-08-10T08:00:00.000Z").toISOString(), endsAt: new Date("2026-08-10T09:00:00.000Z").toISOString(), assigneeIds: [person.id] });
+    const contractor = await equipment.service.createContractor({ name: `Copy contractor ${Date.now()}` });
+    const contractorItem = await projects.service.addContractorItem({ projectId: source.id, contractorId: contractor.id, name: "Пульт", qty: 1, priceEUR: 200, costEUR: 120 });
+    await projects.service.updateContractorItem(contractorItem.id, { booked: true });
+    await finance.service.replaceProjectEstimateLines(source.id, [{ source: "equipment", sourceRefId: reservation.id, section: "Свет", name: "Комплект", qty: 1, priceEUR: 500, costEUR: 220 }]);
+    const plan = await plans.service.createPlan({ projectId: source.id, name: "Сцена" });
+    await plans.service.addElement({ planId: plan.id, layer: "light", kind: "fixture", label: "MH", x: 20, y: 20, modelId: model.id, unitId: unit.id });
+
+    const newStart = new Date("2026-09-01T10:00:00.000Z").toISOString();
+    const copy = await projects.service.duplicateProject(source.id, { name: "Copy", startsAt: newStart, endsAt: new Date("2026-09-02T10:00:00.000Z").toISOString() });
+    expect(copy.status).toBe("draft");
+    expect(await projects.service.listAssignments(copy.id)).toEqual([]);
+    expect(await projects.service.listProjectRoles(copy.id)).toEqual([expect.objectContaining({ title: "Световик", requiredCount: 2, rateEUR: 180 })]);
+    const copiedReservations = await projects.service.listReservations(copy.id);
+    expect(copiedReservations).toEqual([expect.objectContaining({ modelId: model.id, resolvedUnitIds: [], startsAt: newStart })]);
+    expect(await projects.service.listTimings(copy.id)).toEqual([expect.objectContaining({ title: "Монтаж", startsAt: new Date("2026-09-01T08:00:00.000Z").toISOString(), assigneeIds: [] })]);
+    expect(await projects.service.listContractorItems(copy.id)).toEqual([expect.objectContaining({ name: "Пульт", booked: false, returnedAt: null, paidAt: null })]);
+    expect(await finance.service.listProjectEstimateLines(copy.id)).toEqual([expect.objectContaining({ name: "Комплект", priceEUR: 500, costEUR: 220, sourceRefId: copiedReservations[0]!.id })]);
+    expect(await plans.service.getCurrentPlan(copy.id)).toEqual(expect.objectContaining({ elements: [expect.objectContaining({ modelId: model.id, unitId: null })] }));
+  });
+
   it("issues units, journals movement, raises a Problem on partial return", async () => {
     const { equipment, projects } = wiring;
 

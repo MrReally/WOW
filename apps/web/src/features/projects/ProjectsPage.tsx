@@ -108,7 +108,7 @@ export function ProjectsPage() {
               </tr>
             </thead>
             <tbody>
-              {list.map((p) => (
+              {mobileProjects.active.map((p) => (
                 <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
                   <td><strong>{p.name}</strong><small>#{p.id.slice(0, 8)}</small></td>
                   <td>{clientName(p.clientId)}</td>
@@ -120,6 +120,25 @@ export function ProjectsPage() {
               ))}
             </tbody>
           </table>
+          {mobileProjects.archived.length > 0 && (
+            <details className="mobile-project-archive">
+              <summary><span>Проведённые и отменённые</span><span className="mobile-project-archive__count">{mobileProjects.archived.length}</span></summary>
+              <table className="data-table">
+                <tbody>
+                  {mobileProjects.archived.map((p) => (
+                    <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
+                      <td><strong>{p.name}</strong><small>#{p.id.slice(0, 8)}</small></td>
+                      <td>{clientName(p.clientId)}</td>
+                      <td className="data-table__mono">{new Date(p.startsAt).toLocaleDateString("ru-RU")}</td>
+                      <td className="data-table__mono">{new Date(p.endsAt).toLocaleDateString("ru-RU")}</td>
+                      <td><StatusBadge tone={projectStatusTone[p.status]}>{projectStatusLabel[p.status]}</StatusBadge></td>
+                      <td className="data-table__arrow">→</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          )}
         </div>
         </>
       )}

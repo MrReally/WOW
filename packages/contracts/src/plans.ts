@@ -123,6 +123,8 @@ export interface PlansService {
   getPlan(id: ID): Promise<PlanDTO | null>;
   getCurrentPlan(projectId: ID): Promise<PlanDTO | null>;
   createPlan(input: CreatePlanInput): Promise<PlanDTO>;
+  /** Copy the current plan, retaining model links but clearing physical unit assignments. */
+  copyCurrentPlan(sourceProjectId: ID, projectId: ID): Promise<PlanDTO | null>;
   /** Snapshot the plan's elements into a new version and make it current. */
   newVersion(planId: ID): Promise<PlanDTO>;
   setCurrent(id: ID): Promise<PlanDTO>;

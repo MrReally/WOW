@@ -66,6 +66,18 @@ ALTER TABLE people.users ADD COLUMN IF NOT EXISTS patronymic text;
 ALTER TABLE people.users ADD COLUMN IF NOT EXISTS nickname text;
 ALTER TABLE people.users ADD COLUMN IF NOT EXISTS operations_show_all_projects boolean NOT NULL DEFAULT false;
 ALTER TABLE people.users ADD COLUMN IF NOT EXISTS driving_license_categories text[] NOT NULL DEFAULT '{}';
+ALTER TABLE people.users ADD COLUMN IF NOT EXISTS telegram_username text;
+CREATE UNIQUE INDEX IF NOT EXISTS users_telegram_username_idx
+  ON people.users (lower(telegram_username)) WHERE telegram_username IS NOT NULL;
+-- Legacy rows stored either a chat id or an @username in telegram_id. Split
+-- pending handles out without touching numeric bot links.
+UPDATE people.users
+SET telegram_username=lower(regexp_replace(trim(telegram_id), '^@', '')),
+    telegram_id=NULL
+WHERE telegram_id IS NOT NULL
+  AND telegram_id !~ '^[0-9]+$'
+  AND is_system=false
+  AND telegram_username IS NULL;
 
 CREATE TABLE IF NOT EXISTS people.crew_applications (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -113,4 +125,24 @@ CREATE TABLE IF NOT EXISTS people.telegram_dialog_messages (
 ALTER TABLE people.telegram_dialog_messages ADD COLUMN IF NOT EXISTS telegram_display_name text;
 CREATE INDEX IF NOT EXISTS telegram_dialog_messages_chat_idx ON people.telegram_dialog_messages(telegram_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS telegram_dialog_messages_message_idx ON people.telegram_dialog_messages(telegram_id, telegram_message_id);
+
+-- Recover stable chat ids for legacy cards where an admin replaced the id with
+-- @username. The inbox journal retains the numeric chat id and observed handle.
+WITH latest_chat AS (
+  SELECT DISTINCT ON (lower(telegram_username))
+    lower(telegram_username) AS username,
+    telegram_id
+  FROM people.telegram_dialog_messages
+  WHERE telegram_username IS NOT NULL AND telegram_id ~ '^[0-9]+$'
+  ORDER BY lower(telegram_username), created_at DESC
+)
+UPDATE people.users u
+SET telegram_id=latest_chat.telegram_id
+FROM latest_chat
+WHERE u.telegram_id IS NULL
+  AND lower(u.telegram_username)=latest_chat.username
+  AND NOT EXISTS (
+    SELECT 1 FROM people.users linked
+    WHERE linked.telegram_id=latest_chat.telegram_id AND linked.id<>u.id
+  );
 `;

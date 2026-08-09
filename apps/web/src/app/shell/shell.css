@@ -18,7 +18,9 @@
   flex-direction: column;
 }
 
-@media (min-width: 960px) {
+/* Wide phones and tablets keep the mobile shell; ERP navigation starts only
+   on a genuinely desktop-sized viewport. */
+@media (min-width: 1200px) {
   .app-shell {
     width: 100%;
     max-width: none;

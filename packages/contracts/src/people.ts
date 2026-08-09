@@ -28,6 +28,8 @@ export interface UserDTO {
   id: ID;
   email: string | null;
   telegramId: string | null;
+  /** Public Telegram handle. Delivery/auth always use the stable numeric telegramId. */
+  telegramUsername: string | null;
   displayName: string;
   roleId: ID | null;
   roleName: string;
@@ -61,6 +63,7 @@ export interface CreateUserInput {
   roleId: ID;
   email?: string | null;
   telegramId?: string | null;
+  telegramUsername?: string | null;
   hourlyRateEUR?: number | null;
   firstName?: string | null;
   lastName?: string | null;
@@ -82,6 +85,7 @@ export interface UpdateUserInput {
   roleId?: ID;
   email?: string | null;
   telegramId?: string | null;
+  telegramUsername?: string | null;
   hourlyRateEUR?: number | null;
   firstName?: string | null;
   lastName?: string | null;

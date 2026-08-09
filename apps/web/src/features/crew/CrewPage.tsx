@@ -48,13 +48,13 @@ function displayImageUrl(value: string | null | undefined): string | null {
 function isTelegramLinked(telegramId: string | null): boolean {
   return !!telegramId && /^\d+$/.test(telegramId);
 }
-function telegramFieldValue(telegramId: string | null): string {
-  if (!telegramId || isTelegramLinked(telegramId)) return "";
-  return telegramId.startsWith("@") ? telegramId : `@${telegramId}`;
+function telegramFieldValue(telegramUsername: string | null): string {
+  if (!telegramUsername) return "";
+  return telegramUsername.startsWith("@") ? telegramUsername : `@${telegramUsername}`;
 }
 function contactLine(person: People.UserDTO): string {
   if (person.email) return person.email;
-  if (person.telegramId && !isTelegramLinked(person.telegramId)) return telegramFieldValue(person.telegramId);
+  if (person.telegramUsername) return telegramFieldValue(person.telegramUsername);
   return "без контакта";
 }
 
@@ -265,7 +265,7 @@ export function CrewPage() {
       patronymic: selected.patronymic,
       nickname: selected.nickname,
       email: selected.email,
-      telegramId: telegramFieldValue(selected.telegramId),
+      telegramUsername: telegramFieldValue(selected.telegramUsername),
       roleId: selected.roleId ?? undefined,
       hourlyRateEUR: selected.hourlyRateEUR,
       documentNumber: selected.documentNumber,
@@ -306,9 +306,6 @@ export function CrewPage() {
   const save = () => {
     if (!selected) return;
     const name = fullName(draft);
-    const telegramId = draft.telegramId?.trim()
-      ? draft.telegramId.trim()
-      : isTelegramLinked(selected.telegramId) ? selected.telegramId : null;
     updateUser.mutate({
       id: selected.id,
       input: {
@@ -320,7 +317,8 @@ export function CrewPage() {
         patronymic: draft.patronymic || null,
         nickname: draft.nickname || null,
         email: draft.email || null,
-        telegramId,
+        telegramId: selected.telegramId,
+        telegramUsername: draft.telegramUsername?.trim() || null,
         hourlyRateEUR: draft.hourlyRateEUR == null || Number.isNaN(Number(draft.hourlyRateEUR)) ? null : Number(draft.hourlyRateEUR),
         documentNumber: draft.documentNumber || null,
         documentPhotoUrl: draft.documentPhotoUrl || null,
@@ -481,7 +479,7 @@ export function CrewPage() {
                 disabled={!newPerson.name || (!newPerson.email && !newPerson.telegram) || !newRoleId || createUser.isPending}
                 onClick={() =>
                   createUser.mutate(
-                    { displayName: newPerson.name, roleId: newRoleId, email: newPerson.email || null, telegramId: newPerson.telegram || null } as People.CreateUserInput,
+                    { displayName: newPerson.name, roleId: newRoleId, email: newPerson.email || null, telegramUsername: newPerson.telegram || null } as People.CreateUserInput,
                     {
                       onSuccess: (res) => {
                         setNewPerson({ name: "", email: "", telegram: "", roleId: "" });
@@ -590,7 +588,7 @@ export function CrewPage() {
             <Input type="email" value={draft.email ?? ""} onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))} />
           </Field>
           <Field label="Telegram">
-            <Input value={draft.telegramId ?? ""} onChange={(e) => setDraft((d) => ({ ...d, telegramId: e.target.value }))} placeholder="@username" />
+            <Input value={draft.telegramUsername ?? ""} onChange={(e) => setDraft((d) => ({ ...d, telegramUsername: e.target.value }))} placeholder="@username" />
           </Field>
         </div>
         <div className="row">

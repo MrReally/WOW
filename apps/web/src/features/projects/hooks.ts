@@ -85,6 +85,15 @@ export function useCreateProject() {
   });
 }
 
+export function useDuplicateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Projects.DuplicateProjectInput }) =>
+      api.post<Projects.ProjectDTO>(`/api/projects/${id}/duplicate`, input),
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
 export function useUpdateProject() {
   const qc = useQueryClient();
   return useMutation({

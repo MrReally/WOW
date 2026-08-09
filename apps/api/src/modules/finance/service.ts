@@ -347,6 +347,21 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
       });
     },
 
+    async copyProjectEstimateLines(sourceProjectId, projectId, sourceRefMap = {}) {
+      const source = await this.listProjectEstimateLines(sourceProjectId);
+      return this.replaceProjectEstimateLines(projectId, source.map((line) => ({
+        source: line.source,
+        sourceRefId: line.sourceRefId ? sourceRefMap[line.sourceRefId] ?? null : null,
+        section: line.section,
+        name: line.name,
+        qty: line.qty,
+        priceEUR: line.priceEUR,
+        costEUR: line.costEUR,
+        comment: line.comment,
+        hidden: line.hidden,
+      })));
+    },
+
     async getInvoiceCompanySettings() {
       const row = await one<InvoiceCompanySettingsRow>(db, `SELECT * FROM finance.invoice_company_settings WHERE id=1`);
       if (!row) {

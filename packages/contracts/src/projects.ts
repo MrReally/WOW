@@ -60,6 +60,12 @@ export interface UpdateProjectInput {
   venueId?: ID | null;
 }
 
+export interface DuplicateProjectInput {
+  name: string;
+  startsAt: ISODateTime;
+  endsAt: ISODateTime;
+}
+
 // ── Hourly reservations ──────────────────────────────────────────────────────
 // Early reservations can be model-level (qty); resolved to specific units at
 // warehouse prep. Conflicts never block — they create a Problem.
@@ -431,6 +437,7 @@ export interface ProjectsService {
   listProjects(filter?: { status?: ProjectStatus }): Promise<ProjectDTO[]>;
   getProject(id: ID): Promise<ProjectDTO | null>;
   createProject(input: CreateProjectInput): Promise<ProjectDTO>;
+  duplicateProject(id: ID, input: DuplicateProjectInput): Promise<ProjectDTO>;
   updateProject(id: ID, input: UpdateProjectInput): Promise<ProjectDTO>;
   setStatus(id: ID, status: ProjectStatus): Promise<ProjectDTO>;
   setOperationStage(id: ID, stage: ProjectChecklistGroup, actorId?: ID | null): Promise<ProjectDTO>;
@@ -511,6 +518,14 @@ export interface ProjectsService {
 export interface ProjectConfirmedEvent {
   type: "project.confirmed";
   projectId: ID;
+  at: ISODateTime;
+}
+
+export interface ProjectDuplicatedEvent {
+  type: "project.duplicated";
+  sourceProjectId: ID;
+  projectId: ID;
+  sourceRefMap: Record<ID, ID>;
   at: ISODateTime;
 }
 
@@ -604,6 +619,7 @@ export interface ProjectPingDeclinedEvent {
 
 export type ProjectsEvent =
   | ProjectConfirmedEvent
+  | ProjectDuplicatedEvent
   | ReservationConflictEvent
   | ProjectAssignedEvent
   | ProjectUnassignedEvent

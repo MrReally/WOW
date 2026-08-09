@@ -32,8 +32,14 @@ export function createModules(bus: EventBus = new EventBus()) {
   const projects = createProjectsModule(pool, bus);
   const equipment = createEquipmentModule(pool, bus, async (projectId) => (await projects.service.getProject(projectId))?.operationStage === "pickup");
   const finance = createFinanceModule(pool, bus);
+  bus.on("project.duplicated", async (event) => {
+    await finance.service.copyProjectEstimateLines(event.sourceProjectId, event.projectId, event.sourceRefMap);
+  });
   const venues = createVenuesModule(pool);
   const plans = createPlansModule(pool);
+  bus.on("project.duplicated", async (event) => {
+    await plans.service.copyCurrentPlan(event.sourceProjectId, event.projectId);
+  });
   const notifications = createNotificationsModule(pool);
   const catalog = createCatalogModule(pool);
   const operations = createOperationsModule(pool, equipment.service, projects.service);

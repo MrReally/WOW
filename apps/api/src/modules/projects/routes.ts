@@ -31,6 +31,11 @@ const updateProjectSchema = z.object({
   endsAt: z.string().datetime().optional(),
   venueId: z.string().uuid().nullable().optional(),
 });
+const duplicateProjectSchema = z.object({
+  name: z.string().trim().min(1),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime(),
+});
 const reservationSchema = z.object({
   projectId: z.string().uuid(),
   modelId: z.string().uuid(),
@@ -163,6 +168,11 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.manage");
     return service.createProject(projectSchema.parse(req.body) as Projects.CreateProjectInput);
+  });
+  app.post<{ Params: { id: string } }>("/api/projects/:id/duplicate", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.manage");
+    return service.duplicateProject(req.params.id, duplicateProjectSchema.parse(req.body));
   });
   app.patch<{ Params: { id: string } }>("/api/projects/:id/status", async (req) => {
     const auth = await ctx.auth(req);

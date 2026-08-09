@@ -148,6 +148,42 @@ export function createPlansService(db: Sql): Plans.PlansService {
       });
     },
 
+    async copyCurrentPlan(sourceProjectId, projectId) {
+      const src = await one<PlanRow>(db,
+        `SELECT * FROM plans.plans WHERE project_id=$1 AND is_current=true ORDER BY version DESC LIMIT 1`,
+        [sourceProjectId]
+      );
+      if (!src) return null;
+      return tx(async (client) => {
+        const dst = await one<PlanRow>(client,
+          `INSERT INTO plans.plans (project_id, venue_id, name, version, is_current, stage_w, stage_h)
+           VALUES ($1,$2,$3,1,true,$4,$5) RETURNING *`,
+          [projectId, src.venue_id, src.name, src.stage_w, src.stage_h]
+        );
+        const elements = await query<ElementRow>(client, `SELECT * FROM plans.elements WHERE plan_id=$1 ORDER BY created_at`, [src.id]);
+        const idMap = new Map<string, string>();
+        for (const element of elements.filter((item) => item.kind !== "cable")) {
+          const inserted = await one<{ id: string }>(client,
+            `INSERT INTO plans.elements (plan_id, layer, kind, label, x, y, rotation, w, h, model_id, unit_id, attrs)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULL,$11) RETURNING id`,
+            [dst!.id, element.layer, element.kind, element.label, element.x, element.y, element.rotation, element.w, element.h, element.model_id, element.attrs ? JSON.stringify(element.attrs) : null]
+          );
+          idMap.set(element.id, inserted!.id);
+        }
+        for (const element of elements.filter((item) => item.kind === "cable")) {
+          await query(client,
+            `INSERT INTO plans.elements (plan_id, layer, kind, label, x, y, rotation, w, h, from_id, to_id, model_id, unit_id, attrs)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NULL,$13)`,
+            [dst!.id, element.layer, element.kind, element.label, element.x, element.y, element.rotation, element.w, element.h,
+              element.from_id ? idMap.get(element.from_id) ?? null : null,
+              element.to_id ? idMap.get(element.to_id) ?? null : null,
+              element.model_id, element.attrs ? JSON.stringify(element.attrs) : null]
+          );
+        }
+        return withElements(dst!, client);
+      });
+    },
+
     async newVersion(planId) {
       return tx(async (client) => {
         const src = await one<PlanRow>(client, `SELECT * FROM plans.plans WHERE id=$1`, [planId]);

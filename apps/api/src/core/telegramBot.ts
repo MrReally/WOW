@@ -913,7 +913,7 @@ export function startTelegramBot(deps: BotDeps): void {
               const userId = codeMatch[1]!;
               const user = await people.getById(userId);
               if (user) {
-                await people.update(userId, { telegramId: chatId });
+                await people.update(userId, { telegramId: chatId, telegramUsername: username ?? user.telegramUsername });
                 await send(chatId, `✅ Telegram привязан к аккаунту <b>${publicName(user)}</b>. Уведомления будут приходить сюда.`);
               } else {
                 await send(chatId, `Не нашёл аккаунт по ссылке. Попросите отправить новую ссылку.`);
@@ -929,9 +929,9 @@ export function startTelegramBot(deps: BotDeps): void {
               continue;
             }
             const norm = normHandle(username);
-            const match = norm ? users.find((p) => normHandle(p.telegramId) === norm) : undefined;
+            const match = norm ? users.find((p) => normHandle(p.telegramUsername) === norm) : undefined;
             if (match) {
-              await people.update(match.id, { telegramId: chatId });
+              await people.update(match.id, { telegramId: chatId, telegramUsername: username ?? match.telegramUsername });
               await send(chatId, `✅ Telegram привязан к аккаунту <b>${publicName(match)}</b>. Уведомления будут приходить сюда.`);
             } else {
               await startApplication(chatId, username ? `@${username}` : null);

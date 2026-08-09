@@ -50,7 +50,7 @@ export function PeopleManager() {
                 <p className="card__title">{personName(u)} {!u.active && <Chip label="выкл" tone="neutral" />}</p>
                 <p className="card__subtitle">
                   {u.email ?? "без email"}
-                  {!isLinked(u.telegramId) && u.telegramId ? ` · @${u.telegramId.replace(/^@/, "")} (ждёт «Старт»)` : ""}
+                  {u.telegramUsername ? ` · @${u.telegramUsername}${!isLinked(u.telegramId) ? " (ждёт «Старт»)" : ""}` : ""}
                   {" · с "}{dateTime(u.createdAt)}
                   {u.mustChangePassword ? " · ждёт смены пароля" : ""}
                 </p>
@@ -103,7 +103,7 @@ export function PeopleManager() {
           disabled={!name || (!email && !telegram) || !effRole || createUser.isPending}
           onClick={() =>
             createUser.mutate(
-              { displayName: name, roleId: effRole, email: email || null, telegramId: telegram || null } as People.CreateUserInput,
+              { displayName: name, roleId: effRole, email: email || null, telegramUsername: telegram || null } as People.CreateUserInput,
               {
                 onSuccess: (res) => {
                   setName(""); setEmail(""); setTelegram("");

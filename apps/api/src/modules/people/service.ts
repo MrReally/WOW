@@ -20,6 +20,7 @@ interface UserRow {
   id: string;
   email: string | null;
   telegram_id: string | null;
+  telegram_username: string | null;
   display_name: string;
   first_name: string | null;
   last_name: string | null;
@@ -98,6 +99,7 @@ const userDTO = (r: UserRow): People.UserDTO => ({
   id: r.id,
   email: r.email,
   telegramId: r.telegram_id,
+  telegramUsername: r.telegram_username,
   displayName: r.display_name,
   roleId: r.role_id,
   roleName: r.role_name ?? "—",
@@ -304,17 +306,24 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
 
     async resolveTelegramUser(telegramId, displayName, username) {
       const existing = await one<UserRow>(db, `${USER_SELECT} WHERE u.telegram_id=$1`, [telegramId]);
-      if (existing) return existing.active ? sessionUser(existing) : null;
-      const handle = username?.trim().replace(/^@/, "").toLowerCase();
+      const handle = username?.trim().replace(/^@/, "").toLocaleLowerCase() || null;
+      if (existing) {
+        if (handle && existing.telegram_username !== handle) {
+          await query(db, `UPDATE people.users SET telegram_username=$2 WHERE id=$1`, [existing.id, handle]);
+          const refreshed = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [existing.id]);
+          return refreshed?.active ? sessionUser(refreshed) : null;
+        }
+        return existing.active ? sessionUser(existing) : null;
+      }
       if (handle) {
         const pending = await one<UserRow>(
           db,
-          `${USER_SELECT} WHERE lower(regexp_replace(u.telegram_id, '^@', ''))=$1`,
+          `${USER_SELECT} WHERE lower(u.telegram_username)=$1`,
           [handle]
         );
         if (pending) {
           if (!pending.active) return null;
-          await query(db, `UPDATE people.users SET telegram_id=$2 WHERE id=$1`, [pending.id, telegramId]);
+          await query(db, `UPDATE people.users SET telegram_id=$2, telegram_username=$3 WHERE id=$1`, [pending.id, telegramId, handle]);
           const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [pending.id]);
           return sessionUser(u!);
         }
@@ -325,8 +334,8 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
         const owner = await one<RoleRow>(db, `SELECT * FROM people.roles WHERE is_owner=true LIMIT 1`);
         const row = await one<UserRow>(
           db,
-          `INSERT INTO people.users (telegram_id, display_name, role_id) VALUES ($1,$2,$3) RETURNING id`,
-          [telegramId, displayName, owner!.id]
+          `INSERT INTO people.users (telegram_id, telegram_username, display_name, role_id) VALUES ($1,$2,$3,$4) RETURNING id`,
+          [telegramId, handle, displayName, owner!.id]
         );
         const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [row!.id]);
         return sessionUser(u!);
@@ -492,7 +501,7 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
       return out;
     },
     async create(input) {
-      if (!input.email && !input.telegramId) throw BadRequest("нужен email или Telegram ID");
+      if (!input.email && !input.telegramId && !input.telegramUsername) throw BadRequest("нужен email или Telegram username");
       const role = await one<RoleRow>(db, `SELECT * FROM people.roles WHERE id=$1`, [input.roleId]);
       if (!role) throw NotFound("role", input.roleId);
       if (input.email) {
@@ -504,13 +513,14 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
       const row = await one<UserRow>(
         db,
         `INSERT INTO people.users
-           (email, telegram_id, display_name, role_id, hourly_rate_eur, password_hash, must_change_password,
+           (email, telegram_id, telegram_username, display_name, role_id, hourly_rate_eur, password_hash, must_change_password,
             document_number, document_photo_url, languages, about, source, photo_url, use_photo_as_avatar, birth_date,
             first_name, last_name, patronymic, nickname, driving_license_categories)
-         VALUES (lower($1), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING id`,
+         VALUES (lower($1), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id`,
         [
           input.email ?? null,
-          input.telegramId ?? null,
+          input.telegramId && /^\d+$/.test(input.telegramId) ? input.telegramId : null,
+          (input.telegramUsername ?? (input.telegramId && !/^\d+$/.test(input.telegramId) ? input.telegramId : null))?.trim().replace(/^@/, "").toLocaleLowerCase() || null,
           input.displayName,
           input.roleId,
           input.hourlyRateEUR ?? null,
@@ -539,6 +549,18 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
       const existing = await one<UserRow>(db, `SELECT * FROM people.users WHERE id=$1`, [id]);
       if (!existing) throw NotFound("user", id);
       if (existing.is_system) throw Forbidden("системный аккаунт нельзя редактировать");
+      // Backward compatibility for older clients that still submit @username
+      // through telegramId: treat it as a handle and never overwrite a linked
+      // numeric chat id.
+      const legacyHandle = input.telegramId && !/^\d+$/.test(input.telegramId) ? input.telegramId : null;
+      const telegramId = input.telegramId === undefined
+        ? existing.telegram_id
+        : legacyHandle
+          ? existing.telegram_id
+          : input.telegramId;
+      const telegramUsername = input.telegramUsername === undefined && !legacyHandle
+        ? existing.telegram_username
+        : (input.telegramUsername ?? legacyHandle)?.trim().replace(/^@/, "").toLocaleLowerCase() || null;
       const row = await one<UserRow>(
         db,
         `UPDATE people.users SET
@@ -546,28 +568,30 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
            role_id         = COALESCE($3, role_id),
            email           = $4,
            telegram_id     = $5,
-           hourly_rate_eur = $6,
-           active          = COALESCE($7, active),
-           document_number = $8,
-           languages       = $9,
-           about           = $10,
-           source          = $11,
-           photo_url       = $12,
-           birth_date      = $13,
-           first_name      = $14,
-           last_name       = $15,
-           patronymic      = $16,
-           nickname        = $17,
-           document_photo_url = $18,
-           use_photo_as_avatar = COALESCE($19, use_photo_as_avatar),
-           driving_license_categories = $20
+           telegram_username = $6,
+           hourly_rate_eur = $7,
+           active          = COALESCE($8, active),
+           document_number = $9,
+           languages       = $10,
+           about           = $11,
+           source          = $12,
+           photo_url       = $13,
+           birth_date      = $14,
+           first_name      = $15,
+           last_name       = $16,
+           patronymic      = $17,
+           nickname        = $18,
+           document_photo_url = $19,
+           use_photo_as_avatar = COALESCE($20, use_photo_as_avatar),
+           driving_license_categories = $21
          WHERE id=$1 RETURNING id`,
         [
           id,
           input.displayName ?? null,
           input.roleId ?? null,
           input.email === undefined ? existing.email : input.email,
-          input.telegramId === undefined ? existing.telegram_id : input.telegramId,
+          telegramId,
+          telegramUsername,
           input.hourlyRateEUR === undefined ? existing.hourly_rate_eur : input.hourlyRateEUR,
           input.active ?? null,
           input.documentNumber === undefined ? existing.document_number : input.documentNumber,

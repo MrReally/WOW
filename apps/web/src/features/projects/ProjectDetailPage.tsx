@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useLocation, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type { Equipment, Finance, People, Projects, Transport } from "@sever/contracts";
 import { PROJECT_STATUSES } from "@sever/contracts";
@@ -40,6 +40,7 @@ import {
 } from "./hooks.ts";
 import { ResolveReservationSheet } from "./components/ResolveReservationSheet.tsx";
 import { EditProjectSheet } from "./components/EditProjectSheet.tsx";
+import { DuplicateProjectSheet } from "./components/DuplicateProjectSheet.tsx";
 import { TimingTimeline } from "./components/TimingTimeline.tsx";
 import { ContractorEquipment } from "./components/ContractorEquipment.tsx";
 import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
@@ -208,6 +209,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [reminderNote, setReminderNote] = useState("");
   const [resolving, setResolving] = useState<Projects.ReservationDTO | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [invoiceVersions, setInvoiceVersions] = useState<StoredInvoiceVersion[]>([]);
   const [estimateDrafts, setEstimateDrafts] = useState<FinanceDraftLine[]>([]);
   const [estimateSeeded, setEstimateSeeded] = useState(false);
@@ -382,6 +384,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
               />
             </div>
             <Button variant="secondary" onClick={() => setEditOpen(true)}>Редактировать</Button>
+            <Button variant="secondary" onClick={() => setDuplicateOpen(true)}>Дублировать</Button>
           </div>
         )}
       </Card>
@@ -1053,6 +1056,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
         onClose={() => setResolving(null)}
       />
       <EditProjectSheet open={editOpen} project={p} clients={clients.data ?? []} onClose={() => setEditOpen(false)} />
+      <DuplicateProjectSheet open={duplicateOpen} project={p} onClose={() => setDuplicateOpen(false)} />
       <div className="project-tabbar" role="tablist" aria-label="Разделы проекта">
         {visibleTabs.map((tab) => {
           const isActive = currentTab === tab.id;
@@ -1321,7 +1325,7 @@ function CandidatePicker({
     .filter((p) => !selectedIds.includes(p.id))
     .filter((p) => {
       if (!q) return true;
-      const hay = [p.nickname, p.displayName, p.email, p.telegramId].filter(Boolean).join(" ").toLowerCase();
+      const hay = [p.nickname, p.displayName, p.email, p.telegramUsername].filter(Boolean).join(" ").toLocaleLowerCase();
       return hay.includes(q);
     })
     .slice(0, 8);
@@ -1421,6 +1425,7 @@ function ModelAutocomplete({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<"top" | "bottom">("bottom");
+  const [activeIndex, setActiveIndex] = useState(0);
   const selected = models.find((model) => model.id === value) ?? null;
   const results = useMemo(
     () => models.filter((model) => modelMatches(model, debouncedQuery)).slice(0, 8),
@@ -1436,6 +1441,24 @@ function ModelAutocomplete({
     const above = rect.top;
     setPlacement(below < 260 && above > below ? "top" : "bottom");
   }, [showList, query, debouncedQuery]);
+  useEffect(() => setActiveIndex(0), [debouncedQuery]);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      onOpen(true);
+      if (!results.length) return;
+      setActiveIndex((current) => event.key === "ArrowDown"
+        ? (current + 1) % results.length
+        : (current - 1 + results.length) % results.length);
+    } else if (event.key === "Enter" && showList && results[activeIndex]) {
+      event.preventDefault();
+      onSelect(results[activeIndex]);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      onOpen(false);
+    }
+  };
 
   return (
     <div ref={rootRef} style={{ position: "relative" }}>
@@ -1443,6 +1466,11 @@ function ModelAutocomplete({
         value={query}
         onFocus={() => onOpen(true)}
         onChange={(e) => onQuery(e.target.value)}
+        onKeyDown={onKeyDown}
+        role="combobox"
+        aria-expanded={showList}
+        aria-controls="equipment-model-results"
+        aria-activedescendant={showList && results[activeIndex] ? `equipment-model-${results[activeIndex].id}` : undefined}
         placeholder="Найти модель"
       />
       {selected && (
@@ -1452,6 +1480,8 @@ function ModelAutocomplete({
       )}
       {showList && (
         <div
+          id="equipment-model-results"
+          role="listbox"
           className="stack"
           style={{
             position: "absolute",
@@ -1475,8 +1505,11 @@ function ModelAutocomplete({
           ) : results.length === 0 ? (
             <span className="card__subtitle" style={{ padding: 8 }}>Модель не найдена</span>
           ) : (
-            results.map((model) => (
+            results.map((model, index) => (
               <button
+                id={`equipment-model-${model.id}`}
+                role="option"
+                aria-selected={index === activeIndex}
                 key={model.id}
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
@@ -1484,8 +1517,8 @@ function ModelAutocomplete({
                 style={{
                   border: "none",
                   borderRadius: 8,
-                  background: model.id === value ? "var(--accent)" : "transparent",
-                  color: model.id === value ? "#fff" : "var(--text)",
+                  background: index === activeIndex || model.id === value ? "var(--accent)" : "transparent",
+                  color: index === activeIndex || model.id === value ? "#fff" : "var(--text)",
                   padding: "10px 12px",
                   textAlign: "left",
                   cursor: "pointer",
