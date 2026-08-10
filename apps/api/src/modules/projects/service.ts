@@ -1,4 +1,4 @@
-import { PROJECT_CHECKLIST_GROUPS, type Projects, type Problem, type ISODateTime, type ID } from "@sever/contracts";
+import { PROJECT_CHECKLIST_GROUPS, type Equipment, type Projects, type Problem, type ISODateTime, type ID } from "@sever/contracts";
 import { one, query, tx, type Sql } from "../../core/db.js";
 import { NotFound, BadRequest, Conflict } from "../../core/errors.js";
 
@@ -330,7 +330,7 @@ const stageRequiredMarks: Partial<Record<Projects.ProjectChecklistGroup, Project
   return: [["returned"]],
 };
 
-export function createProjectsService(db: Sql, bus: EventBus): Projects.ProjectsService {
+export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits: (unitIds: string[]) => Promise<(Equipment.EquipmentUnitDTO | null)[]>): Projects.ProjectsService {
   async function computeReservationAvailability(modelId: ID, from: ISODateTime, to: ISODateTime): Promise<Projects.ReservationAvailabilityDTO> {
     assertRange(from, to);
     const model = await one<{ tracking_mode: "serial" | "quantity" | "cable" }>(
@@ -805,6 +805,18 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
       if (!res) throw NotFound("reservation", id);
       // No duplicates within the selection.
       if (new Set(unitIds).size !== unitIds.length) throw BadRequest("одна и та же единица выбрана дважды");
+      const selectedUnits = await loadEquipmentUnits(unitIds);
+      if (selectedUnits.some((unit) => !unit)) throw BadRequest("часть выбранных единиц не найдена");
+      if (selectedUnits.some((unit) => unit?.modelId !== res.model_id)) throw BadRequest("выбрана единица другой модели");
+      const unavailable = selectedUnits.find((unit) => unit && ["in_repair", "at_contractor", "lost"].includes(unit.status));
+      if (unavailable) throw Conflict(`единица ${unavailable.assetTag} сейчас недоступна`);
+      for (const unit of selectedUnits) {
+        if (!unit || unit.status !== "on_project" || !unit.currentProjectId || unit.currentProjectId === res.project_id) continue;
+        const currentProject = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [unit.currentProjectId]);
+        if (!currentProject || (currentProject.starts_at < res.ends_at && currentProject.ends_at > res.starts_at)) {
+          throw Conflict(`единица ${unit.assetTag} уже забронирована на «${currentProject?.name ?? "другой проект"}»`);
+        }
+      }
       // A unit can't be assigned to another reservation whose time window overlaps.
       if (unitIds.length > 0) {
         const clash = await one<ReservationRow>(
@@ -815,7 +827,8 @@ export function createProjectsService(db: Sql, bus: EventBus): Projects.Projects
           [id, res.starts_at, res.ends_at, unitIds]
         );
         if (clash) {
-          throw Conflict("часть единиц уже распределена на пересекающуюся бронь");
+          const clashProject = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [clash.project_id]);
+          throw Conflict(`часть единиц уже забронирована на «${clashProject?.name ?? "другой проект"}»`);
         }
       }
       const row = await one<ReservationRow>(

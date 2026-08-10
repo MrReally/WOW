@@ -76,8 +76,6 @@ function invalidateBackoffice(qc: ReturnType<typeof useQueryClient>) {
 
 export function useBackofficeCommands() {
   const qc = useQueryClient();
-  const issue = useMutation({ mutationFn: (input: { projectId: string; unitIds: string[]; note?: string }) => api.post("/api/equipment/issue", input), onSuccess: () => invalidateBackoffice(qc) });
-  const returnUnits = useMutation({ mutationFn: (input: { projectId: string; returnedUnitIds: string[]; expectedUnitIds: string[]; note?: string }) => api.post("/api/equipment/return", input), onSuccess: () => invalidateBackoffice(qc) });
   const transfer = useMutation({ mutationFn: (input: { unitId: string; warehouseId: string; note?: string }) => api.post(`/api/equipment/units/${input.unitId}/transfer`, { warehouseId: input.warehouseId, note: input.note }), onSuccess: () => invalidateBackoffice(qc) });
   const resolveProblem = useMutation({ mutationFn: (id: string) => api.post(`/api/equipment/problems/${id}/resolve`, {}), onSuccess: () => invalidateBackoffice(qc) });
   const createProject = useMutation({ mutationFn: (input: Projects.CreateProjectInput) => api.post<Projects.ProjectDTO>("/api/projects", input), onSuccess: () => invalidateBackoffice(qc) });
@@ -95,5 +93,5 @@ export function useBackofficeCommands() {
   const updateDocument = useMutation({ mutationFn: ({id,input}:{id:string;input:Operations.OperationPayload}) => api.patch<Operations.OperationDocumentDTO>(`/api/operations/documents/${id}`, input), onSuccess: () => invalidateBackoffice(qc),meta:{successMessage:"Черновик обновлён"} });
   const postDocument = useMutation({ mutationFn: (id: string) => api.post<Operations.OperationDocumentDTO>(`/api/operations/documents/${id}/post`, {}), onSuccess: () => invalidateBackoffice(qc) });
   const reverseDocument = useMutation({ mutationFn: (id: string) => api.post<Operations.OperationDocumentDTO>(`/api/operations/documents/${id}/reverse`, {}), onSuccess: () => invalidateBackoffice(qc) });
-  return { issue, returnUnits, transfer, resolveProblem, createProject, updateProject, createTransaction, updateRole, createCatalogItem, createPerson, updatePerson, createContractor, addPackaging, createRecipe, importEquipmentCsv, createDocument, updateDocument, postDocument, reverseDocument };
+  return { transfer, resolveProblem, createProject, updateProject, createTransaction, updateRole, createCatalogItem, createPerson, updatePerson, createContractor, addPackaging, createRecipe, importEquipmentCsv, createDocument, updateDocument, postDocument, reverseDocument };
 }

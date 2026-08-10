@@ -8,14 +8,13 @@ import { registerEquipmentRoutes } from "./routes.js";
 
 export function createEquipmentModule(
   db: Sql,
-  bus: EventBus,
-  canIssueProject: (projectId: string) => Promise<boolean>
+  bus: EventBus
 ): SeverModule<Equipment.EquipmentService> {
   const service = createEquipmentService(db, bus);
   return {
     name: "equipment",
     migration: equipmentMigration,
     service,
-    registerRoutes: (app, ctx) => registerEquipmentRoutes(app, ctx, service, canIssueProject),
+    registerRoutes: (app, ctx) => registerEquipmentRoutes(app, ctx, service),
   };
 }

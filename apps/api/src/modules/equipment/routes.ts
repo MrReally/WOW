@@ -81,19 +81,6 @@ const updateUnitSchema = z.object({
   zoneId: z.string().uuid().nullable().optional(),
 });
 
-const issueSchema = z.object({
-  projectId: z.string().uuid(),
-  unitIds: z.array(z.string().uuid()).min(1),
-  note: z.string().optional(),
-});
-
-const returnSchema = z.object({
-  projectId: z.string().uuid(),
-  returnedUnitIds: z.array(z.string().uuid()),
-  expectedUnitIds: z.array(z.string().uuid()),
-  note: z.string().optional(),
-});
-
 const statusSchema = z.object({
   status: z.enum(UNIT_STATUSES as [string, ...string[]]),
   note: z.string().optional(),
@@ -101,13 +88,6 @@ const statusSchema = z.object({
 
 const stockSchema = z.object({ total: z.number().int().nonnegative(), zoneId:z.string().uuid().nullable().optional() });
 
-const qtyMoveSchema = z.object({
-  projectId: z.string().uuid(),
-  modelId: z.string().uuid(),
-  warehouseId: z.string().uuid().nullable().optional(),
-  qty: z.number().int().positive(),
-  note: z.string().optional(),
-});
 const qtyServiceSchema = z.object({
   modelId: z.string().uuid(),
   warehouseId: z.string().uuid().nullable().optional(),
@@ -157,8 +137,7 @@ const returnHandoverSchema = z.object({ note: z.string().nullable().optional() }
 export function registerEquipmentRoutes(
   app: FastifyInstance,
   ctx: RouteContext,
-  service: Equipment.EquipmentService,
-  canIssueProject: (projectId: string) => Promise<boolean>
+  service: Equipment.EquipmentService
 ): void {
   const canViewCosts = (auth: Awaited<ReturnType<RouteContext["auth"]>>) =>
     auth.isOwner || auth.permissions.includes("warehouse.costs.view");
@@ -275,17 +254,12 @@ export function registerEquipmentRoutes(
 
   // ── Quantity (cable) moves ──
   app.post("/api/equipment/issue-qty", async (req) => {
-    const auth = await ctx.auth(req);
-    requirePermission(auth, "warehouse.issue");
-    const body = qtyMoveSchema.parse(req.body);
-    if (!(await canIssueProject(body.projectId))) throw BadRequest("выдача доступна только в Operations на этапе «Забор»");
-    return service.issueQuantity({ ...body, actorId: auth.userId });
+    await ctx.auth(req);
+    throw BadRequest("выдача создаётся только через Operations");
   });
   app.post("/api/equipment/return-qty", async (req) => {
-    const auth = await ctx.auth(req);
-    requirePermission(auth, "warehouse.issue");
-    const body = qtyMoveSchema.parse(req.body);
-    return service.returnQuantity({ ...body, actorId: auth.userId });
+    await ctx.auth(req);
+    throw BadRequest("возврат создаётся только через Operations");
   });
   app.post("/api/equipment/transfer-qty", async (req) => {
     const auth = await ctx.auth(req);
@@ -365,17 +339,12 @@ export function registerEquipmentRoutes(
 
   // ── Operations (warehouse prepares; tech confirms on phone) ──
   app.post("/api/equipment/issue", async (req) => {
-    const auth = await ctx.auth(req);
-    requirePermission(auth, "warehouse.issue");
-    const body = issueSchema.parse(req.body);
-    if (!(await canIssueProject(body.projectId))) throw BadRequest("выдача доступна только в Operations на этапе «Забор»");
-    return service.issueUnits({ ...body, actorId: auth.userId });
+    await ctx.auth(req);
+    throw BadRequest("выдача создаётся только через Operations");
   });
   app.post("/api/equipment/return", async (req) => {
-    const auth = await ctx.auth(req);
-    requirePermission(auth, "warehouse.issue");
-    const body = returnSchema.parse(req.body);
-    return service.returnUnits({ ...body, actorId: auth.userId });
+    await ctx.auth(req);
+    throw BadRequest("возврат создаётся только через Operations");
   });
 
   // ── Problems ──

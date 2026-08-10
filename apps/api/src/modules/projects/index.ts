@@ -1,4 +1,4 @@
-import type { Projects } from "@sever/contracts";
+import type { Equipment, Projects } from "@sever/contracts";
 import type { Sql } from "../../core/db.js";
 import type { EventBus } from "../../core/eventBus.js";
 import type { SeverModule } from "../../core/module.js";
@@ -8,9 +8,10 @@ import { registerProjectsRoutes } from "./routes.js";
 
 export function createProjectsModule(
   db: Sql,
-  bus: EventBus
+  bus: EventBus,
+  loadEquipmentUnits: (unitIds: string[]) => Promise<(Equipment.EquipmentUnitDTO | null)[]>
 ): SeverModule<Projects.ProjectsService> {
-  const service = createProjectsService(db, bus);
+  const service = createProjectsService(db, bus, loadEquipmentUnits);
   return {
     name: "projects",
     migration: projectsMigration,

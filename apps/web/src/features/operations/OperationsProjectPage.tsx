@@ -5,7 +5,7 @@ import { Avatar, Button, Card, Chip, EmptyState, ErrorState, Input, Loading, Sec
 import { dateRange, dateTime, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
 import { personInitials, personName } from "../../lib/people.ts";
 import { useSession } from "../../app/session.ts";
-import { useAllUnits, useEquipmentModels, useIssueResolvedUnits, usePeople, useProject, useReservations } from "../projects/hooks.ts";
+import { useAllUnits, useEquipmentModels, useIssueProjectQuantity, useIssueResolvedUnits, usePeople, useProject, useProjectEquipmentJournal, useReservations, useReturnProjectQuantity } from "../projects/hooks.ts";
 import { useChangeStatus, useReturnUnits, useWarehouses } from "../warehouse/hooks.ts";
 import {
   useClearOperationUnitMark,
@@ -241,6 +241,9 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
   const changeStatus = useChangeStatus();
   const issueUnits = useIssueResolvedUnits();
   const returnUnits = useReturnUnits();
+  const journal = useProjectEquipmentJournal(projectId);
+  const issueQuantity = useIssueProjectQuantity();
+  const returnQuantity = useReturnProjectQuantity();
   const canMarkStatus = can("warehouse.unit.status");
   const shouldShow = stage !== "show";
   if (!shouldShow) return null;
@@ -268,7 +271,14 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
     if (!byWarehouse.has(key)) byWarehouse.set(key, { warehouseId: row.unit?.warehouseId ?? null, rows: [] });
     byWarehouse.get(key)!.rows.push(row);
   }
-  const unresolved = (reservations.data ?? []).filter((reservation) => reservation.resolvedUnitIds.length < reservation.qty);
+  const serialModelIds = new Set((models.data ?? []).filter((model) => model.trackingMode === "serial").map((model) => model.id));
+  const unresolved = (reservations.data ?? []).filter((reservation) => serialModelIds.has(reservation.modelId) && reservation.resolvedUnitIds.length < reservation.qty);
+  const quantityNeeds = [...(reservations.data ?? []).filter((reservation) => !serialModelIds.has(reservation.modelId)).reduce((map, reservation) => {
+    map.set(reservation.modelId, (map.get(reservation.modelId) ?? 0) + reservation.qty);
+    return map;
+  }, new Map<string, number>())].map(([modelId, qty]) => ({ modelId, qty }));
+  const quantityOutstanding = (modelId: string) => Math.max(0, (journal.data ?? []).filter((entry) => entry.modelId === modelId).reduce((total, entry) =>
+    total + (entry.action === "issued" ? entry.qty ?? 0 : entry.action === "returned" || entry.action === "return_incomplete" ? -(entry.qty ?? 0) : 0), 0));
   const title =
     stage === "return"
       ? "Вернуть"
@@ -309,11 +319,11 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
     <>
       <SectionHead label="По приборам" meta={title} />
       <div className="stack">
-        {reservations.isLoading || models.isLoading || units.isLoading || warehouses.isLoading || marks.isLoading ? (
+        {reservations.isLoading || models.isLoading || units.isLoading || warehouses.isLoading || marks.isLoading || journal.isLoading ? (
           <Loading />
         ) : marks.error ? (
           <ErrorState error={marks.error} onRetry={marks.refetch} />
-        ) : resolved.length === 0 && unresolved.length === 0 ? (
+        ) : resolved.length === 0 && unresolved.length === 0 && quantityNeeds.length === 0 ? (
           <EmptyState title="Список пуст" />
         ) : (
           <>
@@ -339,6 +349,29 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
                 </div>
               </Card>
             ))}
+            {quantityNeeds.length > 0 && (
+              <Card>
+                <div className="row row--between">
+                  <p className="card__title">Количество / кабели</p>
+                  <Chip label={`${quantityNeeds.length}`} tone="neutral" />
+                </div>
+                <div className="stack" style={{ marginTop: 10 }}>
+                  {quantityNeeds.map((need) => {
+                    const outstanding = quantityOutstanding(need.modelId);
+                    const remaining = Math.max(0, need.qty - outstanding);
+                    return <div key={need.modelId} className="row row--between">
+                      <div style={{ minWidth: 0 }}>
+                        <p className="card__title" style={{ fontSize: 16 }}>{modelName(need.modelId)} × {need.qty}</p>
+                        <p className="card__subtitle">{outstanding > 0 ? `на проекте ${outstanding}` : "на складе"}</p>
+                      </div>
+                      {stage === "pickup" && remaining > 0 ? <Button disabled={issueQuantity.isPending} onClick={() => issueQuantity.mutate({ projectId, modelId: need.modelId, qty: remaining })}>Выдать {remaining}</Button>
+                        : stage === "return" && outstanding > 0 ? <Button disabled={returnQuantity.isPending} onClick={() => returnQuantity.mutate({ projectId, modelId: need.modelId, qty: outstanding })}>Вернуть {outstanding}</Button>
+                        : <Chip label={outstanding > 0 ? "ВЫДАНО" : "ОЖИДАЕТ"} tone={outstanding > 0 ? "warn" : "neutral"} />}
+                    </div>;
+                  })}
+                </div>
+              </Card>
+            )}
             {unresolved.length > 0 && (
               <Card>
                 <div className="row row--between">

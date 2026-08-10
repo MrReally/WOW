@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Equipment, Projects, People } from "@sever/contracts";
+import type { Equipment, Operations, Projects, People } from "@sever/contracts";
 import { api } from "../../lib/api.ts";
 
 // People directory for resolving actor names in the journal — only fetched when
@@ -247,7 +247,7 @@ export function useIssueUnits() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { projectId: string; unitIds: string[]; note?: string }) =>
-      api.post("/api/equipment/issue", input),
+      api.post("/api/operations/issue", input),
     onSuccess: () => invalidateEquipment(qc),
   });
 }
@@ -256,7 +256,7 @@ export function useReturnUnits() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { projectId: string; returnedUnitIds: string[]; expectedUnitIds: string[]; note?: string }) =>
-      api.post<Equipment.ReturnResult>("/api/equipment/return", input),
+      api.post<Operations.OperationDocumentDTO>("/api/operations/return", input),
     onSuccess: () => invalidateEquipment(qc),
   });
 }
@@ -282,7 +282,7 @@ export function useIssueQty() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { projectId: string; modelId: string; warehouseId?: string | null; qty: number; note?: string }) =>
-      api.post<Equipment.ModelStockDTO>("/api/equipment/issue-qty", input),
+      api.post("/api/operations/issue", { projectId: input.projectId, unitIds: [], quantityLines: [{ modelId: input.modelId, warehouseId: input.warehouseId, qty: input.qty }], note: input.note }),
     onSuccess: () => invalidateEquipment(qc),
   });
 }
@@ -291,7 +291,7 @@ export function useReturnQty() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { projectId: string; modelId: string; warehouseId?: string | null; qty: number; note?: string }) =>
-      api.post<Equipment.ModelStockDTO>("/api/equipment/return-qty", input),
+      api.post("/api/operations/return", { projectId: input.projectId, returnedUnitIds: [], expectedUnitIds: [], quantityLines: [{ modelId: input.modelId, warehouseId: input.warehouseId, qty: input.qty }], note: input.note }),
     onSuccess: () => invalidateEquipment(qc),
   });
 }

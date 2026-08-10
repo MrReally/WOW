@@ -365,8 +365,8 @@ export function useDeleteProjectReminder(projectId: string) {
 export function useInStockUnits(modelId: string) {
   return useQuery({
     enabled: !!modelId,
-    queryKey: ["equipment", "units", { modelId, status: "in_stock" }],
-    queryFn: () => api.get<Equipment.EquipmentUnitDTO[]>(`/api/equipment/units?modelId=${modelId}&status=in_stock`),
+    queryKey: ["equipment", "units", { modelId }],
+    queryFn: () => api.get<Equipment.EquipmentUnitDTO[]>(`/api/equipment/units?modelId=${modelId}`),
   });
 }
 
@@ -434,11 +434,42 @@ export function useResolveReservation() {
 export function useIssueResolvedUnits() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { projectId: string; unitIds: string[] }) => api.post("/api/equipment/issue", input),
+    mutationFn: (input: { projectId: string; unitIds: string[] }) => api.post("/api/operations/issue", input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["equipment"] });
       qc.invalidateQueries({ queryKey: ["apex"] });
+    },
+  });
+}
+
+export function useProjectEquipmentJournal(projectId: string) {
+  return useQuery({
+    queryKey: ["equipment", "journal", { projectId }],
+    queryFn: () => api.get<Equipment.JournalEntryDTO[]>(`/api/equipment/journal?projectId=${projectId}&limit=2000`),
+  });
+}
+
+export function useIssueProjectQuantity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { projectId: string; modelId: string; warehouseId?: string | null; qty: number }) =>
+      api.post("/api/operations/issue", { projectId: input.projectId, unitIds: [], quantityLines: [{ modelId: input.modelId, warehouseId: input.warehouseId, qty: input.qty }] }),
+    onSuccess: () => {
+      invalidateProjects(qc);
+      qc.invalidateQueries({ queryKey: ["equipment"] });
+    },
+  });
+}
+
+export function useReturnProjectQuantity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { projectId: string; modelId: string; warehouseId?: string | null; qty: number }) =>
+      api.post("/api/operations/return", { projectId: input.projectId, returnedUnitIds: [], expectedUnitIds: [], quantityLines: [{ modelId: input.modelId, warehouseId: input.warehouseId, qty: input.qty }] }),
+    onSuccess: () => {
+      invalidateProjects(qc);
+      qc.invalidateQueries({ queryKey: ["equipment"] });
     },
   });
 }

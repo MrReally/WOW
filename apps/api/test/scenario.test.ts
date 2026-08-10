@@ -278,7 +278,16 @@ describe("Tech pickup/return → некомплект", () => {
     const r1 = await projects.service.createReservation({ projectId: project.id, modelId: model.id, qty: 1, startsAt: start, endsAt: end });
     const r2 = await projects.service.createReservation({ projectId: other.id, modelId: model.id, qty: 1, startsAt: start, endsAt: end });
     await projects.service.resolveReservation(r1.id, [u2.id]);
-    await expect(projects.service.resolveReservation(r2.id, [u2.id])).rejects.toThrow();
+    await expect(projects.service.resolveReservation(r2.id, [u2.id])).rejects.toThrow("renamed");
+    await expect(projects.service.resolveReservation(r2.id, [u.id])).rejects.toThrow("renamed");
+
+    // The current physical status does not make a unit unavailable forever:
+    // the same unit can be planned again once the earlier event has ended.
+    const futureStart = new Date(now + 10_800_000).toISOString();
+    const futureEnd = new Date(now + 14_400_000).toISOString();
+    const future = await projects.service.createProject({ name: "future", clientId: client.id, startsAt: futureStart, endsAt: futureEnd });
+    const futureReservation = await projects.service.createReservation({ projectId: future.id, modelId: model.id, qty: 1, startsAt: futureStart, endsAt: futureEnd });
+    await expect(projects.service.resolveReservation(futureReservation.id, [u.id])).resolves.toEqual(expect.objectContaining({ resolvedUnitIds: [u.id] }));
   });
 
   it("raises a Problem on overlapping reservations without blocking", async () => {
@@ -846,5 +855,22 @@ describe("Tech pickup/return → некомплект", () => {
     expect((await wiring.operations.service.history(draft.id)).map(item=>item.action)).toEqual(["reversed","posted","edited","created"]);
     expect((await wiring.equipment.service.getUnit(unit.id))?.status).toBe("in_stock");
     await expect(wiring.operations.service.post(draft.id, tech.id)).rejects.toThrow(/only draft/);
+
+    // Legacy direct issues (created before Operations became mandatory) can be
+    // recovered with a normal return document, preserving the journal.
+    await wiring.equipment.service.issueUnits({ projectId: project.id, unitIds: [unit.id], actorId: tech.id, note: "legacy direct issue" });
+    const recovery = await wiring.operations.service.create({ kind: "return", projectId: project.id, expectedUnitIds: [unit.id], returnedUnitIds: [unit.id] }, tech.id);
+    await wiring.operations.service.post(recovery.id, tech.id);
+    expect((await wiring.equipment.service.getUnit(unit.id))?.status).toBe("in_stock");
+
+    const quantityType = await wiring.equipment.service.createType({ name: `DOC-Q-${Date.now()}`, trackingMode: "quantity" });
+    const quantityModel = await wiring.equipment.service.createModel({ typeId: quantityType.id, name: "Document Cable", unitCostEUR: 1, dailyPriceEUR: 1 });
+    await wiring.equipment.service.setModelStockTotal(quantityModel.id, 10);
+    const quantityIssue = await wiring.operations.service.create({ kind: "issue", projectId: project.id, unitIds: [], quantityLines: [{ modelId: quantityModel.id, qty: 4 }] }, tech.id);
+    await wiring.operations.service.post(quantityIssue.id, tech.id);
+    expect((await wiring.equipment.service.modelStock(quantityModel.id)).inStock).toBe(6);
+    const quantityReturn = await wiring.operations.service.create({ kind: "return", projectId: project.id, expectedUnitIds: [], returnedUnitIds: [], quantityLines: [{ modelId: quantityModel.id, qty: 4 }] }, tech.id);
+    await wiring.operations.service.post(quantityReturn.id, tech.id);
+    expect((await wiring.equipment.service.modelStock(quantityModel.id)).inStock).toBe(10);
   });
 });

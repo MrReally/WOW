@@ -533,10 +533,10 @@ export function WarehousePage() {
         </>
       )}
       {canIssue && (
-        <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} projects={projects.data ?? []} models={allModels} allowedModes={["transfer"]} />
+        <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} models={allModels} />
       )}
       {canCatalog && <EditModelSheet model={editModel} categories={categories.data??[]} onClose={() => setEditModel(null)} />}
-      <CableMoveSheet model={cableModel} projects={projects.data ?? []} warehouses={warehouseList} selectedWarehouseId={warehouseFilter === "all" ? null : warehouseFilter} onClose={() => setCableModel(null)} />
+      <CableMoveSheet model={cableModel} warehouses={warehouseList} selectedWarehouseId={warehouseFilter === "all" ? null : warehouseFilter} onClose={() => setCableModel(null)} />
       <div className="project-tabbar" role="tablist" aria-label="Warehouse">
         {WAREHOUSE_TABS.map((tab) => {
           const isActive = activeTab === tab.id;

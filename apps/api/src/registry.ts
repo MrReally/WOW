@@ -29,8 +29,8 @@ import type { DomainEvent } from "./core/eventBus.js";
 
 export function createModules(bus: EventBus = new EventBus()) {
   const people = createPeopleModule(pool, bus);
-  const projects = createProjectsModule(pool, bus);
-  const equipment = createEquipmentModule(pool, bus, async (projectId) => (await projects.service.getProject(projectId))?.operationStage === "pickup");
+  const equipment = createEquipmentModule(pool, bus);
+  const projects = createProjectsModule(pool, bus, (unitIds) => Promise.all(unitIds.map((unitId) => equipment.service.getUnit(unitId))));
   const finance = createFinanceModule(pool, bus);
   bus.on("project.duplicated", async (event) => {
     await finance.service.copyProjectEstimateLines(event.sourceProjectId, event.projectId, event.sourceRefMap);

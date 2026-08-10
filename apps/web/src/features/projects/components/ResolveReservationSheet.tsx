@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Projects } from "@sever/contracts";
 import { Sheet, Button, Chip, Loading, Field, Input } from "../../../ui-kit/index.ts";
-import { useInStockUnits, useOverlappingReservations, useResolveReservation } from "../hooks.ts";
+import { useInStockUnits, useOverlappingReservations, useProjects, useResolveReservation } from "../hooks.ts";
+import { getReservationUnitAvailability } from "../reservationUnitAvailability.ts";
 
 interface Props {
   reservation: Projects.ReservationDTO | null;
@@ -15,6 +16,7 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
   const navigate = useNavigate();
   const units = useInStockUnits(reservation?.modelId ?? "");
   const overlapping = useOverlappingReservations(reservation);
+  const projects = useProjects();
   const resolve = useResolveReservation();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -44,15 +46,7 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
   };
 
   const q = search.trim().toLowerCase();
-  const blockedUnitIds = new Set(
-    (overlapping.data ?? [])
-      .filter((r) => r.id !== reservation.id)
-      .flatMap((r) => r.resolvedUnitIds)
-  );
-  const list = (units.data ?? []).filter((u) =>
-    !blockedUnitIds.has(u.id) &&
-    (!q || [u.assetTag, u.serial ?? "", modelName].some((v) => v.toLowerCase().includes(q)))
-  );
+  const list = (units.data ?? []).filter((u) => !q || [u.assetTag, u.serial ?? "", modelName].some((v) => v.toLowerCase().includes(q)));
   const enough = selected.size === reservation.qty;
 
   return (
@@ -63,23 +57,28 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
       <Field label="Поиск">
         <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, номер, серийник" />
       </Field>
-      {units.isLoading || overlapping.isLoading ? (
+      {units.isLoading || overlapping.isLoading || projects.isLoading ? (
         <Loading />
       ) : list.length === 0 ? (
         <p className="card__subtitle">Нет свободных единиц этой модели на складе.</p>
       ) : (
         <div className="stack">
-          {list.map((u) => (
+          {list.map((u) => {
+            const availability = getReservationUnitAvailability(u, reservation, overlapping.data ?? [], projects.data ?? []);
+            const { reason, currentlyAway } = availability;
+            return (
             <div
               key={u.id}
               className="card card--tappable"
               style={{ padding: 12, borderColor: selected.has(u.id) ? "var(--accent)" : undefined }}
-              onClick={() => toggle(u.id)}
+              onClick={() => !reason && toggle(u.id)}
             >
               <div className="row row--between">
                 <div style={{ minWidth: 0 }}>
                   <p className="card__title">{u.assetTag}</p>
                   {u.serial && <p className="card__subtitle">S/N {u.serial}</p>}
+                  {reason && <p className="card__subtitle" style={{ color: "var(--warn)" }}>{reason}</p>}
+                  {!reason && currentlyAway && <p className="card__subtitle">Сейчас на «{availability.currentProjectName ?? "другом проекте"}», свободно к мероприятию</p>}
                 </div>
                 <div className="row">
                   <button
@@ -99,11 +98,11 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
                   >
                     ↗
                   </button>
-                  {selected.has(u.id) ? <Chip label="ВЫБРАНО" tone="accent" /> : <Chip label="СВОБОДНО" tone="ok" />}
+                  {reason ? <Chip label="НЕДОСТУПНО" tone="warn" /> : selected.has(u.id) ? <Chip label="ВЫБРАНО" tone="accent" /> : <Chip label={currentlyAway ? "СВОБОДНО К ДАТЕ" : "СВОБОДНО"} tone="ok" />}
                 </div>
               </div>
             </div>
-          ))}
+          )})}
         </div>
       )}
       <div style={{ marginTop: 14 }}>
