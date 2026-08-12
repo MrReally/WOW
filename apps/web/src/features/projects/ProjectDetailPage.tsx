@@ -42,6 +42,7 @@ import { ResolveReservationSheet } from "./components/ResolveReservationSheet.ts
 import { EditProjectSheet } from "./components/EditProjectSheet.tsx";
 import { DuplicateProjectSheet } from "./components/DuplicateProjectSheet.tsx";
 import { TimingTimeline } from "./components/TimingTimeline.tsx";
+import { TimingReminderPicker } from "./components/TimingReminderPicker.tsx";
 import { ContractorEquipment } from "./components/ContractorEquipment.tsx";
 import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
 import { personName } from "../../lib/people.ts";
@@ -632,15 +633,14 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   <input type="checkbox" checked={timingOffsets.length > 0} disabled={t.assigneeIds.length === 0 || createReminder.isPending || deleteReminder.isPending} onChange={(e) => void setTimingReminderOffsets(t, e.target.checked ? [60] : [])} />
                   <span>Пинг в ТГ</span>
                 </label>
-                {timingOffsets.length > 0 && <details>
-                  <summary className="btn btn--secondary">Когда напомнить · {timingOffsets.length}</summary>
-                  <div className="card stack" style={{ marginTop: 6, gap: 7 }}>
-                    {TIMING_REMINDER_OPTIONS.map((option) => <label className="row" style={{ gap: 8 }} key={option.minutes}>
-                      <input type="checkbox" checked={timingOffsets.includes(option.minutes)} onChange={(e) => void setTimingReminderOffsets(t, e.target.checked ? [...timingOffsets, option.minutes] : timingOffsets.filter((minutes) => minutes !== option.minutes))} />
-                      <span>{option.label}</span>
-                    </label>)}
-                  </div>
-                </details>}
+                {timingOffsets.length > 0 && (
+                  <TimingReminderPicker
+                    options={TIMING_REMINDER_OPTIONS}
+                    value={timingOffsets}
+                    disabled={createReminder.isPending || deleteReminder.isPending}
+                    onSave={(offsets) => setTimingReminderOffsets(t, offsets)}
+                  />
+                )}
               </div>
               </>}
             </Card>
