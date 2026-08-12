@@ -570,9 +570,7 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
           const inserted = await one<{ id: string }>(client,
             `INSERT INTO projects.reservations (project_id, model_id, qty, is_reserve, starts_at, ends_at, resolved_unit_ids)
              VALUES ($1,$2,$3,$4,$5,$6,'{}') RETURNING id`,
-            [newId, reservation.model_id, reservation.qty, reservation.is_reserve,
-              new Date(reservation.starts_at.getTime() + (Date.parse(input.startsAt) - source.starts_at.getTime())).toISOString(),
-              new Date(reservation.ends_at.getTime() + (Date.parse(input.startsAt) - source.starts_at.getTime())).toISOString()]
+            [newId, reservation.model_id, reservation.qty, reservation.is_reserve, input.startsAt, input.endsAt]
           );
           sourceRefMap[reservation.id] = inserted!.id;
         }
@@ -630,17 +628,26 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
         const client = await one<ClientRow>(db, `SELECT id FROM projects.clients WHERE id=$1`, [input.clientId]);
         if (!client) throw NotFound("client", input.clientId);
       }
-      const row = await one<ProjectRow>(
-        db,
-        `UPDATE projects.projects SET
-           name      = COALESCE($2, name),
-           client_id = COALESCE($3, client_id),
-           venue_id  = $4,
-           starts_at = $5,
-           ends_at   = $6
-         WHERE id=$1 RETURNING *`,
-        [id, input.name ?? null, input.clientId ?? null, input.venueId === undefined ? existing.venueId : input.venueId, startsAt, endsAt]
-      );
+      const row = await tx(async (client) => {
+        const updated = await one<ProjectRow>(
+          client,
+          `UPDATE projects.projects SET
+             name      = COALESCE($2, name),
+             client_id = COALESCE($3, client_id),
+             venue_id  = $4,
+             starts_at = $5,
+             ends_at   = $6
+           WHERE id=$1 RETURNING *`,
+          [id, input.name ?? null, input.clientId ?? null, input.venueId === undefined ? existing.venueId : input.venueId, startsAt, endsAt]
+        );
+        if (startsAt !== existing.startsAt || endsAt !== existing.endsAt) {
+          await query(client,
+            `UPDATE projects.reservations SET starts_at=$2, ends_at=$3 WHERE project_id=$1`,
+            [id, startsAt, endsAt]
+          );
+        }
+        return updated;
+      });
       return projectDTO(row!);
     },
     async setStatus(id, status) {

@@ -49,6 +49,7 @@ import { useFxRates, useInvoiceVersions, useProjectEstimateLines, useProjectEsti
 import { useVenues } from "../plans/hooks.ts";
 import { useWarehouses } from "../warehouse/hooks.ts";
 import { useRouteQuote, useTransportConfig, useVehicles } from "../transport/hooks.ts";
+import { staleDurationEstimateIds } from "./estimateReconciliation.ts";
 
 const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "ok" | "info" | "warn" | "neutral" }> = {
   added: { label: "в команде", tone: "ok" },
@@ -243,6 +244,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   useEffect(() => {
     if (estimateSeeded || !invoice.data || !estimateLines.data) return;
     const saved = estimateLines.data;
+    const staleIds = staleDurationEstimateIds(saved, invoice.data.rentalLines, invoice.data.days);
     const missingDerived = invoice.data.rentalLines.filter((line) => !saved.some((item) => item.id === line.refId || item.sourceRefId === line.refId)).map((line) => ({
       id: line.refId,
       source: line.section === "Crew" ? "labor" as const : "equipment" as const,
@@ -257,7 +259,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       comment: line.detail,
       hidden: false,
     }));
-    const source = saved.length > 0 ? [...saved, ...missingDerived] : [...invoice.data.rentalLines, ...invoice.data.laborLines].map((line) => ({
+    const reconciledSaved = saved.map((line) => staleIds.has(line.id) ? { ...line, hidden: true } : line);
+    const source = saved.length > 0 ? [...reconciledSaved, ...missingDerived] : [...invoice.data.rentalLines, ...invoice.data.laborLines].map((line) => ({
       id: line.refId,
       source: line.section === "Crew" ? "labor" as const : "equipment" as const,
       sourceRefId: line.refId,
