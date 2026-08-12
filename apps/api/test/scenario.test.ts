@@ -838,8 +838,10 @@ describe("Tech pickup/return → некомплект", () => {
     const client = await wiring.projects.service.createClient({ name: `Document Client ${Date.now()}` });
     const project = await wiring.projects.service.createProject({ name: "Document Project", clientId: client.id, startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString() });
     await wiring.projects.service.setOperationStage(project.id, "pickup", tech.id);
-    const draft = await wiring.operations.service.create({ kind: "issue", projectId: project.id, unitIds: [unit.id] }, tech.id);
+    const originalDocumentAt = "2026-08-12T10:15:00.000Z";
+    const draft = await wiring.operations.service.create({ kind: "issue", projectId: project.id, unitIds: [unit.id] }, tech.id, originalDocumentAt);
     expect(draft.status).toBe("draft");
+    expect(draft.documentAt).toBe(originalDocumentAt);
     expect(draft.version).toBe(1);
     const edited=await wiring.operations.service.update(draft.id,{kind:"issue",projectId:project.id,unitIds:[unit.id],note:"Проверено перед выдачей"},tech.id);
     expect(edited.version).toBe(2);
@@ -850,9 +852,16 @@ describe("Tech pickup/return → некомплект", () => {
     expect(posted.status).toBe("posted");
     expect(posted.version).toBe(3);
     expect((await wiring.equipment.service.getUnit(unit.id))?.status).toBe("on_project");
+    const correctedDocumentAt = "2026-08-12T11:45:00.000Z";
+    const corrected = await wiring.operations.service.update(draft.id, { ...posted.payload, note: "Уточнено после проведения" }, tech.id, correctedDocumentAt);
+    expect(corrected.status).toBe("posted");
+    expect(corrected.documentAt).toBe(correctedDocumentAt);
+    expect(corrected.payload.note).toBe("Уточнено после проведения");
+    expect((await wiring.equipment.service.getUnit(unit.id))?.status).toBe("on_project");
+    await expect(wiring.operations.service.update(draft.id, { kind: "issue", projectId: project.id, unitIds: [] }, tech.id)).rejects.toThrow(/только дату и комментарий/);
     const reversed = await wiring.operations.service.reverse(draft.id, tech.id);
     expect(reversed.status).toBe("reversed");
-    expect((await wiring.operations.service.history(draft.id)).map(item=>item.action)).toEqual(["reversed","posted","edited","created"]);
+    expect((await wiring.operations.service.history(draft.id)).map(item=>item.action)).toEqual(["reversed","edited","posted","edited","created"]);
     expect((await wiring.equipment.service.getUnit(unit.id))?.status).toBe("in_stock");
     await expect(wiring.operations.service.post(draft.id, tech.id)).rejects.toThrow(/only draft/);
 

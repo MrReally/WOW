@@ -1213,7 +1213,9 @@
 .bo-filter-button sup { position:absolute; right:-4px; top:-7px; display:grid; place-items:center; min-width:16px; height:16px; padding:0 3px; border-radius:8px; background:var(--accent); color:var(--accent-text); font-size:9px; }
 .bo-filter-popover,.bo-column-picker { position:absolute; z-index:24; top:calc(100% + 5px); right:0; width:230px; padding:10px; border:1px solid var(--bdr-md); border-radius:8px; background:var(--card); box-shadow:var(--shadow-card); text-align:left; text-transform:none; letter-spacing:0; font-family:var(--font); color:var(--text); }
 .bo-filter-popover { display:grid; gap:9px; }
-.bo-filter-popover input { width:100%; min-height:34px; padding:0 8px; border:1px solid var(--bdr-md); border-radius:6px; background:var(--s1); color:var(--text); }
+.bo-filter-popover label { display:grid; gap:4px; font-weight:500; }
+.bo-filter-popover label span { color:var(--bo-text-muted); font-size:var(--bo-fs-caption); }
+.bo-filter-popover input,.bo-filter-popover select { width:100%; min-height:34px; padding:0 8px; border:1px solid var(--bdr-md); border-radius:6px; background:var(--s1); color:var(--text); }
 .bo-filter-popover>div { display:flex; justify-content:flex-end; gap:6px; }
 .bo-filter-popover button { min-height:30px; padding:0 8px; border:1px solid var(--bdr-md); border-radius:5px; background:var(--s1); }
 .bo-column-editor-head { width:38px; min-width:38px; position:sticky !important; right:0; z-index:4 !important; }

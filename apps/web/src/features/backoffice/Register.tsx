@@ -9,7 +9,8 @@ export interface RegisterColumn<T> {
 }
 
 type SortDirection = "asc" | "desc" | null;
-interface ColumnFilter { id: string; value: string }
+type ColumnFilterMode = "contains" | "equals";
+interface ColumnFilter { id: string; value: string; mode?: ColumnFilterMode }
 interface SavedView {
   name: string;
   query: string;
@@ -52,7 +53,7 @@ export function Register<T>({ id, rows, columns, rowKey, onOpen, empty = "Нет
     for (const filter of filters) {
       const column = columns.find((item) => item.id === filter.id);
       const value = filter.value.trim().toLocaleLowerCase();
-      if (column && value) next = next.filter((row) => String(column.value(row)).toLocaleLowerCase().includes(value));
+      if (column && value) next = next.filter((row) => { const cell=String(column.value(row)).trim().toLocaleLowerCase();return filter.mode==="equals"?cell===value:cell.includes(value); });
     }
     const column = sortDirection ? columns.find((item) => item.id === sortId) : null;
     if (column) next.sort((a, b) => String(column.value(a)).localeCompare(String(column.value(b)), "ru", { numeric: true }) * (sortDirection === "desc" ? -1 : 1));
@@ -75,11 +76,11 @@ export function Register<T>({ id, rows, columns, rowKey, onOpen, empty = "Нет
     if (sortDirection === "asc") { setSortDirection("desc"); return; }
     setSortId(""); setSortDirection(null);
   };
-  const setColumnFilter = (columnId: string, value: string) => setFilters((current) => {
+  const setColumnFilter = (columnId: string, value: string, mode:ColumnFilterMode="contains") => setFilters((current) => {
     const existing = current.findIndex((filter) => filter.id === columnId);
     if (!value) return existing < 0 ? current : current.filter((filter) => filter.id !== columnId);
-    if (existing < 0) return [...current, { id: columnId, value }];
-    return current.map((filter, index) => index === existing ? { ...filter, value } : filter);
+    if (existing < 0) return [...current, { id: columnId, value, mode }];
+    return current.map((filter, index) => index === existing ? { ...filter, value, mode } : filter);
   });
   const exportCsv = () => {
     const csv = [activeColumns.map((c) => c.label), ...filtered.map((row) => activeColumns.map((c) => String(c.value(row))))]
@@ -102,11 +103,13 @@ export function Register<T>({ id, rows, columns, rowKey, onOpen, empty = "Нет
     <div className="bo-table-wrap"><table className="bo-table"><thead><tr>{activeColumns.map((column) => {
       const filterIndex = filters.findIndex((filter) => filter.id === column.id);
       const filterValue = filterIndex >= 0 ? filters[filterIndex]!.value : "";
+      const filterMode = filterIndex >= 0 ? filters[filterIndex]!.mode ?? "contains" : "contains";
+      const filterOptions=[...new Set(rows.map(row=>String(column.value(row)).trim()))].filter(Boolean).sort((a,b)=>a.localeCompare(b,"ru",{numeric:true}));
       return <th key={column.id} style={{ textAlign: column.align }}>
         <div className="bo-column-head">
           <button className="bo-sort" aria-label={`Сортировать: ${column.label}`} onClick={() => cycleSort(column.id)}>{column.label}{sortId === column.id && sortDirection ? (sortDirection === "desc" ? " ↓" : " ↑") : ""}</button>
           <button className={`bo-filter-button ${filterIndex >= 0 ? "is-active" : ""}`} aria-label={`Фильтр: ${column.label}`} aria-expanded={openFilter === column.id} onClick={() => { setShowColumns(false); setOpenFilter((current) => current === column.id ? null : column.id); }}>⌯{filterIndex >= 0 && <sup>{filterIndex + 1}</sup>}</button>
-          {openFilter === column.id && <div className="bo-filter-popover" ref={menuRef}><strong>{column.label}</strong><input autoFocus aria-label={`Значение фильтра ${column.label}`} value={filterValue} onChange={(event) => setColumnFilter(column.id, event.target.value)} placeholder="Содержит…"/><div><button onClick={() => { setColumnFilter(column.id, ""); setOpenFilter(null); }}>Сбросить</button><button className="bo-primary" onClick={() => setOpenFilter(null)}>Готово</button></div></div>}
+          {openFilter === column.id && <div className="bo-filter-popover" ref={menuRef}><strong>{column.label}</strong><label><span>Содержит</span><input autoFocus aria-label={`Содержит: ${column.label}`} value={filterMode==="contains"?filterValue:""} onChange={(event) => setColumnFilter(column.id, event.target.value,"contains")} placeholder="Введите часть значения"/></label><label><span>Точное значение</span><select aria-label={`Выбрать значение: ${column.label}`} value={filterMode==="equals"?filterValue:""} onChange={(event)=>setColumnFilter(column.id,event.target.value,"equals")}><option value="">Все значения</option>{filterOptions.map(value=><option key={value} value={value}>{value}</option>)}</select></label><div><button onClick={() => { setColumnFilter(column.id, ""); setOpenFilter(null); }}>Сбросить</button><button className="bo-primary" onClick={() => setOpenFilter(null)}>Готово</button></div></div>}
         </div>
       </th>;
     })}<th className="bo-column-editor-head"><button className="bo-column-editor" aria-label="Настроить колонки" aria-expanded={showColumns} onClick={() => { setOpenFilter(null); setShowColumns((value) => !value); }}>✎</button>{showColumns && <div className="bo-column-picker" ref={menuRef}><strong>Видимые колонки</strong>{columns.map((column) => <label key={column.id}><input type="checkbox" checked={visible.includes(column.id)} onChange={() => setVisible((current) => current.includes(column.id) ? current.filter((columnId) => columnId !== column.id) : [...current, column.id])} /> {column.label}</label>)}</div>}</th></tr></thead><tbody>
