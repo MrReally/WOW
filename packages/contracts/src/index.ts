@@ -16,6 +16,7 @@ export { UNIT_STATUSES } from "./equipment.js";
 export { OPERATION_UNIT_MARK_STATUSES, PROJECT_CHECKLIST_GROUPS, PROJECT_STATUSES, PROJECT_TASK_STATUSES } from "./projects.js";
 export { PLAN_LAYERS } from "./plans.js";
 export { ADVANCED_NOTIFICATION_EVENTS, NOTIFICATION_KINDS } from "./notifications.js";
+export { amountAfterDiscountEUR, discountAmountEUR } from "./finance.js";
 
 // Apex is a read-only aggregator over other modules — its DTO lives here too.
 import type { Problem, ID, ISODateTime } from "./common.js";

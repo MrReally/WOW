@@ -1066,3 +1066,55 @@ h1,
 .address-input__suggestions button { border: 0; border-radius: 7px; padding: 10px; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
 .address-input__suggestions button:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .address-input__suggestions span { padding: 4px 10px 2px; color: var(--muted); font-size: 10px; text-align: right; }
+.discount-control {
+  display: grid;
+  grid-template-columns: auto minmax(82px, 120px) minmax(140px, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.discount-switch {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 2px;
+  border: 1px solid var(--bdr);
+  border-radius: 9px;
+  background: var(--bg);
+}
+
+.discount-switch button {
+  min-width: 48px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.discount-switch button.is-active {
+  color: var(--bg);
+  background: var(--accent);
+}
+
+.discount-result {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.project-estimate-total {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--bdr);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 85%, var(--accent) 5%);
+}
+
+.discount-rate-warning { color: var(--warn); }
+
+@media (max-width: 600px) {
+  .discount-control { grid-template-columns: auto 1fr; }
+  .discount-result { grid-column: 1 / -1; }
+}

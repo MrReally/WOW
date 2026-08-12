@@ -30,10 +30,10 @@ const CARD = "M 0 -100 L 17 -17 L 100 0 L 17 17 L 0 100 L -17 17 L -100 0 L -17 
 const DIAG = "M 39.6 -39.6 L 16 0 L 39.6 39.6 L 0 16 L -39.6 39.6 L -16 0 L -39.6 -39.6 L 0 -16 Z";
 const HOLE = "M 0 -15 L 2.8 -2.8 L 15 0 L 2.8 2.8 L 0 15 L -2.8 2.8 L -15 0 L -2.8 -2.8 Z";
 
-const labels: Record<Finance.InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
-  EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
-  RU: { title: "Смета", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
-  RS: { title: "Ponuda", date: "Datum", place: "Mesto", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
+const labels: Record<Finance.InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; discount: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
+  EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", discount: "DISCOUNT:", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
+  RU: { title: "Смета", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", discount: "СКИДКА:", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
+  RS: { title: "Ponuda", date: "Datum", place: "Mesto", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", discount: "POPUST:", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -236,8 +236,21 @@ function drawTable(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO, 
   }
 
   const totalH = 30 * SCALE;
+  const subtotalEUR = req.lines.reduce((sum, line) => sum + line.priceEUR, 0);
+  const total = currencyAmount(Math.max(0, subtotalEUR - req.totalDiscountEUR), req);
+  if (req.totalDiscountEUR > 0) {
+    ensureRoom(totalH);
+    cell(doc, x, y, cols[0]!, totalH);
+    let discountX = x + cols[0]!;
+    [l.discount, `−${money(currencyAmount(req.totalDiscountEUR, req))}`, req.currency].forEach((value, index) => {
+      const width = cols[index + 1]!;
+      cell(doc, discountX, y, width, totalH);
+      drawText(doc, value, discountX, y, width, totalH, { size: index === 2 ? 12 : 13.5, bold: index !== 2, align: "left", padding: index === 0 ? 13.5 : 7 });
+      discountX += width;
+    });
+    y += totalH;
+  }
   ensureRoom(totalH);
-  const total = req.lines.reduce((sum, line) => sum + currencyAmount(line.priceEUR, req), 0);
   cell(doc, x, y, cols[0]!, totalH);
   let cx = x + cols[0]!;
   [l.total, money(total), req.currency].forEach((value, index) => {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useLocation, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type { Equipment, Finance, People, Projects, Transport } from "@sever/contracts";
-import { PROJECT_STATUSES } from "@sever/contracts";
+import { amountAfterDiscountEUR, discountAmountEUR, PROJECT_STATUSES } from "@sever/contracts";
 import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
 import { projectStatusLabel, projectStatusTone, dateRange, dateTime, eur } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
@@ -45,7 +45,7 @@ import { TimingTimeline } from "./components/TimingTimeline.tsx";
 import { ContractorEquipment } from "./components/ContractorEquipment.tsx";
 import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
 import { personName } from "../../lib/people.ts";
-import { useInvoiceVersions, useProjectEstimateLines, useReplaceProjectEstimateLines } from "../finance/hooks.ts";
+import { useFxRates, useInvoiceVersions, useProjectEstimateLines, useProjectEstimateSettings, useReplaceProjectEstimateLines, useSetProjectEstimateSettings } from "../finance/hooks.ts";
 import { useVenues } from "../plans/hooks.ts";
 import { useWarehouses } from "../warehouse/hooks.ts";
 import { useRouteQuote, useTransportConfig, useVehicles } from "../transport/hooks.ts";
@@ -114,6 +114,8 @@ interface FinanceDraftLine {
   qty: string;
   priceEUR: string;
   costEUR: string;
+  discountType: Finance.DiscountType;
+  discountValue: string;
   comment: string;
   hidden: boolean;
 }
@@ -151,7 +153,10 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const invoice = useProjectInvoice(id, canFinance);
   const serverInvoiceVersions = useInvoiceVersions(id, canFinance);
   const estimateLines = useProjectEstimateLines(id, canFinance);
+  const estimateSettings = useProjectEstimateSettings(id, canFinance);
   const replaceEstimateLines = useReplaceProjectEstimateLines(id);
+  const setEstimateSettings = useSetProjectEstimateSettings(id);
+  const fxRates = useFxRates();
   const pings = useProjectPings(id, canAssign);
   const reminders = useProjectReminders(id, canAssign);
   const reservationAvailabilities = useReservationAvailabilities(reservations.data ?? []);
@@ -213,6 +218,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [invoiceVersions, setInvoiceVersions] = useState<StoredInvoiceVersion[]>([]);
   const [estimateDrafts, setEstimateDrafts] = useState<FinanceDraftLine[]>([]);
   const [estimateSeeded, setEstimateSeeded] = useState(false);
+  const [totalDiscountType, setTotalDiscountType] = useState<Finance.DiscountType>("percent");
+  const [totalDiscountValue, setTotalDiscountValue] = useState("0");
   const estimateSectionSuggestions = useMemo(() => [...new Set([
     ...(estimateLines.data ?? []).map((line) => line.section.trim()),
     ...(invoice.data?.rentalLines ?? []).map((line) => line.section.trim()),
@@ -236,7 +243,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   useEffect(() => {
     if (estimateSeeded || !invoice.data || !estimateLines.data) return;
     const saved = estimateLines.data;
-    const missingDerived = invoice.data.rentalLines.filter((line) => !saved.some((item) => item.id === line.refId)).map((line) => ({
+    const missingDerived = invoice.data.rentalLines.filter((line) => !saved.some((item) => item.id === line.refId || item.sourceRefId === line.refId)).map((line) => ({
       id: line.refId,
       source: line.section === "Crew" ? "labor" as const : "equipment" as const,
       sourceRefId: line.refId,
@@ -245,6 +252,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       qty: line.qty,
       priceEUR: line.amountEUR,
       costEUR: line.costEUR,
+      discountType: "percent" as const,
+      discountValue: 0,
       comment: line.detail,
       hidden: false,
     }));
@@ -257,12 +266,20 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       qty: line.qty,
       priceEUR: line.amountEUR,
       costEUR: line.costEUR,
+      discountType: "percent" as const,
+      discountValue: 0,
       comment: line.detail,
       hidden: false,
     }));
-    setEstimateDrafts(source.map((line) => ({ id: line.id, source: line.source, sourceRefId: line.sourceRefId, section: line.section, name: line.name, qty: String(line.qty), priceEUR: String(line.priceEUR), costEUR: String(line.costEUR), comment: line.comment, hidden: line.hidden ?? false })));
+    setEstimateDrafts(source.map((line) => ({ id: line.id, source: line.source, sourceRefId: line.sourceRefId, section: line.section, name: line.name, qty: String(line.qty), priceEUR: String(line.priceEUR), costEUR: String(line.costEUR), discountType: line.discountType ?? "percent", discountValue: String(line.discountValue ?? 0), comment: line.comment, hidden: line.hidden ?? false })));
     setEstimateSeeded(true);
   }, [estimateLines.data, estimateSeeded, invoice.data]);
+
+  useEffect(() => {
+    if (!estimateSettings.data) return;
+    setTotalDiscountType(estimateSettings.data.totalDiscountType);
+    setTotalDiscountValue(String(estimateSettings.data.totalDiscountValue));
+  }, [estimateSettings.data]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedResModelQuery(resModelQuery), 500);
@@ -920,6 +937,11 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
 
       {currentTab === "finance" && canFinance && invoice.data && (() => {
         const inv = invoice.data;
+        const rsdRateToEUR = (fxRates.data ?? []).find((rate) => rate.currency === "RSD")?.rateToEUR ?? 0;
+        const visibleEstimateDrafts = estimateDrafts.filter((line) => !line.hidden);
+        const draftSubtotalEUR = visibleEstimateDrafts.reduce((sum, line) => sum + amountAfterDiscountEUR(Number(line.priceEUR) || 0, line.discountType, Number(line.discountValue) || 0, rsdRateToEUR), 0);
+        const totalDraftDiscountEUR = discountAmountEUR(draftSubtotalEUR, totalDiscountType, Number(totalDiscountValue) || 0, rsdRateToEUR);
+        const draftTotalEUR = Math.max(0, draftSubtotalEUR - totalDraftDiscountEUR);
         const Line = ({ l }: { l: { refId: string; label: string; detail: string; amountEUR: number } }) => (
           <div className="row row--between" style={{ padding: "4px 0", gap: 12 }}>
             <div style={{ minWidth: 0 }}>
@@ -933,7 +955,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
           <>
             <SectionTitle>Экономика проекта · €</SectionTitle>
             {canManageFinance && <DeliveryCalculator venueId={p.venueId} people={projectPeople} onApply={(quote, vehicle) => setEstimateDrafts((rows) => {
-              const next = { id: `manual-delivery-${Date.now()}`, source: "manual" as const, sourceRefId: null, section: "Доставка", name: `Доставка · ${vehicle.model} ${vehicle.plateNumber}`, qty: "1", priceEUR: String(quote.fuelCostEUR), costEUR: String(quote.fuelCostEUR), comment: `${quote.distanceKm} км · ${quote.fuelLitres} л${quote.roundTrip ? " · туда и обратно" : ""}`, hidden: false };
+              const next = { id: `manual-delivery-${Date.now()}`, source: "manual" as const, sourceRefId: null, section: "Доставка", name: `Доставка · ${vehicle.model} ${vehicle.plateNumber}`, qty: "1", priceEUR: String(quote.fuelCostEUR), costEUR: String(quote.fuelCostEUR), discountType: "percent" as const, discountValue: "0", comment: `${quote.distanceKm} км · ${quote.fuelLitres} л${quote.roundTrip ? " · туда и обратно" : ""}`, hidden: false };
               const index = rows.findIndex((line) => line.id.startsWith("manual-delivery-") || (line.source === "manual" && line.section.toLowerCase() === "доставка"));
               return index < 0 ? [...rows, next] : rows.map((line, i) => i === index ? { ...next, id: line.id } : line);
             })} />}
@@ -943,7 +965,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   <p className="card__title">Себестоимость и цена клиенту</p>
                   <p className="card__subtitle">Это единственный источник строк для счёта.</p>
                 </div>
-                {canManageFinance && <Button variant="secondary" onClick={() => setEstimateDrafts((lines) => [...lines, { id: `manual-${Date.now()}`, source: "manual", sourceRefId: null, section: "Прочее", name: "", qty: "1", priceEUR: "0", costEUR: "0", comment: "", hidden: false }])}>+ Позиция</Button>}
+                {canManageFinance && <Button variant="secondary" onClick={() => setEstimateDrafts((lines) => [...lines, { id: `manual-${Date.now()}`, source: "manual", sourceRefId: null, section: "Прочее", name: "", qty: "1", priceEUR: "0", costEUR: "0", discountType: "percent", discountValue: "0", comment: "", hidden: false }])}>+ Позиция</Button>}
               </div>
               <div className="stack" style={{ marginTop: 10 }}>
                 {estimateDrafts.map((line, index) => !line.hidden && (
@@ -958,14 +980,34 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                       <Input disabled={!canManageFinance} type="number" step="0.01" value={line.priceEUR} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, priceEUR: e.target.value } : row))} placeholder="Ц · клиенту" />
                       <Input disabled={!canManageFinance} type="number" step="0.01" value={line.costEUR} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, costEUR: e.target.value } : row))} placeholder="СС" />
                     </div>
+                    <DiscountControl
+                      type={line.discountType}
+                      value={line.discountValue}
+                      resultEUR={amountAfterDiscountEUR(Number(line.priceEUR) || 0, line.discountType, Number(line.discountValue) || 0, rsdRateToEUR)}
+                      disabled={!canManageFinance}
+                      onType={(discountType) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, discountType } : row))}
+                      onValue={(discountValue) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, discountValue } : row))}
+                    />
                     <Input disabled={!canManageFinance} value={line.comment} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, comment: e.target.value } : row))} placeholder="Комментарий" />
                   </div>
                 ))}
               </div>
               <datalist id="project-estimate-sections">{estimateSectionSuggestions.map((section) => <option key={section} value={section} />)}</datalist>
-              {canManageFinance && <Button block disabled={replaceEstimateLines.isPending || estimateDrafts.some((line) => !line.name.trim() || !(Number(line.qty) > 0))} onClick={() => replaceEstimateLines.mutate(estimateDrafts.map((line) => ({
-                ...(line.id.startsWith("manual-") ? {} : { id: line.id }), source: line.source, sourceRefId: line.sourceRefId, section: line.section.trim(), name: line.name.trim(), qty: Number(line.qty), priceEUR: Number(line.priceEUR) || 0, costEUR: Number(line.costEUR) || 0, comment: line.comment, hidden: line.hidden,
-              })))}>Сохранить €</Button>}
+              <div className="project-estimate-total">
+                <div>
+                  <p className="card__title">Скидка на общую сумму</p>
+                  <p className="card__subtitle">До общей скидки {eur(draftSubtotalEUR)} · скидка {eur(totalDraftDiscountEUR)}</p>
+                </div>
+                <DiscountControl type={totalDiscountType} value={totalDiscountValue} resultEUR={draftTotalEUR} disabled={!canManageFinance} onType={setTotalDiscountType} onValue={setTotalDiscountValue} />
+                <div className="row row--between"><span className="card__title">Итого клиенту</span><span className="card__title">{eur(draftTotalEUR)}</span></div>
+              </div>
+              {!rsdRateToEUR && (totalDiscountType === "fixed_rsd" || estimateDrafts.some((line) => line.discountType === "fixed_rsd")) && <p className="card__subtitle discount-rate-warning">Чтобы применить скидку в динарах, задайте курс RSD в настройках.</p>}
+              {canManageFinance && <Button block disabled={replaceEstimateLines.isPending || setEstimateSettings.isPending || estimateDrafts.some((line) => !line.name.trim() || !(Number(line.qty) > 0) || (line.discountType === "percent" && Number(line.discountValue) > 100)) || (totalDiscountType === "percent" && Number(totalDiscountValue) > 100)} onClick={() => void Promise.all([
+                replaceEstimateLines.mutateAsync(estimateDrafts.map((line) => ({
+                  ...(line.id.startsWith("manual-") ? {} : { id: line.id }), source: line.source, sourceRefId: line.sourceRefId, section: line.section.trim(), name: line.name.trim(), qty: Number(line.qty), priceEUR: Number(line.priceEUR) || 0, costEUR: Number(line.costEUR) || 0, discountType: line.discountType, discountValue: Math.max(0, Number(line.discountValue) || 0), comment: line.comment, hidden: line.hidden,
+                }))),
+                setEstimateSettings.mutateAsync({ totalDiscountType, totalDiscountValue: Math.max(0, Number(totalDiscountValue) || 0) }),
+              ])}>Сохранить €</Button>}
             </Card>
             <Card>
               <p className="card__title">Деньги по проекту</p>
@@ -996,6 +1038,10 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
               ) : (
                 <div style={{ marginTop: 6 }}>{inv.rentalLines.map((l) => <Line key={l.refId} l={l} />)}</div>
               )}
+              {inv.discountEUR > 0 && <>
+                <div className="row row--between" style={{ padding: "4px 0", marginTop: 6 }}><span className="card__subtitle">До общей скидки</span><span>{eur(inv.subtotalEUR)}</span></div>
+                <div className="row row--between" style={{ padding: "4px 0" }}><span className="card__subtitle">Общая скидка</span><span>−{eur(inv.discountEUR)}</span></div>
+              </>}
               <div className="row row--between" style={{ marginTop: 8, borderTop: "1px solid var(--bdr)", paddingTop: 8 }}>
                 <span className="card__title">К оплате клиентом</span>
                 <span className="card__title">{eur(inv.invoiceEUR)}</span>
@@ -1081,6 +1127,26 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function DiscountControl({ type, value, resultEUR, disabled, onType, onValue }: {
+  type: Finance.DiscountType;
+  value: string;
+  resultEUR: number;
+  disabled: boolean;
+  onType: (type: Finance.DiscountType) => void;
+  onValue: (value: string) => void;
+}) {
+  return (
+    <div className="discount-control">
+      <div className="discount-switch" role="group" aria-label="Тип скидки">
+        <button type="button" className={type === "percent" ? "is-active" : ""} aria-pressed={type === "percent"} disabled={disabled} onClick={() => onType("percent")}>%</button>
+        <button type="button" className={type === "fixed_rsd" ? "is-active" : ""} aria-pressed={type === "fixed_rsd"} disabled={disabled} onClick={() => onType("fixed_rsd")}>дин.</button>
+      </div>
+      <Input disabled={disabled} type="number" min="0" max={type === "percent" ? "100" : undefined} step="0.01" value={value} onChange={(event) => onValue(event.target.value)} aria-label={type === "percent" ? "Скидка в процентах" : "Скидка в динарах"} />
+      <span className="discount-result">После скидки {eur(resultEUR)}</span>
     </div>
   );
 }

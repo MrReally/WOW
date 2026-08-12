@@ -23,6 +23,7 @@ const invoicePdfSchema = z.object({
   currency: z.enum(CURRENCIES as [string, ...string[]]),
   rateToEUR: z.number().positive().nullable(),
   note: z.string(),
+  totalDiscountEUR: z.number().nonnegative(),
   lines: z.array(z.object({
     id: z.string(),
     section: z.string(),

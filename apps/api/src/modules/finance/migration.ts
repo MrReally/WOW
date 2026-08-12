@@ -88,6 +88,18 @@ CREATE TABLE IF NOT EXISTS finance.project_estimate_lines (
 );
 CREATE INDEX IF NOT EXISTS project_estimate_lines_project_idx ON finance.project_estimate_lines(project_id, sort_order);
 ALTER TABLE finance.project_estimate_lines ADD COLUMN IF NOT EXISTS is_hidden boolean NOT NULL DEFAULT false;
+ALTER TABLE finance.project_estimate_lines ADD COLUMN IF NOT EXISTS discount_type text NOT NULL DEFAULT 'percent' CHECK (discount_type IN ('percent','fixed_rsd'));
+ALTER TABLE finance.project_estimate_lines ADD COLUMN IF NOT EXISTS discount_value numeric(14,2) NOT NULL DEFAULT 0 CHECK (discount_value >= 0);
+
+CREATE TABLE IF NOT EXISTS finance.project_estimate_settings (
+  project_id           uuid PRIMARY KEY,
+  total_discount_type  text NOT NULL DEFAULT 'percent' CHECK (total_discount_type IN ('percent','fixed_rsd')),
+  total_discount_value numeric(14,2) NOT NULL DEFAULT 0 CHECK (total_discount_value >= 0),
+  updated_at           timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE finance.invoice_versions ADD COLUMN IF NOT EXISTS total_discount_type text NOT NULL DEFAULT 'percent' CHECK (total_discount_type IN ('percent','fixed_rsd'));
+ALTER TABLE finance.invoice_versions ADD COLUMN IF NOT EXISTS total_discount_value numeric(14,2) NOT NULL DEFAULT 0 CHECK (total_discount_value >= 0);
 
 -- EUR is the base currency; its rate is always 1.
 INSERT INTO finance.fx_rates (currency, rate_to_eur) VALUES ('EUR', 1)

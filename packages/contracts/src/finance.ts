@@ -89,6 +89,18 @@ export interface ProjectFinanceDTO {
 }
 
 export type ProjectEstimateLineSource = "equipment" | "contractor" | "labor" | "manual";
+export type DiscountType = "percent" | "fixed_rsd";
+
+export function discountAmountEUR(amountEUR: number, type: DiscountType, value: number, rsdRateToEUR: number): number {
+  const base = Math.max(0, amountEUR);
+  const safeValue = Math.max(0, value);
+  const raw = type === "percent" ? base * Math.min(100, safeValue) / 100 : safeValue * Math.max(0, rsdRateToEUR);
+  return Math.round(Math.min(base, raw) * 100) / 100;
+}
+
+export function amountAfterDiscountEUR(amountEUR: number, type: DiscountType, value: number, rsdRateToEUR: number): number {
+  return Math.round((Math.max(0, amountEUR) - discountAmountEUR(amountEUR, type, value, rsdRateToEUR)) * 100) / 100;
+}
 
 /** Editable project economics. This is the source of truth for both the € tab
  * and client-facing estimate; invoice versions are read-only snapshots. */
@@ -102,6 +114,9 @@ export interface ProjectEstimateLineDTO {
   qty: number;
   priceEUR: number;
   costEUR: number;
+  discountType: DiscountType;
+  /** Percentage points or a fixed amount in Serbian dinars. */
+  discountValue: number;
   comment: string;
   /** Retained source row that must not be rendered after combining positions. */
   hidden: boolean;
@@ -119,8 +134,22 @@ export interface SaveProjectEstimateLineInput {
   qty: number;
   priceEUR: number;
   costEUR: number;
+  discountType?: DiscountType;
+  discountValue?: number;
   comment?: string;
   hidden?: boolean;
+}
+
+export interface ProjectEstimateSettingsDTO {
+  projectId: ID;
+  totalDiscountType: DiscountType;
+  /** Percentage points or a fixed amount in Serbian dinars. */
+  totalDiscountValue: number;
+}
+
+export interface SaveProjectEstimateSettingsInput {
+  totalDiscountType: DiscountType;
+  totalDiscountValue: number;
 }
 
 // ── Project invoice / cost estimate ──────────────────────────────────────────
@@ -150,6 +179,9 @@ export interface ProjectInvoiceDTO {
   days: number;
   /** Equipment rental — what the client is billed. */
   rentalLines: InvoiceLineDTO[];
+  /** Sum after per-line discounts and before the project-wide discount. */
+  subtotalEUR: number;
+  discountEUR: number;
   rentalEUR: number;
   /** Crew engagement costs (assignment rates). */
   laborLines: InvoiceLineDTO[];
@@ -203,6 +235,8 @@ export interface EstimatePdfRequestDTO {
   rateToEUR: number | null;
   note: string;
   lines: EstimatePdfLineDTO[];
+  /** Project-wide discount; line prices already include their own discounts. */
+  totalDiscountEUR: number;
 }
 
 export interface InvoiceCompanySettingsDTO {
@@ -224,6 +258,8 @@ export interface InvoiceVersionDTO {
   currency: Currency;
   lang: InvoiceLang;
   lines: EstimatePdfLineDTO[];
+  totalDiscountType: DiscountType;
+  totalDiscountValue: number;
   note: string;
   createdAt: ISODateTime;
 }
@@ -238,6 +274,8 @@ export interface CreateInvoiceVersionInput {
   currency: Currency;
   lang: InvoiceLang;
   lines: EstimatePdfLineDTO[];
+  totalDiscountType: DiscountType;
+  totalDiscountValue: number;
   note?: string;
 }
 
@@ -266,6 +304,8 @@ export interface FinanceService {
   listProjectEstimateLines(projectId: ID): Promise<ProjectEstimateLineDTO[]>;
   replaceProjectEstimateLines(projectId: ID, lines: SaveProjectEstimateLineInput[]): Promise<ProjectEstimateLineDTO[]>;
   copyProjectEstimateLines(sourceProjectId: ID, projectId: ID, sourceRefMap?: Record<ID, ID>): Promise<ProjectEstimateLineDTO[]>;
+  getProjectEstimateSettings(projectId: ID): Promise<ProjectEstimateSettingsDTO>;
+  setProjectEstimateSettings(projectId: ID, input: SaveProjectEstimateSettingsInput): Promise<ProjectEstimateSettingsDTO>;
 
   // Estimate document settings + versions
   getInvoiceCompanySettings(): Promise<InvoiceCompanySettingsDTO>;

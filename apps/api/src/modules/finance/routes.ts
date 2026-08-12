@@ -56,6 +56,8 @@ const invoiceVersionSchema = z.object({
   currency: z.enum(CURRENCIES as [string, ...string[]]),
   lang: z.enum(["EN", "RU", "RS"]),
   lines: z.array(invoiceVersionLineSchema),
+  totalDiscountType: z.enum(["percent", "fixed_rsd"]),
+  totalDiscountValue: z.number().nonnegative(),
   note: z.string().optional(),
 });
 const estimateLineSchema = z.object({
@@ -67,8 +69,20 @@ const estimateLineSchema = z.object({
   qty: z.number().positive(),
   priceEUR: z.number(),
   costEUR: z.number(),
+  discountType: z.enum(["percent", "fixed_rsd"]).optional(),
+  discountValue: z.number().nonnegative().optional(),
   comment: z.string().optional(),
   hidden: z.boolean().optional(),
+}).refine((value) => value.discountType !== "percent" || (value.discountValue ?? 0) <= 100, {
+  message: "percentage discount cannot exceed 100",
+  path: ["discountValue"],
+});
+const estimateSettingsSchema = z.object({
+  totalDiscountType: z.enum(["percent", "fixed_rsd"]),
+  totalDiscountValue: z.number().nonnegative(),
+}).refine((value) => value.totalDiscountType !== "percent" || value.totalDiscountValue <= 100, {
+  message: "percentage discount cannot exceed 100",
+  path: ["totalDiscountValue"],
 });
 
 export function registerFinanceRoutes(
@@ -137,6 +151,16 @@ export function registerFinanceRoutes(
     requirePermission(auth, "finance.manage");
     const body = z.object({ lines: z.array(estimateLineSchema) }).parse(req.body);
     return service.replaceProjectEstimateLines(req.params.id, body.lines as Finance.SaveProjectEstimateLineInput[]);
+  });
+  app.get<{ Params: { id: string } }>("/api/projects/:id/estimate-settings", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.view", "finance.manage");
+    return service.getProjectEstimateSettings(req.params.id);
+  });
+  app.put<{ Params: { id: string } }>("/api/projects/:id/estimate-settings", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.manage");
+    return service.setProjectEstimateSettings(req.params.id, estimateSettingsSchema.parse(req.body));
   });
 
   app.get("/api/finance/invoice-company", async (req) => {

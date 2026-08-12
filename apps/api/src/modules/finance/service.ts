@@ -63,6 +63,8 @@ interface InvoiceVersionRow {
   currency: Currency;
   lang: Finance.InvoiceLang;
   lines: Finance.EstimatePdfLineDTO[];
+  total_discount_type: Finance.DiscountType;
+  total_discount_value: string;
   note: string;
   created_at: Date;
 }
@@ -76,11 +78,18 @@ interface ProjectEstimateLineRow {
   qty: string;
   price_eur: string;
   cost_eur: string;
+  discount_type: Finance.DiscountType;
+  discount_value: string;
   comment: string;
   is_hidden: boolean;
   sort_order: number;
   created_at: Date;
   updated_at: Date;
+}
+interface ProjectEstimateSettingsRow {
+  project_id: string;
+  total_discount_type: Finance.DiscountType;
+  total_discount_value: string;
 }
 
 const fxDTO = (r: FxRow): Finance.FxRateDTO => ({
@@ -128,6 +137,8 @@ const invoiceVersionDTO = (r: InvoiceVersionRow): Finance.InvoiceVersionDTO => (
   currency: r.currency,
   lang: r.lang,
   lines: r.lines,
+  totalDiscountType: r.total_discount_type,
+  totalDiscountValue: Number(r.total_discount_value),
   note: r.note,
   createdAt: r.created_at.toISOString(),
 });
@@ -141,11 +152,18 @@ const estimateLineDTO = (r: ProjectEstimateLineRow): Finance.ProjectEstimateLine
   qty: Number(r.qty),
   priceEUR: Number(r.price_eur),
   costEUR: Number(r.cost_eur),
+  discountType: r.discount_type,
+  discountValue: Number(r.discount_value),
   comment: r.comment,
   hidden: r.is_hidden,
   sortOrder: r.sort_order,
   createdAt: r.created_at.toISOString(),
   updatedAt: r.updated_at.toISOString(),
+});
+const estimateSettingsDTO = (projectId: string, r?: ProjectEstimateSettingsRow | null): Finance.ProjectEstimateSettingsDTO => ({
+  projectId,
+  totalDiscountType: r?.total_discount_type ?? "percent",
+  totalDiscountValue: Number(r?.total_discount_value ?? 0),
 });
 
 export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceService {
@@ -337,9 +355,9 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
         for (const [sortOrder, line] of lines.entries()) {
           const row = await one<ProjectEstimateLineRow>(client,
             `INSERT INTO finance.project_estimate_lines
-               (id, project_id, source, source_ref_id, section, name, qty, price_eur, cost_eur, comment, sort_order, is_hidden)
-             VALUES (COALESCE($1::uuid, gen_random_uuid()),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-            [line.id ?? null, projectId, line.source ?? "manual", line.sourceRefId ?? null, line.section.trim() || "Прочее", line.name.trim(), line.qty, line.priceEUR, line.costEUR, line.comment?.trim() ?? "", sortOrder, line.hidden ?? false]
+               (id, project_id, source, source_ref_id, section, name, qty, price_eur, cost_eur, discount_type, discount_value, comment, sort_order, is_hidden)
+             VALUES (COALESCE($1::uuid, gen_random_uuid()),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+            [line.id ?? null, projectId, line.source ?? "manual", line.sourceRefId ?? null, line.section.trim() || "Прочее", line.name.trim(), line.qty, line.priceEUR, line.costEUR, line.discountType ?? "percent", line.discountValue ?? 0, line.comment?.trim() ?? "", sortOrder, line.hidden ?? false]
           );
           saved.push(row!);
         }
@@ -348,8 +366,11 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
     },
 
     async copyProjectEstimateLines(sourceProjectId, projectId, sourceRefMap = {}) {
-      const source = await this.listProjectEstimateLines(sourceProjectId);
-      return this.replaceProjectEstimateLines(projectId, source.map((line) => ({
+      const [source, settings] = await Promise.all([
+        this.listProjectEstimateLines(sourceProjectId),
+        this.getProjectEstimateSettings(sourceProjectId),
+      ]);
+      const copied = await this.replaceProjectEstimateLines(projectId, source.map((line) => ({
         source: line.source,
         sourceRefId: line.sourceRefId ? sourceRefMap[line.sourceRefId] ?? null : null,
         section: line.section,
@@ -357,9 +378,32 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
         qty: line.qty,
         priceEUR: line.priceEUR,
         costEUR: line.costEUR,
+        discountType: line.discountType,
+        discountValue: line.discountValue,
         comment: line.comment,
         hidden: line.hidden,
       })));
+      await this.setProjectEstimateSettings(projectId, {
+        totalDiscountType: settings.totalDiscountType,
+        totalDiscountValue: settings.totalDiscountValue,
+      });
+      return copied;
+    },
+
+    async getProjectEstimateSettings(projectId) {
+      const row = await one<ProjectEstimateSettingsRow>(db, `SELECT * FROM finance.project_estimate_settings WHERE project_id=$1`, [projectId]);
+      return estimateSettingsDTO(projectId, row);
+    },
+
+    async setProjectEstimateSettings(projectId, input) {
+      const row = await one<ProjectEstimateSettingsRow>(db,
+        `INSERT INTO finance.project_estimate_settings (project_id, total_discount_type, total_discount_value, updated_at)
+         VALUES ($1,$2,$3,now())
+         ON CONFLICT (project_id) DO UPDATE SET total_discount_type=$2, total_discount_value=$3, updated_at=now()
+         RETURNING *`,
+        [projectId, input.totalDiscountType, input.totalDiscountValue]
+      );
+      return estimateSettingsDTO(projectId, row);
     },
 
     async getInvoiceCompanySettings() {
@@ -401,8 +445,8 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
       const row = await one<InvoiceVersionRow>(
         db,
         `INSERT INTO finance.invoice_versions
-           (project_id, number, date, place, client_name, total_eur, currency, lang, lines, note)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)
+           (project_id, number, date, place, client_name, total_eur, currency, lang, lines, total_discount_type, total_discount_value, note)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12)
          RETURNING *`,
         [
           input.projectId,
@@ -414,6 +458,8 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
           input.currency,
           input.lang,
           JSON.stringify(input.lines),
+          input.totalDiscountType,
+          input.totalDiscountValue,
           input.note ?? "",
         ]
       );

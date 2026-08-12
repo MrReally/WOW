@@ -53,6 +53,28 @@ export function useProjectEstimateLines(projectId: string, enabled = true) {
   });
 }
 
+export function useProjectEstimateSettings(projectId: string, enabled = true) {
+  return useQuery({
+    enabled: enabled && !!projectId,
+    queryKey: ["projects", "estimate-settings", projectId],
+    queryFn: () => api.get<Finance.ProjectEstimateSettingsDTO>(`/api/projects/${projectId}/estimate-settings`),
+  });
+}
+
+export function useSetProjectEstimateSettings(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Finance.SaveProjectEstimateSettingsInput) =>
+      api.put<Finance.ProjectEstimateSettingsDTO>(`/api/projects/${projectId}/estimate-settings`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects", "estimate-settings", projectId] });
+      qc.invalidateQueries({ queryKey: ["projects", "invoice", projectId] });
+      qc.invalidateQueries({ queryKey: ["finance"] });
+      qc.invalidateQueries({ queryKey: ["apex"] });
+    },
+  });
+}
+
 export function useReplaceProjectEstimateLines(projectId: string) {
   const qc = useQueryClient();
   return useMutation({

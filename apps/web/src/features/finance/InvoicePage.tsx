@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { Currency, Finance } from "@sever/contracts";
+import { amountAfterDiscountEUR } from "@sever/contracts";
 import { Card, Button, Field, Input, Textarea, Select, Loading, ErrorState, BrandLogo, Chip } from "../../ui-kit/index.ts";
 import { getToken } from "../../lib/api.ts";
 import { platform } from "../../app/platform/telegram.ts";
 import { useSession } from "../../app/session.ts";
 import { useProject, useClients, useProjectInvoice } from "../projects/hooks.ts";
 import { useVenues } from "../plans/hooks.ts";
-import { useCreateInvoiceVersion, useFxRates, useInvoiceCompanySettings, useInvoiceVersions, useProjectEstimateLines, useReplaceProjectEstimateLines, useSetInvoiceCompanySettings } from "./hooks.ts";
+import { useCreateInvoiceVersion, useFxRates, useInvoiceCompanySettings, useInvoiceVersions, useProjectEstimateLines, useProjectEstimateSettings, useReplaceProjectEstimateLines, useSetInvoiceCompanySettings } from "./hooks.ts";
 import "./invoice.css";
 
 interface Line {
@@ -18,6 +19,9 @@ interface Line {
   name: string;
   count: string;
   price: number;
+  rawPrice: number;
+  discountType: Finance.DiscountType;
+  discountValue: number;
   cost: number;
   comment: string;
   hidden: boolean;
@@ -36,6 +40,8 @@ interface StoredInvoiceVersion {
   lang: InvoiceLang;
   createdAt: string;
   lines: Line[];
+  totalDiscountType: Finance.DiscountType;
+  totalDiscountValue: number;
   note?: string;
 }
 
@@ -48,10 +54,10 @@ const money = (n: number, cur = "EUR") => `${new Intl.NumberFormat("en-US", { ma
 const amount = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(n));
 const cleanText = (value: string) => value.trim().replace(/\s+/g, " ");
 
-const DOC_LABELS: Record<InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
-  EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
-  RU: { title: "Смета", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
-  RS: { title: "Ponuda", date: "Datum", place: "Mesto", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
+const DOC_LABELS: Record<InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; discount: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
+  EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", discount: "DISCOUNT:", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
+  RU: { title: "Смета", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", discount: "СКИДКА:", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
+  RS: { title: "Ponuda", date: "Datum", place: "Mesto", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", discount: "POPUST:", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
 };
 
 function loadCompany(): Company {
@@ -88,6 +94,7 @@ export function InvoicePage() {
   const serverVersions = useInvoiceVersions(id);
   const createVersion = useCreateInvoiceVersion(id);
   const estimateLines = useProjectEstimateLines(id);
+  const estimateSettings = useProjectEstimateSettings(id);
   const replaceEstimateLines = useReplaceProjectEstimateLines(id);
 
   const [mode, setMode] = useState<"edit" | "preview">("edit");
@@ -149,16 +156,20 @@ export function InvoicePage() {
           name: l.label,
           count: String(l.qty),
           price: l.amountEUR,
+          rawPrice: stored?.priceEUR ?? l.amountEUR,
+          discountType: stored?.discountType ?? "percent",
+          discountValue: stored?.discountValue ?? 0,
           cost: l.costEUR,
           comment: l.detail,
           hidden: false,
         } satisfies Line;
       });
-      const hidden = saved.filter((line) => line.hidden).map(lineFromEstimate);
+      const rsdRateToEUR = (fx.data ?? []).find((rate) => rate.currency === "RSD")?.rateToEUR ?? 0;
+      const hidden = saved.filter((line) => line.hidden).map((line) => lineFromEstimate(line, rsdRateToEUR));
       setLines([...visible, ...hidden]);
       setSeeded(true);
     }
-  }, [invoice.data, estimateLines.data, seeded]);
+  }, [invoice.data, estimateLines.data, fx.data, seeded]);
 
   useEffect(() => {
     if (project.data && !number) setNumber(`EST-${dateStr.replace(/-/g, "")}-${id.slice(0, 4).toUpperCase()}`);
@@ -179,7 +190,9 @@ export function InvoicePage() {
   const fxRateToEUR = currency === "EUR" ? 1 : (fx.data ?? []).find((r) => r.currency === currency)?.rateToEUR ?? null;
   const convert = (valueEUR: number) => (fxRateToEUR ? round2(valueEUR / fxRateToEUR) : valueEUR);
   const visibleLines = useMemo(() => lines.filter((line) => !line.hidden), [lines]);
-  const total = useMemo(() => round2(visibleLines.reduce((s, l) => s + l.price, 0)), [visibleLines]);
+  const subtotal = useMemo(() => round2(visibleLines.reduce((s, l) => s + l.price, 0)), [visibleLines]);
+  const totalDiscountEUR = Math.min(subtotal, invoice.data?.discountEUR ?? 0);
+  const total = round2(subtotal - totalDiscountEUR);
   const costTotal = useMemo(() => round2(visibleLines.reduce((s, l) => s + l.cost, 0)), [visibleLines]);
   const margin = round2(total - costTotal);
   const normalizedLines = useMemo(() => visibleLines.map((l) => ({
@@ -210,6 +223,7 @@ export function InvoicePage() {
     currency,
     rateToEUR: fxRateToEUR,
     note,
+    totalDiscountEUR,
     lines: normalizedLines.map((l) => ({ id: l.id, section: l.section, name: l.name, count: l.count, priceEUR: l.price, costEUR: l.cost, comment: l.comment })),
   });
   const saveVersion = async () => {
@@ -225,6 +239,8 @@ export function InvoicePage() {
       lang,
       createdAt: new Date().toISOString(),
       lines: normalizedLines,
+      totalDiscountType: estimateSettings.data?.totalDiscountType ?? "percent",
+      totalDiscountValue: estimateSettings.data?.totalDiscountValue ?? 0,
       note,
     };
     const next = [version, ...versions].slice(0, 20);
@@ -247,6 +263,8 @@ export function InvoicePage() {
         costEUR: l.cost,
         comment: l.comment,
       })),
+      totalDiscountType: version.totalDiscountType,
+      totalDiscountValue: version.totalDiscountValue,
       note: version.note ?? "",
     });
     return version;
@@ -321,13 +339,17 @@ export function InvoicePage() {
       name,
       count: "1",
       price: selectedPrice,
+      rawPrice: selectedPrice,
+      discountType: "percent",
+      discountValue: 0,
       cost: selectedCost,
       comment: "",
       hidden: false,
     }];
     replaceEstimateLines.mutate(next.map(lineToEstimateInput), {
       onSuccess: (saved) => {
-        setLines(saved.map(lineFromEstimate));
+        const rsdRateToEUR = (fx.data ?? []).find((rate) => rate.currency === "RSD")?.rateToEUR ?? 0;
+        setLines(saved.map((line) => lineFromEstimate(line, rsdRateToEUR)));
         setSelectedLineIds([]);
         setMergeName("");
         setMergeOpen(false);
@@ -352,7 +374,7 @@ export function InvoicePage() {
         />
         {!canConvert && <p className="card__subtitle no-print" style={{ color: "var(--warn)" }}>Для {currency} не задан курс в Settings.</p>}
         {pdfError && <p className="card__subtitle no-print" style={{ color: "var(--alert)" }}>{pdfError}</p>}
-        <PrintableInvoice labels={labels} lang={lang} dateStr={dateStr} place={place} sections={sections} convert={convert} total={total} currency={currency} note={note} company={company} />
+        <PrintableInvoice labels={labels} lang={lang} dateStr={dateStr} place={place} sections={sections} convert={convert} subtotal={subtotal} totalDiscountEUR={totalDiscountEUR} total={total} currency={currency} note={note} company={company} />
       </div>
     );
   }
@@ -455,7 +477,9 @@ export function InvoicePage() {
       {panel === "summary" && (
         <>
           <Card>
-            <div className="row row--between"><span className="card__title">Клиенту</span><span className="card__title">{money(total)}</span></div>
+            <div className="row row--between"><span className="card__subtitle">До общей скидки</span><span>{money(subtotal)}</span></div>
+            {totalDiscountEUR > 0 && <div className="row row--between" style={{ marginTop: 4 }}><span className="card__subtitle">Общая скидка</span><span>−{money(totalDiscountEUR)}</span></div>}
+            <div className="row row--between" style={{ marginTop: 8 }}><span className="card__title">Клиенту</span><span className="card__title">{money(total)}</span></div>
             <div className="row row--between" style={{ marginTop: 6 }}><span className="card__subtitle">Себестоимость</span><span>{money(costTotal)}</span></div>
             <div className="row row--between" style={{ marginTop: 2 }}><span className="card__subtitle">Маржа</span><span style={{ color: margin >= 0 ? "var(--ok)" : "var(--alert)" }}>{money(margin)}</span></div>
           </Card>
@@ -507,15 +531,20 @@ function versionFromDTO(v: Finance.InvoiceVersionDTO): StoredInvoiceVersion {
       name: line.name,
       count: line.count,
       price: line.priceEUR,
+      rawPrice: line.priceEUR,
+      discountType: "percent",
+      discountValue: 0,
       cost: line.costEUR,
       comment: line.comment,
       hidden: false,
     })),
+    totalDiscountType: v.totalDiscountType,
+    totalDiscountValue: v.totalDiscountValue,
     note: v.note,
   };
 }
 
-function lineFromEstimate(line: Finance.ProjectEstimateLineDTO): Line {
+function lineFromEstimate(line: Finance.ProjectEstimateLineDTO, rsdRateToEUR: number): Line {
   return {
     id: line.id,
     source: line.source,
@@ -523,7 +552,10 @@ function lineFromEstimate(line: Finance.ProjectEstimateLineDTO): Line {
     section: line.section,
     name: line.name,
     count: String(line.qty),
-    price: line.priceEUR,
+    price: amountAfterDiscountEUR(line.priceEUR, line.discountType, line.discountValue, rsdRateToEUR),
+    rawPrice: line.priceEUR,
+    discountType: line.discountType,
+    discountValue: line.discountValue,
     cost: line.costEUR,
     comment: line.comment,
     hidden: line.hidden,
@@ -539,8 +571,10 @@ function lineToEstimateInput(line: Line): Finance.SaveProjectEstimateLineInput {
     section: cleanText(line.section) || "Прочее",
     name: cleanText(line.name),
     qty: Number(line.count) > 0 ? Number(line.count) : 1,
-    priceEUR: line.price,
+    priceEUR: line.rawPrice,
     costEUR: line.cost,
+    discountType: line.discountType,
+    discountValue: line.discountValue,
     comment: line.comment.trim(),
     hidden: line.hidden,
   };
@@ -572,7 +606,7 @@ function InvoiceTopbar({ lang, currency, onLang, onCurrency, onBack, onPdf, pdfB
   );
 }
 
-function PrintableInvoice({ labels, dateStr, place, sections, convert, total, currency, note, company }: { labels: typeof DOC_LABELS[InvoiceLang]; lang: InvoiceLang; dateStr: string; place: string; sections: { section: string; items: Line[] }[]; convert: (valueEUR: number) => number; total: number; currency: Currency; note: string; company: Company }) {
+function PrintableInvoice({ labels, dateStr, place, sections, convert, subtotal, totalDiscountEUR, total, currency, note, company }: { labels: typeof DOC_LABELS[InvoiceLang]; lang: InvoiceLang; dateStr: string; place: string; sections: { section: string; items: Line[] }[]; convert: (valueEUR: number) => number; subtotal: number; totalDiscountEUR: number; total: number; currency: Currency; note: string; company: Company }) {
   return (
     <div className="invoice-doc">
       <div className="estimate-head">
@@ -586,7 +620,10 @@ function PrintableInvoice({ labels, dateStr, place, sections, convert, total, cu
       <table className="estimate-table">
         <thead><tr><th>{labels.name}</th><th className="num">{labels.count}</th><th className="num">{labels.price}</th><th>{labels.comment}</th></tr></thead>
         <tbody>{sections.map((sec) => <SectionBlock key={sec.section} section={sec.section} items={sec.items} convert={convert} />)}</tbody>
-        <tfoot><tr><td></td><td className="total-label">{labels.total}</td><td className="total-amount">{amount(convert(total))}</td><td className="total-currency">{currency}</td></tr></tfoot>
+        <tfoot>
+          {totalDiscountEUR > 0 && <tr><td>{amount(convert(subtotal))}</td><td>{labels.discount}</td><td>−{amount(convert(totalDiscountEUR))}</td><td>{currency}</td></tr>}
+          <tr><td></td><td className="total-label">{labels.total}</td><td className="total-amount">{amount(convert(total))}</td><td className="total-currency">{currency}</td></tr>
+        </tfoot>
       </table>
       {note && <div className="estimate-note">{note}</div>}
       <table className="contacts-table"><tbody>

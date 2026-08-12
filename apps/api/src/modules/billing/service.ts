@@ -1,4 +1,5 @@
 import type { Equipment, Finance, ID, People, Projects } from "@sever/contracts";
+import { amountAfterDiscountEUR, discountAmountEUR } from "@sever/contracts";
 import { NotFound } from "../../core/errors.js";
 
 // Billing is a read-only aggregator (like Apex): it owns no data and composes
@@ -27,7 +28,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
     const project = await deps.projects.getProject(projectId);
     if (!project) throw NotFound("project", projectId);
 
-    const [reservations, assignments, projectRoles, models, types, txs, contractorItems, estimateLines] = await Promise.all([
+    const [reservations, assignments, projectRoles, models, types, txs, contractorItems, estimateLines, estimateSettings, fxRates] = await Promise.all([
       deps.projects.listReservations(projectId),
       deps.projects.listAssignments(projectId),
       deps.projects.listProjectRoles(projectId),
@@ -36,7 +37,10 @@ export function createBillingService(deps: BillingDeps): BillingService {
       deps.finance.listTransactions({ projectId }),
       deps.projects.listContractorItems(projectId),
       deps.finance.listProjectEstimateLines(projectId),
+      deps.finance.getProjectEstimateSettings(projectId),
+      deps.finance.listFxRates(),
     ]);
+    const rsdRateToEUR = fxRates.find((rate) => rate.currency === "RSD")?.rateToEUR ?? 0;
     const modelMap = new Map(models.map((m) => [m.id, m]));
     const typeName = new Map(types.map((t) => [t.id, t.name]));
     const projectDays = daysBetween(project.startsAt, project.endsAt);
@@ -112,9 +116,9 @@ export function createBillingService(deps: BillingDeps): BillingService {
         label: saved.name,
         detail: saved.comment,
         qty: saved.qty,
-        unitEUR: saved.qty ? round2(saved.priceEUR / saved.qty) : saved.priceEUR,
+        unitEUR: saved.qty ? round2(amountAfterDiscountEUR(saved.priceEUR, saved.discountType, saved.discountValue, rsdRateToEUR) / saved.qty) : saved.priceEUR,
         periods: 1,
-        amountEUR: saved.priceEUR,
+        amountEUR: amountAfterDiscountEUR(saved.priceEUR, saved.discountType, saved.discountValue, rsdRateToEUR),
         costEUR: saved.costEUR,
       } : derived];
     });
@@ -124,13 +128,15 @@ export function createBillingService(deps: BillingDeps): BillingService {
       label: line.name,
       detail: line.comment,
       qty: line.qty,
-      unitEUR: line.qty ? round2(line.priceEUR / line.qty) : line.priceEUR,
+      unitEUR: line.qty ? round2(amountAfterDiscountEUR(line.priceEUR, line.discountType, line.discountValue, rsdRateToEUR) / line.qty) : line.priceEUR,
       periods: 1,
-      amountEUR: line.priceEUR,
+      amountEUR: amountAfterDiscountEUR(line.priceEUR, line.discountType, line.discountValue, rsdRateToEUR),
       costEUR: line.costEUR,
     }));
     const rentalLines: Finance.InvoiceLineDTO[] = estimateLines.length > 0 ? [...effectiveDerived, ...manualLines] : derivedRentalLines;
-    const rentalEUR = round2(rentalLines.reduce((sum, line) => sum + line.amountEUR, 0));
+    const subtotalEUR = round2(rentalLines.reduce((sum, line) => sum + line.amountEUR, 0));
+    const discountEUR = discountAmountEUR(subtotalEUR, estimateSettings.totalDiscountType, estimateSettings.totalDiscountValue, rsdRateToEUR);
+    const rentalEUR = round2(subtotalEUR - discountEUR);
 
     let paidEUR = 0;
     let recordedIncomeEUR = 0;
@@ -154,6 +160,8 @@ export function createBillingService(deps: BillingDeps): BillingService {
       projectId,
       days: projectDays,
       rentalLines,
+      subtotalEUR,
+      discountEUR,
       rentalEUR,
       laborLines,
       laborEUR,
