@@ -2,6 +2,10 @@ import type { Finance } from "@sever/contracts";
 
 type DerivedLine = Pick<Finance.InvoiceLineDTO, "refId" | "label" | "detail">;
 
+export function withoutSourceEstimateLine<T extends { sourceRefId: string | null }>(lines: T[], sourceRefId: string): T[] {
+  return lines.filter((line) => line.sourceRefId !== sourceRefId);
+}
+
 const normalized = (value: string) => value.trim().toLocaleLowerCase();
 const billedDays = (detail: string): number | null => {
   const match = detail.trim().match(/^(\d+)\s+days?\s*[×x]/i);

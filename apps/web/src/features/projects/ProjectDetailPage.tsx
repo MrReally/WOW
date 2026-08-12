@@ -50,7 +50,7 @@ import { useFxRates, useInvoiceVersions, useProjectEstimateLines, useProjectEsti
 import { useVenues } from "../plans/hooks.ts";
 import { useWarehouses } from "../warehouse/hooks.ts";
 import { useRouteQuote, useTransportConfig, useVehicles } from "../transport/hooks.ts";
-import { staleDurationEstimateIds } from "./estimateReconciliation.ts";
+import { staleDurationEstimateIds, withoutSourceEstimateLine } from "./estimateReconciliation.ts";
 
 const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "ok" | "info" | "warn" | "neutral" }> = {
   added: { label: "в команде", tone: "ok" },
@@ -479,7 +479,9 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                       aria-label="Удалить бронь"
                       title="Удалить"
                       disabled={deleteReservation.isPending || issuedCount > 0}
-                      onClick={() => confirm("Удалить эту бронь?") && deleteReservation.mutate(r.id)}
+                      onClick={() => confirm("Удалить эту бронь?") && deleteReservation.mutate(r.id, {
+                        onSuccess: () => setEstimateDrafts((lines) => withoutSourceEstimateLine(lines, r.id)),
+                      })}
                     >
                       <ProjectGlyph type="close" />
                     </button>

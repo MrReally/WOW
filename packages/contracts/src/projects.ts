@@ -536,6 +536,13 @@ export interface ReservationConflictEvent {
   at: ISODateTime;
 }
 
+export interface ReservationDeletedEvent {
+  type: "reservation.deleted";
+  reservationId: ID;
+  projectId: ID;
+  at: ISODateTime;
+}
+
 export interface ProjectAssignedEvent {
   type: "project.assigned";
   projectId: ID;
@@ -621,6 +628,7 @@ export type ProjectsEvent =
   | ProjectConfirmedEvent
   | ProjectDuplicatedEvent
   | ReservationConflictEvent
+  | ReservationDeletedEvent
   | ProjectAssignedEvent
   | ProjectUnassignedEvent
   | ProjectInvitedEvent

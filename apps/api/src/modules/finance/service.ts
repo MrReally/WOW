@@ -365,6 +365,10 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
       });
     },
 
+    async removeProjectEstimateLinesBySourceRef(sourceRefId) {
+      await query(db, `DELETE FROM finance.project_estimate_lines WHERE source_ref_id=$1`, [sourceRefId]);
+    },
+
     async copyProjectEstimateLines(sourceProjectId, projectId, sourceRefMap = {}) {
       const [source, settings] = await Promise.all([
         this.listProjectEstimateLines(sourceProjectId),

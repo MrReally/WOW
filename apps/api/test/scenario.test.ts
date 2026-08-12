@@ -743,6 +743,25 @@ describe("Tech pickup/return → некомплект", () => {
     expect((await projects.service.listContractorItems(project.id)).find((item) => item.id === contractorItem.id)?.paidAt).not.toBeNull();
   });
 
+  it("removes a deleted reservation from the stored project economics", async () => {
+    const { projects, equipment, finance, billing } = wiring;
+    const client = await projects.service.createClient({ name: `Delete estimate ${Date.now()}` });
+    const startsAt = new Date().toISOString();
+    const endsAt = new Date(Date.now() + 86_400_000).toISOString();
+    const project = await projects.service.createProject({ name: "Delete estimate project", clientId: client.id, startsAt, endsAt });
+    const type = await equipment.service.createType({ name: `Delete estimate type ${Date.now()}`, trackingMode: "serial" });
+    const model = await equipment.service.createModel({ typeId: type.id, name: "Deleted fixture", unitCostEUR: 100, dailyPriceEUR: 25 });
+    const reservation = await projects.service.createReservation({ projectId: project.id, modelId: model.id, qty: 1, startsAt, endsAt });
+    await finance.service.replaceProjectEstimateLines(project.id, [{
+      source: "equipment", sourceRefId: reservation.id, section: "Свет", name: "Deleted fixture", qty: 1, priceEUR: 25, costEUR: 0,
+    }]);
+
+    await projects.service.deleteReservation(reservation.id);
+
+    expect(await finance.service.listProjectEstimateLines(project.id)).toEqual([]);
+    expect((await billing.projectInvoice(project.id)).rentalLines).toEqual([]);
+  });
+
   it("edits a unit assignment and the shared model/type data", async () => {
     const suffix = `${Date.now()}-${Math.random()}`;
     const firstType = await wiring.equipment.service.createType({ name: `Edit source ${suffix}`, trackingMode: "serial" });

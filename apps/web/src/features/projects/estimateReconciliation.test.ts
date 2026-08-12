@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Finance } from "@sever/contracts";
-import { staleDurationEstimateIds } from "./estimateReconciliation.ts";
+import { staleDurationEstimateIds, withoutSourceEstimateLine } from "./estimateReconciliation.ts";
 
 const saved = (comment: string): Finance.ProjectEstimateLineDTO => ({
   id: "old-line", projectId: "project", source: "equipment", sourceRefId: "old-reservation",
@@ -10,6 +10,11 @@ const saved = (comment: string): Finance.ProjectEstimateLineDTO => ({
 });
 
 describe("estimate duration reconciliation", () => {
+  it("removes the estimate line linked to a deleted reservation", () => {
+    const other = { ...saved("1 day × 25 €/day"), id: "other-line", sourceRefId: "other-reservation" };
+    expect(withoutSourceEstimateLine([saved("1 day × 25 €/day"), other], "old-reservation")).toEqual([other]);
+  });
+
   it("hides the stale one-day row when a current two-day row exists", () => {
     const ids = staleDurationEstimateIds([saved("1 day × 25 €/day")], [{ refId: "new", label: "Smoke Machine 1500W", detail: "2 days × 25 €/day" }], 2);
     expect([...ids]).toEqual(["old-line"]);

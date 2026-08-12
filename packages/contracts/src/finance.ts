@@ -303,6 +303,7 @@ export interface FinanceService {
   // Editable project economics (€ tab is the only writer).
   listProjectEstimateLines(projectId: ID): Promise<ProjectEstimateLineDTO[]>;
   replaceProjectEstimateLines(projectId: ID, lines: SaveProjectEstimateLineInput[]): Promise<ProjectEstimateLineDTO[]>;
+  removeProjectEstimateLinesBySourceRef(sourceRefId: ID): Promise<void>;
   copyProjectEstimateLines(sourceProjectId: ID, projectId: ID, sourceRefMap?: Record<ID, ID>): Promise<ProjectEstimateLineDTO[]>;
   getProjectEstimateSettings(projectId: ID): Promise<ProjectEstimateSettingsDTO>;
   setProjectEstimateSettings(projectId: ID, input: SaveProjectEstimateSettingsInput): Promise<ProjectEstimateSettingsDTO>;

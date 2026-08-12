@@ -856,6 +856,12 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
         [id]
       );
       await syncReservationAvailabilityProblems(row.model_id, row.starts_at.toISOString(), row.ends_at.toISOString());
+      await bus.publish({
+        type: "reservation.deleted",
+        reservationId: row.id,
+        projectId: row.project_id,
+        at: new Date().toISOString(),
+      });
     },
 
     // ── Timings + assignments ──
