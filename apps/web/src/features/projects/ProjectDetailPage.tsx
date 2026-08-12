@@ -404,8 +404,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                 options={PROJECT_STATUSES.map((s) => ({ value: s, label: projectStatusLabel[s] }))}
               />
             </div>
-            <Button variant="secondary" onClick={() => setEditOpen(true)}>Редактировать</Button>
-            <Button variant="secondary" onClick={() => setDuplicateOpen(true)}>Дублировать</Button>
+            <Button variant="secondary" mobileIcon="edit" onClick={() => setEditOpen(true)}>Редактировать</Button>
+            <Button variant="secondary" mobileIcon="duplicate" onClick={() => setDuplicateOpen(true)}>Дублировать</Button>
           </div>
         )}
       </Card>

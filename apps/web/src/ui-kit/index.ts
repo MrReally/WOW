@@ -2,6 +2,7 @@ import "./tokens.css";
 import "./components.css";
 
 export { Button, Card, SectionTitle, Metric } from "./components/primitives.tsx";
+export { ActionIcon, type ActionIconName } from "./components/ActionIcon.tsx";
 export { StatusBadge, type BadgeTone } from "./components/StatusBadge.tsx";
 export { Sheet } from "./components/Sheet.tsx";
 export { Field, Input, Textarea, Select } from "./components/forms.tsx";

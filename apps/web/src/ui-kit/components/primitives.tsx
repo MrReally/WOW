@@ -1,18 +1,25 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { ActionIcon, type ActionIconName } from "./ActionIcon.tsx";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   block?: boolean;
+  mobileIcon?: ActionIconName;
 }
 
-export function Button({ variant = "primary", block, className = "", ...rest }: ButtonProps) {
+export function Button({ variant = "primary", block, mobileIcon, className = "", children, ...rest }: ButtonProps) {
   return (
     <button
-      className={`btn btn--${variant} ${block ? "btn--block" : ""} ${className}`}
+      className={`btn btn--${variant} ${block ? "btn--block" : ""} ${mobileIcon ? "btn--mobile-icon" : ""} ${className}`}
       {...rest}
-    />
+    >
+      {mobileIcon ? <>
+        <span className="btn__mobile-icon"><ActionIcon name={mobileIcon} /></span>
+        <span className="btn__label">{children}</span>
+      </> : children}
+    </button>
   );
 }
 
