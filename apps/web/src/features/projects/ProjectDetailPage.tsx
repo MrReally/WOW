@@ -4,6 +4,7 @@ import type { Equipment, Finance, People, Projects, Transport } from "@sever/con
 import { amountAfterDiscountEUR, discountAmountEUR, PROJECT_STATUSES } from "@sever/contracts";
 import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
 import { projectStatusLabel, projectStatusTone, dateRange, dateTime, eur } from "../../lib/labels.ts";
+import { toast } from "../../lib/toastBus.ts";
 import { useSession } from "../../app/session.ts";
 import { useI18n } from "../../app/i18n.tsx";
 import {
@@ -51,6 +52,7 @@ import { useVenues } from "../plans/hooks.ts";
 import { useWarehouses } from "../warehouse/hooks.ts";
 import { useRouteQuote, useTransportConfig, useVehicles } from "../transport/hooks.ts";
 import { staleDurationEstimateIds, withoutSourceEstimateLine } from "./estimateReconciliation.ts";
+import { ISSUED_RESERVATION_DELETE_ERROR, issuedUnitsForReservation } from "./reservationIssuedUnits.ts";
 
 const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "ok" | "info" | "warn" | "neutral" }> = {
   added: { label: "в команде", tone: "ok" },
@@ -442,7 +444,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             const resolved = r.resolvedUnitIds.length > 0;
             const unit = (uid: string) => (allUnits.data ?? []).find((u) => u.id === uid);
             const unitTag = (uid: string) => unit(uid)?.assetTag ?? uid.slice(0, 6);
-            const issuedUnits = (allUnits.data ?? []).filter((u) => u.modelId === r.modelId && u.status === "on_project" && u.currentProjectId === p.id);
+            const issuedUnits = issuedUnitsForReservation(r, allUnits.data ?? []);
             const issuedCount = issuedUnits.length;
             const issued = issuedCount >= r.qty;
             const shownIds = [...new Set([...r.resolvedUnitIds, ...issuedUnits.map((u) => u.id)])];
@@ -478,10 +480,18 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                       className="icon-btn icon-btn--danger"
                       aria-label="Удалить бронь"
                       title="Удалить"
-                      disabled={deleteReservation.isPending || issuedCount > 0}
-                      onClick={() => confirm("Удалить эту бронь?") && deleteReservation.mutate(r.id, {
-                        onSuccess: () => setEstimateDrafts((lines) => withoutSourceEstimateLine(lines, r.id)),
-                      })}
+                      disabled={deleteReservation.isPending}
+                      onClick={() => {
+                        if (issuedCount > 0) {
+                          toast("error", ISSUED_RESERVATION_DELETE_ERROR);
+                          return;
+                        }
+                        if (confirm("Удалить эту бронь?")) {
+                          deleteReservation.mutate(r.id, {
+                            onSuccess: () => setEstimateDrafts((lines) => withoutSourceEstimateLine(lines, r.id)),
+                          });
+                        }
+                      }}
                     >
                       <ProjectGlyph type="close" />
                     </button>
@@ -489,7 +499,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                 )}
                 {issuedCount > 0 && canReserve && (
                   <p className="card__subtitle" style={{ marginTop: 6 }}>
-                    Бронь нельзя удалить, пока по этой модели есть выданное на проект оборудование.
+                    Бронь нельзя удалить, пока закреплённое за ней оборудование выдано на проект.
                   </p>
                 )}
               </Card>
