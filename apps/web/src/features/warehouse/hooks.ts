@@ -49,8 +49,8 @@ export function useUpdateCableConnector() {
   return useMutation({mutationFn:({id,input}:{id:string;input:Partial<Pick<Equipment.CableConnectorDTO,"name"|"designation"|"imageDataUrl"|"active">>})=>api.patch<Equipment.CableConnectorDTO>(`/api/equipment/cable-connectors/${id}`,input),onSuccess:()=>invalidateEquipment(qc),meta:{successMessage:"Разъём обновлён"}});
 }
 
-export function useModels() {
-  return useQuery({ queryKey: ["equipment", "models"], queryFn: () => api.get<Equipment.EquipmentModelDTO[]>("/api/equipment/models") });
+export function useModels(includeArchived=false) {
+  return useQuery({ queryKey: ["equipment", "models", includeArchived], queryFn: () => api.get<Equipment.EquipmentModelDTO[]>(`/api/equipment/models${includeArchived ? "?includeArchived=true" : ""}`) });
 }
 
 export function useModelStock(modelId: string, enabled = true) {
@@ -90,12 +90,13 @@ export function useUpdateStorageZone() {
   return useMutation({ mutationFn:({id,input}:{id:string;input:Partial<Pick<Equipment.StorageZoneDTO,"parentId"|"name"|"code"|"kind"|"active"|"sortOrder">>})=>api.patch<Equipment.StorageZoneDTO>(`/api/equipment/storage-zones/${id}`,input), onSuccess:()=>invalidateEquipment(qc), meta:{successMessage:"Зона хранения обновлена"} });
 }
 
-export function useUnits(filter?: { modelId?: string; status?: Equipment.UnitStatus; projectId?: string; warehouseId?: string }) {
+export function useUnits(filter?: { modelId?: string; status?: Equipment.UnitStatus; projectId?: string; warehouseId?: string; includeArchived?: boolean }) {
   const qs = new URLSearchParams();
   if (filter?.modelId) qs.set("modelId", filter.modelId);
   if (filter?.status) qs.set("status", filter.status);
   if (filter?.projectId) qs.set("projectId", filter.projectId);
   if (filter?.warehouseId) qs.set("warehouseId", filter.warehouseId);
+  if (filter?.includeArchived) qs.set("includeArchived", "true");
   const suffix = qs.toString() ? `?${qs}` : "";
   return useQuery({
     queryKey: ["equipment", "units", filter ?? {}],
@@ -227,7 +228,7 @@ export function useTransferUnit() {
 export function useUpdateUnit() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: { modelId?: string; assetTag?: string; serial?: string | null; notes?: string | null; zoneId?:string|null } }) =>
+    mutationFn: ({ id, input }: { id: string; input: { modelId?: string; assetTag?: string; serial?: string | null; notes?: string | null; zoneId?:string|null; archived?: boolean } }) =>
       api.patch<Equipment.EquipmentUnitDTO>(`/api/equipment/units/${id}`, input),
     meta: { successMessage: "Сохранено" },
     onSuccess: () => invalidateEquipment(qc),

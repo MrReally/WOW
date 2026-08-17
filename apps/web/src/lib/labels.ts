@@ -26,6 +26,7 @@ export const projectStatusLabel: Record<Projects.ProjectStatus, string> = {
   draft: "Черновик",
   confirmed: "Подтверждён",
   in_progress: "В работе",
+  awaiting_payment: "Ждёт оплаты",
   completed: "Завершён",
   cancelled: "Отменён",
 };
@@ -34,6 +35,7 @@ export const projectStatusTone: Record<Projects.ProjectStatus, BadgeTone> = {
   draft: "neutral",
   confirmed: "info",
   in_progress: "warn",
+  awaiting_payment: "danger",
   completed: "ok",
   cancelled: "danger",
 };

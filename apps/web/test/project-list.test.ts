@@ -12,9 +12,10 @@ describe("mobile Planning project lists", () => {
       project("later", "confirmed", "2026-09-10T10:00:00.000Z"),
       project("nearest", "in_progress", "2026-08-03T10:00:00.000Z"),
       project("middle", "draft", "2026-08-20T10:00:00.000Z"),
+      project("payment", "awaiting_payment", "2026-08-25T10:00:00.000Z"),
     ]);
 
-    expect(result.active.map(({ id }) => id)).toEqual(["nearest", "middle", "later"]);
+    expect(result.active.map(({ id }) => id)).toEqual(["nearest", "middle", "payment", "later"]);
   });
 
   it("moves completed and cancelled projects into newest-first archive", () => {

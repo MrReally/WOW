@@ -61,6 +61,7 @@ const updateModelSchema = z.object({
   dailyPriceEUR: z.number().nonnegative().optional(),
   attrs: modelAttrsSchema.nullable().optional(),
   requiredComponentModelIds: z.array(z.string().uuid()).optional(),
+  archived: z.boolean().optional(),
 });
 const modelTrackingSchema = z.object({ trackingMode: z.enum(["serial", "quantity", "cable"]) });
 const modelIdParamsSchema = z.object({ id: z.string().uuid() });
@@ -79,6 +80,7 @@ const updateUnitSchema = z.object({
   serial: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   zoneId: z.string().uuid().nullable().optional(),
+  archived: z.boolean().optional(),
 });
 
 const statusSchema = z.object({
@@ -197,9 +199,9 @@ export function registerEquipmentRoutes(
   });
 
   // ── Models ──
-  app.get<{ Querystring: { typeId?: string } }>("/api/equipment/models", async (req) => {
+  app.get<{ Querystring: { typeId?: string; includeArchived?: string } }>("/api/equipment/models", async (req) => {
     await ctx.auth(req);
-    return service.listModels(req.query.typeId);
+    return service.listModels(req.query.typeId, req.query.includeArchived === "true");
   });
   app.get<{ Params: { id: string } }>("/api/equipment/models/:id", async (req) => {
     const { id } = modelIdParamsSchema.parse(req.params);
@@ -281,7 +283,7 @@ export function registerEquipmentRoutes(
   });
 
   // ── Units ──
-  app.get<{ Querystring: { modelId?: string; status?: Equipment.UnitStatus; projectId?: string; warehouseId?: string } }>(
+  app.get<{ Querystring: { modelId?: string; status?: Equipment.UnitStatus; projectId?: string; warehouseId?: string; includeArchived?: string } }>(
     "/api/equipment/units",
     async (req) => {
       await ctx.auth(req);
@@ -290,6 +292,7 @@ export function registerEquipmentRoutes(
         status: req.query.status,
         projectId: req.query.projectId,
         warehouseId: req.query.warehouseId,
+        includeArchived: req.query.includeArchived === "true",
       });
     }
   );

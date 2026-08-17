@@ -50,7 +50,7 @@ export function UnitDetailPage() {
 
   const unit = useUnit(id);
   const journal = useUnitJournal(id);
-  const models = useModels();
+  const models = useModels(true);
   const types = useTypes();
   const repairs = useUnitRepairs(id);
   const projects = useProjectsForOps();
@@ -128,7 +128,7 @@ export function UnitDetailPage() {
             <p className="card__title" style={{ fontSize: "var(--fs-lg)" }}>{u.assetTag}</p>
             {model?.imageUrl&&<img className="equipment-model-image" src={model.imageUrl} alt={model.name}/>}<p className="card__subtitle">{model?.name ?? "—"}{model?.manufacturer ? ` · ${model.manufacturer}` : ""}</p>
           </div>
-          <StatusBadge tone={unitStatusTone[u.status]}>{unitStatusLabel[u.status]}</StatusBadge>
+          <StatusBadge tone={u.archivedAt ? "neutral" : unitStatusTone[u.status]}>{u.archivedAt ? "Архив" : unitStatusLabel[u.status]}</StatusBadge>
         </div>
       </Card>
 
@@ -237,6 +237,20 @@ export function UnitDetailPage() {
             options={statusOptions.map((s) => ({ value: s, label: unitStatusLabel[s] }))}
           />
         </Card>
+      )}
+
+      {canCatalog && (
+        <Button
+          block
+          variant="secondary"
+          disabled={updateUnit.isPending}
+          onClick={() => {
+            if (!u.archivedAt && !confirm(`Переместить ${u.assetTag} в архив? Прибор исчезнет из рабочих списков и счётчиков.`)) return;
+            updateUnit.mutate({ id: u.id, input: { archived: !u.archivedAt } });
+          }}
+        >
+          {u.archivedAt ? "Вернуть из архива" : "В архив"}
+        </Button>
       )}
 
       <SectionTitle>История перемещений</SectionTitle>

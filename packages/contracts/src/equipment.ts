@@ -61,6 +61,7 @@ export interface EquipmentModelDTO {
   attrs: CableAttrs | Record<string, unknown> | null;
   /** Component model ids required when issuing a unit of this model. */
   requiredComponentModelIds: ID[];
+  archivedAt?: ISODateTime | null;
   createdAt: ISODateTime;
 }
 
@@ -130,6 +131,7 @@ export interface EquipmentUnitDTO {
   currentProjectId: ID | null;
   /** Free-form per-unit notes: unique defects, quirks, marks, accessories. */
   notes: string | null;
+  archivedAt?: ISODateTime | null;
   createdAt: ISODateTime;
 }
 
@@ -386,7 +388,7 @@ export interface EquipmentService {
   updateCableConnector(id: ID, input: { name?: string; designation?: string; imageDataUrl?: string | null; active?: boolean }): Promise<CableConnectorDTO>;
   createType(input: { name: string; trackingMode: TrackingMode }): Promise<EquipmentTypeDTO>;
   updateType(id: ID, input: { name?: string }): Promise<EquipmentTypeDTO>;
-  listModels(typeId?: ID): Promise<EquipmentModelDTO[]>;
+  listModels(typeId?: ID, includeArchived?: boolean): Promise<EquipmentModelDTO[]>;
   getModel(id: ID): Promise<EquipmentModelDTO | null>;
   createModel(input: CreateModelInput): Promise<EquipmentModelDTO>;
   updateModel(id: ID, input: UpdateModelInput): Promise<EquipmentModelDTO>;
@@ -394,11 +396,11 @@ export interface EquipmentService {
   deleteModel(id: ID): Promise<void>;
 
   // Units
-  listUnits(filter?: { modelId?: ID; status?: UnitStatus; projectId?: ID; warehouseId?: ID }): Promise<EquipmentUnitDTO[]>;
+  listUnits(filter?: { modelId?: ID; status?: UnitStatus; projectId?: ID; warehouseId?: ID; includeArchived?: boolean }): Promise<EquipmentUnitDTO[]>;
   getUnit(id: ID): Promise<EquipmentUnitDTO | null>;
   createUnit(input: { modelId: ID; assetTag: string; serial?: string | null; notes?: string | null; warehouseId?: ID | null; zoneId?: ID | null }): Promise<EquipmentUnitDTO>;
   /** Edit per-unit particulars (visible name/tag, serial, defects/notes). */
-  updateUnit(id: ID, input: { modelId?: ID; assetTag?: string; serial?: string | null; notes?: string | null; zoneId?: ID | null }): Promise<EquipmentUnitDTO>;
+  updateUnit(id: ID, input: { modelId?: ID; assetTag?: string; serial?: string | null; notes?: string | null; zoneId?: ID | null; archived?: boolean }): Promise<EquipmentUnitDTO>;
   getUnitJournal(unitId: ID): Promise<JournalEntryDTO[]>;
   getJournalByActor(actorId: ID): Promise<JournalEntryDTO[]>;
   /** Cross-unit append-only movement projection for Backoffice reports. */
@@ -471,6 +473,7 @@ export interface UpdateModelInput {
   dailyPriceEUR?: number;
   attrs?: CableAttrs | Record<string, unknown> | null;
   requiredComponentModelIds?: ID[];
+  archived?: boolean;
 }
 
 // ── Domain events (in-process bus now, broker later) ─────────────────────────

@@ -20,6 +20,7 @@ export type ProjectStatus =
   | "draft"
   | "confirmed"
   | "in_progress"
+  | "awaiting_payment"
   | "completed"
   | "cancelled";
 
@@ -27,8 +28,18 @@ export const PROJECT_STATUSES: ProjectStatus[] = [
   "draft",
   "confirmed",
   "in_progress",
+  "awaiting_payment",
   "completed",
   "cancelled",
+];
+
+/** Primary statuses used by the current project workflow. Legacy terminal
+ * statuses remain readable for existing records. */
+export const PROJECT_WORKFLOW_STATUSES: ProjectStatus[] = [
+  "draft",
+  "confirmed",
+  "in_progress",
+  "awaiting_payment",
 ];
 
 export interface ProjectDTO {
@@ -37,6 +48,7 @@ export interface ProjectDTO {
   clientId: ID;
   status: ProjectStatus;
   operationStage: ProjectChecklistGroup;
+  warehouseTurnoverCompletedAt: ISODateTime | null;
   /** Opaque id of the venue (venues module, later phase). */
   venueId: ID | null;
   startsAt: ISODateTime;
@@ -441,6 +453,7 @@ export interface ProjectsService {
   updateProject(id: ID, input: UpdateProjectInput): Promise<ProjectDTO>;
   setStatus(id: ID, status: ProjectStatus): Promise<ProjectDTO>;
   setOperationStage(id: ID, stage: ProjectChecklistGroup, actorId?: ID | null): Promise<ProjectDTO>;
+  completeWarehouseTurnover(id: ID, actorId?: ID | null): Promise<ProjectDTO>;
   listOperationEvents(projectId: ID): Promise<ProjectOperationEventDTO[]>;
   listOperationUnitMarks(projectId: ID): Promise<OperationUnitMarkDTO[]>;
   setOperationUnitMark(input: SetOperationUnitMarkInput): Promise<OperationUnitMarkDTO>;

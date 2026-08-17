@@ -142,8 +142,9 @@ export function WarehousePage() {
   const canIssue = can("warehouse.issue");
   const canEdit = canCatalog || canImport;
   const navigate = useNavigate();
-  const models = useModels();
-  const units = useUnits();
+  const [showArchived, setShowArchived] = useState(false);
+  const models = useModels(showArchived);
+  const units = useUnits(showArchived ? { includeArchived: true } : undefined);
   const types = useTypes();
   const warehouses = useWarehouses();
   const createWarehouse = useCreateWarehouse();
@@ -181,9 +182,14 @@ export function WarehousePage() {
   if (models.isLoading || units.isLoading) return <Loading />;
   if (models.error) return <ErrorState error={models.error} onRetry={models.refetch} />;
 
-  const allUnits = units.data ?? [];
+  const rawUnits = units.data ?? [];
   const warehouseList = warehouses.data ?? [];
-  const allModels = models.data ?? [];
+  const rawModels = models.data ?? [];
+  const allModels = showArchived
+    ? rawModels.filter((model) => model.archivedAt || rawUnits.some((unit) => unit.modelId === model.id && unit.archivedAt))
+    : rawModels;
+  const archivedModelIds = new Set(rawModels.filter((model) => model.archivedAt).map((model) => model.id));
+  const allUnits = showArchived ? rawUnits.filter((unit) => unit.archivedAt || archivedModelIds.has(unit.modelId)) : rawUnits;
   const visibleModels=categoryFilter==="all"?allModels:allModels.filter(model=>categoryFilter==="none"?!model.categoryId:model.categoryId===categoryFilter);
   const getTypeName = (tid: string | undefined) => (types.data ?? []).find((t) => t.id === tid)?.name ?? "Без типа";
   const warehouseName = (id: string | null | undefined) => warehouseList.find((w) => w.id === id)?.name ?? "—";
@@ -333,7 +339,7 @@ export function WarehousePage() {
       </div>
     </>
   );
-  const categorySelector=<><SectionHead label="Категории" meta={categoryFilter==="all"?"ВСЕ":categories.data?.find(category=>category.id===categoryFilter)?.name??"БЕЗ КАТЕГОРИИ"}/><div className="card" style={{padding:"10px 12px",marginBottom:12,display:"flex",gap:6,flexWrap:"wrap"}}><button className={`chip ${categoryFilter==="all"?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>setCategoryFilter("all")}>Все</button>{(categories.data??[]).map(category=><button key={category.id} className={`chip ${categoryFilter===category.id?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>setCategoryFilter(category.id)}>{category.name}</button>)}<button className={`chip ${categoryFilter==="none"?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>setCategoryFilter("none")}>Без категории</button></div></>;
+  const categorySelector=<><SectionHead label={showArchived?"Архив":"Категории"} meta={categoryFilter==="all"?"ВСЕ":categories.data?.find(category=>category.id===categoryFilter)?.name??"БЕЗ КАТЕГОРИИ"}/><div className="card" style={{padding:"10px 12px",marginBottom:12,display:"flex",gap:6,flexWrap:"wrap"}}><button className={`chip ${!showArchived&&categoryFilter==="all"?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>{setShowArchived(false);setCategoryFilter("all");}}>Все</button>{!showArchived&&(categories.data??[]).map(category=><button key={category.id} className={`chip ${categoryFilter===category.id?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>setCategoryFilter(category.id)}>{category.name}</button>)}{!showArchived&&<button className={`chip ${categoryFilter==="none"?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>setCategoryFilter("none")}>Без категории</button>}<button className={`chip ${showArchived?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>{setShowArchived(true);setCategoryFilter("all");}}>Архив</button></div></>;
   const repairSection = (
     <>
       <SectionHead label="Ремонты и сервисные выдачи" meta={`${repairCount}`} />

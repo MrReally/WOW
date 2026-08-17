@@ -124,6 +124,8 @@ CREATE INDEX IF NOT EXISTS units_project_idx ON equipment.units(current_project_
 
 -- Per-unit free-form notes: unique defects, quirks, marks.
 ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS notes text;
+ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+ALTER TABLE equipment.models ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS warehouse_id uuid REFERENCES equipment.warehouses(id);
 ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS zone_id uuid REFERENCES equipment.storage_zones(id);
 UPDATE equipment.units

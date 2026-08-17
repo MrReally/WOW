@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS projects.projects (
   name       text NOT NULL,
   client_id  uuid NOT NULL REFERENCES projects.clients(id),
   status     text NOT NULL DEFAULT 'draft'
-             CHECK (status IN ('draft','confirmed','in_progress','completed','cancelled')),
+             CHECK (status IN ('draft','confirmed','in_progress','awaiting_payment','completed','cancelled')),
   venue_id   uuid,                  -- opaque id (venues module, later phase)
   operation_stage text NOT NULL DEFAULT 'prep'
              CHECK (operation_stage IN ('prep','pickup','delivery','mount','show','dismantle','return')),
@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS projects.projects (
 CREATE INDEX IF NOT EXISTS projects_status_idx ON projects.projects(status);
 CREATE INDEX IF NOT EXISTS projects_window_idx ON projects.projects(starts_at, ends_at);
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS operation_stage text NOT NULL DEFAULT 'prep';
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS warehouse_turnover_completed_at timestamptz;
+ALTER TABLE projects.projects DROP CONSTRAINT IF EXISTS projects_status_check;
+ALTER TABLE projects.projects ADD CONSTRAINT projects_status_check CHECK (status IN ('draft','confirmed','in_progress','awaiting_payment','completed','cancelled'));
 ALTER TABLE projects.projects DROP CONSTRAINT IF EXISTS projects_operation_stage_check;
 ALTER TABLE projects.projects ADD CONSTRAINT projects_operation_stage_check CHECK (operation_stage IN ('prep','pickup','delivery','mount','show','dismantle','return'));
 

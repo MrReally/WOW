@@ -104,6 +104,11 @@ export function EditModelSheet({ model, categories = [], onClose }: { model: Equ
     if (!confirm("Это действие нельзя отменить. Точно удалить?")) return;
     deleteModel.mutate(model.id, { onSuccess: onClose });
   };
+  const toggleArchive = () => {
+    const next = !model.archivedAt;
+    if (next && !confirm(`Переместить модель «${model.name}» и её приборы из рабочих списков в архив?`)) return;
+    update.mutate({ id: model.id, input: { archived: next } }, { onSuccess: onClose });
+  };
 
   return (
     <Sheet open={!!model} onClose={onClose} title="Редактировать модель">
@@ -134,6 +139,9 @@ export function EditModelSheet({ model, categories = [], onClose }: { model: Equ
         {model.trackingMode!=="cable"&&<div className="row"><Field label="Потребление по умолчанию, Вт"><Input type="number" min="0" value={powerW} onChange={e=>setPowerW(e.target.value)}/></Field><Field label="DMX-каналов по умолчанию"><Input type="number" min="1" max="512" value={dmxChannels} onChange={e=>setDmxChannels(e.target.value)}/></Field></div>}
       </div>
       <Button block disabled={!name || update.isPending} onClick={save}>Сохранить</Button>
+      <Button block variant="secondary" disabled={update.isPending} onClick={toggleArchive} style={{ marginTop: 10 }}>
+        {model.archivedAt ? "Вернуть модель из архива" : "В архив"}
+      </Button>
       {can("warehouse.model.convert") && (
         <div className="stack" style={{ gap: 8, marginTop: 14 }}>
           <Field label="Режим учёта">

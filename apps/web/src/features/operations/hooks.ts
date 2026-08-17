@@ -62,6 +62,17 @@ export function useSetOperationStage(projectId: string | null) {
   });
 }
 
+export function useCompleteWarehouseTurnover(projectId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<Projects.ProjectDTO>(`/api/projects/${projectId}/warehouse-turnover/complete`, {}),
+    meta: { successMessage: "Складской оборот завершён" },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
 function invalidateOps(qc: ReturnType<typeof useQueryClient>, projectId?: string | null) {
   qc.invalidateQueries({ queryKey: ["projects", "tasks", projectId] });
   qc.invalidateQueries({ queryKey: ["projects", "checklist", projectId] });

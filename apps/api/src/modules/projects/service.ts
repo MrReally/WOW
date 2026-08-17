@@ -21,6 +21,7 @@ interface ProjectRow {
   client_id: string;
   status: Projects.ProjectStatus;
   operation_stage: Projects.ProjectChecklistGroup;
+  warehouse_turnover_completed_at: Date | null;
   venue_id: string | null;
   starts_at: Date;
   ends_at: Date;
@@ -171,6 +172,7 @@ const projectDTO = (r: ProjectRow): Projects.ProjectDTO => ({
   clientId: r.client_id,
   status: r.status,
   operationStage: r.operation_stage ?? "prep",
+  warehouseTurnoverCompletedAt: r.warehouse_turnover_completed_at ? r.warehouse_turnover_completed_at.toISOString() : null,
   venueId: r.venue_id,
   startsAt: r.starts_at.toISOString(),
   endsAt: r.ends_at.toISOString(),
@@ -326,11 +328,19 @@ const stageRequiredMarks: Partial<Record<Projects.ProjectChecklistGroup, Project
   pickup: [["picked", "missing", "left"]],
   delivery: [["delivered"]],
   mount: [["mounted"]],
-  dismantle: [["collected", "broken", "lost"]],
+  dismantle: [["collected", "broken", "lost", "missing"]],
   return: [["returned"]],
 };
 
 export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits: (unitIds: string[]) => Promise<(Equipment.EquipmentUnitDTO | null)[]>): Projects.ProjectsService {
+  async function activateDueProjects(): Promise<void> {
+    await query(
+      db,
+      `UPDATE projects.projects
+       SET status='in_progress'
+       WHERE status='confirmed' AND starts_at <= now() + interval '1 hour'`
+    );
+  }
   async function computeReservationAvailability(modelId: ID, from: ISODateTime, to: ISODateTime): Promise<Projects.ReservationAvailabilityDTO> {
     assertRange(from, to);
     const model = await one<{ tracking_mode: "serial" | "quantity" | "cable" }>(
@@ -523,12 +533,14 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
 
     // ── Projects ──
     async listProjects(filter) {
+      await activateDueProjects();
       const rows = filter?.status
         ? await query<ProjectRow>(db, `SELECT * FROM projects.projects WHERE status=$1 ORDER BY starts_at`, [filter.status])
         : await query<ProjectRow>(db, `SELECT * FROM projects.projects ORDER BY starts_at`);
       return rows.map(projectDTO);
     },
     async getProject(id) {
+      await activateDueProjects();
       const row = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
       return row ? projectDTO(row) : null;
     },
@@ -716,6 +728,41 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
         actorId: actorId ?? null,
         at: new Date().toISOString(),
       });
+      return projectDTO(row!);
+    },
+    async completeWarehouseTurnover(id, _actorId) {
+      const existing = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("project", id);
+      if (existing.operation_stage !== "return") throw BadRequest("сначала перейдите к этапу «Возврат»");
+      const reservations = await query<ReservationRow>(db, `SELECT * FROM projects.reservations WHERE project_id=$1`, [id]);
+      const unitIds = [...new Set(reservations.flatMap((reservation) => reservation.resolved_unit_ids))];
+      if (unitIds.length) {
+        const marks = await query<OperationUnitMarkRow>(
+          db,
+          `SELECT * FROM projects.operation_unit_marks WHERE project_id=$1 AND unit_id=ANY($2::uuid[])`,
+          [id, unitIds]
+        );
+        const terminal = new Set(
+          marks
+            .filter((mark) =>
+              (mark.stage === "return" && mark.status === "returned") ||
+              (mark.stage === "pickup" && ["missing", "left"].includes(mark.status)) ||
+              (mark.stage === "dismantle" && ["missing", "broken", "lost"].includes(mark.status))
+            )
+            .map((mark) => mark.unit_id)
+        );
+        if (unitIds.some((unitId) => !terminal.has(unitId))) {
+          throw BadRequest("сначала отметьте возврат или проблему по каждому прибору");
+        }
+      }
+      const row = await one<ProjectRow>(
+        db,
+        `UPDATE projects.projects
+         SET warehouse_turnover_completed_at=COALESCE(warehouse_turnover_completed_at, now()),
+             status='awaiting_payment'
+         WHERE id=$1 RETURNING *`,
+        [id]
+      );
       return projectDTO(row!);
     },
     async listOperationEvents(projectId) {
@@ -1289,6 +1336,7 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       return assignmentDTO(finalAssignment);
     },
     async listProjectsForUser(userId) {
+      await activateDueProjects();
       // "My projects" = directly added or accepted invites (not pending/declined).
       const rows = await query<ProjectRow>(
         db,

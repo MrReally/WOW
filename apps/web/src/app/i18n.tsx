@@ -350,9 +350,9 @@ const unitStatus: Record<Locale, Record<Equipment.UnitStatus, string>> = {
 };
 
 const projectStatus: Record<Locale, Record<Projects.ProjectStatus, string>> = {
-  ru: { draft: "Черновик", confirmed: "Подтверждён", in_progress: "В работе", completed: "Завершён", cancelled: "Отменён" },
-  en: { draft: "Draft", confirmed: "Confirmed", in_progress: "In progress", completed: "Completed", cancelled: "Cancelled" },
-  sr: { draft: "Nacrt", confirmed: "Potvrđeno", in_progress: "U toku", completed: "Završeno", cancelled: "Otkazano" },
+  ru: { draft: "Черновик", confirmed: "Подтверждён", in_progress: "В работе", awaiting_payment: "Ждёт оплаты", completed: "Завершён", cancelled: "Отменён" },
+  en: { draft: "Draft", confirmed: "Confirmed", in_progress: "In progress", awaiting_payment: "Awaiting payment", completed: "Completed", cancelled: "Cancelled" },
+  sr: { draft: "Nacrt", confirmed: "Potvrđeno", in_progress: "U toku", awaiting_payment: "Čeka uplatu", completed: "Završeno", cancelled: "Otkazano" },
 };
 
 const role: Record<Locale, Record<Role, string>> = {

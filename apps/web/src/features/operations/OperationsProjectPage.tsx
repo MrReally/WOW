@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { Equipment, People, Projects } from "@sever/contracts";
 import { Avatar, Button, Card, Chip, EmptyState, ErrorState, Input, Loading, SectionHead, Select, WSGlyph } from "../../ui-kit/index.ts";
@@ -9,6 +9,7 @@ import { useAllUnits, useEquipmentModels, useIssueProjectQuantity, useIssueResol
 import { useChangeStatus, useReturnUnits, useWarehouses } from "../warehouse/hooks.ts";
 import {
   useClearOperationUnitMark,
+  useCompleteWarehouseTurnover,
   useCreateProjectTask,
   useDeleteProjectTask,
   useOperationEvents,
@@ -70,6 +71,7 @@ const stageMarkActions: Partial<Record<Projects.ProjectChecklistGroup, { status:
   ],
   dismantle: [
     { status: "collected", label: "✓", tone: "ok" },
+    { status: "missing", label: "?", tone: "warn" },
     { status: "broken", label: "!", tone: "warn" },
     { status: "lost", label: "×", tone: "danger" },
   ],
@@ -101,6 +103,7 @@ export function OperationsProjectPage() {
   const timings = useProjectTimings(id);
   const events = useOperationEvents(id);
   const setStage = useSetOperationStage(id);
+  const completeTurnover = useCompleteWarehouseTurnover(id);
   const canManage = can("projects.timing.manage", "projects.manage");
   const canStepBack = can("operations.stage.back", "projects.timing.manage", "projects.manage");
   const canListPeople = can("people.view");
@@ -144,43 +147,23 @@ export function OperationsProjectPage() {
         <Button block variant="secondary" onClick={() => navigate(`/projects/${id}`)}>Проект</Button>
       </div>
 
+      <StageEquipmentPanel projectId={id} stage={activeStage} />
+      <TaskBoard projectId={id} canManage={canManage} canListPeople={canListPeople} currentUser={user ?? null} />
       <SectionHead label="Этап" />
       <Card>
         <div className="row row--between">
           <div style={{ minWidth: 0 }}>
             <p className="card__title">{stageLabel[activeStage]}</p>
-            <p className="card__subtitle">{upcomingStage ? `Дальше: ${stageLabel[upcomingStage]}` : "Финальный этап"}</p>
+            <p className="card__subtitle">{upcomingStage ? `Дальше: ${stageLabel[upcomingStage]}` : project.data.warehouseTurnoverCompletedAt ? "Складской оборот завершён" : "Финальный этап"}</p>
           </div>
           <Chip label={`${stageOrder.indexOf(activeStage) + 1}/${stageOrder.length}`} tone="accent" />
         </div>
-        {(rollbackStage && canStepBack) || upcomingStage ? (
-          <div className="row" style={{ marginTop: 12 }}>
-            {rollbackStage && canStepBack && (
-              <Button
-                block
-                variant="secondary"
-                disabled={setStage.isPending}
-                onClick={() => setStage.mutate(rollbackStage)}
-              >
-                Назад · {stageLabel[rollbackStage]}
-              </Button>
-            )}
-            {upcomingStage && (
-              <Button
-                block
-                variant="primary"
-                disabled={setStage.isPending}
-                onClick={() => setStage.mutate(upcomingStage)}
-              >
-                Далее · {stageLabel[upcomingStage]}
-              </Button>
-            )}
-          </div>
-        ) : null}
+        <div className="row" style={{ marginTop: 12 }}>
+          {rollbackStage && canStepBack && <Button block variant="secondary" disabled={setStage.isPending} onClick={() => setStage.mutate(rollbackStage)}>Назад · {stageLabel[rollbackStage]}</Button>}
+          {upcomingStage && <Button block variant="primary" disabled={setStage.isPending} onClick={() => setStage.mutate(upcomingStage)}>Далее · {stageLabel[upcomingStage]}</Button>}
+          {!upcomingStage && !project.data.warehouseTurnoverCompletedAt && <Button block variant="primary" disabled={completeTurnover.isPending} onClick={() => completeTurnover.mutate()}>Завершить складской оборот</Button>}
+        </div>
       </Card>
-
-      <StageEquipmentPanel projectId={id} stage={activeStage} />
-      <TaskBoard projectId={id} canManage={canManage} canListPeople={canListPeople} currentUser={user ?? null} />
       <StageHistory events={events.data ?? []} people={people.data ?? []} currentUser={user ?? null} />
     </div>
   );
@@ -292,7 +275,7 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
               ? "Забрать"
               : "Подготовить";
   const actions = stageMarkActions[stage] ?? [];
-  const markUnit = (unitId: string, status: Projects.OperationUnitMarkStatus, active: boolean) => {
+  const markUnit = (unitId: string, status: Projects.OperationUnitMarkStatus, active: boolean, note?: string | null) => {
     if (active) {
       clearMark.mutate({ stage, unitId, status });
       return;
@@ -306,7 +289,7 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
       returnUnits.mutate({ projectId, returnedUnitIds: [unitId], expectedUnitIds: [unitId] }, { onSuccess: () => setMark.mutate({ stage, unitId, status }) });
       return;
     }
-    setMark.mutate({ stage, unitId, status });
+    setMark.mutate({ stage, unitId, status, note });
     if (status === "broken" && canMarkStatus) {
       changeStatus.mutate({ id: unitId, status: "in_repair", note: `Демонтаж · ${projectId}` });
     }
@@ -341,9 +324,10 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
                       modelName={modelName(modelId)}
                       marks={unit ? (marksByUnit.get(unit.id) ?? []) : []}
                       actions={actions}
+                      kitComponents={(models.data?.find((model) => model.id === modelId)?.requiredComponentModelIds ?? []).map((componentId) => ({ id: componentId, name: modelName(componentId) }))}
                       disabled={setMark.isPending || clearMark.isPending || changeStatus.isPending || issueUnits.isPending || returnUnits.isPending}
                       onOpen={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
-                      onMark={(status, active) => unit && markUnit(unit.id, status, active)}
+                      onMark={(status, active, note) => unit && markUnit(unit.id, status, active, note)}
                     />
                   ))}
                 </div>
@@ -403,6 +387,7 @@ function UnitStageRow({
   modelName,
   marks,
   actions,
+  kitComponents,
   disabled,
   onOpen,
   onMark,
@@ -411,12 +396,18 @@ function UnitStageRow({
   modelName: string;
   marks: Projects.OperationUnitMarkDTO[];
   actions: { status: Projects.OperationUnitMarkStatus; label: string; tone?: "ok" | "warn" | "danger" }[];
+  kitComponents: { id: string; name: string }[];
   disabled: boolean;
   onOpen: () => void;
-  onMark: (status: Projects.OperationUnitMarkStatus, active: boolean) => void;
+  onMark: (status: Projects.OperationUnitMarkStatus, active: boolean, note?: string | null) => void;
 }) {
+  const missingMark = marks.find((mark) => mark.status === "missing");
+  const [editingMissing, setEditingMissing] = useState(false);
+  const [missingIds, setMissingIds] = useState<string[]>(() => missingMark?.note?.split(",").filter(Boolean) ?? []);
+  useEffect(() => setMissingIds(missingMark?.note?.split(",").filter(Boolean) ?? []), [missingMark?.note]);
   const activeStatuses = new Set(marks.map((mark) => mark.status));
-  const markText = marks.length > 0 ? marks.map((mark) => markLabel[mark.status]).join(" · ") : "не отмечено";
+  const missingNames = kitComponents.filter((item) => missingIds.includes(item.id)).map((item) => item.name);
+  const markText = marks.length > 0 ? marks.map((mark) => mark.status === "missing" && missingNames.length ? `нет: ${missingNames.join(", ")}` : markLabel[mark.status]).join(" · ") : "не отмечено";
   const hasProblem = marks.some((mark) => mark.status === "lost" || mark.status === "broken" || mark.status === "missing" || mark.status === "left");
   return (
     <div className="stack" style={{ gap: 8 }}>
@@ -442,13 +433,25 @@ function UnitStageRow({
               aria-label={active ? `Снять: ${markLabel[action.status]}` : markLabel[action.status]}
               title={active ? `Снять: ${markLabel[action.status]}` : markLabel[action.status]}
               disabled={disabled}
-              onClick={() => onMark(action.status, active)}
+              onClick={() => action.status === "missing" && kitComponents.length ? setEditingMissing(!editingMissing) : onMark(action.status, active)}
             >
               {action.label} {markLabel[action.status]}
             </button>
           );
         })}
       </div>
+      {editingMissing && (
+        <div className="card card--flat" style={{ padding: 10 }}>
+          <p className="card__subtitle">Чего именно нет в комплекте</p>
+          <div className="stack" style={{ gap: 6, marginTop: 8 }}>
+            {kitComponents.map((item) => <label key={item.id} className="row"><input type="checkbox" checked={missingIds.includes(item.id)} onChange={() => setMissingIds((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])} /> <span>{item.name}</span></label>)}
+          </div>
+          <div className="row" style={{ marginTop: 8 }}>
+            <Button block disabled={disabled || missingIds.length === 0} onClick={() => { onMark("missing", false, missingIds.join(",")); setEditingMissing(false); }}>Отметить некомплект</Button>
+            {missingMark && <Button block variant="secondary" disabled={disabled} onClick={() => { onMark("missing", true); setEditingMissing(false); }}>Снять отметку</Button>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -194,6 +194,11 @@ export function registerProjectsRoutes(
     }
     return service.setOperationStage(req.params.id, body.stage as Projects.ProjectChecklistGroup, auth.userId);
   });
+  app.post<{ Params: { id: string } }>("/api/projects/:id/warehouse-turnover/complete", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "warehouse.issue", "projects.manage", "projects.timing.manage");
+    return service.completeWarehouseTurnover(req.params.id, auth.userId);
+  });
   app.patch<{ Params: { id: string } }>("/api/projects/:id", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.manage");

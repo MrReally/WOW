@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, Button, StatusBadge, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
+import type { Projects } from "@sever/contracts";
 import { projectStatusLabel, projectStatusTone, dateRange } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
 import { useProjects, useClients } from "./hooks.ts";
@@ -39,13 +40,16 @@ export function ProjectsPage() {
   const clients = useClients();
   const [createOpen, setCreateOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<Projects.ProjectStatus | "all">("all");
 
   if (projects.isLoading) return <Loading />;
   if (projects.error) return <ErrorState error={projects.error} onRetry={projects.refetch} />;
 
   const clientName = (id: string) => (clients.data ?? []).find((c) => c.id === id)?.name ?? "—";
-  const list = projects.data ?? [];
+  const allProjects = projects.data ?? [];
+  const list = statusFilter === "all" ? allProjects : allProjects.filter((project) => project.status === statusFilter);
   const mobileProjects = splitMobileProjects(list);
+  const filters: (Projects.ProjectStatus | "all")[] = ["all", "draft", "confirmed", "in_progress", "awaiting_payment"];
 
   return (
     <div className="stack">
@@ -62,6 +66,19 @@ export function ProjectsPage() {
           </div>
         </div>
       )}
+
+      <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+        {filters.map((status) => (
+          <button
+            key={status}
+            className={`chip ${statusFilter === status ? "chip--accent chip--solid" : "chip--neutral"}`}
+            style={{ border: "none", cursor: "pointer" }}
+            onClick={() => setStatusFilter(status)}
+          >
+            {status === "all" ? "Все" : projectStatusLabel[status]}
+          </button>
+        ))}
+      </div>
 
       {list.length === 0 ? (
         <EmptyState title="Нет проектов" hint={!canCreate ? "Вам пока не назначены проекты" : undefined} />

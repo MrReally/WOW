@@ -24,6 +24,7 @@ interface ModelRow {
   daily_price_eur: string;
   attrs: unknown;
   required_component_model_ids: string[];
+  archived_at: Date | null;
   created_at: Date;
 }
 interface UnitRow {
@@ -36,6 +37,7 @@ interface UnitRow {
   zone_id: string | null;
   current_project_id: string | null;
   notes: string | null;
+  archived_at: Date | null;
   created_at: Date;
 }
 interface JournalRow {
@@ -109,6 +111,7 @@ const modelDTO = (r: ModelRow): Equipment.EquipmentModelDTO => ({
   dailyPriceEUR: Number(r.daily_price_eur),
   attrs: (r.attrs as Equipment.CableAttrs | null) ?? null,
   requiredComponentModelIds: r.required_component_model_ids,
+  archivedAt: r.archived_at ? r.archived_at.toISOString() : null,
   createdAt: r.created_at.toISOString(),
 });
 const unitDTO = (r: UnitRow): Equipment.EquipmentUnitDTO => ({
@@ -121,6 +124,7 @@ const unitDTO = (r: UnitRow): Equipment.EquipmentUnitDTO => ({
   zoneId: r.zone_id,
   currentProjectId: r.current_project_id,
   notes: r.notes,
+  archivedAt: r.archived_at ? r.archived_at.toISOString() : null,
   createdAt: r.created_at.toISOString(),
 });
 const journalDTO = (r: JournalRow): Equipment.JournalEntryDTO => ({
@@ -483,10 +487,10 @@ export function createEquipmentService(
     },
 
     // ── Catalog: models ──
-    async listModels(typeId) {
+    async listModels(typeId, includeArchived=false) {
       const rows = typeId
-        ? await query<ModelRow>(db, `${MODEL_SELECT} WHERE m.type_id=$1 ORDER BY m.name`, [typeId])
-        : await query<ModelRow>(db, `${MODEL_SELECT} ORDER BY m.name`);
+        ? await query<ModelRow>(db, `${MODEL_SELECT} WHERE m.type_id=$1 ${includeArchived ? "" : "AND m.archived_at IS NULL"} ORDER BY m.name`, [typeId])
+        : await query<ModelRow>(db, `${MODEL_SELECT} ${includeArchived ? "" : "WHERE m.archived_at IS NULL"} ORDER BY m.name`);
       return rows.map(modelDTO);
     },
     async getModel(id) {
@@ -526,6 +530,10 @@ export function createEquipmentService(
       if (input.typeId && !await one(db, `SELECT id FROM equipment.types WHERE id=$1`, [input.typeId])) throw NotFound("type", input.typeId);
       if (input.categoryId && !await one(db, `SELECT id FROM equipment.categories WHERE id=$1`, [input.categoryId])) throw NotFound("category", input.categoryId);
       if (input.requiredComponentModelIds?.includes(id)) throw BadRequest("модель не может требовать саму себя");
+      if (input.archived) {
+        const busy = await one(db, `SELECT 1 FROM equipment.units WHERE model_id=$1 AND status IN ('reserved','on_project','in_repair','at_contractor') LIMIT 1`, [id]);
+        if (busy) throw BadRequest("нельзя архивировать модель, пока её приборы забронированы, на проекте или в сервисе");
+      }
       if (input.requiredComponentModelIds) {
         const found = await query<{ id: string }>(db, `SELECT id FROM equipment.models WHERE id=ANY($1::uuid[])`, [input.requiredComponentModelIds]);
         if (found.length !== new Set(input.requiredComponentModelIds).size) throw BadRequest("одна из обязательных комплектующих не найдена");
@@ -541,7 +549,8 @@ export function createEquipmentService(
            unit_cost_eur    = COALESCE($7, unit_cost_eur),
            daily_price_eur  = COALESCE($8, daily_price_eur),
            attrs            = $9,
-           required_component_model_ids = $10
+           required_component_model_ids = $10,
+           archived_at = CASE WHEN $11::boolean IS NULL THEN archived_at WHEN $11 THEN COALESCE(archived_at, now()) ELSE NULL END
          WHERE id=$1`,
         [
           id,
@@ -554,6 +563,7 @@ export function createEquipmentService(
           input.dailyPriceEUR ?? null,
           input.attrs === undefined ? existing.attrs : input.attrs ? JSON.stringify(input.attrs) : null,
           input.requiredComponentModelIds === undefined ? existing.required_component_model_ids : [...new Set(input.requiredComponentModelIds)],
+          input.archived ?? null,
         ]
       );
       const row = await one<ModelRow>(db, `${MODEL_SELECT} WHERE m.id=$1`, [id]);
@@ -634,7 +644,7 @@ export function createEquipmentService(
 
     // ── Units ──
     async listUnits(filter) {
-      const conds: string[] = [];
+      const conds: string[] = filter?.includeArchived ? [] : ["archived_at IS NULL", "model_id IN (SELECT id FROM equipment.models WHERE archived_at IS NULL)"];
       const params: unknown[] = [];
       if (filter?.modelId) {
         params.push(filter.modelId);
@@ -689,6 +699,9 @@ export function createEquipmentService(
     async updateUnit(id, input) {
       const existing = await one<UnitRow>(db, `SELECT * FROM equipment.units WHERE id=$1`, [id]);
       if (!existing) throw NotFound("unit", id);
+      if (input.archived && ["reserved", "on_project", "in_repair", "at_contractor"].includes(existing.status)) {
+        throw BadRequest("сначала верните прибор на склад или завершите его обслуживание");
+      }
       if (input.modelId && !await one(db, `SELECT id FROM equipment.models WHERE id=$1`, [input.modelId])) throw NotFound("model", input.modelId);
       await assertZone(input.zoneId, existing.warehouse_id ?? await defaultWarehouseId());
       const row = await one<UnitRow>(
@@ -698,7 +711,8 @@ export function createEquipmentService(
            asset_tag = $3,
            serial    = $4,
            notes     = $5,
-           zone_id   = $6
+           zone_id   = $6,
+           archived_at = CASE WHEN $7::boolean IS NULL THEN archived_at WHEN $7 THEN COALESCE(archived_at, now()) ELSE NULL END
          WHERE id=$1 RETURNING *`,
         [
           id,
@@ -707,6 +721,7 @@ export function createEquipmentService(
           input.serial === undefined ? existing.serial : input.serial,
           input.notes === undefined ? existing.notes : input.notes,
           input.zoneId === undefined ? existing.zone_id : input.zoneId,
+          input.archived ?? null,
         ]
       );
       return unitDTO(row!);
