@@ -12,6 +12,7 @@ describe("estimate PDF", () => {
       lang: "RS",
       currency: "EUR",
       rateToEUR: 1,
+      totalDiscountEUR: 0,
       note: "",
       lines: [
         { id: "1", section: "Звуковое оборудование", name: "Монтаж+демонтаж", count: "1", priceEUR: 40, costEUR: 0, comment: "1 day × 40 €/day" },
