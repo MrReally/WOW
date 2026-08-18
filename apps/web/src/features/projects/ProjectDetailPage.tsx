@@ -17,6 +17,7 @@ import {
   usePeople,
   useEquipmentModels,
   useSetProjectStatus,
+  useAnnounceProjectStatus,
   useCreateReservation,
   useDeleteReservation,
   useAddTiming,
@@ -167,6 +168,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const contractorItems = useContractorItems(id);
 
   const setStatus = useSetProjectStatus();
+  const announceStatus = useAnnounceProjectStatus();
   const addReservation = useCreateReservation();
   const deleteReservation = useDeleteReservation();
   const addTiming = useAddTiming();
@@ -410,6 +412,17 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             <Button variant="secondary" mobileIcon="duplicate" onClick={() => setDuplicateOpen(true)}>Дублировать</Button>
           </div>
         )}
+        {canManage && p.status === "cancelled" && (
+          <Button
+            block
+            variant="secondary"
+            disabled={announceStatus.isPending}
+            onClick={() => announceStatus.mutate(p.id)}
+            style={{ marginTop: "var(--space-3)" }}
+          >
+            Сообщить персоналу
+          </Button>
+        )}
       </Card>
 
       {currentTab === "overview" && (
@@ -458,6 +471,11 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   </StatusBadge>
                 </div>
                 {r.isReserve && <Chip label="Резерв · не в счёт" tone="neutral" />}
+                {(!r.startsAt || !r.endsAt) && (
+                  <p className="card__subtitle" style={{ marginTop: 8, color: "var(--warn)" }}>
+                    Дата проекта не указана — наличие необходимо будет подтвердить отдельно.
+                  </p>
+                )}
                 {availability && (
                   <ReservationAvailabilityLine availability={availability} compact />
                 )}
@@ -473,7 +491,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                 )}
                 {canReserve && (
                   <div className="row" style={{ marginTop: 10 }}>
-                    <Button variant="secondary" block disabled={issued} onClick={() => setResolving(r)}>
+                    <Button variant="secondary" block disabled={issued || !r.startsAt || !r.endsAt} onClick={() => setResolving(r)}>
                       {resolved ? "Изменить" : "Распределить"}
                     </Button>
                     <button
@@ -510,6 +528,11 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       {canReserve && (models.data ?? []).length > 0 && (
         <Card>
           <div className="stack" style={{ gap: 10 }}>
+            {(!p.startsAt || !p.endsAt) && (
+              <p className="card__subtitle" style={{ color: "var(--warn)" }}>
+                Дата проекта не указана — бронь создать можно, но наличие необходимо будет подтвердить отдельно. Распределение пока недоступно.
+              </p>
+            )}
             <div className="row">
             <div style={{ flex: 2 }}>
               <ModelAutocomplete
@@ -545,16 +568,14 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             </label>
             <Button
               disabled={!resModel || addReservation.isPending}
-              onClick={() =>
+              onClick={() => {
                 addReservation.mutate({
                   projectId: p.id,
                   modelId: resModel,
                   qty: Number(resQty),
                   isReserve: resIsReserve,
-                  startsAt: p.startsAt,
-                  endsAt: p.endsAt,
-                }, { onSuccess: () => { setResModel(""); setResModelQuery(""); setResQty("1"); setResIsReserve(false); setResModelOpen(false); } })
-              }
+                }, { onSuccess: () => { setResModel(""); setResModelQuery(""); setResQty("1"); setResIsReserve(false); setResModelOpen(false); } });
+              }}
             >
               + Бронь
             </Button>

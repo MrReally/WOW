@@ -43,6 +43,7 @@ export function createApexService(deps: ApexDeps): ApexService {
       };
 
       const isCurrent = (p: Projects.ProjectDTO) => {
+        if (!p.startsAt || !p.endsAt) return false;
         const start = Date.parse(p.startsAt);
         const end = Date.parse(p.endsAt);
         return (
@@ -52,9 +53,9 @@ export function createApexService(deps: ApexDeps): ApexService {
         );
       };
       const isUpcoming = (p: Projects.ProjectDTO) =>
-        (p.status === "confirmed" || p.status === "draft" || p.status === "in_progress") && Date.parse(p.startsAt) > now;
+        !!p.startsAt && (p.status === "confirmed" || p.status === "draft" || p.status === "in_progress") && Date.parse(p.startsAt) > now;
 
-      const byStart = (a: ApexRentalRow, b: ApexRentalRow) => Date.parse(a.project.startsAt) - Date.parse(b.project.startsAt);
+      const byStart = (a: ApexRentalRow, b: ApexRentalRow) => Date.parse(a.project.startsAt!) - Date.parse(b.project.startsAt!);
       const current = (await Promise.all(allProjects.filter(isCurrent).map(buildRow))).sort(byStart);
       const upcoming = (await Promise.all(allProjects.filter(isUpcoming).map(buildRow))).sort(byStart);
 
@@ -69,7 +70,7 @@ export function createApexService(deps: ApexDeps): ApexService {
       const contractorProblems: Problem[] = openContractorItems
         .map((item): Problem | null => {
           const p = allProjects.find((x) => x.id === item.projectId);
-          if (!p || Date.parse(p.endsAt) > now) return null;
+          if (!p?.endsAt || Date.parse(p.endsAt) > now) return null;
           return {
             id: `contractor-return-${item.id}`,
             kind: "contractor_return_due",

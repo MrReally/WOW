@@ -43,7 +43,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
     const rsdRateToEUR = fxRates.find((rate) => rate.currency === "RSD")?.rateToEUR ?? 0;
     const modelMap = new Map(models.map((m) => [m.id, m]));
     const typeName = new Map(types.map((t) => [t.id, t.name]));
-    const projectDays = daysBetween(project.startsAt, project.endsAt);
+    const projectDays = project.startsAt && project.endsAt ? daysBetween(project.startsAt, project.endsAt) : 1;
 
     const ownLines: Finance.InvoiceLineDTO[] = reservations.filter((r) => !r.isReserve).map((r) => {
       const m = modelMap.get(r.modelId);

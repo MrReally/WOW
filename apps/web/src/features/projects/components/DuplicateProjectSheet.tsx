@@ -12,16 +12,18 @@ export function DuplicateProjectSheet({ open, project, onClose }: {
 }) {
   const navigate = useNavigate();
   const duplicate = useDuplicateProject();
-  const duration = Date.parse(project.endsAt) - Date.parse(project.startsAt);
+  const defaultStart = new Date(Date.now() + 86_400_000).toISOString();
+  const defaultEnd = new Date(Date.now() + 2 * 86_400_000).toISOString();
+  const duration = project.startsAt && project.endsAt ? Date.parse(project.endsAt) - Date.parse(project.startsAt) : 86_400_000;
   const [name, setName] = useState(`${project.name} — копия`);
-  const [startsAt, setStartsAt] = useState(toLocalInput(project.startsAt));
-  const [endsAt, setEndsAt] = useState(toLocalInput(project.endsAt));
+  const [startsAt, setStartsAt] = useState(toLocalInput(project.startsAt ?? defaultStart));
+  const [endsAt, setEndsAt] = useState(toLocalInput(project.endsAt ?? defaultEnd));
 
   useEffect(() => {
     if (!open) return;
     setName(`${project.name} — копия`);
-    setStartsAt(toLocalInput(project.startsAt));
-    setEndsAt(toLocalInput(project.endsAt));
+    setStartsAt(toLocalInput(project.startsAt ?? defaultStart));
+    setEndsAt(toLocalInput(project.endsAt ?? defaultEnd));
   }, [open, project.id, project.name, project.startsAt, project.endsAt]);
 
   const changeStart = (value: string) => {

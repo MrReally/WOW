@@ -2,7 +2,9 @@ import { PROJECT_CHECKLIST_GROUPS, type Equipment, type Projects, type Problem, 
 import { one, query, tx, type Sql } from "../../core/db.js";
 import { NotFound, BadRequest, Conflict } from "../../core/errors.js";
 
-function assertRange(startsAt: string, endsAt: string) {
+function assertRange(startsAt: string | null, endsAt: string | null) {
+  if (startsAt === null && endsAt === null) return;
+  if (!startsAt || !endsAt) throw BadRequest("укажите обе даты или оставьте обе пустыми");
   if (Date.parse(endsAt) <= Date.parse(startsAt)) {
     throw BadRequest("конец должен быть позже начала");
   }
@@ -23,8 +25,8 @@ interface ProjectRow {
   operation_stage: Projects.ProjectChecklistGroup;
   warehouse_turnover_completed_at: Date | null;
   venue_id: string | null;
-  starts_at: Date;
-  ends_at: Date;
+  starts_at: Date | null;
+  ends_at: Date | null;
   created_at: Date;
 }
 interface ReservationRow {
@@ -33,8 +35,8 @@ interface ReservationRow {
   model_id: string;
   qty: number;
   is_reserve: boolean;
-  starts_at: Date;
-  ends_at: Date;
+  starts_at: Date | null;
+  ends_at: Date | null;
   resolved_unit_ids: string[];
   created_at: Date;
 }
@@ -174,8 +176,8 @@ const projectDTO = (r: ProjectRow): Projects.ProjectDTO => ({
   operationStage: r.operation_stage ?? "prep",
   warehouseTurnoverCompletedAt: r.warehouse_turnover_completed_at ? r.warehouse_turnover_completed_at.toISOString() : null,
   venueId: r.venue_id,
-  startsAt: r.starts_at.toISOString(),
-  endsAt: r.ends_at.toISOString(),
+  startsAt: r.starts_at?.toISOString() ?? null,
+  endsAt: r.ends_at?.toISOString() ?? null,
   createdAt: r.created_at.toISOString(),
 });
 const reservationDTO = (r: ReservationRow): Projects.ReservationDTO => ({
@@ -184,8 +186,8 @@ const reservationDTO = (r: ReservationRow): Projects.ReservationDTO => ({
   modelId: r.model_id,
   qty: r.qty,
   isReserve: r.is_reserve ?? false,
-  startsAt: r.starts_at.toISOString(),
-  endsAt: r.ends_at.toISOString(),
+  startsAt: r.starts_at?.toISOString() ?? null,
+  endsAt: r.ends_at?.toISOString() ?? null,
   resolvedUnitIds: r.resolved_unit_ids,
   createdAt: r.created_at.toISOString(),
 });
@@ -338,7 +340,7 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       db,
       `UPDATE projects.projects
        SET status='in_progress'
-       WHERE status='confirmed' AND starts_at <= now() + interval '1 hour'`
+       WHERE status='confirmed' AND starts_at IS NOT NULL AND starts_at <= now() + interval '1 hour'`
     );
   }
   async function computeReservationAvailability(modelId: ID, from: ISODateTime, to: ISODateTime): Promise<Projects.ReservationAvailabilityDTO> {
@@ -387,6 +389,7 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       [modelId, from, to]
     );
     for (const reservation of reservations) {
+      if (!reservation.starts_at || !reservation.ends_at) continue;
       const availability = await computeReservationAvailability(modelId, reservation.starts_at.toISOString(), reservation.ends_at.toISOString());
       const existing = await one<ProblemRow>(
         db,
@@ -429,10 +432,11 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
   async function syncAllReservationAvailabilityProblems() {
     const reservations = await query<ReservationRow>(
       db,
-      `SELECT * FROM projects.reservations ORDER BY starts_at`
+      `SELECT * FROM projects.reservations WHERE starts_at IS NOT NULL AND ends_at IS NOT NULL ORDER BY starts_at`
     );
     const seen = new Set<string>();
     for (const reservation of reservations) {
+      if (!reservation.starts_at || !reservation.ends_at) continue;
       const key = `${reservation.model_id}:${reservation.starts_at.toISOString()}:${reservation.ends_at.toISOString()}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -545,14 +549,16 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       return row ? projectDTO(row) : null;
     },
     async createProject(input) {
-      assertRange(input.startsAt, input.endsAt);
+      const startsAt = input.startsAt ?? null;
+      const endsAt = input.endsAt ?? null;
+      assertRange(startsAt, endsAt);
       const client = await one<ClientRow>(db, `SELECT * FROM projects.clients WHERE id=$1`, [input.clientId]);
       if (!client) throw NotFound("client", input.clientId);
       const row = await one<ProjectRow>(
         db,
         `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at)
          VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-        [input.name, input.clientId, input.venueId ?? null, input.startsAt, input.endsAt]
+        [input.name, input.clientId, input.venueId ?? null, startsAt, endsAt]
       );
       return projectDTO(row!);
     },
@@ -588,7 +594,7 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
         }
         const timingMap = new Map<string, string>();
         const sourceTimings = await query<TimingRow>(client, `SELECT * FROM projects.timings WHERE project_id=$1 ORDER BY starts_at`, [id]);
-        const shiftMs = Date.parse(input.startsAt) - source.starts_at.getTime();
+        const shiftMs = source.starts_at ? Date.parse(input.startsAt) - source.starts_at.getTime() : 0;
         for (const timing of sourceTimings) {
           const inserted = await one<{ id: string }>(client,
             `INSERT INTO projects.timings (project_id, title, starts_at, ends_at) VALUES ($1,$2,$3,$4) RETURNING id`,
@@ -633,8 +639,8 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
     async updateProject(id, input) {
       const existing = await this.getProject(id);
       if (!existing) throw NotFound("project", id);
-      const startsAt = input.startsAt ?? existing.startsAt;
-      const endsAt = input.endsAt ?? existing.endsAt;
+      const startsAt = input.startsAt === undefined ? existing.startsAt : input.startsAt;
+      const endsAt = input.endsAt === undefined ? existing.endsAt : input.endsAt;
       assertRange(startsAt, endsAt);
       if (input.clientId) {
         const client = await one<ClientRow>(db, `SELECT id FROM projects.clients WHERE id=$1`, [input.clientId]);
@@ -652,7 +658,7 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
            WHERE id=$1 RETURNING *`,
           [id, input.name ?? null, input.clientId ?? null, input.venueId === undefined ? existing.venueId : input.venueId, startsAt, endsAt]
         );
-        if (startsAt !== existing.startsAt || endsAt !== existing.endsAt) {
+        if ((startsAt !== existing.startsAt || endsAt !== existing.endsAt) && startsAt && endsAt) {
           await query(client,
             `UPDATE projects.reservations SET starts_at=$2, ends_at=$3 WHERE project_id=$1`,
             [id, startsAt, endsAt]
@@ -662,7 +668,10 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       });
       return projectDTO(row!);
     },
-    async setStatus(id, status) {
+    async setStatus(id, status, actorId) {
+      const existing = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("project", id);
+      if (existing.status === status) return projectDTO(existing);
       const row = await one<ProjectRow>(
         db,
         `UPDATE projects.projects SET status=$2 WHERE id=$1 RETURNING *`,
@@ -672,7 +681,14 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       if (status === "confirmed") {
         await bus.publish({ type: "project.confirmed", projectId: id, at: new Date().toISOString() });
       }
+      await bus.publish({ type: "project.status.changed", projectId: id, fromStatus: existing.status, toStatus: status, actorId: actorId ?? null, at: new Date().toISOString() });
       return projectDTO(row);
+    },
+    async announceStatusToPersonnel(id, actorId) {
+      const project = await this.getProject(id);
+      if (!project) throw NotFound("project", id);
+      await bus.publish({ type: "project.status.personnel_announcement", projectId: id, status: project.status, actorId: actorId ?? null, at: new Date().toISOString() });
+      return project;
     },
     async setOperationStage(id, stage, actorId) {
       const existing = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
@@ -844,19 +860,24 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       return computeReservationAvailability(modelId, from, to);
     },
     async createReservation(input) {
-      assertRange(input.startsAt, input.endsAt);
+      const project = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [input.projectId]);
+      if (!project) throw NotFound("project", input.projectId);
+      const startsAt = input.startsAt === undefined ? project.starts_at?.toISOString() ?? null : input.startsAt;
+      const endsAt = input.endsAt === undefined ? project.ends_at?.toISOString() ?? null : input.endsAt;
+      assertRange(startsAt, endsAt);
       const row = await one<ReservationRow>(
         db,
         `INSERT INTO projects.reservations (project_id, model_id, qty, is_reserve, starts_at, ends_at)
          VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [input.projectId, input.modelId, input.qty, input.isReserve ?? false, input.startsAt, input.endsAt]
+        [input.projectId, input.modelId, input.qty, input.isReserve ?? false, startsAt, endsAt]
       );
-      await syncReservationAvailabilityProblems(input.modelId, input.startsAt, input.endsAt);
+      if (startsAt && endsAt) await syncReservationAvailabilityProblems(input.modelId, startsAt, endsAt);
       return reservationDTO(row!);
     },
     async resolveReservation(id, unitIds) {
       const res = await one<ReservationRow>(db, `SELECT * FROM projects.reservations WHERE id=$1`, [id]);
       if (!res) throw NotFound("reservation", id);
+      if (!res.starts_at || !res.ends_at) throw BadRequest("сначала укажите даты проекта и отдельно подтвердите наличие");
       // No duplicates within the selection.
       if (new Set(unitIds).size !== unitIds.length) throw BadRequest("одна и та же единица выбрана дважды");
       const selectedUnits = await loadEquipmentUnits(unitIds);
@@ -867,7 +888,7 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       for (const unit of selectedUnits) {
         if (!unit || unit.status !== "on_project" || !unit.currentProjectId || unit.currentProjectId === res.project_id) continue;
         const currentProject = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [unit.currentProjectId]);
-        if (!currentProject || (currentProject.starts_at < res.ends_at && currentProject.ends_at > res.starts_at)) {
+        if (!currentProject || !currentProject.starts_at || !currentProject.ends_at || (currentProject.starts_at < res.ends_at && currentProject.ends_at > res.starts_at)) {
           throw Conflict(`единица ${unit.assetTag} уже забронирована на «${currentProject?.name ?? "другой проект"}»`);
         }
       }
@@ -902,7 +923,7 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
          WHERE kind='reservation_conflict' AND refs->>'reservationId'=$1 AND resolved=false`,
         [id]
       );
-      await syncReservationAvailabilityProblems(row.model_id, row.starts_at.toISOString(), row.ends_at.toISOString());
+      if (row.starts_at && row.ends_at) await syncReservationAvailabilityProblems(row.model_id, row.starts_at.toISOString(), row.ends_at.toISOString());
       await bus.publish({
         type: "reservation.deleted",
         reservationId: row.id,

@@ -298,7 +298,7 @@ export function CrewPage() {
           .filter((a) => a.userId === selected.id)
           .map((assignment) => ({ project, assignment }))
       )
-      .sort((a, b) => Date.parse(b.project.startsAt) - Date.parse(a.project.startsAt));
+      .sort((a, b) => (b.project.startsAt ? Date.parse(b.project.startsAt) : 0) - (a.project.startsAt ? Date.parse(a.project.startsAt) : 0));
   }, [assignmentQueries, projects.data, selected]);
 
   if (people.isLoading || roles.isLoading) return <Loading />;

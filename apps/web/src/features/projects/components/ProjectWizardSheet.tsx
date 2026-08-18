@@ -18,11 +18,6 @@ import {
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
 
-function localFromDate(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 type StepId = "name" | "client" | "venue" | "time" | "reservations" | "crew" | "contractors" | "finance" | "finish";
 
 interface Props {
@@ -61,7 +56,7 @@ const steps: { id: StepId; label: string; skip?: boolean }[] = [
   { id: "name", label: "Название" },
   { id: "client", label: "Клиент" },
   { id: "venue", label: "Площадка", skip: true },
-  { id: "time", label: "Время" },
+  { id: "time", label: "Время", skip: true },
   { id: "reservations", label: "Брони", skip: true },
   { id: "crew", label: "Команда", skip: true },
   { id: "contractors", label: "Подряд", skip: true },
@@ -92,8 +87,8 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const [venueName, setVenueName] = useState("");
   const [venueAddress, setVenueAddress] = useState("");
   const [venueGeo, setVenueGeo] = useState<{ placeId: string; latitude: number; longitude: number } | null>(null);
-  const [starts, setStarts] = useState(localFromDate(new Date(Date.now() + 86_400_000)));
-  const [ends, setEnds] = useState(localFromDate(new Date(Date.now() + 2 * 86_400_000)));
+  const [starts, setStarts] = useState("");
+  const [ends, setEnds] = useState("");
   const [reservationDrafts, setReservationDrafts] = useState<ReservationDraft[]>([{ modelId: "", qty: "1", isReserve: false }]);
   const [crewDrafts, setCrewDrafts] = useState<CrewDraft[]>([{ title: "", count: "1", rate: "" }]);
   const [contractorDrafts, setContractorDrafts] = useState<ContractorDraft[]>([{ contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }]);
@@ -126,8 +121,8 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       setVenueName("");
       setVenueAddress("");
       setVenueGeo(null);
-      setStarts(localFromDate(new Date(Date.now() + 86_400_000)));
-      setEnds(localFromDate(new Date(Date.now() + 2 * 86_400_000)));
+      setStarts("");
+      setEnds("");
       setReservationDrafts([{ modelId: "", qty: "1", isReserve: false }]);
       setCrewDrafts([{ title: "", count: "1", rate: "" }]);
       setContractorDrafts([{ contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }]);
@@ -158,8 +153,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
         name: projectName.trim(),
         clientId: cid,
         venueId: vid,
-        startsAt: new Date(starts).toISOString(),
-        endsAt: new Date(ends).toISOString(),
+        ...(validRange ? { startsAt: new Date(starts).toISOString(), endsAt: new Date(ends).toISOString() } : {}),
       });
       let createdContractorId = "";
       if (newContractorName.trim()) {
@@ -168,7 +162,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       }
       for (const draft of reservationDrafts) {
         if (!draft.modelId || Number(draft.qty) <= 0) continue;
-        await createReservation.mutateAsync({ projectId: created.id, modelId: draft.modelId, qty: Number(draft.qty), isReserve: draft.isReserve, startsAt: created.startsAt, endsAt: created.endsAt });
+        await createReservation.mutateAsync({ projectId: created.id, modelId: draft.modelId, qty: Number(draft.qty), isReserve: draft.isReserve });
       }
       for (const draft of crewDrafts) {
         if (!draft.title.trim()) continue;
@@ -245,12 +239,14 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
         <WizardScreen title="Время мероприятия">
           <Field label="Начало"><Input type="datetime-local" value={starts} onChange={(e) => setStarts(e.target.value)} /></Field>
           <Field label="Конец"><Input type="datetime-local" value={ends} onChange={(e) => setEnds(e.target.value)} /></Field>
-          {!validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Конец должен быть позже начала</p>}
+          {(starts || ends) && !validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Укажите обе даты; конец должен быть позже начала</p>}
+          {!starts && !ends && <p className="card__subtitle">Можно пропустить и добавить дату позже.</p>}
         </WizardScreen>
       )}
 
       {step.id === "reservations" && (
         <WizardScreen title="Брони оборудования">
+          {!validRange && <p className="card__subtitle">Дата проекта не указана — бронь сохранится, но наличие нужно будет подтвердить отдельно.</p>}
           {reservationDrafts.map((draft, idx) => (
             <DraftCard key={idx}>
               <Select value={draft.modelId} onChange={(e) => patchReservation(idx, { modelId: e.target.value })} options={[{ value: "", label: "Модель" }, ...(models.data ?? []).map((m) => ({ value: m.id, label: modelLabel(m) }))]} />

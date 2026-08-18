@@ -290,6 +290,53 @@ describe("Tech pickup/return → некомплект", () => {
     await expect(projects.service.resolveReservation(futureReservation.id, [u.id])).resolves.toEqual(expect.objectContaining({ resolvedUnitIds: [u.id] }));
   });
 
+  it("creates a project without dates and publishes status notification events", async () => {
+    const { projects, people, notifications, equipment } = wiring;
+    const client = await projects.service.createClient({ name: `Undated-${Date.now()}` });
+    const project = await projects.service.createProject({ name: "Без даты", clientId: client.id });
+    const managerRole = await people.service.createRole({ name: `Project lead ${Date.now()}`, permissions: ["projects.manage"] });
+    const manager = (await people.service.create({ displayName: "Project lead", roleId: managerRole.id, email: `project-lead-${Date.now()}@example.test` })).user;
+    const technician = await makeTech("Project technician");
+    await projects.service.addAssignment({ projectId: project.id, userId: manager.id });
+    await projects.service.addAssignment({ projectId: project.id, userId: technician.id });
+
+    expect(project.startsAt).toBeNull();
+    expect(project.endsAt).toBeNull();
+
+    const type = await equipment.service.createType({ name: `Undated type ${Date.now()}`, trackingMode: "serial" });
+    const model = await equipment.service.createModel({ typeId: type.id, name: "Undated model", unitCostEUR: 10, dailyPriceEUR: 1 });
+    const reservation = await projects.service.createReservation({ projectId: project.id, modelId: model.id, qty: 1 });
+    expect(reservation.startsAt).toBeNull();
+    expect(reservation.endsAt).toBeNull();
+    await expect(projects.service.resolveReservation(reservation.id, [])).rejects.toThrow("сначала укажите даты проекта");
+
+    const startsAt = new Date(Date.now() + 86_400_000).toISOString();
+    const endsAt = new Date(Date.now() + 2 * 86_400_000).toISOString();
+    await projects.service.updateProject(project.id, { startsAt, endsAt });
+    expect(await projects.service.listReservations(project.id)).toEqual([
+      expect.objectContaining({ id: reservation.id, startsAt, endsAt }),
+    ]);
+
+    await projects.service.setStatus(project.id, "cancelled", null);
+    expect((await notifications.service.listForUser(manager.id)).some((notification) => notification.title === "Статус проекта изменён")).toBe(true);
+    expect((await notifications.service.listForUser(technician.id)).some((notification) => notification.title === "Статус проекта изменён")).toBe(false);
+
+    await projects.service.announceStatusToPersonnel(project.id, null);
+    expect((await notifications.service.listForUser(technician.id)).some((notification) => notification.title === "Проект отменён")).toBe(true);
+
+    expect(bus.history()).toContainEqual(expect.objectContaining({
+      type: "project.status.changed",
+      projectId: project.id,
+      fromStatus: "draft",
+      toStatus: "cancelled",
+    }));
+    expect(bus.history()).toContainEqual(expect.objectContaining({
+      type: "project.status.personnel_announcement",
+      projectId: project.id,
+      status: "cancelled",
+    }));
+  });
+
   it("raises a Problem on overlapping reservations without blocking", async () => {
     const { projects, equipment } = wiring;
     const type = await equipment.service.createType({ name: `Res-${Date.now()}`, trackingMode: "serial" });

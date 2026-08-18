@@ -12,8 +12,8 @@ const clientSchema = z.object({
 const projectSchema = z.object({
   name: z.string().min(1),
   clientId: z.string().uuid(),
-  startsAt: z.string().datetime(),
-  endsAt: z.string().datetime(),
+  startsAt: z.string().datetime().nullable().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
   venueId: z.string().uuid().nullable().optional(),
 });
 const statusSchema = z.object({ status: z.enum(PROJECT_STATUSES as [string, ...string[]]) });
@@ -27,8 +27,8 @@ const operationUnitMarkSchema = z.object({
 const updateProjectSchema = z.object({
   name: z.string().min(1).optional(),
   clientId: z.string().uuid().optional(),
-  startsAt: z.string().datetime().optional(),
-  endsAt: z.string().datetime().optional(),
+  startsAt: z.string().datetime().nullable().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
   venueId: z.string().uuid().nullable().optional(),
 });
 const duplicateProjectSchema = z.object({
@@ -41,8 +41,8 @@ const reservationSchema = z.object({
   modelId: z.string().uuid(),
   qty: z.number().int().positive(),
   isReserve: z.boolean().optional(),
-  startsAt: z.string().datetime(),
-  endsAt: z.string().datetime(),
+  startsAt: z.string().datetime().nullable().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
 });
 const resolveSchema = z.object({ unitIds: z.array(z.string().uuid()) });
 const timingSchema = z.object({
@@ -178,7 +178,12 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.manage");
     const body = statusSchema.parse(req.body);
-    return service.setStatus(req.params.id, body.status as Projects.ProjectStatus);
+    return service.setStatus(req.params.id, body.status as Projects.ProjectStatus, auth.userId);
+  });
+  app.post<{ Params: { id: string } }>("/api/projects/:id/status/personnel-announcement", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.manage");
+    return service.announceStatusToPersonnel(req.params.id, auth.userId);
   });
   app.patch<{ Params: { id: string } }>("/api/projects/:id/operation-stage", async (req) => {
     const auth = await ctx.auth(req);

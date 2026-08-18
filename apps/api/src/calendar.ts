@@ -52,14 +52,16 @@ async function calendarFor(userId: string, wiring: Wiring): Promise<string> {
   const clientName = (project: Projects.ProjectDTO) => clients.find((c) => c.id === project.clientId)?.name ?? "—";
   const events: string[] = [];
   for (const project of projects) {
-    events.push(eventBlock({
-      uid: `project-${project.id}@sever`,
-      summary: `SEVER rental: ${project.name}`,
-      description: `Client: ${clientName(project)}`,
-      allDay: true,
-      startsAt: project.startsAt,
-      endsAt: project.endsAt,
-    }));
+    if (project.startsAt && project.endsAt) {
+      events.push(eventBlock({
+        uid: `project-${project.id}@sever`,
+        summary: `SEVER rental: ${project.name}`,
+        description: `Client: ${clientName(project)}`,
+        allDay: true,
+        startsAt: project.startsAt,
+        endsAt: project.endsAt,
+      }));
+    }
     const timings = await wiring.projects.service.listTimings(project.id, { forUserId: userId });
     for (const t of timings) {
       events.push(eventBlock({

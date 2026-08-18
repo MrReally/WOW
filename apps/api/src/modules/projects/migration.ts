@@ -25,6 +25,8 @@ CREATE INDEX IF NOT EXISTS projects_status_idx ON projects.projects(status);
 CREATE INDEX IF NOT EXISTS projects_window_idx ON projects.projects(starts_at, ends_at);
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS operation_stage text NOT NULL DEFAULT 'prep';
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS warehouse_turnover_completed_at timestamptz;
+ALTER TABLE projects.projects ALTER COLUMN starts_at DROP NOT NULL;
+ALTER TABLE projects.projects ALTER COLUMN ends_at DROP NOT NULL;
 ALTER TABLE projects.projects DROP CONSTRAINT IF EXISTS projects_status_check;
 ALTER TABLE projects.projects ADD CONSTRAINT projects_status_check CHECK (status IN ('draft','confirmed','in_progress','awaiting_payment','completed','cancelled'));
 ALTER TABLE projects.projects DROP CONSTRAINT IF EXISTS projects_operation_stage_check;
@@ -72,6 +74,8 @@ CREATE TABLE IF NOT EXISTS projects.reservations (
   resolved_unit_ids uuid[] NOT NULL DEFAULT '{}',
   created_at        timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE projects.reservations ALTER COLUMN starts_at DROP NOT NULL;
+ALTER TABLE projects.reservations ALTER COLUMN ends_at DROP NOT NULL;
 ALTER TABLE projects.reservations ADD COLUMN IF NOT EXISTS is_reserve boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS reservations_model_idx ON projects.reservations(model_id, starts_at, ends_at);
 

@@ -38,6 +38,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
   }, [open, project.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const validRange = new Date(ends).getTime() > new Date(starts).getTime();
+  const datesValid = (!starts && !ends) || validRange;
 
   const submit = () => {
     update.mutate(
@@ -47,8 +48,8 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
           name,
           clientId,
           venueId: venueId || null,
-          startsAt: new Date(starts).toISOString(),
-          endsAt: new Date(ends).toISOString(),
+          startsAt: starts ? new Date(starts).toISOString() : null,
+          endsAt: ends ? new Date(ends).toISOString() : null,
         },
       },
       { onSuccess: onClose }
@@ -112,8 +113,8 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
           <Input type="datetime-local" value={ends} onChange={(e) => setEnds(e.target.value)} />
         </Field>
       </div>
-      {!validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Конец должен быть позже начала</p>}
-      <Button block disabled={!name || !validRange || update.isPending} onClick={submit}>
+      {(starts || ends) && !validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Укажите обе даты; конец должен быть позже начала</p>}
+      <Button block disabled={!name || !datesValid || update.isPending} onClick={submit}>
         Сохранить
       </Button>
     </Sheet>

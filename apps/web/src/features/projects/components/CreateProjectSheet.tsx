@@ -4,11 +4,6 @@ import { useClients, useCreateClient, useCreateProject } from "../hooks.ts";
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
 
-function toLocalInput(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const clients = useClients();
   const venues = useVenues();
@@ -23,8 +18,8 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
   const [venueFormOpen, setVenueFormOpen] = useState(false);
   const [newVenue, setNewVenue] = useState("");
   const [newVenueAddress, setNewVenueAddress] = useState("");
-  const [starts, setStarts] = useState(toLocalInput(new Date(Date.now() + 86_400_000)));
-  const [ends, setEnds] = useState(toLocalInput(new Date(Date.now() + 2 * 86_400_000)));
+  const [starts, setStarts] = useState("");
+  const [ends, setEnds] = useState("");
 
   const clientOptions = [
     { value: "", label: "— выбрать клиента —" },
@@ -39,8 +34,7 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
         name,
         clientId,
         venueId: venueId || null,
-        startsAt: new Date(starts).toISOString(),
-        endsAt: new Date(ends).toISOString(),
+        ...(validRange ? { startsAt: new Date(starts).toISOString(), endsAt: new Date(ends).toISOString() } : {}),
       },
       {
         onSuccess: () => {
@@ -138,8 +132,9 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
         </Field>
       </div>
 
-      {!validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Конец должен быть позже начала</p>}
-      <Button block disabled={!name || !clientId || !validRange || createProject.isPending} onClick={submit}>
+      {(starts || ends) && !validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Укажите обе даты; конец должен быть позже начала</p>}
+      {!starts && !ends && <p className="card__subtitle">Дата необязательна — её можно добавить позже.</p>}
+      <Button block disabled={!name || !clientId || ((!!starts || !!ends) && !validRange) || createProject.isPending} onClick={submit}>
         Создать проект
       </Button>
     </Sheet>

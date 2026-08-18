@@ -51,24 +51,24 @@ export interface ProjectDTO {
   warehouseTurnoverCompletedAt: ISODateTime | null;
   /** Opaque id of the venue (venues module, later phase). */
   venueId: ID | null;
-  startsAt: ISODateTime;
-  endsAt: ISODateTime;
+  startsAt: ISODateTime | null;
+  endsAt: ISODateTime | null;
   createdAt: ISODateTime;
 }
 
 export interface CreateProjectInput {
   name: string;
   clientId: ID;
-  startsAt: ISODateTime;
-  endsAt: ISODateTime;
+  startsAt?: ISODateTime | null;
+  endsAt?: ISODateTime | null;
   venueId?: ID | null;
 }
 
 export interface UpdateProjectInput {
   name?: string;
   clientId?: ID;
-  startsAt?: ISODateTime;
-  endsAt?: ISODateTime;
+  startsAt?: ISODateTime | null;
+  endsAt?: ISODateTime | null;
   venueId?: ID | null;
 }
 
@@ -89,8 +89,8 @@ export interface ReservationDTO {
   qty: number;
   /** Operational spare: reserved and prepared, but never billed to the client. */
   isReserve: boolean;
-  startsAt: ISODateTime;
-  endsAt: ISODateTime;
+  startsAt: ISODateTime | null;
+  endsAt: ISODateTime | null;
   /** Specific unit ids once resolved at prep; empty while model-level. */
   resolvedUnitIds: ID[];
   createdAt: ISODateTime;
@@ -112,8 +112,8 @@ export interface CreateReservationInput {
   qty: number;
   /** Reserve equipment participates in availability but is excluded from billing. */
   isReserve?: boolean;
-  startsAt: ISODateTime;
-  endsAt: ISODateTime;
+  startsAt?: ISODateTime | null;
+  endsAt?: ISODateTime | null;
 }
 
 // ── Timings (schedule blocks within a project) ───────────────────────────────
@@ -451,7 +451,8 @@ export interface ProjectsService {
   createProject(input: CreateProjectInput): Promise<ProjectDTO>;
   duplicateProject(id: ID, input: DuplicateProjectInput): Promise<ProjectDTO>;
   updateProject(id: ID, input: UpdateProjectInput): Promise<ProjectDTO>;
-  setStatus(id: ID, status: ProjectStatus): Promise<ProjectDTO>;
+  setStatus(id: ID, status: ProjectStatus, actorId?: ID | null): Promise<ProjectDTO>;
+  announceStatusToPersonnel(id: ID, actorId?: ID | null): Promise<ProjectDTO>;
   setOperationStage(id: ID, stage: ProjectChecklistGroup, actorId?: ID | null): Promise<ProjectDTO>;
   completeWarehouseTurnover(id: ID, actorId?: ID | null): Promise<ProjectDTO>;
   listOperationEvents(projectId: ID): Promise<ProjectOperationEventDTO[]>;
@@ -611,6 +612,23 @@ export interface ProjectOperationStageChangedEvent {
   at: ISODateTime;
 }
 
+export interface ProjectStatusChangedEvent {
+  type: "project.status.changed";
+  projectId: ID;
+  fromStatus: ProjectStatus;
+  toStatus: ProjectStatus;
+  actorId: ID | null;
+  at: ISODateTime;
+}
+
+export interface ProjectStatusPersonnelAnnouncementEvent {
+  type: "project.status.personnel_announcement";
+  projectId: ID;
+  status: ProjectStatus;
+  actorId: ID | null;
+  at: ISODateTime;
+}
+
 export interface ProjectPingCreatedEvent {
   type: "project.ping.created";
   projectId: ID;
@@ -647,6 +665,8 @@ export type ProjectsEvent =
   | ProjectInvitedEvent
   | InviteRespondedEvent
   | InviteCancelledEvent
+  | ProjectStatusChangedEvent
+  | ProjectStatusPersonnelAnnouncementEvent
   | ProjectOperationStageChangedEvent
   | ProjectPingCreatedEvent
   | ProjectPingConfirmedEvent

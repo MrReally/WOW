@@ -129,8 +129,8 @@ export function ProjectsPage() {
                 <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
                   <td><strong>{p.name}</strong><small>#{p.id.slice(0, 8)}</small></td>
                   <td>{clientName(p.clientId)}</td>
-                  <td className="data-table__mono">{new Date(p.startsAt).toLocaleDateString("ru-RU")}</td>
-                  <td className="data-table__mono">{new Date(p.endsAt).toLocaleDateString("ru-RU")}</td>
+                  <td className="data-table__mono">{p.startsAt ? new Date(p.startsAt).toLocaleDateString("ru-RU") : "—"}</td>
+                  <td className="data-table__mono">{p.endsAt ? new Date(p.endsAt).toLocaleDateString("ru-RU") : "—"}</td>
                   <td><StatusBadge tone={projectStatusTone[p.status]}>{projectStatusLabel[p.status]}</StatusBadge></td>
                   <td className="data-table__arrow">→</td>
                 </tr>
@@ -146,8 +146,8 @@ export function ProjectsPage() {
                     <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
                       <td><strong>{p.name}</strong><small>#{p.id.slice(0, 8)}</small></td>
                       <td>{clientName(p.clientId)}</td>
-                      <td className="data-table__mono">{new Date(p.startsAt).toLocaleDateString("ru-RU")}</td>
-                      <td className="data-table__mono">{new Date(p.endsAt).toLocaleDateString("ru-RU")}</td>
+                      <td className="data-table__mono">{p.startsAt ? new Date(p.startsAt).toLocaleDateString("ru-RU") : "—"}</td>
+                      <td className="data-table__mono">{p.endsAt ? new Date(p.endsAt).toLocaleDateString("ru-RU") : "—"}</td>
                       <td><StatusBadge tone={projectStatusTone[p.status]}>{projectStatusLabel[p.status]}</StatusBadge></td>
                       <td className="data-table__arrow">→</td>
                     </tr>

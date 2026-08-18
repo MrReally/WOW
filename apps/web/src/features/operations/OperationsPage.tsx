@@ -6,14 +6,14 @@ import { useMyProjects } from "./hooks.ts";
 
 function isLive(p: Projects.ProjectDTO): boolean {
   const now = Date.now();
-  return (p.status === "in_progress" || p.status === "confirmed") && Date.parse(p.startsAt) <= now && Date.parse(p.endsAt) >= now;
+  return !!p.startsAt && !!p.endsAt && (p.status === "in_progress" || p.status === "confirmed") && Date.parse(p.startsAt) <= now && Date.parse(p.endsAt) >= now;
 }
 
 function operationsProjectSort(a: Projects.ProjectDTO, b: Projects.ProjectDTO): number {
   const aDone = a.status === "completed";
   const bDone = b.status === "completed";
   if (aDone !== bDone) return aDone ? 1 : -1;
-  return Date.parse(a.startsAt) - Date.parse(b.startsAt);
+  return (a.startsAt ? Date.parse(a.startsAt) : Number.POSITIVE_INFINITY) - (b.startsAt ? Date.parse(b.startsAt) : Number.POSITIVE_INFINITY);
 }
 
 export function OperationsPage() {
@@ -28,7 +28,7 @@ export function OperationsPage() {
     .slice()
     .sort(operationsProjectSort);
   const current = list.find(isLive) ?? null;
-  const upcoming = list.filter((p) => Date.parse(p.startsAt) > Date.now() && p.status !== "completed");
+  const upcoming = list.filter((p) => !!p.startsAt && Date.parse(p.startsAt) > Date.now() && p.status !== "completed");
   const lead = current ?? upcoming[0] ?? null;
 
   return (

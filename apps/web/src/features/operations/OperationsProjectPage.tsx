@@ -161,7 +161,7 @@ export function OperationsProjectPage() {
         <div className="row" style={{ marginTop: 12 }}>
           {rollbackStage && canStepBack && <Button block variant="secondary" disabled={setStage.isPending} onClick={() => setStage.mutate(rollbackStage)}>Назад · {stageLabel[rollbackStage]}</Button>}
           {upcomingStage && <Button block variant="primary" disabled={setStage.isPending} onClick={() => setStage.mutate(upcomingStage)}>Далее · {stageLabel[upcomingStage]}</Button>}
-          {!upcomingStage && !project.data.warehouseTurnoverCompletedAt && <Button block variant="primary" disabled={completeTurnover.isPending} onClick={() => completeTurnover.mutate()}>Завершить складской оборот</Button>}
+          {!upcomingStage && !project.data.warehouseTurnoverCompletedAt && <Button block variant="primary" disabled={completeTurnover.isPending} onClick={() => completeTurnover.mutate()}>Завершить оборот</Button>}
         </div>
       </Card>
       <StageHistory events={events.data ?? []} people={people.data ?? []} currentUser={user ?? null} />

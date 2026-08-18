@@ -28,6 +28,15 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
 
   if (!reservation) return null;
 
+  if (!reservation.startsAt || !reservation.endsAt) {
+    return (
+      <Sheet open onClose={onClose} title={`Распределить · ${modelName}`}>
+        <p className="card__subtitle">Дата проекта не указана. Сначала добавьте даты и отдельно подтвердите наличие оборудования.</p>
+        <Button block onClick={onClose}>Закрыть</Button>
+      </Sheet>
+    );
+  }
+
   const toggle = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);

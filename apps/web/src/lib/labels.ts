@@ -85,7 +85,8 @@ export function dateTime(iso: string): string {
   return `${fmtDate(d)} ${fmtTime(d)}`;
 }
 
-export function dateRange(startIso: string, endIso: string): string {
+export function dateRange(startIso: string | null, endIso: string | null): string {
+  if (!startIso || !endIso) return "Дата не указана";
   const s = new Date(startIso);
   const e = new Date(endIso);
   const sameDay = fmtDate(s) === fmtDate(e);

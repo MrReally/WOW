@@ -7,6 +7,11 @@ const target = { id: "target-reservation", projectId: "target", modelId: "model"
 const project = (startsAt: string, endsAt: string) => ({ id: "current", name: "Space X Wedding", startsAt, endsAt }) as Projects.ProjectDTO;
 
 describe("reservation unit availability", () => {
+  it("requires a separate availability confirmation when project dates are missing", () => {
+    const result = getReservationUnitAvailability(unit, { ...target, startsAt: null, endsAt: null }, [], []);
+    expect(result.reason).toBe("Дата проекта не указана");
+  });
+
   it("allows a unit that is currently away when it returns before the future event", () => {
     const result = getReservationUnitAvailability(unit, target, [], [project("2026-08-10T10:00:00.000Z", "2026-08-10T12:00:00.000Z")]);
     expect(result).toEqual({ reason: null, currentlyAway: true, currentProjectName: "Space X Wedding" });

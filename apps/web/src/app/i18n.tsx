@@ -378,7 +378,7 @@ interface I18nContextValue {
   money: (amount: number, currency: string) => string;
   eur: (amount: number) => string;
   dateTime: (iso: string) => string;
-  dateRange: (startIso: string, endIso: string) => string;
+  dateRange: (startIso: string | null, endIso: string | null) => string;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
@@ -417,7 +417,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       const d = new Date(iso);
       return `${fmtDate(d)} ${fmtTime(d)}`;
     };
-    const dateRange = (startIso: string, endIso: string) => {
+    const dateRange = (startIso: string | null, endIso: string | null) => {
+      if (!startIso || !endIso) return locale === "ru" ? "Дата не указана" : locale === "sr" ? "Datum nije naveden" : "Date not set";
       const s = new Date(startIso);
       const e = new Date(endIso);
       return fmtDate(s) === fmtDate(e)

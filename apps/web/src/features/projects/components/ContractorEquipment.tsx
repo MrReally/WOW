@@ -20,7 +20,7 @@ const ITEM_KINDS: Projects.ContractorItemKind[] = ["equipment", "delivery", "set
 
 interface Props {
   projectId: string;
-  projectEndsAt: string;
+  projectEndsAt: string | null;
   canManage: boolean;
   canManageFinance: boolean;
 }
@@ -79,7 +79,7 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
         const equipment = group.filter((item) => item.kind === "equipment");
         const outstandingEquipment = equipment.filter((item) => !item.returnedAt);
         const allPaid = group.every((item) => item.paidAt || item.costEUR * item.qty === 0);
-        const afterProject = Date.now() > Date.parse(projectEndsAt);
+        const afterProject = !!projectEndsAt && Date.now() > Date.parse(projectEndsAt);
         const status = allBooked && outstandingEquipment.length === 0 && allPaid
           ? { label: "Закрыто", tone: "ok" as const }
           : afterProject && outstandingEquipment.length > 0

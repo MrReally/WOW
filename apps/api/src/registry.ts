@@ -119,6 +119,14 @@ export function createModules(bus: EventBus = new EventBus()) {
     dismantle: "Демонтаж",
     return: "Возврат",
   };
+  const projectStatusLabel: Record<string, string> = {
+    draft: "Черновик",
+    confirmed: "Подтверждён",
+    in_progress: "В работе",
+    awaiting_payment: "Ждёт оплаты",
+    completed: "Завершён",
+    cancelled: "Отменён",
+  };
 
   async function advancedMessage(event: DomainEvent): Promise<{ title: string; body: string; link?: string | null; kind?: Notifications.NotificationKind } | null> {
     switch (event.type) {
@@ -239,9 +247,55 @@ export function createModules(bus: EventBus = new EventBus()) {
     });
   });
 
+  bus.on("project.status.changed", async (e) => {
+    const [project, assignments] = await Promise.all([
+      projects.service.getProject(e.projectId),
+      projects.service.listAssignments(e.projectId),
+    ]);
+    if (!project) return;
+    const activeUserIds = [...new Set(assignments
+      .filter((assignment) => assignment.status === "added" || assignment.status === "accepted")
+      .map((assignment) => assignment.userId)
+      .filter((userId) => userId !== e.actorId))];
+    const leadership = await Promise.all(activeUserIds.map(async (userId) => ({
+      userId,
+      permissions: await people.service.permissionsForUser(userId),
+    })));
+    for (const recipient of leadership) {
+      if (!recipient.permissions.includes("projects.manage") && !recipient.permissions.includes("projects.timing.manage")) continue;
+      await notify(recipient.userId, {
+        kind: e.toStatus === "cancelled" ? "problem" : "info",
+        title: "Статус проекта изменён",
+        body: `«${project.name}»: ${projectStatusLabel[e.fromStatus]} → ${projectStatusLabel[e.toStatus]}`,
+        link: `/projects/${e.projectId}`,
+      });
+    }
+  });
+
+  bus.on("project.status.personnel_announcement", async (e) => {
+    const [project, assignments] = await Promise.all([
+      projects.service.getProject(e.projectId),
+      projects.service.listAssignments(e.projectId),
+    ]);
+    if (!project) return;
+    const recipientIds = [...new Set(assignments
+      .filter((assignment) => assignment.status === "added" || assignment.status === "accepted")
+      .map((assignment) => assignment.userId)
+      .filter((userId) => userId !== e.actorId))];
+    for (const userId of recipientIds) {
+      await notify(userId, {
+        kind: e.status === "cancelled" ? "problem" : "info",
+        title: e.status === "cancelled" ? "Проект отменён" : "Статус проекта",
+        body: `«${project.name}»: ${projectStatusLabel[e.status]}`,
+        link: `/projects/${e.projectId}`,
+      });
+    }
+  });
+
   // ── Invitations: deliver an accept/decline message to the invited person ──
   const padDatePart = (n: number) => String(n).padStart(2, "0");
-  const fmtDateTime = (iso: string) => {
+  const fmtDateTime = (iso: string | null) => {
+    if (!iso) return "дата не указана";
     const d = new Date(iso);
     return `${padDatePart(d.getDate())}/${padDatePart(d.getMonth() + 1)}/${d.getFullYear()} ${padDatePart(d.getHours())}:${padDatePart(d.getMinutes())}`;
   };
