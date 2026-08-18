@@ -22,7 +22,12 @@ describe("billing reserve equipment", () => {
         listTypes: async () => [{ id: "type", name: "Light" }],
         listContractors: async () => [],
       },
-      finance: { listTransactions: async () => [], listProjectEstimateLines: async () => [] },
+      finance: {
+        listTransactions: async () => [],
+        listProjectEstimateLines: async () => [],
+        getProjectEstimateSettings: async () => ({ projectId: "project", totalDiscountType: "percent", totalDiscountValue: 0 }),
+        listFxRates: async () => [],
+      },
       people: {},
     } as unknown as BillingDeps);
 
@@ -59,10 +64,12 @@ describe("billing reserve equipment", () => {
       },
       finance: {
         listTransactions: async () => [],
+        getProjectEstimateSettings: async () => ({ projectId: "project", totalDiscountType: "percent", totalDiscountValue: 0 }),
+        listFxRates: async () => [],
         listProjectEstimateLines: async () => [
-          { id: "saved-courier", projectId: "project", source: "equipment", sourceRefId: "courier", section: "Услуги", name: "Курьер", qty: 1, priceEUR: 20, costEUR: 20, comment: "", hidden: true, sortOrder: 0, createdAt: now, updatedAt: now },
-          { id: "saved-installer", projectId: "project", source: "equipment", sourceRefId: "installer", section: "Услуги", name: "Монтажник", qty: 1, priceEUR: 40, costEUR: 40, comment: "", hidden: true, sortOrder: 1, createdAt: now, updatedAt: now },
-          { id: "combined", projectId: "project", source: "manual", sourceRefId: null, section: "Услуги", name: "Монтаж + доставка", qty: 1, priceEUR: 60, costEUR: 60, comment: "", hidden: false, sortOrder: 2, createdAt: now, updatedAt: now },
+          { id: "saved-courier", projectId: "project", source: "equipment", sourceRefId: "courier", section: "Услуги", name: "Курьер", qty: 1, priceEUR: 20, costEUR: 20, discountType: "percent", discountValue: 0, comment: "", hidden: true, sortOrder: 0, createdAt: now, updatedAt: now },
+          { id: "saved-installer", projectId: "project", source: "equipment", sourceRefId: "installer", section: "Услуги", name: "Монтажник", qty: 1, priceEUR: 40, costEUR: 40, discountType: "percent", discountValue: 0, comment: "", hidden: true, sortOrder: 1, createdAt: now, updatedAt: now },
+          { id: "combined", projectId: "project", source: "manual", sourceRefId: null, section: "Услуги", name: "Монтаж + доставка", qty: 1, priceEUR: 60, costEUR: 60, discountType: "percent", discountValue: 0, comment: "", hidden: false, sortOrder: 2, createdAt: now, updatedAt: now },
         ],
       },
       people: {},
