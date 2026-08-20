@@ -912,11 +912,19 @@ export function startTelegramBot(deps: BotDeps): void {
               // Deep-link path: the link carries the exact account id.
               const userId = codeMatch[1]!;
               const user = await people.getById(userId);
-              if (user) {
+              if (user?.active) {
+                const currentHolder = (await people.list("all")).find((person) => person.telegramId === chatId && person.id !== userId);
+                if (currentHolder) {
+                  await send(
+                    chatId,
+                    `Этот Telegram уже привязан к карточке <b>${publicName(currentHolder)}</b>. Попросите администратора сначала нажать «Отвязать Telegram» в этой карточке.`
+                  );
+                  continue;
+                }
                 await people.update(userId, { telegramId: chatId, telegramUsername: username ?? user.telegramUsername });
                 await send(chatId, `✅ Telegram привязан к аккаунту <b>${publicName(user)}</b>. Уведомления будут приходить сюда.`);
               } else {
-                await send(chatId, `Не нашёл аккаунт по ссылке. Попросите отправить новую ссылку.`);
+                await send(chatId, `Не нашёл активный аккаунт по ссылке. Попросите отправить новую ссылку.`);
               }
               continue;
             }

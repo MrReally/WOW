@@ -114,6 +114,14 @@ export function useUpdateUser() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["people"] }),
   });
 }
+export function useUnlinkTelegram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<People.UserDTO>(`/api/people/${id}/unlink-telegram`, {}),
+    meta: { successMessage: "Telegram отвязан" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["people"] }),
+  });
+}
 export function useArchiveUser() {
   const qc = useQueryClient();
   return useMutation({

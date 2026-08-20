@@ -63,6 +63,31 @@ describe("Tech pickup/return → некомплект", () => {
     expect(legacyClientEdit.telegramUsername).toBe(legacyUsername);
   });
 
+  it("releases a Telegram identity from an archived card for reassignment", async () => {
+    const username = `reassign_${Date.now()}`;
+    const chatId = String(Date.now() + 1);
+    const oldCard = await wiring.people.service.create({
+      displayName: "Wrong card",
+      roleId: techRoleId,
+      telegramUsername: username,
+    });
+    await wiring.people.service.resolveTelegramUser(chatId, "Crew member", username);
+    await wiring.people.service.archive(oldCard.user.id);
+
+    const detached = await wiring.people.service.unlinkTelegram(oldCard.user.id);
+    expect(detached.telegramId).toBeNull();
+    expect(detached.telegramUsername).toBeNull();
+
+    const currentCard = await wiring.people.service.create({
+      displayName: "Current card",
+      roleId: techRoleId,
+      telegramUsername: username,
+    });
+    const linked = await wiring.people.service.resolveTelegramUser(chatId, "Crew member", username);
+    expect(linked?.user.id).toBe(currentCard.user.id);
+    expect(linked?.user.telegramId).toBe(chatId);
+  });
+
   it("duplicates a project as an editable plan without people, unit allocations or confirmations", async () => {
     const { projects, equipment, finance, plans } = wiring;
     const client = await projects.service.createClient({ name: `Copy client ${Date.now()}` });

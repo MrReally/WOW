@@ -612,6 +612,30 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
       const u = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [row!.id]);
       return userDTO(u!);
     },
+    async unlinkTelegram(id) {
+      const existing = await one<UserRow>(db, `SELECT * FROM people.users WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("user", id);
+      if (existing.is_system) throw Forbidden("системный аккаунт нельзя редактировать");
+
+      // telegram_id is the real delivery/auth identity; the username is only a
+      // mutable lookup hint. Clear both so this Telegram can be assigned to a
+      // different card immediately, and revoke tokens issued through it.
+      await query(
+        db,
+        `WITH detached AS (
+           UPDATE people.users
+           SET telegram_id=NULL, telegram_username=NULL
+           WHERE id=$1
+           RETURNING id
+         )
+         DELETE FROM people.sessions s
+         USING detached d
+         WHERE s.user_id=d.id`,
+        [id]
+      );
+      const user = await one<UserRow>(db, `${USER_SELECT} WHERE u.id=$1`, [id]);
+      return userDTO(user!);
+    },
     async archive(id) {
       const existing = await one<UserRow>(db, `SELECT * FROM people.users WHERE id=$1`, [id]);
       if (!existing) throw NotFound("user", id);

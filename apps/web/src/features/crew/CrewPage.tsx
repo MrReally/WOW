@@ -6,7 +6,7 @@ import { useSession } from "../../app/session.ts";
 import { api } from "../../lib/api.ts";
 import { getToken } from "../../lib/api.ts";
 import { dateRange, dateTime } from "../../lib/labels.ts";
-import { useArchiveUser, useBotInfo, useCreateUser, useDeleteUserPermanently, usePeople, useResetPassword, useRoles, useUpdateUser } from "../settings/hooks.ts";
+import { useArchiveUser, useBotInfo, useCreateUser, useDeleteUserPermanently, usePeople, useResetPassword, useRoles, useUnlinkTelegram, useUpdateUser } from "../settings/hooks.ts";
 import { useProjectsForFinance } from "../finance/hooks.ts";
 import { personName } from "../../lib/people.ts";
 
@@ -213,11 +213,13 @@ export function CrewPage() {
   const updateUser = useUpdateUser();
   const resetPassword = useResetPassword();
   const archiveUser = useArchiveUser();
+  const unlinkTelegram = useUnlinkTelegram();
   const deleteUserPermanently = useDeleteUserPermanently();
   const [selectedId, setSelectedId] = useState("");
   const [draft, setDraft] = useState<People.UpdateUserInput>({});
   const [newPerson, setNewPerson] = useState({ name: "", email: "", telegram: "", roleId: "" });
   const [isAddingPerson, setIsAddingPerson] = useState(false);
+  const [copiedTelegramLinkFor, setCopiedTelegramLinkFor] = useState<string | null>(null);
   const [revealedPassword, setRevealedPassword] = useState<{ who: string; pw: string } | null>(null);
   const [historyMode, setHistoryMode] = useState<"projects" | "actions">("projects");
   const [applicationRoleIds, setApplicationRoleIds] = useState<Record<string, string>>({});
@@ -404,6 +406,15 @@ export function CrewPage() {
                     <Chip label="удалён" tone="neutral" />
                   </div>
                   <div className="row" style={{ marginTop: 12 }}>
+                    {isTelegramLinked(person.telegramId) && (
+                      <Button
+                        variant="secondary"
+                        disabled={unlinkTelegram.isPending}
+                        onClick={() => confirm(`Отвязать Telegram от «${personName(person)}»? Ник Telegram тоже будет очищен.`) && unlinkTelegram.mutate(person.id)}
+                      >
+                        Отвязать Telegram
+                      </Button>
+                    )}
                     <Button
                       variant="secondary"
                       disabled={updateUser.isPending}
@@ -539,19 +550,6 @@ export function CrewPage() {
                     ↻
                   </Button>
                 )}
-                {isTelegramLinked(selected.telegramId) ? (
-                  <span className="icon-btn icon-btn--ok" title="Telegram привязан" aria-label="Telegram привязан">✓</span>
-                ) : botInfo.data?.username ? (
-                  <button
-                    className="icon-btn"
-                    type="button"
-                    title="Привязать Telegram"
-                    aria-label="Привязать Telegram"
-                    onClick={() => navigator.clipboard?.writeText(`https://t.me/${botInfo.data.username}?start=${selected.id}`)}
-                  >
-                    TG
-                  </button>
-                ) : null}
                 <Button
                   variant="ghost"
                   disabled={archiveUser.isPending}
@@ -591,6 +589,42 @@ export function CrewPage() {
             <Input value={draft.telegramUsername ?? ""} onChange={(e) => setDraft((d) => ({ ...d, telegramUsername: e.target.value }))} placeholder="@username" />
           </Field>
         </div>
+        {canManagePeople && (
+          <div className="row row--between">
+            <div>
+              <Chip label={isTelegramLinked(selected.telegramId) ? "Telegram привязан" : "Telegram не привязан"} tone={isTelegramLinked(selected.telegramId) ? "ok" : "neutral"} />
+              <p className="card__subtitle" style={{ marginTop: 6 }}>
+                {isTelegramLinked(selected.telegramId)
+                  ? "Уведомления и вход через Telegram активны."
+                  : "Скопируйте персональную ссылку и отправьте её участнику. @username можно сохранить как контакт."}
+              </p>
+            </div>
+            <div className="row">
+              {isTelegramLinked(selected.telegramId) ? (
+                <Button
+                  variant="secondary"
+                  disabled={unlinkTelegram.isPending}
+                  onClick={() => confirm(`Отвязать Telegram от «${personName(selected)}»? Ник Telegram тоже будет очищен.`) && unlinkTelegram.mutate(selected.id, {
+                    onSuccess: () => setDraft((current) => ({ ...current, telegramUsername: null })),
+                  })}
+                >
+                  Отвязать Telegram
+                </Button>
+              ) : botInfo.data?.username ? (
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    if (!navigator.clipboard) return;
+                    await navigator.clipboard.writeText(`https://t.me/${botInfo.data.username}?start=${selected.id}`);
+                    setCopiedTelegramLinkFor(selected.id);
+                  }}
+                >
+                  {copiedTelegramLinkFor === selected.id ? "Ссылка скопирована" : "Скопировать ссылку привязки"}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        )}
         <div className="row">
           <Field label="Дата рождения">
             <Input type="date" value={draft.birthDate ?? ""} onChange={(e) => setDraft((d) => ({ ...d, birthDate: e.target.value }))} />

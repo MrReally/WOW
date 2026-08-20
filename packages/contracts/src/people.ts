@@ -258,6 +258,8 @@ export interface PeopleService {
   listWithPermission(permission: Permission): Promise<UserDTO[]>;
   create(input: CreateUserInput): Promise<CreatedUserDTO>;
   update(id: ID, input: UpdateUserInput): Promise<UserDTO>;
+  /** Remove the Telegram identity from a card and revoke its existing sessions. */
+  unlinkTelegram(id: ID): Promise<UserDTO>;
   archive(id: ID): Promise<UserDTO>;
   deletePermanently(id: ID): Promise<void>;
   resetPassword(id: ID): Promise<{ temporaryPassword: string }>;

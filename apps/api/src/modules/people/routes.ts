@@ -150,6 +150,11 @@ export function registerPeopleRoutes(
     if (body.roleId !== undefined) requirePermission(auth, "roles.manage");
     return service.update(req.params.id, body);
   });
+  app.post<{ Params: { id: string } }>("/api/people/:id/unlink-telegram", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "people.manage");
+    return service.unlinkTelegram(req.params.id);
+  });
   app.post<{ Params: { id: string } }>("/api/people/:id/reset-password", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "people.manage");
