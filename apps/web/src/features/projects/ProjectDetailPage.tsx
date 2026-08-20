@@ -1182,7 +1182,7 @@ function DiscountControl({ type, value, resultEUR, disabled, onType, onValue }: 
         <button type="button" className={type === "fixed_rsd" ? "is-active" : ""} aria-pressed={type === "fixed_rsd"} disabled={disabled} onClick={() => onType("fixed_rsd")}>дин.</button>
       </div>
       <Input disabled={disabled} type="number" min="0" max={type === "percent" ? "100" : undefined} step="0.01" value={value} onChange={(event) => onValue(event.target.value)} aria-label={type === "percent" ? "Скидка в процентах" : "Скидка в динарах"} />
-      <span className="discount-result">После скидки {eur(resultEUR)}</span>
+      {Number(value) > 0 && <span className="discount-result">После скидки {eur(resultEUR)}</span>}
     </div>
   );
 }
