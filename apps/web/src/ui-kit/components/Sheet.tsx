@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { FocusEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -39,11 +39,21 @@ export function Sheet({ open, title, onClose, children }: SheetProps) {
     setDragY(0);
   };
 
+  const keepDatePickerInView = (event: FocusEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || !["date", "datetime-local", "time"].includes(target.type)) return;
+
+    // Native date pickers open outside the document flow. Centre their anchor
+    // before the browser opens the popup so the calendar is not clipped by the viewport.
+    target.scrollIntoView({ block: "center", inline: "nearest" });
+  };
+
   return createPortal(
     <div className="sheet__backdrop" onClick={onClose}>
       <div
         className="sheet"
         onClick={(e) => e.stopPropagation()}
+        onFocusCapture={keepDatePickerInView}
         style={{ transform: dragY ? `translateY(${dragY}px)` : undefined }}
       >
         <div

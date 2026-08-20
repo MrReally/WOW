@@ -336,6 +336,10 @@ h1,
   animation: slideUp 0.2s ease;
   transition: transform 0.12s ease;
 }
+.sheet:has(input:is([type="date"], [type="datetime-local"], [type="time"]):focus) {
+  /* Leave enough scrollable room for the browser's native calendar popup. */
+  padding-bottom: max(360px, calc(var(--space-6) + env(safe-area-inset-bottom)));
+}
 .sheet__drag {
   touch-action: none;
   cursor: grab;
