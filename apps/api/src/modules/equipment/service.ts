@@ -91,6 +91,11 @@ interface ProblemRow {
   created_at: Date;
   resolved_at: Date | null;
 }
+interface ProblemListRow extends ProblemRow {
+  unit_asset_tag: string | null;
+  unit_model_name: string | null;
+  unit_project_id: string | null;
+}
 
 const typeDTO = (r: TypeRow): Equipment.EquipmentTypeDTO => ({
   id: r.id,
@@ -178,6 +183,26 @@ const problemDTO = (r: ProblemRow): Problem => ({
   createdAt: r.created_at.toISOString(),
   resolvedAt: r.resolved_at ? r.resolved_at.toISOString() : null,
 });
+const listedProblemDTO = (r: ProblemListRow): Problem => {
+  const problem = problemDTO(r);
+  if (problem.kind !== "unit_lost" || !r.unit_asset_tag) return problem;
+
+  const unitLabel = [r.unit_model_name, r.unit_asset_tag].filter(Boolean).join(" · ");
+  const hasUsefulDetail = problem.detail !== "Единица утеряна";
+  return {
+    ...problem,
+    title: `Утеря: ${r.unit_asset_tag}`,
+    detail: !hasUsefulDetail
+      ? unitLabel
+      : problem.detail.startsWith(unitLabel)
+      ? problem.detail
+      : `${unitLabel} · ${problem.detail}`,
+    refs: {
+      ...problem.refs,
+      ...(problem.refs.projectId || !r.unit_project_id ? {} : { projectId: r.unit_project_id }),
+    },
+  };
+};
 
 interface ContractorRow { id: string; name: string; contacts: string | null; created_at: Date }
 interface RepairRow {
@@ -1295,11 +1320,24 @@ export function createEquipmentService(
           note: note ?? null,
         });
         if (toStatus === "lost") {
+          const model = await one<{ name: string }>(
+            client,
+            `SELECT name FROM equipment.models WHERE id=$1`,
+            [unit.model_id]
+          );
+          const unitLabel = [model?.name, unit.asset_tag].filter(Boolean).join(" · ");
           await query(
             client,
             `INSERT INTO equipment.problems (kind, severity, title, detail, refs)
              VALUES ('unit_lost','critical',$1,$2,$3)`,
-            [`Утеря`, `Единица утеряна`, JSON.stringify({ unitId })]
+            [
+              `Утеря: ${unit.asset_tag}`,
+              note ? `${unitLabel} · ${note}` : unitLabel,
+              JSON.stringify({
+                unitId,
+                ...(unit.current_project_id ? { projectId: unit.current_project_id } : {}),
+              }),
+            ]
           );
         }
         return unitDTO(updated!);
@@ -1317,13 +1355,24 @@ export function createEquipmentService(
 
     // ── Problems ──
     async listProblems(opts) {
-      const rows = await query<ProblemRow>(
+      const rows = await query<ProblemListRow>(
         db,
         opts?.includeResolved
-          ? `SELECT * FROM equipment.problems ORDER BY created_at DESC`
-          : `SELECT * FROM equipment.problems WHERE resolved=false ORDER BY created_at DESC`
+          ? `SELECT p.*, u.asset_tag AS unit_asset_tag, m.name AS unit_model_name,
+                    u.current_project_id AS unit_project_id
+               FROM equipment.problems p
+               LEFT JOIN equipment.units u ON u.id=(p.refs->>'unitId')::uuid
+               LEFT JOIN equipment.models m ON m.id=u.model_id
+              ORDER BY p.created_at DESC`
+          : `SELECT p.*, u.asset_tag AS unit_asset_tag, m.name AS unit_model_name,
+                    u.current_project_id AS unit_project_id
+               FROM equipment.problems p
+               LEFT JOIN equipment.units u ON u.id=(p.refs->>'unitId')::uuid
+               LEFT JOIN equipment.models m ON m.id=u.model_id
+              WHERE p.resolved=false
+              ORDER BY p.created_at DESC`
       );
-      return rows.map(problemDTO);
+      return rows.map(listedProblemDTO);
     },
     async resolveProblem(id) {
       const problem = await one<ProblemRow>(db, `SELECT * FROM equipment.problems WHERE id=$1`, [id]);
@@ -1411,11 +1460,22 @@ export function createEquipmentService(
           note: input.resolution ?? (input.outcome === "written_off" ? "списано после ремонта" : "из ремонта"),
         });
         if (input.outcome === "written_off") {
+          const model = unit
+            ? await one<{ name: string }>(client, `SELECT name FROM equipment.models WHERE id=$1`, [unit.model_id])
+            : null;
+          const unitLabel = [model?.name, unit?.asset_tag].filter(Boolean).join(" · ");
           await query(
             client,
             `INSERT INTO equipment.problems (kind, severity, title, detail, refs)
              VALUES ('unit_lost','critical',$1,$2,$3)`,
-            ["Списание после ремонта", "Единица не подлежит восстановлению", JSON.stringify({ unitId: repair.unit_id })]
+            [
+              unit ? `Списание: ${unit.asset_tag}` : "Списание после ремонта",
+              `${unitLabel ? `${unitLabel} · ` : ""}Единица не подлежит восстановлению`,
+              JSON.stringify({
+                unitId: repair.unit_id,
+                ...(unit?.current_project_id ? { projectId: unit.current_project_id } : {}),
+              }),
+            ]
           );
         }
         return repairDTO(row!);

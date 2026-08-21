@@ -58,7 +58,7 @@ function NeedsRow({
   /** Only resolvable ("hideable") problems get a button — e.g. утеря. */
   onResolve: (() => void) | null;
 }) {
-  const { problemKindLabel, t } = useI18n();
+  const { problemKindLabel, t, dateTime } = useI18n();
   const tone = problem.severity === "critical" ? "alert" : problem.severity === "warning" ? "warn" : "info";
   return (
     <div className="lrow">
@@ -69,7 +69,12 @@ function NeedsRow({
       >
         <div className="row" style={{ gap: 8 }}>
           <Chip label={problemKindLabel[problem.kind] ?? problem.kind} tone={tone} />
-          {projectName && <span className="lrow__title" style={{ fontSize: 13 }}>{projectName}</span>}
+          {(projectName || problem.kind === "unit_lost") && (
+            <span className="lrow__title" style={{ fontSize: 13 }}>{projectName ?? t("apex.noProject")}</span>
+          )}
+          {problem.kind === "unit_lost" && (
+            <span className="t-mono" style={{ fontSize: 11, color: "var(--text3)" }}>· {dateTime(problem.createdAt)}</span>
+          )}
         </div>
         <div className="lrow__detail" style={{ marginTop: 4 }}>{problem.detail}</div>
       </div>

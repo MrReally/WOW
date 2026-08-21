@@ -393,6 +393,9 @@ describe("Tech pickup/return → некомплект", () => {
     await equipment.service.changeStatus(unit.id, "lost", tech.id, "missing after event");
     const loss = (await equipment.service.listProblems()).find((p) => p.kind === "unit_lost" && p.refs.unitId === unit.id);
     expect(loss).toBeTruthy();
+    expect(loss!.title).toBe(`Утеря: ${unit.assetTag}`);
+    expect(loss!.detail).toContain(`Loss Model · ${unit.assetTag}`);
+    expect(loss!.detail).toContain("missing after event");
     await equipment.service.resolveProblem(loss!.id);
     expect((await equipment.service.listProblems()).some((p) => p.id === loss!.id)).toBe(false);
 
@@ -406,6 +409,13 @@ describe("Tech pickup/return → некомплект", () => {
     const u1 = await equipment.service.createUnit({ modelId: model.id, assetTag: `HIDE-${Date.now()}-1` });
     const u2 = await equipment.service.createUnit({ modelId: model.id, assetTag: `HIDE-${Date.now()}-2` });
     await equipment.service.issueUnits({ projectId: project.id, unitIds: [u1.id, u2.id], actorId: tech.id });
+    await equipment.service.changeStatus(u2.id, "lost", tech.id, "Не найдено на демонтаже");
+    const projectLoss = (await equipment.service.listProblems()).find((p) => p.kind === "unit_lost" && p.refs.unitId === u2.id);
+    expect(projectLoss?.refs.projectId).toBe(project.id);
+    expect(projectLoss?.detail).toContain(u2.assetTag);
+    expect((await wiring.apex.dashboard()).problems).toContainEqual(
+      expect.objectContaining({ id: projectLoss!.id, refs: expect.objectContaining({ projectId: project.id }) })
+    );
     const ret = await equipment.service.returnUnits({
       projectId: project.id,
       returnedUnitIds: [u1.id],
