@@ -443,6 +443,32 @@ h1,
 .row--between { justify-content: space-between; }
 .spacer { flex: 1; }
 
+/* ── Project search ────────────────────────────────────────────────── */
+.project-search {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.project-search__toggle {
+  width: auto;
+  height: 42px;
+  padding-inline: 14px;
+}
+.project-search--open .project-search__toggle {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--s1));
+}
+.project-search__field {
+  width: 100%;
+  animation: project-search-reveal 160ms ease-out;
+  transform-origin: top;
+}
+@keyframes project-search-reveal {
+  from { opacity: 0; transform: translateY(-4px) scaleY(0.96); }
+  to { opacity: 1; transform: translateY(0) scaleY(1); }
+}
+
 /* ── Project mobile ergonomics ─────────────────────────────────────── */
 .project-mobile-page {
   padding-bottom: calc(94px + env(safe-area-inset-bottom));

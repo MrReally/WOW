@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Projects, People, Equipment, Finance } from "@sever/contracts";
+import type { Projects, People, Equipment, Finance, Venues } from "@sever/contracts";
 import { api } from "../../lib/api.ts";
 
 export function useProjectInvoice(projectId: string, enabled: boolean) {
@@ -22,6 +22,10 @@ export function useEquipmentModels() {
 
 export function useProjects() {
   return useQuery({ queryKey: ["projects", "list"], queryFn: () => api.get<Projects.ProjectDTO[]>("/api/projects") });
+}
+
+export function useProjectVenues() {
+  return useQuery({ queryKey: ["venues"], queryFn: () => api.get<Venues.VenueDTO[]>("/api/venues") });
 }
 
 export function useProject(id: string) {

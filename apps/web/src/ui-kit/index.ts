@@ -6,6 +6,7 @@ export { ActionIcon, type ActionIconName } from "./components/ActionIcon.tsx";
 export { StatusBadge, type BadgeTone } from "./components/StatusBadge.tsx";
 export { Sheet } from "./components/Sheet.tsx";
 export { Field, Input, Textarea, Select } from "./components/forms.tsx";
+export { ProjectSearch } from "./components/ProjectSearch.tsx";
 export { SeverStar, BrandLogo } from "./components/Logo.tsx";
 export { Spinner, Loading, EmptyState, ErrorState } from "./components/feedback.tsx";
 export {

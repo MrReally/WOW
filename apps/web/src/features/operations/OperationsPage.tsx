@@ -1,8 +1,9 @@
 import { useNavigate } from "react-router-dom";
 import type { Projects } from "@sever/contracts";
-import { Card, SectionHead, Chip, Dot, VenueTrace, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
+import { Card, SectionHead, Chip, Dot, VenueTrace, Loading, ErrorState, EmptyState, ProjectSearch } from "../../ui-kit/index.ts";
 import { dateRange, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
-import { useMyProjects } from "./hooks.ts";
+import { useProjectSearch } from "../../lib/useProjectSearch.ts";
+import { useMyProjects, useOperationVenues } from "./hooks.ts";
 
 function isLive(p: Projects.ProjectDTO): boolean {
   const now = Date.now();
@@ -19,16 +20,19 @@ function operationsProjectSort(a: Projects.ProjectDTO, b: Projects.ProjectDTO): 
 export function OperationsPage() {
   const navigate = useNavigate();
   const projects = useMyProjects();
+  const venues = useOperationVenues();
+  const allProjects = (projects.data ?? [])
+    .filter((p) => p.status !== "cancelled")
+    .slice()
+    .sort(operationsProjectSort);
+  const search = useProjectSearch(allProjects, venues.data ?? []);
 
   if (projects.isLoading) return <Loading />;
   if (projects.error) return <ErrorState error={projects.error} onRetry={projects.refetch} />;
 
-  const list = (projects.data ?? [])
-    .filter((p) => p.status !== "cancelled")
-    .slice()
-    .sort(operationsProjectSort);
-  const current = list.find(isLive) ?? null;
-  const upcoming = list.filter((p) => !!p.startsAt && Date.parse(p.startsAt) > Date.now() && p.status !== "completed");
+  const list = search.filteredProjects;
+  const current = allProjects.find(isLive) ?? null;
+  const upcoming = allProjects.filter((p) => !!p.startsAt && Date.parse(p.startsAt) > Date.now() && p.status !== "completed");
   const lead = current ?? upcoming[0] ?? null;
 
   return (
@@ -47,9 +51,10 @@ export function OperationsPage() {
         </div>
       </div>
 
-      <SectionHead label="Мои проекты" meta={`${list.length}`} />
+      <ProjectSearch open={search.isOpen} query={search.query} onToggle={search.toggle} onQueryChange={search.setQuery} />
+      <SectionHead label="Мои проекты" meta={search.query ? `${list.length} из ${allProjects.length}` : `${list.length}`} />
       {list.length === 0 ? (
-        <EmptyState title="Вам пока не назначены проекты" />
+        <EmptyState title={search.query ? "Ничего не найдено" : "Вам пока не назначены проекты"} />
       ) : (
         <div className="stack">
           {list.map((p) => (
