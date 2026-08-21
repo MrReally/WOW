@@ -54,6 +54,8 @@ import { useWarehouses } from "../warehouse/hooks.ts";
 import { useRouteQuote, useTransportConfig, useVehicles } from "../transport/hooks.ts";
 import { staleDurationEstimateIds, withoutSourceEstimateLine } from "./estimateReconciliation.ts";
 import { ISSUED_RESERVATION_DELETE_ERROR, issuedUnitsForReservation } from "./reservationIssuedUnits.ts";
+import { type InvoiceMessageLang } from "./invoiceMessage.ts";
+import { useInvoiceMessageCopy } from "./useInvoiceMessageCopy.ts";
 
 const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "ok" | "info" | "warn" | "neutral" }> = {
   added: { label: "в команде", tone: "ok" },
@@ -183,6 +185,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const createPing = useCreateProjectPing(id);
   const createReminder = useCreateProjectReminder(id);
   const deleteReminder = useDeleteProjectReminder(id);
+  const copyInvoiceMessage = useInvoiceMessageCopy();
 
   const [resModel, setResModel] = useState("");
   const [resModelQuery, setResModelQuery] = useState("");
@@ -226,6 +229,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [estimateSeeded, setEstimateSeeded] = useState(false);
   const [totalDiscountType, setTotalDiscountType] = useState<Finance.DiscountType>("percent");
   const [totalDiscountValue, setTotalDiscountValue] = useState("0");
+  const [invoiceMessageLang, setInvoiceMessageLang] = useState<InvoiceMessageLang>("SR");
   const estimateSectionSuggestions = useMemo(() => [...new Set([
     ...(estimateLines.data ?? []).map((line) => line.section.trim()),
     ...(invoice.data?.rentalLines ?? []).map((line) => line.section.trim()),
@@ -1068,7 +1072,31 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
               </p>
             </Card>
             <Card>
-              <p className="card__title">Счёт за прокат · {inv.days} сут</p>
+              <div className="invoice-message-titlebar">
+                <p className="card__title">Счёт за прокат · {inv.days} сут</p>
+                <div className="invoice-message-controls" aria-label="Язык сообщения">
+                  {(["SR", "EN", "RU"] as const).map((lang) => (
+                    <button
+                      key={lang}
+                      type="button"
+                      className={`invoice-message-lang ${invoiceMessageLang === lang ? "invoice-message-lang--active" : ""}`}
+                      aria-pressed={invoiceMessageLang === lang}
+                      onClick={() => setInvoiceMessageLang(lang)}
+                    >
+                      {lang}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="icon-btn invoice-message-copy"
+                    aria-label="Скопировать текст"
+                    title="Скопировать текст"
+                    onClick={() => void copyInvoiceMessage(p.name, inv, invoiceMessageLang)}
+                  >
+                    ⧉
+                  </button>
+                </div>
+              </div>
               {inv.rentalLines.length === 0 ? (
                 <p className="card__subtitle" style={{ marginTop: 4 }}>Броней оборудования нет</p>
               ) : (

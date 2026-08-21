@@ -158,6 +158,61 @@ h1,
   margin-top: 3px;
 }
 
+/* ── Compact invoice message actions ──────────────────────────────── */
+.invoice-message-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.invoice-message-controls {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 2px;
+  border: 1px solid var(--bdr);
+  border-radius: 10px;
+  background: var(--s1);
+}
+.invoice-message-lang {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  cursor: pointer;
+}
+.invoice-message-lang:hover,
+.invoice-message-lang:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+.invoice-message-lang--active {
+  color: var(--text);
+  background: var(--s2);
+}
+.icon-btn.invoice-message-copy {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  border-radius: 7px;
+  font-size: var(--fs-md);
+}
+
+@media (max-width: 420px) {
+  .invoice-message-titlebar {
+    align-items: flex-start;
+  }
+  .invoice-message-titlebar .card__title {
+    max-width: 140px;
+  }
+}
+
 /* ── Timing reminder picker ───────────────────────────────────────── */
 .timing-reminder-picker {
   position: relative;
