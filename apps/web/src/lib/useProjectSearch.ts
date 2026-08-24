@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Projects, Venues } from "@sever/contracts";
+import { configuredDate } from "./dateFormat.ts";
 
 type SearchableProject = Pick<Projects.ProjectDTO, "name" | "venueId" | "startsAt" | "endsAt">;
 
@@ -15,7 +16,7 @@ function dateSearchValues(value: string | null): string[] {
   const numeric = date.toLocaleDateString("ru-RU");
   const withoutYear = date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
   const long = date.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
-  return [value.slice(0, 10), numeric, withoutYear, long];
+  return [value.slice(0, 10), configuredDate(value), numeric, withoutYear, long];
 }
 
 export function filterProjectsBySearch<T extends SearchableProject>(

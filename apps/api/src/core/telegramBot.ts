@@ -1,5 +1,5 @@
 import { env } from "../env.js";
-import type { People } from "@sever/contracts";
+import { formatDateTimeValue, type AppSettings, type People } from "@sever/contracts";
 
 // Minimal Telegram bot via long polling (getUpdates) — works without a public
 // HTTPS endpoint, so it runs anywhere the container has internet. Only starts
@@ -41,6 +41,7 @@ export type CallbackHandler = (data: string, fromChatId: string) => Promise<stri
 
 interface BotDeps {
   people: People.PeopleService;
+  appSettings: AppSettings.AppSettingsService;
   onCallback?: CallbackHandler;
 }
 
@@ -582,11 +583,6 @@ export function startTelegramBot(deps: BotDeps): void {
     session.menuMessageIds = [];
     operatorSessions.set(operatorChatId, session);
   };
-  const compactDateTime = (iso: string): string => {
-    const d = new Date(iso);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
   const operatorMenu = async (operatorChatId: string, page = 0) => {
     await clearOperatorMessages(operatorChatId);
     const participants = await people.listTelegramDialogParticipants();
@@ -616,25 +612,26 @@ export function startTelegramBot(deps: BotDeps): void {
     );
     rememberOperatorMessage(operatorChatId, sent);
   };
-  const renderDialogLine = (m: People.TelegramDialogMessageDTO): string => {
+  const renderDialogLine = (m: People.TelegramDialogMessageDTO, dateTimeSettings: AppSettings.DateTimeSettingsDTO): string => {
     const label = m.direction === "user" ? "👤" : m.direction === "operator" ? "SEVER" : "🤖";
     const type = m.messageType === "photo" ? " [photo]" : "";
     const text = escapeHtml(stripHtml(m.text) || type.trim() || "—");
     const body = m.deletedAt ? `<s>${text}</s>` : text;
-    return `${compactDateTime(m.createdAt)} ${label} ${body}`;
+    return `${formatDateTimeValue(m.createdAt, dateTimeSettings, "ru-RU")} ${label} ${body}`;
   };
   const sendDialogHistory = async (operatorChatId: string, targetTelegramId: string) => {
     await clearOperatorMessages(operatorChatId);
-    const [participants, messages] = await Promise.all([
+    const [participants, messages, dateTimeSettings] = await Promise.all([
       people.listTelegramDialogParticipants(),
       people.listTelegramDialogMessages(targetTelegramId, 80),
+      deps.appSettings.getDateTimeSettings(),
     ]);
     const participant = participants.find((p) => p.telegramId === targetTelegramId);
     const title = participant ? participantLabel(participant) : "Без имени";
     const chunks: string[] = [];
     let current = `<b>Диалог: ${escapeHtml(title)}</b>\n\n`;
     for (const message of messages) {
-      const line = `${renderDialogLine(message)}\n`;
+      const line = `${renderDialogLine(message, dateTimeSettings)}\n`;
       if (current.length + line.length > 3600) {
         chunks.push(current);
         current = "";

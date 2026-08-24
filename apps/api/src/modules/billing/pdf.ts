@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import PDFDocument from "pdfkit";
-import type { Finance } from "@sever/contracts";
+import { DEFAULT_DATE_TIME_SETTINGS, formatDateValue, type AppSettings, type Finance } from "@sever/contracts";
 
 // The preview is 816 x 1056 CSS pixels: US Letter at the browser's 96 dpi.
 // Rendering at 72 dpi keeps the PDF geometry identical to the preview.
@@ -146,7 +146,7 @@ function drawStar(doc: PDFKit.PDFDocument, x: number, y: number, size: number): 
   doc.restore();
 }
 
-function drawHeader(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO): number {
+function drawHeader(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO, dateTimeSettings: AppSettings.DateTimeSettingsDTO): number {
   const l = labels[req.lang];
   const leftW = 355 * SCALE;
   const rightW = CONTENT_W - leftW;
@@ -165,7 +165,8 @@ function drawHeader(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO)
   cell(doc, x, y + titleH, labelW, dateH, { borderWidth: 1.5 });
   cell(doc, x + labelW, y + titleH, valueW, dateH, { borderWidth: 1.5 });
   drawText(doc, l.date, x, y + titleH, labelW, dateH, { size: 15, bold: true });
-  drawText(doc, req.date.split("-").reverse().join("/"), x + labelW, y + titleH, valueW, dateH, { size: 13.5, bold: true, padding: 3 });
+  const locale = req.lang === "EN" ? "en-US" : req.lang === "RS" ? "sr-RS" : "ru-RU";
+  drawText(doc, formatDateValue(req.date, dateTimeSettings, locale), x + labelW, y + titleH, valueW, dateH, { size: 13.5, bold: true, padding: 3 });
 
   cell(doc, x, y + titleH + dateH, labelW, placeH, { borderWidth: 1.5 });
   cell(doc, x + labelW, y + titleH + dateH, valueW, placeH, { borderWidth: 1.5 });
@@ -295,7 +296,7 @@ function drawFooter(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO,
   });
 }
 
-export async function renderEstimatePdf(req: Finance.EstimatePdfRequestDTO): Promise<Buffer> {
+export async function renderEstimatePdf(req: Finance.EstimatePdfRequestDTO, dateTimeSettings: AppSettings.DateTimeSettingsDTO = DEFAULT_DATE_TIME_SETTINGS): Promise<Buffer> {
   return await new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({ size: "LETTER", margin: 0, autoFirstPage: true, compress: true, info: { Title: req.number || labels[req.lang].title, Author: req.company.name || "SEVER" } });
     const chunks: Buffer[] = [];
@@ -303,7 +304,7 @@ export async function renderEstimatePdf(req: Finance.EstimatePdfRequestDTO): Pro
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
     try {
-      const headerBottom = drawHeader(doc, req);
+      const headerBottom = drawHeader(doc, req, dateTimeSettings);
       const tableBottom = drawTable(doc, req, headerBottom);
       drawFooter(doc, req, tableBottom);
       doc.end();

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { People, Finance } from "@sever/contracts";
+import type { People, Finance, AppSettings } from "@sever/contracts";
 import { api, authenticatedFetch } from "../../lib/api.ts";
 
 export interface BackupStatus {
@@ -36,6 +36,21 @@ export function useSetTelegramInboxSettings() {
       api.put<People.TelegramInboxSettingsDTO>("/api/telegram/inbox-settings", input),
     meta: { successMessage: "Telegram Inbox сохранён" },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["telegram", "inbox-settings"] }),
+  });
+}
+export function useDateTimeSettings() {
+  return useQuery({
+    queryKey: ["app-settings", "date-time"],
+    queryFn: () => api.get<AppSettings.DateTimeSettingsDTO>("/api/app-settings/date-time"),
+  });
+}
+export function useSetDateTimeSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AppSettings.UpdateDateTimeSettingsInput) =>
+      api.put<AppSettings.DateTimeSettingsDTO>("/api/app-settings/date-time", input),
+    meta: { successMessage: "Формат даты и времени сохранён" },
+    onSuccess: (settings) => qc.setQueryData(["app-settings", "date-time"], settings),
   });
 }
 export function useSetMyPreferences() {

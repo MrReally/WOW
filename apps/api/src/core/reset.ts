@@ -4,7 +4,7 @@
 
 import { pool } from "./db.js";
 
-const MODULE_SCHEMAS = ["people", "equipment", "projects", "finance", "venues", "plans", "notifications", "catalog", "operations", "audit"];
+const MODULE_SCHEMAS = ["app_settings", "people", "equipment", "projects", "finance", "venues", "plans", "notifications", "catalog", "operations", "transport", "audit"];
 
 export async function resetSchemas(): Promise<void> {
   await pool.query(`DROP SCHEMA IF EXISTS ${MODULE_SCHEMAS.join(", ")} CASCADE`);

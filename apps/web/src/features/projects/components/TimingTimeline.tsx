@@ -1,4 +1,5 @@
 import type { Projects } from "@sever/contracts";
+import { configuredDate, configuredTime } from "../../../lib/dateFormat.ts";
 
 // Days are stacked vertically. Inside a day, overlapping blocks are packed into
 // columns; non-overlapping blocks stay full-width and read top-to-bottom.
@@ -55,13 +56,6 @@ function packCluster(timings: Projects.TimingDTO[]): Projects.TimingDTO[][] {
   return lanes.map((l) => l.items);
 }
 
-const pad = (n: number) => String(n).padStart(2, "0");
-const fmtClock = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-const fmtTime = (iso: string) => fmtClock(new Date(iso));
-const fmtDay = (iso: string) => {
-  const d = new Date(iso);
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-};
 const dayKey = (iso: string) => {
   const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -91,11 +85,11 @@ export function TimingTimeline({ timings, userName }: Props) {
         const showNow = Date.now() >= dayStart && Date.now() <= dayEnd && dayKey(now.toISOString()) === dayKey(day[0]!.startsAt);
         return (
         <div key={dayKey(day[0]!.startsAt)}>
-          <div className="card__subtitle" style={{ marginBottom: 6 }}>{fmtDay(day[0]!.startsAt)}</div>
+          <div className="card__subtitle" style={{ marginBottom: 6 }}>{configuredDate(day[0]!.startsAt)}</div>
           {showNow && (
             <div className="timeline-now">
               <span className="timeline-now__line" />
-              <span className="timeline-now__label">{fmtClock(now)}</span>
+              <span className="timeline-now__label">{configuredTime(now)}</span>
             </div>
           )}
           <div className="stack" style={{ gap: 6 }}>
@@ -116,7 +110,7 @@ export function TimingTimeline({ timings, userName }: Props) {
                       return (
                         <div
                           key={t.id}
-                          title={`${t.title} · ${fmtTime(t.startsAt)}–${fmtTime(t.endsAt)}${who ? ` · ${who}` : ""}`}
+                          title={`${t.title} · ${configuredTime(t.startsAt)}–${configuredTime(t.endsAt)}${who ? ` · ${who}` : ""}`}
                           style={{
                             minHeight: 48,
                             background: concurrent ? "var(--accent)" : "var(--s2)",
@@ -129,7 +123,7 @@ export function TimingTimeline({ timings, userName }: Props) {
                           }}
                         >
                           <div style={{ fontWeight: 700, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {fmtTime(t.startsAt)}–{fmtTime(t.endsAt)} · {t.title}
+                            {configuredTime(t.startsAt)}–{configuredTime(t.endsAt)} · {t.title}
                           </div>
                           <div style={{ fontSize: 11, opacity: 0.86, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>
                             {who || "—"}

@@ -18,6 +18,7 @@ import { CableDesigner, ModelImageInput } from "./CableDesigner.tsx";
 import { useBackofficeSplitResize } from "./ResizableSplit.tsx";
 import { ProjectDetailPage } from "../projects/ProjectDetailPage.tsx";
 import { splitMobileProjects } from "../projects/projectList.ts";
+import { configuredDateTime } from "../../lib/dateFormat.ts";
 import "./backoffice.css";
 
 type DomainId = "overview" | "projects" | "equipment" | "models" | "cables" | "components" | "connectors" | "catalog" | "documents" | "movement" | "inventory" | "people" | "contractors" | "finance" | "problems" | "reports" | "permissions" | "audit";
@@ -48,7 +49,7 @@ const statusLabel: Record<string, string> = { in_stock: "На складе", res
 const catalogKindLabel: Record<Catalog.CatalogItemKind, string> = { product: "Расходный материал", item: "Складская позиция", semi_finished: "Сборочная заготовка", modifier: "Дополнение", equipment_kit: "Комплект" };
 const catalogUnitLabel: Record<string, string> = { pcs: "шт.", roll: "рулон", kit: "комплект", m: "м", kg: "кг", l: "л" };
 const storageZoneKindLabel:Record<Equipment.StorageZoneKind,string>={room:"Помещение",rack:"Стеллаж",shelf:"Полка",bin:"Ячейка",floor:"Напольная зона",other:"Другое"};
-const dt = (value: string | null | undefined) => value ? new Date(value).toLocaleString("ru-RU") : "—";
+const dt = (value: string | null | undefined) => value ? configuredDateTime(value) : "—";
 const localDateTimeInput = (value: string | Date = new Date()) => { const date=value instanceof Date?value:new Date(value);return new Date(date.getTime()-date.getTimezoneOffset()*60_000).toISOString().slice(0,16); };
 const money = (value: number) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: "EUR" }).format(value);
 function domainAllowed(domain: DomainId, can: (...permissions: Permission[]) => boolean) {

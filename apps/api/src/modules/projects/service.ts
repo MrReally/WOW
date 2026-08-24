@@ -94,6 +94,8 @@ interface ProjectRoleRow {
   title: string;
   required_count: number;
   rate_eur: string | null;
+  starts_at: Date | null;
+  ends_at: Date | null;
   created_at: Date;
 }
 interface AssignmentRow {
@@ -245,6 +247,8 @@ const projectRoleDTO = (r: ProjectRoleRow): Projects.ProjectRoleDTO => ({
   title: r.title,
   requiredCount: r.required_count,
   rateEUR: r.rate_eur === null ? null : Number(r.rate_eur),
+  startsAt: r.starts_at ? r.starts_at.toISOString() : null,
+  endsAt: r.ends_at ? r.ends_at.toISOString() : null,
   createdAt: r.created_at.toISOString(),
 });
 const assignmentDTO = (r: AssignmentRow): Projects.AssignmentDTO => ({
@@ -576,10 +580,15 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
         );
         const newId = created!.id;
         const sourceRoles = await query<ProjectRoleRow>(client, `SELECT * FROM projects.project_roles WHERE project_id=$1 ORDER BY created_at`, [id]);
+        const shiftRoleDate = (value: Date | null) => {
+          if (!value || !source.starts_at) return value;
+          return new Date(new Date(input.startsAt).getTime() + value.getTime() - source.starts_at.getTime());
+        };
         for (const role of sourceRoles) {
           const inserted = await one<{ id: string }>(client,
-            `INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur) VALUES ($1,$2,$3,$4) RETURNING id`,
-            [newId, role.title, role.required_count, role.rate_eur]
+            `INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur, starts_at, ends_at)
+             VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+            [newId, role.title, role.required_count, role.rate_eur, shiftRoleDate(role.starts_at), shiftRoleDate(role.ends_at)]
           );
           sourceRefMap[role.id] = inserted!.id;
         }
@@ -1142,11 +1151,14 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
     async createProjectRole(input) {
       const project = await this.getProject(input.projectId);
       if (!project) throw NotFound("project", input.projectId);
+      const startsAt = input.startsAt ?? null;
+      const endsAt = input.endsAt ?? null;
+      assertRange(startsAt, endsAt);
       const row = await one<ProjectRoleRow>(
         db,
-        `INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur)
-         VALUES ($1,$2,$3,$4) RETURNING *`,
-        [input.projectId, input.title.trim(), input.requiredCount, input.rateEUR ?? null]
+        `INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur, starts_at, ends_at)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [input.projectId, input.title.trim(), input.requiredCount, input.rateEUR ?? null, startsAt, endsAt]
       );
       return projectRoleDTO(row!);
     },
@@ -1156,6 +1168,9 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       const nextTitle = input.title === undefined ? existing.title : input.title.trim();
       const nextRequiredCount = input.requiredCount ?? existing.required_count;
       const nextRateEUR = input.rateEUR === undefined ? existing.rate_eur : input.rateEUR;
+      const nextStartsAt = input.startsAt === undefined ? existing.starts_at?.toISOString() ?? null : input.startsAt;
+      const nextEndsAt = input.endsAt === undefined ? existing.ends_at?.toISOString() ?? null : input.endsAt;
+      assertRange(nextStartsAt, nextEndsAt);
       let row: ProjectRoleRow | null = null;
       await tx(async (client) => {
         row = await one<ProjectRoleRow>(
@@ -1163,9 +1178,11 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
           `UPDATE projects.project_roles SET
              title=$2,
              required_count=$3,
-             rate_eur=$4
+             rate_eur=$4,
+             starts_at=$5,
+             ends_at=$6
            WHERE id=$1 RETURNING *`,
-          [id, nextTitle, nextRequiredCount, nextRateEUR]
+          [id, nextTitle, nextRequiredCount, nextRateEUR, nextStartsAt, nextEndsAt]
         );
         await query(
           client,

@@ -19,12 +19,13 @@ import { createCatalogModule } from "./modules/catalog/index.js";
 import { createOperationsModule } from "./modules/operations/index.js";
 import { createAuditModule } from "./modules/audit/index.js";
 import { createTransportModule } from "./modules/transport/index.js";
+import { createAppSettingsModule } from "./modules/appSettings/index.js";
 import { createApexService } from "./modules/apex/service.js";
 import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
 import { editTelegramMessage, sendTelegramMessage, sendTelegramPhoto, setTelegramMessageLogger } from "./core/telegram.js";
-import type { Notifications, People } from "@sever/contracts";
+import { formatDateTimeValue, formatDateValue, type Notifications, type People } from "@sever/contracts";
 import type { DomainEvent } from "./core/eventBus.js";
 
 export function createModules(bus: EventBus = new EventBus()) {
@@ -48,6 +49,7 @@ export function createModules(bus: EventBus = new EventBus()) {
   const operations = createOperationsModule(pool, equipment.service, projects.service);
   const audit = createAuditModule(pool);
   const transport = createTransportModule(pool);
+  const appSettings = createAppSettingsModule(pool);
 
   setTelegramMessageLogger(async (message) => {
     await people.service.logTelegramDialogMessage(message);
@@ -82,10 +84,6 @@ export function createModules(bus: EventBus = new EventBus()) {
     user?.nickname?.trim() || user?.displayName?.trim() || fallback;
   const escapeHtml = (value: string | null | undefined) =>
     (value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const formatBirthDate = (value: string | null | undefined) => {
-    const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    return match ? `${match[3]}.${match[2]}.${match[1]}` : (value ?? "");
-  };
   const acceptedApplicationCopy: Record<People.CrewApplicationLanguage, {
     title: string;
     created: string;
@@ -293,35 +291,34 @@ export function createModules(bus: EventBus = new EventBus()) {
   });
 
   // ── Invitations: deliver an accept/decline message to the invited person ──
-  const padDatePart = (n: number) => String(n).padStart(2, "0");
-  const fmtDateTime = (iso: string | null) => {
-    if (!iso) return "дата не указана";
-    const d = new Date(iso);
-    return `${padDatePart(d.getDate())}/${padDatePart(d.getMonth() + 1)}/${d.getFullYear()} ${padDatePart(d.getHours())}:${padDatePart(d.getMinutes())}`;
-  };
-
   bus.on("project.invited", async (e) => {
-    const [project, user, assignment] = await Promise.all([
+    const [project, user, assignment, roles, dateTimeSettings] = await Promise.all([
       projects.service.getProject(e.projectId),
       people.service.getById(e.userId),
       projects.service.getAssignment(e.assignmentId),
+      projects.service.listProjectRoles(e.projectId),
+      appSettings.service.getDateTimeSettings(),
     ]);
     if (!project || !assignment) return;
     if (!(await notifications.service.isEnabled(e.userId, "assigned"))) return;
+    const role = roles.find((item) => item.id === assignment.roleId);
+    const engagementStartsAt = role?.startsAt ?? project.startsAt;
+    const engagementEndsAt = role?.endsAt ?? project.endsAt;
+    const displayDateTime = (value: string | null) => value ? formatDateTimeValue(value, dateTimeSettings, "ru-RU") : "дата не указана";
     // In-app record so it shows in their inbox too.
     await notifications.service.create({
       userId: e.userId,
       kind: "assigned",
       title: "Приглашение на проект",
-      body: project.name,
+      body: `${project.name} · ${assignment.roleNote ?? "роль не указана"} · ${displayDateTime(engagementStartsAt)} — ${displayDateTime(engagementEndsAt)}`,
       link: `/projects/${e.projectId}`,
     });
     const rate = assignment.rateEUR != null ? `${assignment.rateEUR} €` : "по договорённости";
     const lines = [
       `<b>Приглашение на проект</b>`,
       `«${project.name}»`,
-      `🗓 ${fmtDateTime(project.startsAt)} — ${fmtDateTime(project.endsAt)}`,
       `🎚 Роль: ${assignment.roleNote ?? "—"}`,
+      `🕒 Занятость: ${displayDateTime(engagementStartsAt)} — ${displayDateTime(engagementEndsAt)}`,
       `💶 Ставка: ${rate}`,
     ];
     const sent = await sendTelegramMessage(user?.telegramId ?? null, lines.join("\n"), {
@@ -366,17 +363,18 @@ export function createModules(bus: EventBus = new EventBus()) {
   });
 
   bus.on("project.ping.created", async (e) => {
-    const [project, user, pings] = await Promise.all([
+    const [project, user, pings, dateTimeSettings] = await Promise.all([
       projects.service.getProject(e.projectId),
       people.service.getById(e.userId),
       projects.service.listPings(e.projectId),
+      appSettings.service.getDateTimeSettings(),
     ]);
     const ping = pings.find((item) => item.id === e.pingId);
     if (!project || !user || !ping) return;
     const extra = ping.message.trim() ? `\n${escapeHtml(ping.message.trim())}` : "";
     await sendTelegramMessage(
       user.telegramId,
-      `<b>${escapeHtml(ping.title)}</b>\n«${escapeHtml(project.name)}»\n🗓 ${fmtDateTime(project.startsAt)} — ${fmtDateTime(project.endsAt)}${extra}`,
+      `<b>${escapeHtml(ping.title)}</b>\n«${escapeHtml(project.name)}»\n🗓 ${project.startsAt ? formatDateTimeValue(project.startsAt, dateTimeSettings, "ru-RU") : "дата не указана"} — ${project.endsAt ? formatDateTimeValue(project.endsAt, dateTimeSettings, "ru-RU") : "дата не указана"}${extra}`,
       {
         inlineKeyboard: [[
           { text: "✅ Буду", callbackData: `ping:yes:${ping.id}` },
@@ -412,7 +410,10 @@ export function createModules(bus: EventBus = new EventBus()) {
   });
 
   bus.on("people.application.submitted", async (e) => {
-    const application = await people.service.getApplication(e.applicationId);
+    const [application, dateTimeSettings] = await Promise.all([
+      people.service.getApplication(e.applicationId),
+      appSettings.service.getDateTimeSettings(),
+    ]);
     if (!application) return;
     const reviewers = await people.service.listWithPermission("people.applications.review");
     const body = [
@@ -420,7 +421,7 @@ export function createModules(bus: EventBus = new EventBus()) {
       `${escapeHtml(application.firstName)} ${escapeHtml(application.lastName)}${application.patronymic ? ` ${escapeHtml(application.patronymic)}` : ""}`,
       `Ник: ${escapeHtml(application.nickname)}`,
       `Email: ${escapeHtml(application.email)}`,
-      `Дата рождения: ${escapeHtml(formatBirthDate(application.birthDate))}`,
+      `Дата рождения: ${escapeHtml(formatDateValue(application.birthDate, dateTimeSettings, "ru-RU"))}`,
       `Языки: ${escapeHtml(application.languages)}`,
       `О себе: ${escapeHtml(application.about)}`,
       `Источник: ${escapeHtml(application.source)}`,
@@ -566,9 +567,9 @@ export function createModules(bus: EventBus = new EventBus()) {
     return setInterval(() => void dispatchDueReminders(), 60_000);
   }
 
-  const modules = [people, equipment, projects, finance, venues, plans, notifications, catalog, operations, transport, audit];
+  const modules = [appSettings, people, equipment, projects, finance, venues, plans, notifications, catalog, operations, transport, audit];
 
-  return { bus, people, equipment, projects, finance, venues, plans, notifications, catalog, operations, transport, audit, apex, billing, modules, handleTelegramCallback, startReminderScheduler };
+  return { bus, appSettings, people, equipment, projects, finance, venues, plans, notifications, catalog, operations, transport, audit, apex, billing, modules, handleTelegramCallback, startReminderScheduler };
 }
 
 export type Wiring = ReturnType<typeof createModules>;
@@ -580,7 +581,7 @@ export function registerAllRoutes(
 ): void {
   for (const m of wiring.modules) m.registerRoutes(app, ctx);
   registerApexRoutes(app, ctx, wiring.apex);
-  registerBillingRoutes(app, ctx, wiring.billing);
+  registerBillingRoutes(app, ctx, wiring.billing, wiring.appSettings.service);
 }
 
 /** Used by the migration runner — collects each module's DDL. */

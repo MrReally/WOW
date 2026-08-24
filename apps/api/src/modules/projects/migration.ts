@@ -132,6 +132,13 @@ CREATE TABLE IF NOT EXISTS projects.project_roles (
   rate_eur       numeric(12,2),
   created_at     timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE projects.project_roles ADD COLUMN IF NOT EXISTS starts_at timestamptz;
+ALTER TABLE projects.project_roles ADD COLUMN IF NOT EXISTS ends_at   timestamptz;
+ALTER TABLE projects.project_roles DROP CONSTRAINT IF EXISTS project_roles_engagement_range_check;
+ALTER TABLE projects.project_roles ADD CONSTRAINT project_roles_engagement_range_check CHECK (
+  (starts_at IS NULL AND ends_at IS NULL)
+  OR (starts_at IS NOT NULL AND ends_at IS NOT NULL AND ends_at > starts_at)
+);
 CREATE INDEX IF NOT EXISTS project_roles_project_idx ON projects.project_roles(project_id, created_at);
 
 CREATE TABLE IF NOT EXISTS projects.assignments (

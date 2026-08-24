@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { Currency, Finance } from "@sever/contracts";
-import { amountAfterDiscountEUR } from "@sever/contracts";
+import { amountAfterDiscountEUR, formatDateValue } from "@sever/contracts";
 import { Card, Button, Field, Input, Textarea, Select, Loading, ErrorState, BrandLogo, Chip } from "../../ui-kit/index.ts";
 import { getToken } from "../../lib/api.ts";
 import { platform } from "../../app/platform/telegram.ts";
@@ -10,6 +10,7 @@ import { useProject, useClients, useProjectInvoice } from "../projects/hooks.ts"
 import { useVenues } from "../plans/hooks.ts";
 import { useCreateInvoiceVersion, useFxRates, useInvoiceCompanySettings, useInvoiceVersions, useProjectEstimateLines, useProjectEstimateSettings, useReplaceProjectEstimateLines, useSetInvoiceCompanySettings } from "./hooks.ts";
 import "./invoice.css";
+import { useDateFormatSettings } from "../../app/dateFormat.tsx";
 
 interface Line {
   id: string;
@@ -80,6 +81,7 @@ function loadCompany(): Company {
 }
 
 export function InvoicePage() {
+  const dateTimeSettings = useDateFormatSettings();
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const { can } = useSession();
@@ -374,7 +376,7 @@ export function InvoicePage() {
         />
         {!canConvert && <p className="card__subtitle no-print" style={{ color: "var(--warn)" }}>Для {currency} не задан курс в Settings.</p>}
         {pdfError && <p className="card__subtitle no-print" style={{ color: "var(--alert)" }}>{pdfError}</p>}
-        <PrintableInvoice labels={labels} lang={lang} dateStr={dateStr} place={place} sections={sections} convert={convert} subtotal={subtotal} totalDiscountEUR={totalDiscountEUR} total={total} currency={currency} note={note} company={company} />
+        <PrintableInvoice labels={labels} formattedDate={formatDateValue(dateStr, dateTimeSettings, lang === "EN" ? "en-US" : lang === "RS" ? "sr-RS" : "ru-RU")} place={place} sections={sections} convert={convert} subtotal={subtotal} totalDiscountEUR={totalDiscountEUR} total={total} currency={currency} note={note} company={company} />
       </div>
     );
   }
@@ -606,13 +608,13 @@ function InvoiceTopbar({ lang, currency, onLang, onCurrency, onBack, onPdf, pdfB
   );
 }
 
-function PrintableInvoice({ labels, dateStr, place, sections, convert, subtotal, totalDiscountEUR, total, currency, note, company }: { labels: typeof DOC_LABELS[InvoiceLang]; lang: InvoiceLang; dateStr: string; place: string; sections: { section: string; items: Line[] }[]; convert: (valueEUR: number) => number; subtotal: number; totalDiscountEUR: number; total: number; currency: Currency; note: string; company: Company }) {
+function PrintableInvoice({ labels, formattedDate, place, sections, convert, subtotal, totalDiscountEUR, total, currency, note, company }: { labels: typeof DOC_LABELS[InvoiceLang]; formattedDate: string; place: string; sections: { section: string; items: Line[] }[]; convert: (valueEUR: number) => number; subtotal: number; totalDiscountEUR: number; total: number; currency: Currency; note: string; company: Company }) {
   return (
     <div className="invoice-doc">
       <div className="estimate-head">
         <div className="estimate-info">
           <div className="estimate-title">{labels.title}</div>
-          <div className="estimate-field"><div>{labels.date}</div><strong>{dateStr.split("-").reverse().join("/")}</strong></div>
+          <div className="estimate-field"><div>{labels.date}</div><strong>{formattedDate}</strong></div>
           <div className="estimate-field estimate-field--tall"><div>{labels.place}</div><strong>{place.trim() || "—"}</strong></div>
         </div>
         <div className="estimate-logo"><BrandLogo size={170} color="#000" /></div>

@@ -45,8 +45,10 @@ import { EditProjectSheet } from "./components/EditProjectSheet.tsx";
 import { DuplicateProjectSheet } from "./components/DuplicateProjectSheet.tsx";
 import { TimingTimeline } from "./components/TimingTimeline.tsx";
 import { TimingReminderPicker } from "./components/TimingReminderPicker.tsx";
+import { RoleEngagementPicker } from "./components/RoleEngagementPicker.tsx";
 import { ContractorEquipment } from "./components/ContractorEquipment.tsx";
 import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
+import { configuredDate } from "../../lib/dateFormat.ts";
 import { personName } from "../../lib/people.ts";
 import { useFxRates, useInvoiceVersions, useProjectEstimateLines, useProjectEstimateSettings, useReplaceProjectEstimateLines, useSetProjectEstimateSettings } from "../finance/hooks.ts";
 import { useVenues } from "../plans/hooks.ts";
@@ -209,6 +211,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [roleTitle, setRoleTitle] = useState("");
   const [roleCount, setRoleCount] = useState("1");
   const [roleRate, setRoleRate] = useState("");
+  const [roleStartsAt, setRoleStartsAt] = useState<string | null>(null);
+  const [roleEndsAt, setRoleEndsAt] = useState<string | null>(null);
   const [roleDrafts, setRoleDrafts] = useState<Record<string, { title: string; requiredCount: string; rateEUR: string }>>({});
   const [assignCandidates, setAssignCandidates] = useState<Record<string, string[]>>({});
   const [candidateQueries, setCandidateQueries] = useState<Record<string, string>>({});
@@ -785,15 +789,25 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   </div>
                   <div className="row" style={{ gap: 8 }}>
                     {canAssign && (
-                      <button
-                        className="icon-btn icon-btn--danger"
-                        aria-label="Удалить роль"
-                        title="Удалить роль"
-                        disabled={deleteProjectRole.isPending}
-                        onClick={() => confirm("Удалить роль вместе с кандидатами?") && deleteProjectRole.mutate(role.id)}
-                      >
-                        <ProjectGlyph type="close" />
-                      </button>
+                      <>
+                        <RoleEngagementPicker
+                          startsAt={role.startsAt}
+                          endsAt={role.endsAt}
+                          fallbackStartsAt={p.startsAt}
+                          fallbackEndsAt={p.endsAt}
+                          disabled={updateProjectRole.isPending}
+                          onSave={(startsAt, endsAt) => updateProjectRole.mutateAsync({ id: role.id, input: { startsAt, endsAt } })}
+                        />
+                        <button
+                          className="icon-btn icon-btn--danger"
+                          aria-label="Удалить роль"
+                          title="Удалить роль"
+                          disabled={deleteProjectRole.isPending}
+                          onClick={() => confirm("Удалить роль вместе с кандидатами?") && deleteProjectRole.mutate(role.id)}
+                        >
+                          <ProjectGlyph type="close" />
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -918,12 +932,19 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
               <Field label="€">
                 <Input type="number" min="0" value={roleRate} onChange={(e) => setRoleRate(e.target.value)} placeholder="150" />
               </Field>
+              <RoleEngagementPicker
+                startsAt={roleStartsAt}
+                endsAt={roleEndsAt}
+                fallbackStartsAt={p.startsAt}
+                fallbackEndsAt={p.endsAt}
+                onSave={(startsAt, endsAt) => { setRoleStartsAt(startsAt); setRoleEndsAt(endsAt); }}
+              />
               <Button
                 disabled={!roleTitle.trim() || createProjectRole.isPending}
                 onClick={() =>
                   createProjectRole.mutate(
-                    { projectId: p.id, input: { title: roleTitle.trim(), requiredCount: count, rateEUR: rateNum } },
-                    { onSuccess: () => { setRoleTitle(""); setRoleCount("1"); setRoleRate(""); } }
+                    { projectId: p.id, input: { title: roleTitle.trim(), requiredCount: count, rateEUR: rateNum, startsAt: roleStartsAt, endsAt: roleEndsAt } },
+                    { onSuccess: () => { setRoleTitle(""); setRoleCount("1"); setRoleRate(""); setRoleStartsAt(null); setRoleEndsAt(null); } }
                   )
                 }
               >
@@ -1148,7 +1169,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                     <div key={version.id} className="row row--between" style={{ padding: "5px 0", gap: 10 }}>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ color: "var(--text)" }}>{version.number || "Смета"} · {version.lang}</div>
-                        <div className="card__subtitle">{version.date} · {dateTime(version.createdAt)}</div>
+                        <div className="card__subtitle">{configuredDate(version.date)} · {dateTime(version.createdAt)}</div>
                       </div>
                       <span style={{ color: "var(--text)", whiteSpace: "nowrap" }}>{eur(version.totalEUR)}</span>
                     </div>

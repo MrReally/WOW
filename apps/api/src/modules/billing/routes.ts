@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { CURRENCIES, type Finance } from "@sever/contracts";
+import { CURRENCIES, type AppSettings, type Finance } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
 import { requirePermission } from "../../core/auth.js";
 import type { BillingService } from "./service.js";
@@ -54,7 +54,7 @@ function pdfFilename(number: string, projectId: string): string {
   return `${safeNumber || "estimate"}.pdf`;
 }
 
-export function registerBillingRoutes(app: FastifyInstance, ctx: RouteContext, service: BillingService): void {
+export function registerBillingRoutes(app: FastifyInstance, ctx: RouteContext, service: BillingService, appSettings: AppSettings.AppSettingsService): void {
   app.get<{ Params: { id: string } }>("/api/projects/:id/invoice", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.view", "finance.manage");
@@ -64,7 +64,7 @@ export function registerBillingRoutes(app: FastifyInstance, ctx: RouteContext, s
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.view", "finance.manage");
     const body = invoicePdfSchema.parse(req.body) as Finance.EstimatePdfRequestDTO;
-    const pdf = await renderEstimatePdf(body);
+    const pdf = await renderEstimatePdf(body, await appSettings.getDateTimeSettings());
     return reply
       .header("Content-Type", "application/pdf")
       .header("Content-Disposition", `attachment; filename="${pdfFilename(body.number, req.params.id)}"`)
@@ -74,7 +74,7 @@ export function registerBillingRoutes(app: FastifyInstance, ctx: RouteContext, s
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.view", "finance.manage");
     const body = invoicePdfSchema.parse(req.body) as Finance.EstimatePdfRequestDTO;
-    const pdf = await renderEstimatePdf(body);
+    const pdf = await renderEstimatePdf(body, await appSettings.getDateTimeSettings());
     const token = randomBytes(24).toString("base64url");
     const filename = pdfFilename(body.number, req.params.id);
     prunePdfLinks();

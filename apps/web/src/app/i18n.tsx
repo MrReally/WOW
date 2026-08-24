@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Equipment, Projects, Role } from "@sever/contracts";
+import { formatDateRangeValue, formatDateTimeValue } from "@sever/contracts";
+import { useDateFormatSettings } from "./dateFormat.tsx";
 
 export type Locale = "ru" | "en" | "sr";
 
@@ -392,12 +394,9 @@ function readLocale(): Locale {
 }
 
 const intlLocale = (locale: Locale) => (locale === "ru" ? "ru-RU" : locale === "sr" ? "sr-RS" : "en-US");
-const pad = (n: number) => String(n).padStart(2, "0");
-const fmtDate = (d: Date) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-const fmtTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(readLocale);
+  const dateTimeSettings = useDateFormatSettings();
   const setLocale = (next: Locale) => {
     setLocaleState(next);
     localStorage.setItem(STORAGE_KEY, next);
@@ -417,16 +416,11 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       }
     };
     const dateTime = (iso: string) => {
-      const d = new Date(iso);
-      return `${fmtDate(d)} ${fmtTime(d)}`;
+      return formatDateTimeValue(iso, dateTimeSettings, intlLocale(locale));
     };
     const dateRange = (startIso: string | null, endIso: string | null) => {
-      if (!startIso || !endIso) return locale === "ru" ? "Дата не указана" : locale === "sr" ? "Datum nije naveden" : "Date not set";
-      const s = new Date(startIso);
-      const e = new Date(endIso);
-      return fmtDate(s) === fmtDate(e)
-        ? `${fmtDate(s)} ${fmtTime(s)}-${fmtTime(e)}`
-        : `${fmtDate(s)} ${fmtTime(s)} -> ${fmtDate(e)} ${fmtTime(e)}`;
+      const emptyLabel = locale === "ru" ? "Дата не указана" : locale === "sr" ? "Datum nije naveden" : "Date not set";
+      return formatDateRangeValue(startIso, endIso, dateTimeSettings, intlLocale(locale), emptyLabel);
     };
     return {
       locale,
@@ -441,7 +435,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       dateTime,
       dateRange,
     };
-  }, [locale]);
+  }, [locale, dateTimeSettings]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

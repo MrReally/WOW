@@ -10,6 +10,7 @@ export * as Catalog from "./catalog.js";
 export * as Operations from "./operations.js";
 export * as Audit from "./audit.js";
 export * as Transport from "./transport.js";
+export * as AppSettings from "./appSettings.js";
 
 // Runtime constants surfaced at top level for convenience (route validation).
 export { UNIT_STATUSES } from "./equipment.js";
@@ -17,6 +18,7 @@ export { OPERATION_UNIT_MARK_STATUSES, PROJECT_CHECKLIST_GROUPS, PROJECT_STATUSE
 export { PLAN_LAYERS } from "./plans.js";
 export { ADVANCED_NOTIFICATION_EVENTS, NOTIFICATION_KINDS } from "./notifications.js";
 export { amountAfterDiscountEUR, discountAmountEUR } from "./finance.js";
+export { DATE_FORMATS, DEFAULT_DATE_TIME_SETTINGS, formatDateValue, formatTimeValue, formatDateTimeValue, formatDateRangeValue } from "./appSettings.js";
 
 // Apex is a read-only aggregator over other modules — its DTO lives here too.
 import type { Problem, ID, ISODateTime } from "./common.js";

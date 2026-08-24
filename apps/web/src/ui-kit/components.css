@@ -240,6 +240,45 @@ h1,
   cursor: pointer;
 }
 
+/* ── Role engagement picker ───────────────────────────────────────── */
+.role-engagement-picker {
+  position: relative;
+}
+.role-engagement-picker__menu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(310px, calc(100vw - 32px));
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--bdr);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+.role-engagement-picker__duration {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border-radius: 9px;
+  background: var(--s2);
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+.role-engagement-picker__duration.is-valid {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.role-engagement-picker__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 /* ── Chip / StatusBadge ────────────────────────────────────────────── */
 .chip {
   display: inline-flex;

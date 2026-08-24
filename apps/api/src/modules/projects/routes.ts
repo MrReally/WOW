@@ -99,11 +99,15 @@ const projectRoleSchema = z.object({
   title: z.string().trim().min(1),
   requiredCount: z.number().int().positive(),
   rateEUR: z.number().nonnegative().nullable().optional(),
+  startsAt: z.string().datetime().nullable().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
 });
 const updateProjectRoleSchema = z.object({
   title: z.string().trim().min(1).optional(),
   requiredCount: z.number().int().positive().optional(),
   rateEUR: z.number().nonnegative().nullable().optional(),
+  startsAt: z.string().datetime().nullable().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
 });
 const assignmentSchema = z.object({
   projectId: z.string().uuid(),

@@ -281,6 +281,9 @@ export interface ProjectRoleDTO {
   requiredCount: number;
   /** Planned per-person rate in EUR; null = unset / by agreement. */
   rateEUR: number | null;
+  /** Role-specific engagement window; null pair = use the project window. */
+  startsAt: ISODateTime | null;
+  endsAt: ISODateTime | null;
   createdAt: ISODateTime;
 }
 
@@ -289,12 +292,16 @@ export interface CreateProjectRoleInput {
   title: string;
   requiredCount: number;
   rateEUR?: number | null;
+  startsAt?: ISODateTime | null;
+  endsAt?: ISODateTime | null;
 }
 
 export interface UpdateProjectRoleInput {
   title?: string;
   requiredCount?: number;
   rateEUR?: number | null;
+  startsAt?: ISODateTime | null;
+  endsAt?: ISODateTime | null;
 }
 
 // A person is either added directly (status "added") or invited (status

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import type { Currency } from "@sever/contracts";
-import { CURRENCIES } from "@sever/contracts";
+import type { AppSettings, Currency } from "@sever/contracts";
+import { CURRENCIES, DATE_FORMATS, formatDateValue, formatTimeValue } from "@sever/contracts";
 import { Card, Button, SectionTitle, Input, Select, Loading } from "../../ui-kit/index.ts";
 import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
-import { useFxRates, useSetFxRate, useResetData, useResetStatus, useSetTelegramInboxSettings, useTelegramInboxSettings } from "./hooks.ts";
+import { useDateTimeSettings, useFxRates, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetTelegramInboxSettings, useTelegramInboxSettings } from "./hooks.ts";
 import { RoleEditor } from "./components/RoleEditor.tsx";
 import { useCableSettings, useSetCableSettings } from "../warehouse/hooks.ts";
 import { BackupManager } from "./components/BackupManager.tsx";
@@ -49,6 +49,8 @@ export function SettingsPage() {
           <Button variant="secondary" onClick={toggle}>Переключить</Button>
         </div>
       </Card>
+
+      {can("roles.manage") && <DateTimeFormatSettings />}
 
       {can("roles.manage") && <RoleEditor />}
 
@@ -160,6 +162,61 @@ export function SettingsPage() {
         </>
       )}
     </div>
+  );
+}
+
+function DateTimeFormatSettings() {
+  const settings = useDateTimeSettings();
+  const save = useSetDateTimeSettings();
+  const [dateFormat, setDateFormat] = useState<AppSettings.DateFormat>("DD.MM.YYYY");
+  const [timeFormat, setTimeFormat] = useState<AppSettings.TimeFormat>("24h");
+
+  useEffect(() => {
+    if (!settings.data) return;
+    setDateFormat(settings.data.dateFormat);
+    setTimeFormat(settings.data.timeFormat);
+  }, [settings.data]);
+
+  const sample = new Date(2026, 0, 31, 18, 30);
+  const previewSettings = { dateFormat, timeFormat };
+  return (
+    <>
+      <SectionTitle>Дата и время</SectionTitle>
+      <Card>
+        <div className="stack" style={{ gap: 12 }}>
+          <div>
+            <p className="card__title">Формат даты</p>
+            <Select
+              value={dateFormat}
+              onChange={(event) => setDateFormat(event.target.value as AppSettings.DateFormat)}
+              options={DATE_FORMATS.map((format) => ({
+                value: format,
+                label: `${format} — ${formatDateValue(sample, { dateFormat: format, timeFormat }, "ru-RU")}`,
+              }))}
+            />
+          </div>
+          <div>
+            <p className="card__title">Формат времени</p>
+            <Select
+              value={timeFormat}
+              onChange={(event) => setTimeFormat(event.target.value as AppSettings.TimeFormat)}
+              options={[
+                { value: "24h", label: `24 часа — ${formatTimeValue(sample, { dateFormat, timeFormat: "24h" })}` },
+                { value: "12h", label: `12 часов — ${formatTimeValue(sample, { dateFormat, timeFormat: "12h" })}` },
+              ]}
+            />
+          </div>
+          <p className="card__subtitle">Предпросмотр: {formatDateValue(sample, previewSettings, "ru-RU")} · {formatTimeValue(sample, previewSettings)}</p>
+          <Button
+            variant="secondary"
+            disabled={save.isPending || settings.isLoading}
+            onClick={() => save.mutate({ dateFormat, timeFormat })}
+          >
+            Сохранить
+          </Button>
+        </div>
+      </Card>
+    </>
   );
 }
 

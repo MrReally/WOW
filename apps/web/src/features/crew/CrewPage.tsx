@@ -9,6 +9,7 @@ import { dateRange, dateTime } from "../../lib/labels.ts";
 import { useArchiveUser, useBotInfo, useCreateUser, useDeleteUserPermanently, usePeople, useResetPassword, useRoles, useUnlinkTelegram, useUpdateUser } from "../settings/hooks.ts";
 import { useProjectsForFinance } from "../finance/hooks.ts";
 import { personName } from "../../lib/people.ts";
+import { configuredDate } from "../../lib/dateFormat.ts";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -56,11 +57,6 @@ function contactLine(person: People.UserDTO): string {
   if (person.email) return person.email;
   if (person.telegramUsername) return telegramFieldValue(person.telegramUsername);
   return "без контакта";
-}
-
-function formatBirthDate(value: string | null | undefined): string {
-  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return match ? `${match[3]}.${match[2]}.${match[1]}` : value || "—";
 }
 
 type CrewTab = "people" | "applications" | "deleted";
@@ -159,7 +155,7 @@ function CrewApplicationCard({
         </div>
         <div className="crew-dossier__item">
           <span>Дата рождения</span>
-          <b>{formatBirthDate(application.birthDate)}</b>
+          <b>{application.birthDate ? configuredDate(application.birthDate) : "—"}</b>
         </div>
         <div className="crew-dossier__item">
           <span>Telegram</span>

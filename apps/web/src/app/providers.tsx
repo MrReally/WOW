@@ -5,6 +5,7 @@ import { I18nProvider } from "./i18n.tsx";
 import { Toasts } from "./Toasts.tsx";
 import { toast } from "../lib/toastBus.ts";
 import { ApiError } from "../lib/api.ts";
+import { DateFormatProvider } from "./dateFormat.tsx";
 
 function describe(error: unknown): string {
   if (error instanceof ApiError) return error.message;
@@ -34,12 +35,14 @@ const queryClient = new QueryClient({
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <I18nProvider>
-          {children}
-          <Toasts />
-        </I18nProvider>
-      </ThemeProvider>
+      <DateFormatProvider>
+        <ThemeProvider>
+          <I18nProvider>
+            {children}
+            <Toasts />
+          </I18nProvider>
+        </ThemeProvider>
+      </DateFormatProvider>
     </QueryClientProvider>
   );
 }

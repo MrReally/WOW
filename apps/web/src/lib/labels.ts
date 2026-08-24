@@ -1,5 +1,6 @@
 import type { Equipment, Projects, Role } from "@sever/contracts";
 import type { BadgeTone } from "../ui-kit/index.ts";
+import { configuredDateTime, configuredDateRange } from "./dateFormat.ts";
 
 // Presentation-only mapping of machine codes to Russian labels + badge tones.
 // Lives in the web layer; the contract keeps stable English codes.
@@ -71,26 +72,10 @@ export function money(amount: number, currency: string): string {
   }
 }
 
-// Dates are always DD/MM/YYYY and time is always 24h (no AM/PM), in local time.
-const pad = (n: number) => String(n).padStart(2, "0");
-function fmtDate(d: Date): string {
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-}
-function fmtTime(d: Date): string {
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 export function dateTime(iso: string): string {
-  const d = new Date(iso);
-  return `${fmtDate(d)} ${fmtTime(d)}`;
+  return configuredDateTime(iso);
 }
 
 export function dateRange(startIso: string | null, endIso: string | null): string {
-  if (!startIso || !endIso) return "Дата не указана";
-  const s = new Date(startIso);
-  const e = new Date(endIso);
-  const sameDay = fmtDate(s) === fmtDate(e);
-  return sameDay
-    ? `${fmtDate(s)} ${fmtTime(s)}–${fmtTime(e)}`
-    : `${fmtDate(s)} ${fmtTime(s)} → ${fmtDate(e)} ${fmtTime(e)}`;
+  return configuredDateRange(startIso, endIso);
 }
