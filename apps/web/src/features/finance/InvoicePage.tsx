@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import type { Currency, Finance } from "@sever/contracts";
 import { amountAfterDiscountEUR, formatDateValue } from "@sever/contracts";
 import { Card, Button, Field, Input, Textarea, Select, Loading, ErrorState, BrandLogo, Chip } from "../../ui-kit/index.ts";
-import { getToken } from "../../lib/api.ts";
+import { authenticatedFetch } from "../../lib/api.ts";
 import { platform } from "../../app/platform/telegram.ts";
 import { useSession } from "../../app/session.ts";
 import { useProject, useClients, useProjectInvoice } from "../projects/hooks.ts";
@@ -297,22 +297,26 @@ export function InvoicePage() {
     setPdfError("");
     try {
       await saveVersion();
-      const token = getToken();
-      const res = await fetch(`/api/projects/${id}/invoice/pdf-link`, {
+      const telegramDelivery = platform.kind === "telegram";
+      const res = await authenticatedFetch(`/api/projects/${id}/invoice/pdf${telegramDelivery ? "/telegram" : ""}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload()),
       });
-      if (!res.ok) throw new Error((await res.text()) || res.statusText);
-      const download = await res.json() as { url: string; filename: string };
-      const url = new URL(download.url, window.location.origin).href;
-      if (platform.openExternalUrl(url)) return;
+      if (telegramDelivery) {
+        platform.haptic("medium");
+        return;
+      }
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const filename = disposition.match(/filename="([^"]+)"/)?.[1] ?? "estimate.pdf";
+      const url = URL.createObjectURL(await res.blob());
       const a = document.createElement("a");
       a.href = url;
-      a.download = download.filename;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (err) {
       setPdfError(err instanceof Error ? err.message : "PDF error");
     } finally {

@@ -121,3 +121,40 @@ export async function sendTelegramPhoto(
     return false;
   }
 }
+
+/** Uploads a generated file directly to a Telegram chat. */
+export async function sendTelegramDocument(
+  chatId: string | null,
+  document: Buffer,
+  filename: string,
+  caption?: string
+): Promise<{ chatId: string; messageId: number } | null> {
+  const token = env.auth.telegramBotToken;
+  if (!token || !chatId || !/^\d+$/.test(chatId)) return null;
+
+  const form = new FormData();
+  form.set("chat_id", chatId);
+  form.set("document", new Blob([document], { type: "application/pdf" }), filename);
+  if (caption) form.set("caption", caption);
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+      method: "POST",
+      body: form,
+    });
+    const json = await res.json() as { ok?: boolean; result?: { message_id?: number } };
+    const messageId = json.result?.message_id;
+    if (!json.ok || typeof messageId !== "number") return null;
+
+    await logBotMessage({
+      telegramId: chatId,
+      direction: "bot",
+      messageType: "system",
+      text: caption || filename,
+      telegramMessageId: messageId,
+    });
+    return { chatId, messageId };
+  } catch {
+    return null;
+  }
+}

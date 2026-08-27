@@ -24,7 +24,7 @@ import { createApexService } from "./modules/apex/service.js";
 import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
-import { editTelegramMessage, sendTelegramMessage, sendTelegramPhoto, setTelegramMessageLogger } from "./core/telegram.js";
+import { editTelegramMessage, sendTelegramDocument, sendTelegramMessage, sendTelegramPhoto, setTelegramMessageLogger } from "./core/telegram.js";
 import { formatDateTimeValue, formatDateValue, type Notifications, type People } from "@sever/contracts";
 import type { DomainEvent } from "./core/eventBus.js";
 
@@ -581,7 +581,7 @@ export function registerAllRoutes(
 ): void {
   for (const m of wiring.modules) m.registerRoutes(app, ctx);
   registerApexRoutes(app, ctx, wiring.apex);
-  registerBillingRoutes(app, ctx, wiring.billing, wiring.appSettings.service);
+  registerBillingRoutes(app, ctx, wiring.billing, wiring.appSettings.service, sendTelegramDocument);
 }
 
 /** Used by the migration runner — collects each module's DDL. */
