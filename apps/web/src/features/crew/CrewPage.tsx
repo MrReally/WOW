@@ -25,6 +25,8 @@ const actionLabel: Record<Equipment.JournalAction, string> = {
   back_from_contractor: "От подрядчика",
   marked_lost: "Утеря",
   transferred: "Перемещение",
+  installed: "Инсталляция",
+  uninstalled: "Снятие с площадки",
   status_changed: "Статус",
 };
 

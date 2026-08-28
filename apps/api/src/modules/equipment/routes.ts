@@ -34,6 +34,8 @@ const updateWarehouseSchema = z.object({
   isDefault: z.boolean().optional(),
   placeId: z.string().uuid().nullable().optional(),
 });
+const installSchema = z.object({ venueId: z.string().uuid(), note: z.string().nullable().optional() });
+const uninstallSchema = z.object({ warehouseId: z.string().uuid(), note: z.string().nullable().optional() });
 const zoneKindSchema = z.enum(["room","rack","shelf","bin","floor","other"]);
 const storageZoneSchema = z.object({ warehouseId:z.string().uuid(), parentId:z.string().uuid().nullable().optional(), name:z.string().min(1), code:z.string().min(1), kind:zoneKindSchema, sortOrder:z.number().int().optional() });
 const updateStorageZoneSchema = z.object({ parentId:z.string().uuid().nullable().optional(), name:z.string().min(1).optional(), code:z.string().min(1).optional(), kind:zoneKindSchema.optional(), active:z.boolean().optional(), sortOrder:z.number().int().optional() });
@@ -312,6 +314,10 @@ export function registerEquipmentRoutes(
       warehouseId: req.query.warehouseId,
     });
   });
+  app.get<{ Params: { id: string } }>("/api/equipment/projects/:id/turnover-review", async (req) => {
+    const auth = await ctx.auth(req); requirePermission(auth, "warehouse.view", "operations.view");
+    return service.projectTurnoverReview(req.params.id);
+  });
   app.get<{ Params: { id: string } }>("/api/people/:id/equipment-journal", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "people.view", "people.manage");
@@ -338,6 +344,14 @@ export function registerEquipmentRoutes(
     requirePermission(auth, "warehouse.catalog.manage");
     const body = unitTransferSchema.parse(req.body);
     return service.transferUnit(req.params.id, body.warehouseId, auth.userId, body.note ?? null, body.zoneId);
+  });
+  app.post<{ Params: { id: string } }>("/api/equipment/units/:id/install", async (req) => {
+    const auth = await ctx.auth(req); requirePermission(auth, "warehouse.catalog.manage");
+    const body = installSchema.parse(req.body); return service.installUnit(req.params.id, body.venueId, auth.userId, body.note);
+  });
+  app.post<{ Params: { id: string } }>("/api/equipment/units/:id/uninstall", async (req) => {
+    const auth = await ctx.auth(req); requirePermission(auth, "warehouse.catalog.manage");
+    const body = uninstallSchema.parse(req.body); return service.uninstallUnit(req.params.id, body.warehouseId, auth.userId, body.note);
   });
 
   // ── Operations (warehouse prepares; tech confirms on phone) ──

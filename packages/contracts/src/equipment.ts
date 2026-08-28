@@ -11,6 +11,7 @@ export type UnitStatus =
   | "on_project" // на проекте
   | "in_repair" // в ремонте
   | "at_contractor" // у подрядчика
+  | "installed" // permanently installed at a venue, outside warehouse stock
   | "lost"; // утеряно
 
 export const UNIT_STATUSES: UnitStatus[] = [
@@ -19,6 +20,7 @@ export const UNIT_STATUSES: UnitStatus[] = [
   "on_project",
   "in_repair",
   "at_contractor",
+  "installed",
   "lost",
 ];
 
@@ -129,6 +131,8 @@ export interface EquipmentUnitDTO {
   zoneId: ID | null;
   /** Opaque id of the project the unit is currently on (or reserved for). */
   currentProjectId: ID | null;
+  /** Opaque venues id when status is installed. Never mixed with warehouseId. */
+  installedVenueId: ID | null;
   /** Free-form per-unit notes: unique defects, quirks, marks, accessories. */
   notes: string | null;
   archivedAt?: ISODateTime | null;
@@ -186,6 +190,8 @@ export type JournalAction =
   | "back_from_contractor"
   | "marked_lost"
   | "transferred"
+  | "installed"
+  | "uninstalled"
   | "status_changed";
 
 export interface JournalEntryDTO {
@@ -224,6 +230,8 @@ export interface ReturnUnitsInput {
   returnedUnitIds: ID[];
   /** The full set that was expected back (issued for this project). */
   expectedUnitIds: ID[];
+  /** Destination warehouse; may differ from the source warehouse. */
+  warehouseId?: ID | null;
   actorId: ID;
   note?: string;
 }
@@ -233,6 +241,16 @@ export interface ReturnResult {
   missing: ID[];
   /** Set when missing.length > 0; problem id surfaced to Apex. */
   problemId: ID | null;
+}
+
+export interface ProjectTurnoverReviewLineDTO {
+  unitId: ID | null;
+  modelId: ID | null;
+  qty: number;
+  fromWarehouseId: ID | null;
+  toWarehouseId: ID | null;
+  outcome: "returned" | "missing" | "broken" | "lost";
+  notes: string[];
 }
 
 // ── Quantity (cable) operations — no serials, counted per model ──────────────
@@ -407,6 +425,9 @@ export interface EquipmentService {
   listJournal(filter?: { limit?: number; projectId?: ID; warehouseId?: ID }): Promise<JournalEntryDTO[]>;
   modelStock(modelId: ID, warehouseId?: ID | null): Promise<ModelStockDTO>;
   transferUnit(unitId: ID, warehouseId: ID, actorId: ID, note?: string | null, zoneId?: ID | null): Promise<EquipmentUnitDTO>;
+  installUnit(unitId: ID, venueId: ID, actorId: ID, note?: string | null): Promise<EquipmentUnitDTO>;
+  uninstallUnit(unitId: ID, warehouseId: ID, actorId: ID, note?: string | null): Promise<EquipmentUnitDTO>;
+  projectTurnoverReview(projectId: ID): Promise<ProjectTurnoverReviewLineDTO[]>;
 
   // Quantity (cable) stock — models whose type is tracked by quantity.
   setModelStockTotal(modelId: ID, total: number, warehouseId?: ID | null, zoneId?: ID | null): Promise<ModelStockDTO>;

@@ -9,7 +9,9 @@ import {
   useUnit, useUnitJournal, useChangeStatus, useUpdateUnit,
   useModels, useTypes, useUnitRepairs, useProjectsForOps, usePeopleNames,
   useWarehouses,
+  useInstallUnit, useUninstallUnit,
 } from "./hooks.ts";
+import { useVenues } from "../plans/hooks.ts";
 import { RepairContractorPanel } from "./components/RepairContractor.tsx";
 import { cableAttrs } from "./cables.ts";
 
@@ -26,6 +28,8 @@ const journalActionLabel: Record<Equipment.JournalAction, string> = {
   marked_lost: "Утеряно",
   transferred: "Перемещено",
   status_changed: "Смена статуса",
+  installed: "Инсталлировано на площадке",
+  uninstalled: "Возвращено с площадки",
 };
 
 const eur = (n: number) => `${n.toLocaleString("ru-RU")} €`;
@@ -56,6 +60,10 @@ export function UnitDetailPage() {
   const projects = useProjectsForOps();
   const people = usePeopleNames(can("people.view"));
   const warehouses = useWarehouses();
+  const venues = useVenues(true);
+  const installUnit = useInstallUnit(), uninstallUnit = useUninstallUnit();
+  const [installVenueId, setInstallVenueId] = useState("");
+  const [returnWarehouseId, setReturnWarehouseId] = useState("");
   const changeStatus = useChangeStatus();
   const updateUnit = useUpdateUnit();
 
@@ -156,6 +164,7 @@ export function UnitDetailPage() {
         <InfoRow label="Инв. номер" value={u.assetTag} />
         <InfoRow label="Статус" value={unitStatusLabel[u.status]} />
         <InfoRow label="Склад" value={warehouseName(u.warehouseId)} />
+        {u.installedVenueId && <InfoRow label="Инсталлировано" value={(venues.data ?? []).find(v => v.id === u.installedVenueId)?.name ?? u.installedVenueId} />}
         {projectName && <InfoRow label="Сейчас на проекте" value={projectName} />}
         <InfoRow label="В системе с" value={dateTime(u.createdAt)} />
         {canViewCosts && <InfoRow label="Потрачено на ремонт" value={repairTotal > 0 ? eur(repairTotal) : "—"} />}
@@ -227,6 +236,8 @@ export function UnitDetailPage() {
       </Card>
 
       {canEdit && <RepairContractorPanel unit={u} />}
+
+      {canCatalog && <Card><SectionTitle>Инсталляция на площадке</SectionTitle>{u.status === "installed" ? <div className="row"><Select value={returnWarehouseId} onChange={e => setReturnWarehouseId(e.target.value)} options={[{ value: "", label: "Выберите склад возврата" }, ...warehouseList.map(w => ({ value: w.id, label: w.name }))]} /><Button disabled={!returnWarehouseId || uninstallUnit.isPending} onClick={() => uninstallUnit.mutate({ id: u.id, warehouseId: returnWarehouseId })}>Вернуть на склад</Button></div> : <div className="row"><Select value={installVenueId} onChange={e => setInstallVenueId(e.target.value)} options={[{ value: "", label: "Выберите площадку" }, ...(venues.data ?? []).filter(v => v.isVenue && !v.archivedAt).map(v => ({ value: v.id, label: v.name }))]} /><Button disabled={u.status !== "in_stock" || !installVenueId || installUnit.isPending} onClick={() => installUnit.mutate({ id: u.id, venueId: installVenueId })}>Отметить инсталлированным</Button></div>}<p className="card__subtitle" style={{ marginTop: 8 }}>Инсталлированное оборудование исключается из остатков склада, даже если эта площадка одновременно является складом.</p></Card>}
 
       {canEdit && (
         <Card>

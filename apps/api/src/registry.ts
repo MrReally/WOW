@@ -68,6 +68,17 @@ export function createModules(bus: EventBus = new EventBus()) {
     finance: finance.service,
     people: people.service,
   });
+  const completeProjectWhenSettled = async (projectId: string, actorId: string | null = null) => {
+    const project = await projects.service.getProject(projectId);
+    if (!project?.warehouseTurnoverCompletedAt || project.status === "completed") return;
+    const [invoice, assignments] = await Promise.all([billing.projectInvoice(projectId), projects.service.listAssignments(projectId)]);
+    const active = assignments.filter(a => a.status === "added" || a.status === "accepted");
+    const payrollSettled = active.every(a => a.paidEUR + 0.005 >= (a.rateEUR ?? 0));
+    if (invoice.dueEUR <= 0.005 && payrollSettled) await projects.service.setStatus(projectId, "completed", actorId);
+  };
+  bus.on("project.warehouse_turnover.completed", event => completeProjectWhenSettled(event.projectId, event.actorId));
+  bus.on("project.assignment.payment.updated", event => completeProjectWhenSettled(event.projectId));
+  bus.on("finance.transaction.created", event => event.projectId ? completeProjectWhenSettled(event.projectId) : undefined);
 
   // ── Notifications: react to domain events, deliver in-app + Telegram ──
   // This is the canonical cross-module reaction, wired here (never inside a
@@ -302,6 +313,7 @@ export function createModules(bus: EventBus = new EventBus()) {
     if (!project || !assignment) return;
     if (!(await notifications.service.isEnabled(e.userId, "assigned"))) return;
     const role = roles.find((item) => item.id === assignment.roleId);
+    const venue = project.venueId ? await venues.service.get(project.venueId) : null;
     const engagementStartsAt = role?.startsAt ?? project.startsAt;
     const engagementEndsAt = role?.endsAt ?? project.endsAt;
     const displayDateTime = (value: string | null) => value ? formatDateTimeValue(value, dateTimeSettings, "ru-RU") : "дата не указана";
@@ -319,6 +331,8 @@ export function createModules(bus: EventBus = new EventBus()) {
       `«${project.name}»`,
       `🎚 Роль: ${assignment.roleNote ?? "—"}`,
       `🕒 Занятость: ${displayDateTime(engagementStartsAt)} — ${displayDateTime(engagementEndsAt)}`,
+      `📍 Локация: ${venue ? `${venue.name}${venue.address ? ` · ${venue.address}` : ""}` : "—"}`,
+      ...(assignment.dressCodeEnabled && (project.dressCodeLabel || project.dressCodeUniform) ? [`👔 Дресс-код: ${[project.dressCodeLabel, project.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}`] : []),
       `💶 Ставка: ${rate}`,
     ];
     const sent = await sendTelegramMessage(user?.telegramId ?? null, lines.join("\n"), {
@@ -518,16 +532,19 @@ export function createModules(bus: EventBus = new EventBus()) {
     const updated = await projects.service.respondToInvite(assignmentId, accept, assignment.userId);
     const project = await projects.service.getProject(assignment.projectId);
     if (updated.status === "cancelled") {
-      const assignments = await projects.service.listAssignments(assignment.projectId);
-      const alreadyInProject = assignments.some((a) => a.userId === assignment.userId && a.id !== assignment.id && (a.status === "added" || a.status === "accepted"));
-      if (alreadyInProject) {
-        return `Приглашение отменено: вы уже участвуете в проекте «${project?.name ?? ""}» в другой роли.`;
-      }
       const role = updated.roleNote ? `«${updated.roleNote}»` : "эту роль";
       return `Приглашение отменено: на ${role} в проекте «${project?.name ?? ""}» уже найден человек.`;
     }
+    const [venue, dateTimeSettings, projectRoles] = await Promise.all([
+      project?.venueId ? venues.service.get(project.venueId) : null,
+      appSettings.service.getDateTimeSettings(),
+      projects.service.listProjectRoles(assignment.projectId),
+    ]);
+    const acceptedRole = projectRoles.find(item => item.id === assignment.roleId);
+    const display = (value: string | null | undefined) => value ? formatDateTimeValue(value, dateTimeSettings, "ru-RU") : "дата не указана";
+    const rate = assignment.rateEUR != null ? `${assignment.rateEUR} €` : "по договорённости";
     return accept
-      ? `✅ Вы приняли участие в проекте «${project?.name ?? ""}». Детали — в приложении.`
+      ? [`✅ <b>Приглашение принято</b>`, `«${project?.name ?? ""}»`, `🎚 Роль: ${assignment.roleNote ?? "—"}`, `🕒 ${display(acceptedRole?.startsAt ?? project?.startsAt)} — ${display(acceptedRole?.endsAt ?? project?.endsAt)}`, `📍 ${venue ? `${venue.name}${venue.address ? ` · ${venue.address}` : ""}` : "—"}`, ...(assignment.dressCodeEnabled && (project?.dressCodeLabel || project?.dressCodeUniform) ? [`👔 ${[project?.dressCodeLabel, project?.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}`] : []), `💶 Ставка: ${rate}`, `Подробности — в приложении.`].join("\n")
       : `❌ Вы отклонили участие в проекте «${project?.name ?? ""}».`;
   }
 

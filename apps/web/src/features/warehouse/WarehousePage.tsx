@@ -37,7 +37,7 @@ import { ImportSheet } from "./components/ImportSheet.tsx";
 import { CableMoveSheet, CableRow } from "./components/CableMoveSheet.tsx";
 import { OpsSheet } from "./components/OpsSheet.tsx";
 import { AddressInput } from "../places/AddressInput.tsx";
-import { useCreateVenue, useUpdateVenue } from "../plans/hooks.ts";
+import { useCreateVenue, useUpdateVenue, useVenues } from "../plans/hooks.ts";
 
 function PrepStat({ tone, value, label }: { tone: Tone; value: number; label: string }) {
   return (
@@ -101,12 +101,13 @@ function ModelRow({ model, units, last, onEdit }: { model: Equipment.EquipmentMo
   );
 }
 
-type WarehouseTab = "dashboard" | "repair" | "stocklist" | "cables" | "models";
+type WarehouseTab = "dashboard" | "repair" | "stocklist" | "installed" | "cables" | "models";
 
 const WAREHOUSE_TABS: { id: WarehouseTab; label: string; shortLabel: string; tone: "accent" | "warn" | "info" | "ok" }[] = [
   { id: "dashboard", label: "Dashboard", shortLabel: "Dash", tone: "accent" },
   { id: "repair", label: "Ремонт", shortLabel: "Ремонт", tone: "warn" },
   { id: "stocklist", label: "Stocklist", shortLabel: "Stock", tone: "ok" },
+  { id: "installed", label: "Инсталляции", shortLabel: "Venue", tone: "info" },
   { id: "cables", label: "Кабели", shortLabel: "Кабели", tone: "warn" },
   { id: "models", label: "Модели", shortLabel: "Модели", tone: "info" },
 ];
@@ -125,6 +126,7 @@ function WarehouseGlyph({ type }: { type: WarehouseTab }) {
     case "repair":
       return <svg viewBox="0 0 24 24"><path d="M14.7 5.3l4 4-3.4 3.4-4-4z" {...p} /><path d="M11.5 8.5L5 15v4h4l6.5-6.5" {...p} /><path d="M5 19l4-4" {...p} /></svg>;
     case "stocklist":
+    case "installed":
       return <svg viewBox="0 0 24 24"><rect x="4.5" y="6" width="15" height="12.5" rx="2" {...p} /><path d="M4.5 10h15M8 14h4M15 14h1" {...p} /></svg>;
     case "cables":
       return <svg viewBox="0 0 24 24"><path d="M6 8c3 0 3 8 6 8s3-8 6-8" {...p} /><circle cx="5" cy="8" r="1.6" {...p} /><circle cx="19" cy="8" r="1.6" {...p} /></svg>;
@@ -147,6 +149,7 @@ export function WarehousePage() {
   const units = useUnits(showArchived ? { includeArchived: true } : undefined);
   const types = useTypes();
   const warehouses = useWarehouses();
+  const venues = useVenues(true);
   const createWarehouse = useCreateWarehouse();
   const updateWarehouse = useUpdateWarehouse();
   const createPlace = useCreateVenue();
@@ -237,7 +240,8 @@ export function WarehousePage() {
   const serialModels = visibleModels.filter((m) => m.trackingMode === "serial" && modelMatches(m));
   const quantityModels = visibleModels.filter((m) => m.trackingMode === "quantity" && modelMatches(m));
   const cableModels = visibleModels.filter((m) => m.trackingMode === "cable" && modelMatches(m));
-  const filteredByWarehouse = warehouseFilter === "all" ? allUnits : allUnits.filter((u) => u.warehouseId === warehouseFilter);
+  const warehouseStockUnits = allUnits.filter(unit => unit.status !== "installed");
+  const filteredByWarehouse = warehouseFilter === "all" ? warehouseStockUnits : warehouseStockUnits.filter((u) => u.warehouseId === warehouseFilter);
   const filteredByStatus = statusFilter === "all" ? filteredByWarehouse : filteredByWarehouse.filter((u) => u.status === statusFilter);
   const filtered = filteredByStatus.filter(unit=>visibleModels.some(model=>model.id===unit.modelId)).filter(unitMatches);
   const statuses: (Equipment.UnitStatus | "all")[] = ["all", "in_stock", "on_project", "in_repair", "reserved", "lost"];
@@ -529,6 +533,7 @@ export function WarehousePage() {
           {unitSection}
         </>
       )}
+      {activeTab === "installed" && <><SectionHead label="Инсталлировано на площадках" meta={`${allUnits.filter(u => u.status === "installed").length}`} />{allUnits.filter(u => u.status === "installed").length === 0 ? <EmptyState title="Инсталлированного оборудования нет" /> : <div className="stack">{(venues.data ?? []).filter(v => allUnits.some(u => u.installedVenueId === v.id)).map(v => <div className="card" key={v.id}><div className="row row--between"><div><p className="card__title">{v.name}</p><p className="card__subtitle">{v.address || "Без адреса"}</p></div><Chip label={`${allUnits.filter(u => u.installedVenueId === v.id).length}`} tone="info" /></div>{allUnits.filter(u => u.installedVenueId === v.id).map(u => <button className="lrow card--tappable" key={u.id} onClick={() => navigate(`/warehouse/units/${u.id}`)}><span className="lrow__title">{u.assetTag}</span><span className="lrow__detail">{allModels.find(model => model.id === u.modelId)?.name ?? u.modelId}</span></button>)}</div>)}</div>}</>}
       {activeTab === "cables" && cableSection}
       {activeTab === "models" && modelSection}
 
@@ -546,7 +551,7 @@ export function WarehousePage() {
       <div className="project-tabbar" role="tablist" aria-label="Warehouse">
         {WAREHOUSE_TABS.map((tab) => {
           const isActive = activeTab === tab.id;
-          const count = tab.id === "repair" ? repairCount : tab.id === "stocklist" ? filtered.length : tab.id === "cables" ? cableModels.length : tab.id === "models" ? serialModels.length + quantityModels.length : 0;
+          const count = tab.id === "repair" ? repairCount : tab.id === "stocklist" ? filtered.length : tab.id === "installed" ? allUnits.filter(u => u.status === "installed").length : tab.id === "cables" ? cableModels.length : tab.id === "models" ? serialModels.length + quantityModels.length : 0;
           return (
             <button
               key={tab.id}

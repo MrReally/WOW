@@ -14,4 +14,15 @@ ALTER TABLE app_settings.date_time ADD CONSTRAINT date_time_date_format_check CH
 );
 ALTER TABLE app_settings.date_time DROP CONSTRAINT IF EXISTS date_time_time_format_check;
 ALTER TABLE app_settings.date_time ADD CONSTRAINT date_time_time_format_check CHECK (time_format IN ('24h','12h'));
+
+CREATE TABLE IF NOT EXISTS app_settings.dress_code_options (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  label text NOT NULL UNIQUE,
+  active boolean NOT NULL DEFAULT true,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO app_settings.dress_code_options (label, sort_order) VALUES
+  ('total black', 10), ('опрятно', 20), ('нет дресс-кода', 30)
+ON CONFLICT (label) DO NOTHING;
 `;

@@ -23,8 +23,8 @@ export function useProjectUnits(projectId: string) {
     queryFn: () => api.get<Equipment.EquipmentUnitDTO[]>(`/api/equipment/units?projectId=${projectId}`),
   });
 }
-export function useVenues() {
-  return useQuery({ queryKey: ["venues"], queryFn: () => api.get<Venues.VenueDTO[]>("/api/venues") });
+export function useVenues(includeArchived = false) {
+  return useQuery({ queryKey: ["venues", { includeArchived }], queryFn: () => api.get<Venues.VenueDTO[]>(`/api/venues${includeArchived ? "?includeArchived=true" : ""}`) });
 }
 
 function invalidate(qc: ReturnType<typeof useQueryClient>, projectId: string) {
@@ -97,4 +97,14 @@ export function useCreateVenue() {
 export function useUpdateVenue() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: ({ id, input }: { id: string; input: Venues.UpdateVenueInput }) => api.patch<Venues.VenueDTO>(`/api/venues/${id}`, input), onSuccess: () => qc.invalidateQueries({ queryKey: ["venues"] }) });
+}
+
+export function useArchiveVenue() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: ({ id, archived }: { id: string; archived: boolean }) => api.post<Venues.VenueDTO>(`/api/venues/${id}/${archived ? "archive" : "restore"}`, {}), onSuccess: () => qc.invalidateQueries({ queryKey: ["venues"] }) });
+}
+
+export function useDeleteVenue() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.delete(`/api/venues/${id}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["venues"] }) });
 }

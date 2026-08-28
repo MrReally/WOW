@@ -5,6 +5,7 @@ import { useUpdateProject } from "../hooks.ts";
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
 import { toLocalInput } from "../../../lib/datetime.ts";
+import { useDressCodeOptions } from "../../settings/hooks.ts";
 
 interface Props {
   open: boolean;
@@ -17,6 +18,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
   const update = useUpdateProject();
   const venues = useVenues();
   const createVenue = useCreateVenue();
+  const dressCodes = useDressCodeOptions();
   const [name, setName] = useState(project.name);
   const [clientId, setClientId] = useState(project.clientId);
   const [venueId, setVenueId] = useState(project.venueId ?? "");
@@ -25,6 +27,8 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
   const [newVenueAddress, setNewVenueAddress] = useState("");
   const [starts, setStarts] = useState(toLocalInput(project.startsAt));
   const [ends, setEnds] = useState(toLocalInput(project.endsAt));
+  const [dressCodeOptionId, setDressCodeOptionId] = useState(project.dressCodeOptionId ?? "");
+  const [dressCodeUniform, setDressCodeUniform] = useState(project.dressCodeUniform);
 
   // Re-sync when opening on a different project / after external changes.
   useEffect(() => {
@@ -34,6 +38,8 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
       setVenueId(project.venueId ?? "");
       setStarts(toLocalInput(project.startsAt));
       setEnds(toLocalInput(project.endsAt));
+      setDressCodeOptionId(project.dressCodeOptionId ?? "");
+      setDressCodeUniform(project.dressCodeUniform);
     }
   }, [open, project.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -50,6 +56,9 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
           venueId: venueId || null,
           startsAt: starts ? new Date(starts).toISOString() : null,
           endsAt: ends ? new Date(ends).toISOString() : null,
+          dressCodeOptionId: dressCodeOptionId || null,
+          dressCodeLabel: dressCodes.data?.find(x => x.id === dressCodeOptionId)?.label ?? null,
+          dressCodeUniform,
         },
       },
       { onSuccess: onClose }
@@ -105,6 +114,10 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
           </div>
         </div>
       )}
+      <Field label="Дресс-код">
+        <Select value={dressCodeOptionId} onChange={e => setDressCodeOptionId(e.target.value)} options={[{ value: "", label: "— не выбран —" }, ...(dressCodes.data ?? []).map(x => ({ value: x.id, label: x.label }))]} />
+      </Field>
+      <label className="row"><input type="checkbox" checked={dressCodeUniform} onChange={e => setDressCodeUniform(e.target.checked)} /> В форме SEVER</label>
       <div className="row">
         <Field label="Начало">
           <Input type="datetime-local" value={starts} onChange={(e) => setStarts(e.target.value)} />

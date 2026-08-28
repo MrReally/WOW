@@ -735,7 +735,7 @@ describe("Tech pickup/return → некомплект", () => {
     await expect(projects.service.addAssignment({ projectId: project.id, roleId: role.id, userId: second.id, invite: true, invitedByUserId: inviter.id })).rejects.toThrow();
   });
 
-  it("project roles: a person can be invited to several roles but accept only one", async () => {
+  it("project roles: a person can accept several distinct roles", async () => {
     const { projects } = wiring;
     const inviter = await makeTech("Multi Role Inviter");
     const person = await makeTech("Multi Role Person");
@@ -750,8 +750,9 @@ describe("Tech pickup/return → некомплект", () => {
     const b = await projects.service.addAssignment({ projectId: project.id, roleId: tech.id, userId: person.id, invite: true, invitedByUserId: inviter.id });
 
     await projects.service.respondToInvite(a.id, true, person.id);
+    await projects.service.respondToInvite(b.id, true, person.id);
     expect((await projects.service.getAssignment(a.id))?.status).toBe("accepted");
-    expect((await projects.service.getAssignment(b.id))?.status).toBe("cancelled");
+    expect((await projects.service.getAssignment(b.id))?.status).toBe("accepted");
   });
 
   it("project roles: direct additions cannot overfill and reducing seats cancels pending invites", async () => {
@@ -982,5 +983,29 @@ describe("Tech pickup/return → некомплект", () => {
     const quantityReturn = await wiring.operations.service.create({ kind: "return", projectId: project.id, expectedUnitIds: [], returnedUnitIds: [], quantityLines: [{ modelId: quantityModel.id, qty: 4 }] }, tech.id);
     await wiring.operations.service.post(quantityReturn.id, tech.id);
     expect((await wiring.equipment.service.modelStock(quantityModel.id)).inStock).toBe(10);
+  });
+
+  it("returns a unit to another warehouse and keeps venue installations outside warehouse stock", async () => {
+    const suffix = Date.now();
+    const actor = await makeTech(`Return target ${suffix}`);
+    const source = (await wiring.equipment.service.listWarehouses())[0]!;
+    const target = await wiring.equipment.service.createWarehouse({ name: `Target ${suffix}` });
+    const venue = await wiring.venues.service.create({ name: `Installed venue ${suffix}`, isVenue: true, isWarehouse: true });
+    const type = await wiring.equipment.service.createType({ name: `Installed type ${suffix}`, trackingMode: "serial" });
+    const model = await wiring.equipment.service.createModel({ typeId: type.id, name: `Fixture ${suffix}`, unitCostEUR: 10, dailyPriceEUR: 2 });
+    const unit = await wiring.equipment.service.createUnit({ modelId: model.id, assetTag: `RET-${suffix}`, warehouseId: source.id });
+    const client = await wiring.projects.service.createClient({ name: `Return client ${suffix}` });
+    const project = await wiring.projects.service.createProject({ name: `Return project ${suffix}`, clientId: client.id });
+
+    await wiring.equipment.service.issueUnits({ projectId: project.id, unitIds: [unit.id], actorId: actor.id });
+    await wiring.equipment.service.returnUnits({ projectId: project.id, returnedUnitIds: [unit.id], expectedUnitIds: [unit.id], warehouseId: target.id, actorId: actor.id });
+    expect(await wiring.equipment.service.getUnit(unit.id)).toEqual(expect.objectContaining({ status: "in_stock", warehouseId: target.id }));
+    expect(await wiring.equipment.service.projectTurnoverReview(project.id)).toEqual([expect.objectContaining({ unitId: unit.id, fromWarehouseId: source.id, toWarehouseId: target.id, outcome: "returned" })]);
+
+    await wiring.equipment.service.installUnit(unit.id, venue.id, actor.id);
+    expect(await wiring.equipment.service.getUnit(unit.id)).toEqual(expect.objectContaining({ status: "installed", warehouseId: null, installedVenueId: venue.id }));
+    expect((await wiring.equipment.service.listUnits({ warehouseId: target.id })).some(item => item.id === unit.id)).toBe(false);
+    await wiring.equipment.service.uninstallUnit(unit.id, source.id, actor.id);
+    expect(await wiring.equipment.service.getUnit(unit.id)).toEqual(expect.objectContaining({ status: "in_stock", warehouseId: source.id, installedVenueId: null }));
   });
 });

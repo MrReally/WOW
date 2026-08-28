@@ -40,7 +40,14 @@ export type Permission =
   | "clients.manage"
   | "finance.view"
   | "finance.manage"
+  | "operations.finance.view"
+  | "operations.finance.manage"
+  | "operations.payroll.view"
+  | "operations.payroll.manage"
+  | "venues.view"
   | "venues.manage"
+  | "venues.archive"
+  | "venues.delete"
   | "plans.view"
   | "plans.manage"
   | "people.view"
@@ -82,7 +89,14 @@ export const PERMISSIONS: PermissionMeta[] = [
   { key: "clients.manage", group: "Планирование", label: "Управлять клиентами" },
   { key: "finance.view", group: "Финансы", label: "Видеть финансы" },
   { key: "finance.manage", group: "Финансы", label: "Транзакции, счета, курсы" },
+  { key: "operations.finance.view", group: "Operations · финансы", label: "Видеть оплату клиента в Operations" },
+  { key: "operations.finance.manage", group: "Operations · финансы", label: "Вносить оплату клиента в Operations" },
+  { key: "operations.payroll.view", group: "Operations · выплаты", label: "Видеть людей и ставки проекта в Operations" },
+  { key: "operations.payroll.manage", group: "Operations · выплаты", label: "Отмечать выплаты людям в Operations" },
+  { key: "venues.view", group: "Площадки", label: "Видеть пространство Venues" },
   { key: "venues.manage", group: "Площадки и планы", label: "Управлять площадками" },
+  { key: "venues.archive", group: "Площадки", label: "Архивировать и восстанавливать площадки" },
+  { key: "venues.delete", group: "Площадки", label: "Удалять площадки окончательно" },
   { key: "plans.view", group: "Площадки и планы", label: "Видеть технические планы" },
   { key: "plans.manage", group: "Площадки и планы", label: "Редактировать планы (сцена, слои, версии)" },
   { key: "people.view", group: "Администрирование", label: "Видеть людей" },

@@ -15,6 +15,7 @@ const unit = (id: string, currentProjectId: string | null): Equipment.EquipmentU
   status: currentProjectId ? "on_project" : "in_stock",
   warehouseId: null,
   zoneId: null,
+  installedVenueId: null,
   currentProjectId,
   notes: null,
   createdAt: "2026-08-15T00:00:00.000Z",

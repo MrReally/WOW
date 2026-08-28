@@ -256,10 +256,18 @@ export function useIssueUnits() {
 export function useReturnUnits() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { projectId: string; returnedUnitIds: string[]; expectedUnitIds: string[]; note?: string }) =>
+    mutationFn: (input: { projectId: string; returnedUnitIds: string[]; expectedUnitIds: string[]; warehouseId?: string | null; note?: string }) =>
       api.post<Operations.OperationDocumentDTO>("/api/operations/return", input),
     onSuccess: () => invalidateEquipment(qc),
   });
+}
+export function useInstallUnit() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: ({ id, venueId }: { id: string; venueId: string }) => api.post(`/api/equipment/units/${id}/install`, { venueId }), onSuccess: () => invalidateEquipment(qc) });
+}
+export function useUninstallUnit() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: ({ id, warehouseId }: { id: string; warehouseId: string }) => api.post(`/api/equipment/units/${id}/uninstall`, { warehouseId }), onSuccess: () => invalidateEquipment(qc) });
 }
 
 export function useImportCsv() {

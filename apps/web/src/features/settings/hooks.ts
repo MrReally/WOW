@@ -53,6 +53,17 @@ export function useSetDateTimeSettings() {
     onSuccess: (settings) => qc.setQueryData(["app-settings", "date-time"], settings),
   });
 }
+export function useDressCodeOptions(includeArchived = false) {
+  return useQuery({ queryKey: ["app-settings", "dress-codes", includeArchived], queryFn: () => api.get<AppSettings.DressCodeOptionDTO[]>(`/api/app-settings/dress-codes${includeArchived ? "?includeArchived=true" : ""}`) });
+}
+export function useCreateDressCodeOption() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (label: string) => api.post<AppSettings.DressCodeOptionDTO>("/api/app-settings/dress-codes", { label }), onSuccess: () => qc.invalidateQueries({ queryKey: ["app-settings", "dress-codes"] }) });
+}
+export function useUpdateDressCodeOption() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: ({ id, input }: { id: string; input: Partial<Pick<AppSettings.DressCodeOptionDTO, "label" | "active" | "sortOrder">> }) => api.patch(`/api/app-settings/dress-codes/${id}`, input), onSuccess: () => qc.invalidateQueries({ queryKey: ["app-settings", "dress-codes"] }) });
+}
 export function useSetMyPreferences() {
   const qc = useQueryClient();
   return useMutation({

@@ -19,11 +19,12 @@ export const WORKSPACES: Workspace[] = [
   { id: "apex", name: "Apex", shortcut: "A", glyph: "radar", tone: "info", route: "/apex", requires: ["apex.view"], sub: "Управление · прокаты · проблемы · долги" },
   { id: "ops", name: "Operations", shortcut: "O", glyph: "pin", tone: "warn", route: "/operations", requires: ["operations.view"], sub: "Бригада · мои проекты · выдача/возврат" },
   { id: "wh", name: "Warehouse", shortcut: "W", glyph: "box", tone: "warn", route: "/warehouse", requires: ["warehouse.view"], sub: "Каталог · склад · кабели" },
+  { id: "venues", name: "Venues", shortcut: "V", glyph: "pin", tone: "info", route: "/venues", requires: ["venues.view", "venues.manage", "venues.archive", "venues.delete"], sub: "Площадки · карточки · архив" },
   { id: "plan", name: "Planning", shortcut: "P", glyph: "rows", tone: "purple", route: "/projects", requires: ["projects.view"], sub: "Проекты · брони · команда" },
   { id: "crew", name: "Crew", shortcut: "E", glyph: "person", tone: "ok", route: "/crew", requires: ["people.view"], sub: "Работники · досье · история" },
   { id: "ctr", name: "Contractors", shortcut: "C", glyph: "person", tone: "info", route: "/contractors", requires: ["projects.reservation.manage", "finance.view"], sub: "Подрядчики · цены · возвраты" },
   { id: "fin", name: "Finance", shortcut: "F", glyph: "coin", tone: "ok", route: "/finance", requires: ["finance.view"], sub: "Счета · долги · окупаемость" },
-  { id: "adm", name: "Settings", shortcut: "S", glyph: "shield", tone: "alert", route: "/settings", requires: ["people.view", "people.manage", "roles.manage", "telegram.inbox.manage", "venues.manage", "finance.manage", "projects.manage"], sub: "Места · автопарк · права · курсы" },
+  { id: "adm", name: "Settings", shortcut: "S", glyph: "shield", tone: "alert", route: "/settings", requires: ["people.view", "people.manage", "roles.manage", "telegram.inbox.manage", "finance.manage", "projects.manage"], sub: "Автопарк · права · курсы" },
 ];
 
 export const WORKSPACE_COPY: Record<string, Record<"ru" | "en" | "sr", { name: string; sub: string }>> = {
@@ -41,6 +42,11 @@ export const WORKSPACE_COPY: Record<string, Record<"ru" | "en" | "sr", { name: s
     ru: { name: "Warehouse", sub: "Каталог · склад · кабели" },
     en: { name: "Warehouse", sub: "Catalog · stock · cables" },
     sr: { name: "Warehouse", sub: "Katalog · magacin · kablovi" },
+  },
+  venues: {
+    ru: { name: "Venues", sub: "Площадки · карточки · архив" },
+    en: { name: "Venues", sub: "Venues · cards · archive" },
+    sr: { name: "Venues", sub: "Lokacije · kartice · arhiva" },
   },
   plan: {
     ru: { name: "Planning", sub: "Проекты · брони · команда" },
@@ -63,9 +69,9 @@ export const WORKSPACE_COPY: Record<string, Record<"ru" | "en" | "sr", { name: s
     sr: { name: "Finance", sub: "Računi · dugovi · marža" },
   },
   adm: {
-    ru: { name: "Settings", sub: "Места · автопарк · права · курсы" },
-    en: { name: "Settings", sub: "Places · fleet · access · FX" },
-    sr: { name: "Settings", sub: "Mesta · vozila · prava · kurs" },
+    ru: { name: "Settings", sub: "Автопарк · права · курсы" },
+    en: { name: "Settings", sub: "Fleet · access · FX" },
+    sr: { name: "Settings", sub: "Vozila · prava · kurs" },
   },
 };
 

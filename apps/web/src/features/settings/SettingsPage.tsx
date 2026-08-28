@@ -4,12 +4,11 @@ import { CURRENCIES, DATE_FORMATS, formatDateValue, formatTimeValue } from "@sev
 import { Card, Button, SectionTitle, Input, Select, Loading } from "../../ui-kit/index.ts";
 import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
-import { useDateTimeSettings, useFxRates, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetTelegramInboxSettings, useTelegramInboxSettings } from "./hooks.ts";
+import { useCreateDressCodeOption, useDateTimeSettings, useDressCodeOptions, useFxRates, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetTelegramInboxSettings, useTelegramInboxSettings, useUpdateDressCodeOption } from "./hooks.ts";
 import { RoleEditor } from "./components/RoleEditor.tsx";
 import { useCableSettings, useSetCableSettings } from "../warehouse/hooks.ts";
 import { BackupManager } from "./components/BackupManager.tsx";
 import { FleetManager } from "./components/FleetManager.tsx";
-import { PlacesManager } from "./components/PlacesManager.tsx";
 
 export function SettingsPage() {
   const { theme, toggle } = useTheme();
@@ -54,7 +53,8 @@ export function SettingsPage() {
 
       {can("roles.manage") && <RoleEditor />}
 
-      {can("venues.manage") && <><SectionTitle>Места</SectionTitle><PlacesManager /></>}
+      {can("projects.manage") && <DressCodeSettings />}
+
       {can("finance.manage", "projects.manage") && <><SectionTitle>Автопарк</SectionTitle><FleetManager /></>}
 
       {canTelegramInbox && (
@@ -163,6 +163,12 @@ export function SettingsPage() {
       )}
     </div>
   );
+}
+
+function DressCodeSettings() {
+  const options = useDressCodeOptions(true), create = useCreateDressCodeOption(), update = useUpdateDressCodeOption();
+  const [label, setLabel] = useState("");
+  return <><SectionTitle>Дресс-код мероприятий</SectionTitle><Card><div className="stack">{(options.data ?? []).map(option => <div className="row row--between" key={option.id}><span className={option.active ? "" : "card__subtitle"}>{option.label}</span><Button variant="secondary" onClick={() => update.mutate({ id: option.id, input: { active: !option.active } })}>{option.active ? "В архив" : "Вернуть"}</Button></div>)}<div className="row"><Input value={label} onChange={e => setLabel(e.target.value)} placeholder="Новый вариант" /><Button disabled={!label.trim() || create.isPending} onClick={() => create.mutate(label.trim(), { onSuccess: () => setLabel("") })}>Добавить</Button></div></div></Card></>;
 }
 
 function DateTimeFormatSettings() {

@@ -105,7 +105,7 @@ export function registerFinanceRoutes(
   // ── Accounts ──
   app.get("/api/finance/accounts", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "finance.view");
+    requirePermission(auth, "finance.view", "operations.finance.view", "operations.finance.manage");
     return service.listAccounts();
   });
   app.post("/api/finance/accounts", async (req) => {
@@ -119,13 +119,13 @@ export function registerFinanceRoutes(
     "/api/finance/transactions",
     async (req) => {
       const auth = await ctx.auth(req);
-      requirePermission(auth, "finance.view");
+      requirePermission(auth, "finance.view", "operations.finance.view", "operations.finance.manage");
       return service.listTransactions({ projectId: req.query.projectId, unitId: req.query.unitId });
     }
   );
   app.post("/api/finance/transactions", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "finance.manage");
+    requirePermission(auth, "finance.manage", "operations.finance.manage");
     const body = txSchema.parse(req.body);
     return service.createTransaction({ ...body, createdByUserId: auth.userId } as Finance.CreateTransactionInput);
   });
@@ -133,7 +133,7 @@ export function registerFinanceRoutes(
   // ── Aggregates ──
   app.get<{ Params: { id: string } }>("/api/finance/projects/:id", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "finance.view");
+    requirePermission(auth, "finance.view", "operations.finance.view", "operations.finance.manage");
     return service.projectFinance(req.params.id);
   });
   app.get("/api/finance/debts", async (req) => {

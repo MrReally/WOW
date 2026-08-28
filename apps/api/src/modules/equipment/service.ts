@@ -36,6 +36,7 @@ interface UnitRow {
   warehouse_id: string | null;
   zone_id: string | null;
   current_project_id: string | null;
+  installed_venue_id: string | null;
   notes: string | null;
   archived_at: Date | null;
   created_at: Date;
@@ -128,6 +129,7 @@ const unitDTO = (r: UnitRow): Equipment.EquipmentUnitDTO => ({
   warehouseId: r.warehouse_id,
   zoneId: r.zone_id,
   currentProjectId: r.current_project_id,
+  installedVenueId: r.installed_venue_id,
   notes: r.notes,
   archivedAt: r.archived_at ? r.archived_at.toISOString() : null,
   createdAt: r.created_at.toISOString(),
@@ -874,6 +876,41 @@ export function createEquipmentService(
       return result.unit;
     },
 
+    async installUnit(unitId, venueId, actorId, note) {
+      const row = await tx(async client => {
+        const unit = await one<UnitRow>(client, `SELECT * FROM equipment.units WHERE id=$1 FOR UPDATE`, [unitId]);
+        if (!unit) throw NotFound("unit", unitId);
+        if (unit.status !== "in_stock") throw BadRequest("инсталлировать можно только оборудование со склада");
+        const updated = await one<UnitRow>(client, `UPDATE equipment.units SET status='installed',warehouse_id=NULL,zone_id=NULL,current_project_id=NULL,installed_venue_id=$2 WHERE id=$1 RETURNING *`, [unitId,venueId]);
+        await appendJournal(client,{unitId,action:"installed",fromStatus:unit.status,toStatus:"installed",fromWarehouseId:unit.warehouse_id,actorId,note:note??`инсталлировано на площадке ${venueId}`});
+        return updated!;
+      });
+      return unitDTO(row);
+    },
+    async uninstallUnit(unitId, warehouseId, actorId, note) {
+      await assertWarehouse(warehouseId);
+      const row = await tx(async client => {
+        const unit = await one<UnitRow>(client, `SELECT * FROM equipment.units WHERE id=$1 FOR UPDATE`, [unitId]);
+        if (!unit) throw NotFound("unit", unitId);
+        if (unit.status !== "installed") throw BadRequest("оборудование не отмечено как инсталлированное");
+        const updated = await one<UnitRow>(client, `UPDATE equipment.units SET status='in_stock',warehouse_id=$2,installed_venue_id=NULL WHERE id=$1 RETURNING *`, [unitId,warehouseId]);
+        await appendJournal(client,{unitId,action:"uninstalled",fromStatus:"installed",toStatus:"in_stock",warehouseId,toWarehouseId:warehouseId,actorId,note:note??"возвращено с инсталляции"});
+        return updated!;
+      });
+      return unitDTO(row);
+    },
+    async projectTurnoverReview(projectId) {
+      const rows = await query<JournalRow>(db, `SELECT * FROM equipment.journal WHERE project_id=$1 ORDER BY at`, [projectId]);
+      const keys = [...new Set(rows.filter(r=>r.unit_id||r.model_id).map(r=>r.unit_id ? `u:${r.unit_id}` : `m:${r.model_id}`))];
+      return keys.map(key => {
+        const entries = rows.filter(r => (r.unit_id ? `u:${r.unit_id}` : `m:${r.model_id}`) === key);
+        const issued = entries.find(r => r.action === "issued");
+        const returned = [...entries].reverse().find(r => r.action === "returned" || r.action === "return_incomplete");
+        const status = [...entries].reverse().find(r => r.to_status === "lost" || r.to_status === "in_repair");
+        return { unitId: entries[0]?.unit_id ?? null, modelId: entries[0]?.model_id ?? null, qty: Math.max(1, entries.filter(r=>r.action==="issued").reduce((n,r)=>n+(r.qty??1),0)), fromWarehouseId: issued?.from_warehouse_id ?? issued?.warehouse_id ?? null, toWarehouseId: returned?.to_warehouse_id ?? returned?.warehouse_id ?? null, outcome: status?.to_status === "lost" ? "lost" as const : status?.to_status === "in_repair" ? "broken" as const : returned ? "returned" as const : "missing" as const, notes: entries.map(r=>r.note).filter((x):x is string=>!!x) };
+      });
+    },
+
     async setModelStockTotal(modelId, total, warehouseIdInput, zoneId) {
       const model = await this.getModel(modelId);
       if (!model) throw NotFound("model", modelId);
@@ -1180,6 +1217,8 @@ export function createEquipmentService(
             toStatus: "on_project",
             projectId: input.projectId,
             actorId: input.actorId,
+            warehouseId: unit.warehouse_id,
+            fromWarehouseId: unit.warehouse_id,
             note: input.note ?? null,
           });
           results.push(unitDTO(updated!));
@@ -1214,6 +1253,8 @@ export function createEquipmentService(
     },
 
     async returnUnits(input) {
+      const targetWarehouseId = input.warehouseId ?? await defaultWarehouseId();
+      await assertWarehouse(targetWarehouseId);
       const returnedSet = new Set(input.returnedUnitIds);
       const missing = input.expectedUnitIds.filter((id) => !returnedSet.has(id));
 
@@ -1227,8 +1268,8 @@ export function createEquipmentService(
           if (!unit) throw NotFound("unit", unitId);
           await query(
             client,
-            `UPDATE equipment.units SET status='in_stock', current_project_id=NULL WHERE id=$1`,
-            [unitId]
+            `UPDATE equipment.units SET status='in_stock', current_project_id=NULL, warehouse_id=$2, zone_id=NULL WHERE id=$1`,
+            [unitId,targetWarehouseId]
           );
           await appendJournal(client, {
             unitId,
@@ -1237,6 +1278,9 @@ export function createEquipmentService(
             toStatus: "in_stock",
             projectId: input.projectId,
             actorId: input.actorId,
+            warehouseId: targetWarehouseId,
+            fromWarehouseId: unit.warehouse_id,
+            toWarehouseId: targetWarehouseId,
             note: input.note ?? null,
           });
         }

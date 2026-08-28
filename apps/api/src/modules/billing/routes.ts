@@ -56,7 +56,7 @@ export function registerBillingRoutes(
 ): void {
   app.get<{ Params: { id: string } }>("/api/projects/:id/invoice", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "finance.view", "finance.manage");
+    requirePermission(auth, "finance.view", "finance.manage", "operations.finance.view", "operations.finance.manage");
     return service.projectInvoice(req.params.id);
   });
   app.post<{ Params: { id: string } }>("/api/projects/:id/invoice/pdf", async (req, reply) => {

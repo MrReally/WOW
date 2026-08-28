@@ -11,6 +11,7 @@ export const unitStatusLabel: Record<Equipment.UnitStatus, string> = {
   on_project: "На проекте",
   in_repair: "В ремонте",
   at_contractor: "У подрядчика",
+  installed: "Инсталлировано",
   lost: "Утеряно",
 };
 
@@ -20,6 +21,7 @@ export const unitStatusTone: Record<Equipment.UnitStatus, BadgeTone> = {
   on_project: "warn",
   in_repair: "danger",
   at_contractor: "warn",
+  installed: "info",
   lost: "danger",
 };
 

@@ -128,6 +128,9 @@ ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 ALTER TABLE equipment.models ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS warehouse_id uuid REFERENCES equipment.warehouses(id);
 ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS zone_id uuid REFERENCES equipment.storage_zones(id);
+ALTER TABLE equipment.units ADD COLUMN IF NOT EXISTS installed_venue_id uuid;
+ALTER TABLE equipment.units DROP CONSTRAINT IF EXISTS units_status_check;
+ALTER TABLE equipment.units ADD CONSTRAINT units_status_check CHECK (status IN ('in_stock','reserved','on_project','in_repair','at_contractor','installed','lost'));
 UPDATE equipment.units
 SET warehouse_id=(SELECT id FROM equipment.warehouses ORDER BY is_default DESC, created_at LIMIT 1)
 WHERE warehouse_id IS NULL;

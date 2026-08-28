@@ -15,6 +15,9 @@ const projectSchema = z.object({
   startsAt: z.string().datetime().nullable().optional(),
   endsAt: z.string().datetime().nullable().optional(),
   venueId: z.string().uuid().nullable().optional(),
+  dressCodeOptionId: z.string().uuid().nullable().optional(),
+  dressCodeLabel: z.string().nullable().optional(),
+  dressCodeUniform: z.boolean().optional(),
 });
 const statusSchema = z.object({ status: z.enum(PROJECT_STATUSES as [string, ...string[]]) });
 const operationStageSchema = z.object({ stage: z.enum(PROJECT_CHECKLIST_GROUPS as [string, ...string[]]) });
@@ -30,6 +33,9 @@ const updateProjectSchema = z.object({
   startsAt: z.string().datetime().nullable().optional(),
   endsAt: z.string().datetime().nullable().optional(),
   venueId: z.string().uuid().nullable().optional(),
+  dressCodeOptionId: z.string().uuid().nullable().optional(),
+  dressCodeLabel: z.string().nullable().optional(),
+  dressCodeUniform: z.boolean().optional(),
 });
 const duplicateProjectSchema = z.object({
   name: z.string().trim().min(1),
@@ -116,6 +122,7 @@ const assignmentSchema = z.object({
   roleNote: z.string().nullable().optional(),
   rateEUR: z.number().nonnegative().nullable().optional(),
   invite: z.boolean().optional(),
+  dressCodeEnabled: z.boolean().optional(),
 });
 const pingSchema = z.object({
   userId: z.string().uuid(),
@@ -375,8 +382,11 @@ export function registerProjectsRoutes(
   });
 
   app.get<{ Params: { id: string } }>("/api/projects/:id/assignments", async (req) => {
-    await ctx.auth(req);
-    return service.listAssignments(req.params.id);
+    const auth = await ctx.auth(req);
+    const rows = await service.listAssignments(req.params.id);
+    const compensationPermissions = ["projects.assignment.manage", "finance.view", "finance.manage", "operations.payroll.view", "operations.payroll.manage"] as const;
+    const canSeeCompensation = auth.isOwner || compensationPermissions.some(permission => auth.permissions.includes(permission));
+    return canSeeCompensation ? rows : rows.map(row => ({ ...row, rateEUR: null, paidEUR: 0 }));
   });
   app.get<{ Params: { id: string } }>("/api/projects/:id/roles", async (req) => {
     await ctx.auth(req);
@@ -405,6 +415,13 @@ export function registerProjectsRoutes(
     requirePermission(auth, "projects.assignment.manage");
     const body = assignmentSchema.parse(req.body);
     return service.addAssignment({ ...body, invitedByUserId: auth.userId } as Projects.AddAssignmentInput);
+  });
+  app.patch<{ Params: { id: string } }>("/api/assignments/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    const body = z.object({ dressCodeEnabled: z.boolean().optional(), paidEUR: z.number().nonnegative().optional() }).parse(req.body);
+    if (body.paidEUR !== undefined) requirePermission(auth, "operations.payroll.manage");
+    else requirePermission(auth, "projects.assignment.manage");
+    return service.updateAssignment(req.params.id, body);
   });
   app.delete<{ Params: { id: string } }>("/api/assignments/:id", async (req) => {
     const auth = await ctx.auth(req);

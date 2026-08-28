@@ -181,9 +181,16 @@ export function useDeleteTiming() {
 export function useAddAssignment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { projectId: string; roleId?: string | null; userId: string; roleNote?: string | null; rateEUR?: number | null; invite?: boolean }) =>
+    mutationFn: (input: { projectId: string; roleId?: string | null; userId: string; roleNote?: string | null; rateEUR?: number | null; invite?: boolean; dressCodeEnabled?: boolean }) =>
       api.post("/api/assignments", input),
     meta: { successMessage: "Готово" },
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+export function useUpdateAssignment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Projects.UpdateAssignmentInput }) => api.patch<Projects.AssignmentDTO>(`/api/assignments/${id}`, input),
     onSuccess: () => invalidateProjects(qc),
   });
 }

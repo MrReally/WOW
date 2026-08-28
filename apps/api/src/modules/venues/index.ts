@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS venues.venues (
   latitude numeric(10,7),
   longitude numeric(10,7),
   address_verified boolean NOT NULL DEFAULT false,
+  archived_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE venues.venues ADD COLUMN IF NOT EXISTS is_venue boolean NOT NULL DEFAULT true;
@@ -34,6 +35,7 @@ ALTER TABLE venues.venues ADD COLUMN IF NOT EXISTS google_place_id text;
 ALTER TABLE venues.venues ADD COLUMN IF NOT EXISTS latitude numeric(10,7);
 ALTER TABLE venues.venues ADD COLUMN IF NOT EXISTS longitude numeric(10,7);
 ALTER TABLE venues.venues ADD COLUMN IF NOT EXISTS address_verified boolean NOT NULL DEFAULT false;
+ALTER TABLE venues.venues ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 `;
 
 interface Row {
@@ -51,6 +53,7 @@ interface Row {
   latitude: string | null;
   longitude: string | null;
   address_verified: boolean;
+  archived_at: Date | null;
   created_at: Date;
 }
 const toDTO = (r: Row): Venues.VenueDTO => ({
@@ -68,13 +71,14 @@ const toDTO = (r: Row): Venues.VenueDTO => ({
   latitude: r.latitude === null ? null : Number(r.latitude),
   longitude: r.longitude === null ? null : Number(r.longitude),
   addressVerified: r.address_verified,
+  archivedAt: r.archived_at?.toISOString() ?? null,
   createdAt: r.created_at.toISOString(),
 });
 
 function createService(db: Sql): Venues.VenuesService {
   return {
-    async list() {
-      const rows = await query<Row>(db, `SELECT * FROM venues.venues ORDER BY name`);
+    async list(includeArchived = false) {
+      const rows = await query<Row>(db, `SELECT * FROM venues.venues ${includeArchived ? "" : "WHERE archived_at IS NULL"} ORDER BY archived_at NULLS FIRST, name`);
       return rows.map(toDTO);
     },
     async get(id) {
@@ -90,6 +94,15 @@ function createService(db: Sql): Venues.VenuesService {
         [input.name,input.address??null,input.notes??null,input.widthM??null,input.depthM??null,input.isVenue??true,input.isWarehouse??false,input.contacts??null,input.workingHours??null,input.googlePlaceId??null,input.latitude??null,input.longitude??null,input.addressVerified??false]
       );
       return toDTO(row!);
+    },
+    async setArchived(id, archived) {
+      const row = await one<Row>(db, `UPDATE venues.venues SET archived_at=CASE WHEN $2 THEN COALESCE(archived_at,now()) ELSE NULL END WHERE id=$1 RETURNING *`, [id, archived]);
+      if (!row) throw NotFound("venue", id);
+      return toDTO(row);
+    },
+    async delete(id) {
+      const row = await one<{ id: string }>(db, `DELETE FROM venues.venues WHERE id=$1 RETURNING id`, [id]);
+      if (!row) throw NotFound("venue", id);
     },
     async update(id, input) {
       const existing = await this.get(id);
@@ -146,9 +159,9 @@ export function createVenuesModule(db: Sql): SeverModule<Venues.VenuesService> {
     migration,
     service,
     registerRoutes: (app: FastifyInstance, ctx) => {
-      app.get("/api/venues", async (req) => {
+      app.get<{ Querystring: { includeArchived?: string } }>("/api/venues", async (req) => {
         await ctx.auth(req);
-        return service.list();
+        return service.list(req.query.includeArchived === "true");
       });
       app.get<{ Querystring: { q?: string } }>("/api/places/address-suggestions", async (req) => {
         await ctx.auth(req);
@@ -184,6 +197,22 @@ export function createVenuesModule(db: Sql): SeverModule<Venues.VenuesService> {
         const auth = await ctx.auth(req);
         requirePermission(auth, "venues.manage");
         return service.update(req.params.id, createSchema.partial().parse(req.body));
+      });
+      app.post<{ Params: { id: string } }>("/api/venues/:id/archive", async (req) => {
+        const auth = await ctx.auth(req);
+        requirePermission(auth, "venues.archive", "venues.manage");
+        return service.setArchived(req.params.id, true);
+      });
+      app.post<{ Params: { id: string } }>("/api/venues/:id/restore", async (req) => {
+        const auth = await ctx.auth(req);
+        requirePermission(auth, "venues.archive", "venues.manage");
+        return service.setArchived(req.params.id, false);
+      });
+      app.delete<{ Params: { id: string } }>("/api/venues/:id", async (req) => {
+        const auth = await ctx.auth(req);
+        requirePermission(auth, "venues.delete");
+        await service.delete(req.params.id);
+        return { ok: true };
       });
     },
   };

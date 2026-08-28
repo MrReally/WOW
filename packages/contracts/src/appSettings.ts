@@ -30,9 +30,19 @@ export interface DateTimeSettingsDTO {
 
 export type UpdateDateTimeSettingsInput = DateTimeSettingsDTO;
 
+export interface DressCodeOptionDTO {
+  id: string;
+  label: string;
+  active: boolean;
+  sortOrder: number;
+}
+
 export interface AppSettingsService {
   getDateTimeSettings(): Promise<DateTimeSettingsDTO>;
   updateDateTimeSettings(input: UpdateDateTimeSettingsInput): Promise<DateTimeSettingsDTO>;
+  listDressCodeOptions(includeArchived?: boolean): Promise<DressCodeOptionDTO[]>;
+  createDressCodeOption(input: { label: string }): Promise<DressCodeOptionDTO>;
+  updateDressCodeOption(id: string, input: { label?: string; active?: boolean; sortOrder?: number }): Promise<DressCodeOptionDTO>;
 }
 
 export const DEFAULT_DATE_TIME_SETTINGS: DateTimeSettingsDTO = {

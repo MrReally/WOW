@@ -17,6 +17,7 @@ export interface VenueDTO {
   latitude: number | null;
   longitude: number | null;
   addressVerified: boolean;
+  archivedAt: ISODateTime | null;
   createdAt: ISODateTime;
 }
 
@@ -51,8 +52,10 @@ export interface ResolvedAddressDTO {
 export type UpdateVenueInput = Partial<CreateVenueInput>;
 
 export interface VenuesService {
-  list(): Promise<VenueDTO[]>;
+  list(includeArchived?: boolean): Promise<VenueDTO[]>;
   get(id: ID): Promise<VenueDTO | null>;
   create(input: CreateVenueInput): Promise<VenueDTO>;
   update(id: ID, input: UpdateVenueInput): Promise<VenueDTO>;
+  setArchived(id: ID, archived: boolean): Promise<VenueDTO>;
+  delete(id: ID): Promise<void>;
 }

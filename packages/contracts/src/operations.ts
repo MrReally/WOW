@@ -7,7 +7,7 @@ export interface InventoryLine { unitId: ID; present: boolean; beforeStatus?: Un
 export interface QuantityOperationLine { modelId: ID; warehouseId?: ID | null; qty: number }
 export type OperationPayload =
   | { kind: "issue"; projectId: ID; unitIds: ID[]; quantityLines?: QuantityOperationLine[]; note?: string | null }
-  | { kind: "return"; projectId: ID; returnedUnitIds: ID[]; expectedUnitIds: ID[]; quantityLines?: QuantityOperationLine[]; note?: string | null }
+  | { kind: "return"; projectId: ID; returnedUnitIds: ID[]; expectedUnitIds: ID[]; warehouseId?: ID | null; quantityLines?: QuantityOperationLine[]; note?: string | null }
   | { kind: "transfer"; unitId: ID; warehouseId: ID; fromWarehouseId?: ID | null; note?: string | null }
   | { kind: "inventory"; warehouseId?: ID | null; lines: InventoryLine[]; note?: string | null };
 export type OperationDocumentInput = OperationPayload & { documentAt?: ISODateTime };

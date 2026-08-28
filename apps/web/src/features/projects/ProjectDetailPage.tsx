@@ -25,6 +25,7 @@ import {
   useSetTimingAssignees,
   useDeleteTiming,
   useAddAssignment,
+  useUpdateAssignment,
   useRemoveAssignment,
   useCreateProjectRole,
   useUpdateProjectRole,
@@ -180,6 +181,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const setTimingAssignees = useSetTimingAssignees();
   const deleteTiming = useDeleteTiming();
   const addAssignment = useAddAssignment();
+  const updateAssignment = useUpdateAssignment();
   const removeAssignment = useRemoveAssignment();
   const createProjectRole = useCreateProjectRole();
   const updateProjectRole = useUpdateProjectRole();
@@ -215,6 +217,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [roleEndsAt, setRoleEndsAt] = useState<string | null>(null);
   const [roleDrafts, setRoleDrafts] = useState<Record<string, { title: string; requiredCount: string; rateEUR: string }>>({});
   const [assignCandidates, setAssignCandidates] = useState<Record<string, string[]>>({});
+  const [assignDressCodes, setAssignDressCodes] = useState<Record<string, boolean>>({});
   const [candidateQueries, setCandidateQueries] = useState<Record<string, string>>({});
   const [pingTitle, setPingTitle] = useState("");
   const [pingMessage, setPingMessage] = useState("");
@@ -407,6 +410,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
           <StatusBadge tone={projectStatusTone[p.status]}>{projectStatusLabel[p.status]}</StatusBadge>
         </div>
         <p className="card__subtitle" style={{ marginTop: "var(--space-2)" }}>{dateRange(p.startsAt, p.endsAt)}</p>
+        {(p.dressCodeLabel || p.dressCodeUniform) && <p className="card__subtitle" style={{ marginTop: 4 }}>👔 {[p.dressCodeLabel, p.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}</p>}
         {canManage && (
           <div className="row" style={{ marginTop: "var(--space-3)" }}>
             <div style={{ flex: 1 }}>
@@ -751,7 +755,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                 .map((a) => a.userId)
             );
             const roleActiveIds = new Set(roleAssignments.filter((a) => a.status !== "declined" && a.status !== "cancelled").map((a) => a.userId));
-            const available = closed ? [] : (people.data ?? []).filter((u) => !confirmedIds.has(u.id) && !roleActiveIds.has(u.id));
+            const available = closed ? [] : (people.data ?? []).filter((u) => !roleActiveIds.has(u.id));
             const selected = (assignCandidates[role.id] ?? []).filter((uid) => available.some((u) => u.id === uid));
             const directAddAllowed = selected.length > 0 && selected.length <= openSeats;
             const toggleCandidate = (uid: string) =>
@@ -765,7 +769,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             const submit = async (invite: boolean) => {
               if (selected.length === 0) return;
               for (const userId of selected) {
-                await addAssignment.mutateAsync({ projectId: p.id, roleId: role.id, userId, invite });
+                await addAssignment.mutateAsync({ projectId: p.id, roleId: role.id, userId, invite, dressCodeEnabled: assignDressCodes[role.id] ?? false });
               }
               setAssignCandidates((prev) => ({ ...prev, [role.id]: [] }));
             };
@@ -816,13 +820,13 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                     {[...roleAssignments].sort((a, b) => assignmentRank(a.status) - assignmentRank(b.status)).map((a) => {
                       const st = ASSIGN_STATUS[a.status];
                       return (
-                        <div key={a.id} className="row row--between" style={{ gap: 8 }}>
+                        <div key={a.id} className="row row--between" style={{ gap: 8, borderRadius: 10, padding: "4px 6px", background: confirmedIds.has(a.userId) && (assignments.data ?? []).filter(x => x.userId === a.userId && (x.status === "added" || x.status === "accepted")).length > 1 ? "color-mix(in srgb, var(--warn) 9%, transparent)" : undefined }}>
                           <div className="row" style={{ gap: 6, minWidth: 0 }}>
                             <Chip label={userName(a.userId)} tone={a.status === "declined" || a.status === "cancelled" ? "neutral" : "ok"} />
                             <Chip label={st.label} tone={st.tone} />
                           </div>
                           {canAssign && (
-                            <button
+                            <div className="row"><button className={`icon-btn ${a.dressCodeEnabled ? "icon-btn--warn" : ""}`} aria-label="Дресс-код" title="Применить дресс-код к приглашению" onClick={() => updateAssignment.mutate({ id: a.id, input: { dressCodeEnabled: !a.dressCodeEnabled } }, { onSuccess: () => toast("success", a.dressCodeEnabled ? "Дресс-код для роли отменён" : "Дресс-код применён к роли") })}>👔</button><button
                               className="icon-btn"
                               aria-label="Снять кандидата"
                               title="Снять"
@@ -830,7 +834,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                               onClick={() => removeAssignment.mutate(a.id)}
                             >
                               <ProjectGlyph type="close" />
-                            </button>
+                            </button></div>
                           )}
                         </div>
                       );
@@ -868,12 +872,14 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                     </div>
                     {available.length > 0 && (
                       <>
+                        {(p.dressCodeLabel || p.dressCodeUniform) && <button type="button" className={`chip ${(assignDressCodes[role.id] ?? false) ? "chip--warn chip--solid" : "chip--neutral"}`} style={{border:"none",cursor:"pointer"}} onClick={() => setAssignDressCodes(current => ({...current,[role.id]:!(current[role.id] ?? false)}))}>👔 {(assignDressCodes[role.id] ?? false) ? "дресс-код будет отправлен" : "без дресс-кода"}</button>}
                         <CandidatePicker
                           people={available}
                           selectedIds={selected}
                           query={candidateQueries[role.id] ?? ""}
                           onQuery={(value) => setCandidateQueries((prev) => ({ ...prev, [role.id]: value }))}
                           onToggle={toggleCandidate}
+                          combinedIds={confirmedIds}
                         />
                         <div className="row">
                           <Button
@@ -1463,12 +1469,14 @@ function CandidatePicker({
   query,
   onQuery,
   onToggle,
+  combinedIds,
 }: {
   people: People.UserDTO[];
   selectedIds: string[];
   query: string;
   onQuery: (value: string) => void;
   onToggle: (userId: string) => void;
+  combinedIds?: Set<string>;
 }) {
   const selected = selectedIds.map((id) => people.find((p) => p.id === id)).filter(Boolean) as People.UserDTO[];
   const q = query.trim().toLowerCase();
@@ -1488,7 +1496,7 @@ function CandidatePicker({
           {selected.map((u) => (
             <button
               key={u.id}
-              className="chip chip--accent chip--solid"
+              className={`chip ${combinedIds?.has(u.id) ? "chip--warn" : "chip--accent"} chip--solid`}
               style={{ border: "none", cursor: "pointer" }}
               onClick={() => onToggle(u.id)}
               type="button"
@@ -1504,12 +1512,12 @@ function CandidatePicker({
         {results.map((u) => (
           <button
             key={u.id}
-            className="chip chip--neutral"
+            className={`chip ${combinedIds?.has(u.id) ? "chip--warn" : "chip--neutral"}`}
             style={{ border: "none", cursor: "pointer" }}
             onClick={() => onToggle(u.id)}
             type="button"
           >
-            {personName(u)}
+            {personName(u)}{combinedIds?.has(u.id) ? " · совмещение" : ""}
           </button>
         ))}
         {results.length === 0 && <span className="card__subtitle">Никого не найдено</span>}

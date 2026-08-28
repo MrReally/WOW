@@ -18,6 +18,7 @@ import {
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
 import { RoleEngagementPicker } from "./RoleEngagementPicker.tsx";
+import { useDressCodeOptions } from "../../settings/hooks.ts";
 
 type StepId = "name" | "client" | "venue" | "time" | "reservations" | "crew" | "contractors" | "finance" | "finish";
 
@@ -80,6 +81,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const createRole = useCreateProjectRole();
   const addContractorItem = useAddContractorItem();
   const createContractor = useCreateContractor();
+  const dressCodes = useDressCodeOptions();
 
   const [stepIndex, setStepIndex] = useState(0);
   const [project, setProject] = useState<Projects.ProjectDTO | null>(null);
@@ -90,6 +92,8 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const [venueName, setVenueName] = useState("");
   const [venueAddress, setVenueAddress] = useState("");
   const [venueGeo, setVenueGeo] = useState<{ placeId: string; latitude: number; longitude: number } | null>(null);
+  const [dressCodeOptionId, setDressCodeOptionId] = useState("");
+  const [dressCodeUniform, setDressCodeUniform] = useState(false);
   const [starts, setStarts] = useState("");
   const [ends, setEnds] = useState("");
   const [reservationDrafts, setReservationDrafts] = useState<ReservationDraft[]>([{ modelId: "", qty: "1", isReserve: false }]);
@@ -124,6 +128,8 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       setVenueName("");
       setVenueAddress("");
       setVenueGeo(null);
+      setDressCodeOptionId("");
+      setDressCodeUniform(false);
       setStarts("");
       setEnds("");
       setReservationDrafts([{ modelId: "", qty: "1", isReserve: false }]);
@@ -156,6 +162,9 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
         name: projectName.trim(),
         clientId: cid,
         venueId: vid,
+        dressCodeOptionId: dressCodeOptionId || null,
+        dressCodeLabel: dressCodes.data?.find(x => x.id === dressCodeOptionId)?.label ?? null,
+        dressCodeUniform,
         ...(validRange ? { startsAt: new Date(starts).toISOString(), endsAt: new Date(ends).toISOString() } : {}),
       });
       let createdContractorId = "";
@@ -241,6 +250,8 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
               <AddressInput value={venueAddress} onChange={(value) => { setVenueAddress(value); setVenueGeo(null); }} onResolved={(address) => setVenueGeo({ placeId: address.placeId, latitude: address.latitude, longitude: address.longitude })} placeholder="Адрес — можно вставить или найти" />
             </>
           )}
+          <Field label="Дресс-код"><Select value={dressCodeOptionId} onChange={e => setDressCodeOptionId(e.target.value)} options={[{ value: "", label: "— не выбран —" }, ...(dressCodes.data ?? []).map(x => ({ value: x.id, label: x.label }))]} /></Field>
+          <label className="row"><input type="checkbox" checked={dressCodeUniform} onChange={e => setDressCodeUniform(e.target.checked)} /> В форме SEVER</label>
         </WizardScreen>
       )}
 

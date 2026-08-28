@@ -51,6 +51,9 @@ export interface ProjectDTO {
   warehouseTurnoverCompletedAt: ISODateTime | null;
   /** Opaque id of the venue (venues module, later phase). */
   venueId: ID | null;
+  dressCodeOptionId: ID | null;
+  dressCodeLabel: string | null;
+  dressCodeUniform: boolean;
   startsAt: ISODateTime | null;
   endsAt: ISODateTime | null;
   createdAt: ISODateTime;
@@ -62,6 +65,9 @@ export interface CreateProjectInput {
   startsAt?: ISODateTime | null;
   endsAt?: ISODateTime | null;
   venueId?: ID | null;
+  dressCodeOptionId?: ID | null;
+  dressCodeLabel?: string | null;
+  dressCodeUniform?: boolean;
 }
 
 export interface UpdateProjectInput {
@@ -70,6 +76,9 @@ export interface UpdateProjectInput {
   startsAt?: ISODateTime | null;
   endsAt?: ISODateTime | null;
   venueId?: ID | null;
+  dressCodeOptionId?: ID | null;
+  dressCodeLabel?: string | null;
+  dressCodeUniform?: boolean;
 }
 
 export interface DuplicateProjectInput {
@@ -322,6 +331,8 @@ export interface AssignmentDTO {
   status: AssignmentStatus;
   /** Agreed rate in EUR for this engagement; null = unset / by agreement. */
   rateEUR: number | null;
+  dressCodeEnabled: boolean;
+  paidEUR: number;
   telegramChatId: string | null;
   telegramMessageId: number | null;
   /** Who sent the invite (people id), null for a direct add. */
@@ -338,8 +349,14 @@ export interface AddAssignmentInput {
   rateEUR?: number | null;
   /** When true, send a Telegram invite the person accepts/declines. */
   invite?: boolean;
+  dressCodeEnabled?: boolean;
   /** People id of the inviter (set by the route from the auth context). */
   invitedByUserId?: ID | null;
+}
+
+export interface UpdateAssignmentInput {
+  dressCodeEnabled?: boolean;
+  paidEUR?: number;
 }
 
 // ── Telegram pings + project reminders ──────────────────────────────────────
@@ -497,6 +514,7 @@ export interface ProjectsService {
   deleteProjectRole(id: ID): Promise<void>;
   listAssignments(projectId: ID): Promise<AssignmentDTO[]>;
   getAssignment(id: ID): Promise<AssignmentDTO | null>;
+  updateAssignment(id: ID, input: UpdateAssignmentInput): Promise<AssignmentDTO>;
   addAssignment(input: AddAssignmentInput): Promise<AssignmentDTO>;
   recordAssignmentTelegramMessage(id: ID, chatId: string, messageId: number): Promise<void>;
   /** Remove a person from the project (also drops them from its timing blocks). */
@@ -618,6 +636,18 @@ export interface ProjectOperationStageChangedEvent {
   actorId: ID | null;
   at: ISODateTime;
 }
+export interface ProjectWarehouseTurnoverCompletedEvent {
+  type: "project.warehouse_turnover.completed";
+  projectId: ID;
+  actorId: ID | null;
+  at: ISODateTime;
+}
+export interface ProjectAssignmentPaymentUpdatedEvent {
+  type: "project.assignment.payment.updated";
+  projectId: ID;
+  assignmentId: ID;
+  at: ISODateTime;
+}
 
 export interface ProjectStatusChangedEvent {
   type: "project.status.changed";
@@ -675,6 +705,8 @@ export type ProjectsEvent =
   | ProjectStatusChangedEvent
   | ProjectStatusPersonnelAnnouncementEvent
   | ProjectOperationStageChangedEvent
+  | ProjectWarehouseTurnoverCompletedEvent
+  | ProjectAssignmentPaymentUpdatedEvent
   | ProjectPingCreatedEvent
   | ProjectPingConfirmedEvent
   | ProjectPingDeclinedEvent;

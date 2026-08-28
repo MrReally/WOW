@@ -51,6 +51,9 @@ export function useOperationUnitMarks(projectId: string | null) {
     queryFn: () => api.get<Projects.OperationUnitMarkDTO[]>(`/api/projects/${projectId}/operation-unit-marks`),
   });
 }
+export function useTurnoverReview(projectId: string | null, enabled = true) {
+  return useQuery({ enabled: !!projectId && enabled, queryKey: ["equipment", "turnover-review", projectId], queryFn: () => api.get<Equipment.ProjectTurnoverReviewLineDTO[]>(`/api/equipment/projects/${projectId}/turnover-review`) });
+}
 
 export function useSetOperationStage(projectId: string | null) {
   const qc = useQueryClient();

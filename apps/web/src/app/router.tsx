@@ -18,6 +18,7 @@ import { CrewPage } from "../features/crew/CrewPage.tsx";
 import { SettingsPage } from "../features/settings/SettingsPage.tsx";
 import { MySettingsPage } from "../features/settings/MySettingsPage.tsx";
 import { BackofficePage } from "../features/backoffice/BackofficePage.tsx";
+import { VenuesPage } from "../features/venues/VenuesPage.tsx";
 
 export function AppRouter() {
   const { can } = useSession();
@@ -39,6 +40,7 @@ export function AppRouter() {
       <Route path="/operations/projects/:id" element={<Guard allow={["operations.view"]}><OperationsProjectPage /></Guard>} />
       <Route path="/warehouse" element={<Guard allow={["warehouse.view"]}><WarehousePage /></Guard>} />
       <Route path="/warehouse/units/:id" element={<Guard allow={["warehouse.view"]}><UnitDetailPage /></Guard>} />
+      <Route path="/venues" element={<Guard allow={["venues.view", "venues.manage", "venues.archive", "venues.delete"]}><VenuesPage /></Guard>} />
       <Route path="/projects" element={<Guard allow={["projects.view"]}><ProjectsPage /></Guard>} />
       <Route path="/projects/:id" element={<Guard allow={["projects.view"]}><ProjectDetailPage /></Guard>} />
       <Route path="/projects/:id/plan" element={<Guard allow={["plans.view", "plans.manage", "operations.view"]}><StagePlanPage /></Guard>} />
@@ -50,7 +52,7 @@ export function AppRouter() {
       <Route path="/me" element={<MySettingsPage />} />
       <Route
         path="/settings"
-        element={<Guard allow={["people.view", "people.manage", "roles.manage", "telegram.inbox.manage", "venues.manage", "finance.manage", "projects.manage"]}><SettingsPage /></Guard>}
+        element={<Guard allow={["people.view", "people.manage", "roles.manage", "telegram.inbox.manage", "finance.manage", "projects.manage"]}><SettingsPage /></Guard>}
       />
       <Route path="*" element={<Navigate to={home} replace />} />
     </Routes>

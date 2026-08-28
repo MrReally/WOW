@@ -25,6 +25,9 @@ interface ProjectRow {
   operation_stage: Projects.ProjectChecklistGroup;
   warehouse_turnover_completed_at: Date | null;
   venue_id: string | null;
+  dress_code_option_id: string | null;
+  dress_code_label: string | null;
+  dress_code_uniform: boolean;
   starts_at: Date | null;
   ends_at: Date | null;
   created_at: Date;
@@ -94,6 +97,8 @@ interface ProjectRoleRow {
   title: string;
   required_count: number;
   rate_eur: string | null;
+  dress_code_enabled: boolean;
+  paid_eur: string;
   starts_at: Date | null;
   ends_at: Date | null;
   created_at: Date;
@@ -178,6 +183,9 @@ const projectDTO = (r: ProjectRow): Projects.ProjectDTO => ({
   operationStage: r.operation_stage ?? "prep",
   warehouseTurnoverCompletedAt: r.warehouse_turnover_completed_at ? r.warehouse_turnover_completed_at.toISOString() : null,
   venueId: r.venue_id,
+  dressCodeOptionId: r.dress_code_option_id,
+  dressCodeLabel: r.dress_code_label,
+  dressCodeUniform: r.dress_code_uniform ?? false,
   startsAt: r.starts_at?.toISOString() ?? null,
   endsAt: r.ends_at?.toISOString() ?? null,
   createdAt: r.created_at.toISOString(),
@@ -247,6 +255,8 @@ const projectRoleDTO = (r: ProjectRoleRow): Projects.ProjectRoleDTO => ({
   title: r.title,
   requiredCount: r.required_count,
   rateEUR: r.rate_eur === null ? null : Number(r.rate_eur),
+  dressCodeEnabled: r.dress_code_enabled ?? false,
+  paidEUR: Number(r.paid_eur ?? 0),
   startsAt: r.starts_at ? r.starts_at.toISOString() : null,
   endsAt: r.ends_at ? r.ends_at.toISOString() : null,
   createdAt: r.created_at.toISOString(),
@@ -497,17 +507,6 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
     );
   }
 
-  async function cancelOtherUserInvites(client: Sql, projectId: ID, userId: ID, exceptAssignmentId: ID): Promise<AssignmentRow[]> {
-    return query<AssignmentRow>(
-      client,
-      `UPDATE projects.assignments
-       SET status='cancelled', responded_at=now()
-       WHERE project_id=$1 AND user_id=$2 AND id <> $3 AND status='invited'
-       RETURNING *`,
-      [projectId, userId, exceptAssignmentId]
-    );
-  }
-
   async function publishCancelled(rows: AssignmentRow[], reason: Projects.InviteCancelledEvent["reason"]) {
     for (const row of rows) {
       await bus.publish({
@@ -560,9 +559,9 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       if (!client) throw NotFound("client", input.clientId);
       const row = await one<ProjectRow>(
         db,
-        `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at)
-         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-        [input.name, input.clientId, input.venueId ?? null, startsAt, endsAt]
+        `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [input.name, input.clientId, input.venueId ?? null, startsAt, endsAt, input.dressCodeOptionId ?? null, input.dressCodeLabel ?? null, input.dressCodeUniform ?? false]
       );
       return projectDTO(row!);
     },
@@ -574,9 +573,9 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       const sourceRefMap: Record<string, string> = {};
       await tx(async (client) => {
         created = await one<ProjectRow>(client,
-          `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at)
-           VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-          [input.name, source.client_id, source.venue_id, input.startsAt, input.endsAt]
+          `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+          [input.name, source.client_id, source.venue_id, input.startsAt, input.endsAt, source.dress_code_option_id, source.dress_code_label, source.dress_code_uniform]
         );
         const newId = created!.id;
         const sourceRoles = await query<ProjectRoleRow>(client, `SELECT * FROM projects.project_roles WHERE project_id=$1 ORDER BY created_at`, [id]);
@@ -663,9 +662,15 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
              client_id = COALESCE($3, client_id),
              venue_id  = $4,
              starts_at = $5,
-             ends_at   = $6
+             ends_at   = $6,
+             dress_code_option_id=$7,
+             dress_code_label=$8,
+             dress_code_uniform=$9
            WHERE id=$1 RETURNING *`,
-          [id, input.name ?? null, input.clientId ?? null, input.venueId === undefined ? existing.venueId : input.venueId, startsAt, endsAt]
+          [id, input.name ?? null, input.clientId ?? null, input.venueId === undefined ? existing.venueId : input.venueId, startsAt, endsAt,
+            input.dressCodeOptionId === undefined ? existing.dressCodeOptionId : input.dressCodeOptionId,
+            input.dressCodeLabel === undefined ? existing.dressCodeLabel : input.dressCodeLabel,
+            input.dressCodeUniform === undefined ? existing.dressCodeUniform : input.dressCodeUniform]
         );
         if ((startsAt !== existing.startsAt || endsAt !== existing.endsAt) && startsAt && endsAt) {
           await query(client,
@@ -755,7 +760,7 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       });
       return projectDTO(row!);
     },
-    async completeWarehouseTurnover(id, _actorId) {
+    async completeWarehouseTurnover(id, actorId) {
       const existing = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
       if (!existing) throw NotFound("project", id);
       if (existing.operation_stage !== "return") throw BadRequest("сначала перейдите к этапу «Возврат»");
@@ -788,7 +793,8 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
          WHERE id=$1 RETURNING *`,
         [id]
       );
-      return projectDTO(row!);
+      await bus.publish({ type: "project.warehouse_turnover.completed", projectId: id, actorId: actorId ?? null, at: new Date().toISOString() });
+      return (await this.getProject(id)) ?? projectDTO(row!);
     },
     async listOperationEvents(projectId) {
       const rows = await query<OperationEventRow>(
@@ -1228,6 +1234,12 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       const row = await one<AssignmentRow>(db, `SELECT * FROM projects.assignments WHERE id=$1`, [id]);
       return row ? assignmentDTO(row) : null;
     },
+    async updateAssignment(id, input) {
+      const row = await one<AssignmentRow>(db, `UPDATE projects.assignments SET dress_code_enabled=COALESCE($2,dress_code_enabled), paid_eur=COALESCE($3,paid_eur) WHERE id=$1 RETURNING *`, [id,input.dressCodeEnabled??null,input.paidEUR??null]);
+      if (!row) throw NotFound("assignment", id);
+      if (input.paidEUR !== undefined) await bus.publish({ type: "project.assignment.payment.updated", projectId: row.project_id, assignmentId: id, at: new Date().toISOString() });
+      return assignmentDTO(row);
+    },
     async addAssignment(input) {
       let role: ProjectRoleRow | null = null;
       if (input.roleId) {
@@ -1235,28 +1247,24 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
         if (!role) throw NotFound("project role", input.roleId);
         if (await roleFilled(db, role.id)) throw Conflict("роль уже закрыта");
       }
-      const existingConfirmed = await one<AssignmentRow>(
+      const duplicateAssignment = await one<AssignmentRow>(
         db,
-        `SELECT id FROM projects.assignments WHERE project_id=$1 AND user_id=$2 AND status IN ('added','accepted')`,
-        [input.projectId, input.userId]
+        `SELECT * FROM projects.assignments
+         WHERE project_id=$1 AND user_id=$2
+           AND role_id IS NOT DISTINCT FROM $3::uuid
+           AND status IN ('added','accepted','invited')
+         LIMIT 1`,
+        [input.projectId, input.userId, input.roleId ?? null]
       );
-      if (existingConfirmed) throw Conflict("этот человек уже участвует в проекте");
-      if (input.roleId) {
-        const duplicateRoleInvite = await one<AssignmentRow>(
-          db,
-          `SELECT id FROM projects.assignments WHERE project_id=$1 AND user_id=$2 AND role_id=$3 AND status='invited'`,
-          [input.projectId, input.userId, input.roleId]
-        );
-        if (duplicateRoleInvite) throw Conflict("этому человеку уже отправлено приглашение на эту роль");
-      }
+      if (duplicateAssignment) throw Conflict("человек уже добавлен или приглашён на эту роль");
       const status: Projects.AssignmentStatus = input.invite ? "invited" : "added";
       const roleNote = role?.title ?? input.roleNote ?? null;
       const rateEUR = role?.rate_eur === undefined ? (input.rateEUR ?? null) : role.rate_eur;
       const row = await one<AssignmentRow>(
         db,
-        `INSERT INTO projects.assignments (project_id, role_id, user_id, role_note, status, rate_eur, invited_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [input.projectId, input.roleId ?? null, input.userId, roleNote, status, rateEUR, input.invitedByUserId ?? null]
+        `INSERT INTO projects.assignments (project_id, role_id, user_id, role_note, status, rate_eur, invited_by, dress_code_enabled)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [input.projectId, input.roleId ?? null, input.userId, roleNote, status, rateEUR, input.invitedByUserId ?? null, input.dressCodeEnabled ?? false]
       );
       if (row?.role_id && status === "added") {
         let cancelled: AssignmentRow[] = [];
@@ -1302,26 +1310,9 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       if (row.user_id !== byUserId) throw BadRequest("это приглашение адресовано не вам");
       let updated: AssignmentRow | undefined;
       let cancelledRoleRows: AssignmentRow[] = [];
-      let cancelledUserRows: AssignmentRow[] = [];
       let ownCancelReason: Projects.InviteCancelledEvent["reason"] = "role_filled";
       await tx(async (client) => {
         if (accept) {
-          const alreadyInProject = await one<AssignmentRow>(
-            client,
-            `SELECT * FROM projects.assignments
-             WHERE project_id=$1 AND user_id=$2 AND id <> $3 AND status IN ('added','accepted')
-             LIMIT 1`,
-            [row.project_id, row.user_id, assignmentId]
-          );
-          if (alreadyInProject) {
-            updated = (await one<AssignmentRow>(
-              client,
-              `UPDATE projects.assignments SET status='cancelled', responded_at=now() WHERE id=$1 RETURNING *`,
-              [assignmentId]
-            )) ?? undefined;
-            ownCancelReason = "already_assigned";
-            return;
-          }
           if (row.role_id && await roleFilled(client, row.role_id, assignmentId)) {
             updated = (await one<AssignmentRow>(
               client,
@@ -1352,7 +1343,6 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
               [row.project_id, assignmentId, row.role_note]
             );
           }
-          cancelledUserRows = await cancelOtherUserInvites(client, row.project_id, row.user_id, assignmentId);
         }
       });
       if (!updated) throw NotFound("assignment", assignmentId);
@@ -1370,7 +1360,6 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
         });
       }
       await publishCancelled(cancelledRoleRows, "role_filled");
-      await publishCancelled(cancelledUserRows, "already_assigned");
       return assignmentDTO(finalAssignment);
     },
     async listProjectsForUser(userId) {

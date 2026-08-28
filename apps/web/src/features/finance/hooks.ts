@@ -9,8 +9,8 @@ export function useContractorsList() {
   return useQuery({ queryKey: ["equipment", "contractors"], queryFn: () => api.get<Equipment.ContractorDTO[]>("/api/equipment/contractors") });
 }
 
-export function useAccounts() {
-  return useQuery({ queryKey: ["finance", "accounts"], queryFn: () => api.get<Finance.AccountDTO[]>("/api/finance/accounts") });
+export function useAccounts(enabled = true) {
+  return useQuery({ enabled, queryKey: ["finance", "accounts"], queryFn: () => api.get<Finance.AccountDTO[]>("/api/finance/accounts") });
 }
 
 // People directory for resolving transaction authors — only when allowed.

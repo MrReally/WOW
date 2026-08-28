@@ -133,7 +133,7 @@ export function registerPeopleRoutes(
   // ── Users ──
   app.get<{ Querystring: { status?: People.UserListStatus } }>("/api/people", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "people.view", "people.manage");
+    requirePermission(auth, "people.view", "people.manage", "operations.payroll.view", "operations.payroll.manage");
     const status = req.query.status ? peopleStatusSchema.parse(req.query.status) : "active";
     if (status !== "active") requirePermission(auth, "people.manage");
     return service.list(status);

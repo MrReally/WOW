@@ -349,9 +349,9 @@ const dictionaries = {
 type Key = keyof typeof dictionaries.ru;
 
 const unitStatus: Record<Locale, Record<Equipment.UnitStatus, string>> = {
-  ru: { in_stock: "На складе", reserved: "Резерв", on_project: "На проекте", in_repair: "Ремонт", at_contractor: "Сервис", lost: "Утеря" },
-  en: { in_stock: "In stock", reserved: "Reserved", on_project: "On project", in_repair: "Repair", at_contractor: "Service", lost: "Lost" },
-  sr: { in_stock: "Na stanju", reserved: "Rezervisano", on_project: "Na projektu", in_repair: "Servis", at_contractor: "Servis", lost: "Izgubljeno" },
+  ru: { in_stock: "На складе", reserved: "Резерв", on_project: "На проекте", in_repair: "Ремонт", at_contractor: "Сервис", installed: "Инсталлировано", lost: "Утеря" },
+  en: { in_stock: "In stock", reserved: "Reserved", on_project: "On project", in_repair: "Repair", at_contractor: "Service", installed: "Installed", lost: "Lost" },
+  sr: { in_stock: "Na stanju", reserved: "Rezervisano", on_project: "Na projektu", in_repair: "Servis", at_contractor: "Servis", installed: "Instalirano", lost: "Izgubljeno" },
 };
 
 const projectStatus: Record<Locale, Record<Projects.ProjectStatus, string>> = {

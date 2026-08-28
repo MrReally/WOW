@@ -25,6 +25,9 @@ CREATE INDEX IF NOT EXISTS projects_status_idx ON projects.projects(status);
 CREATE INDEX IF NOT EXISTS projects_window_idx ON projects.projects(starts_at, ends_at);
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS operation_stage text NOT NULL DEFAULT 'prep';
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS warehouse_turnover_completed_at timestamptz;
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_option_id uuid;
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_label text;
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_uniform boolean NOT NULL DEFAULT false;
 ALTER TABLE projects.projects ALTER COLUMN starts_at DROP NOT NULL;
 ALTER TABLE projects.projects ALTER COLUMN ends_at DROP NOT NULL;
 ALTER TABLE projects.projects DROP CONSTRAINT IF EXISTS projects_status_check;
@@ -158,6 +161,8 @@ ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS responded_at timestamp
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS telegram_chat_id text;
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS telegram_message_id integer;
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS role_id      uuid REFERENCES projects.project_roles(id) ON DELETE SET NULL;
+ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS dress_code_enabled boolean NOT NULL DEFAULT false;
+ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS paid_eur numeric(12,2) NOT NULL DEFAULT 0 CHECK (paid_eur >= 0);
 CREATE INDEX IF NOT EXISTS assignments_role_idx ON projects.assignments(role_id);
 
 CREATE TABLE IF NOT EXISTS projects.project_reminders (
