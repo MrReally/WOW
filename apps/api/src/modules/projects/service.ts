@@ -97,8 +97,6 @@ interface ProjectRoleRow {
   title: string;
   required_count: number;
   rate_eur: string | null;
-  dress_code_enabled: boolean;
-  paid_eur: string;
   starts_at: Date | null;
   ends_at: Date | null;
   created_at: Date;
@@ -111,6 +109,8 @@ interface AssignmentRow {
   role_note: string | null;
   status: Projects.AssignmentStatus;
   rate_eur: string | null;
+  dress_code_enabled: boolean;
+  paid_eur: string;
   telegram_chat_id: string | null;
   telegram_message_id: number | null;
   invited_by: string | null;
@@ -255,8 +255,6 @@ const projectRoleDTO = (r: ProjectRoleRow): Projects.ProjectRoleDTO => ({
   title: r.title,
   requiredCount: r.required_count,
   rateEUR: r.rate_eur === null ? null : Number(r.rate_eur),
-  dressCodeEnabled: r.dress_code_enabled ?? false,
-  paidEUR: Number(r.paid_eur ?? 0),
   startsAt: r.starts_at ? r.starts_at.toISOString() : null,
   endsAt: r.ends_at ? r.ends_at.toISOString() : null,
   createdAt: r.created_at.toISOString(),
@@ -269,6 +267,8 @@ const assignmentDTO = (r: AssignmentRow): Projects.AssignmentDTO => ({
   roleNote: r.role_note,
   status: r.status,
   rateEUR: r.rate_eur === null ? null : Number(r.rate_eur),
+  dressCodeEnabled: r.dress_code_enabled ?? false,
+  paidEUR: Number(r.paid_eur ?? 0),
   telegramChatId: r.telegram_chat_id,
   telegramMessageId: r.telegram_message_id,
   invitedByUserId: r.invited_by,

@@ -182,7 +182,10 @@ function OperationsFinancePanel({ projectId, canClientView, canClientManage, can
   const account = (accounts.data ?? []).find(x => x.id === accountId) ?? accounts.data?.[0];
   const active = (assignments.data ?? []).filter(x => x.status === "added" || x.status === "accepted");
   const name = (id:string) => (people.data ?? []).find(x => x.id === id)?.displayName ?? id;
-  const money = (n:number) => `${n.toLocaleString("ru-RU",{maximumFractionDigits:2})} €`;
+  const money = (value: number | null | undefined) => {
+    const amount = Number(value);
+    return `${(Number.isFinite(amount) ? amount : 0).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} €`;
+  };
   return <>
     <SectionHead label="Финансы проекта" />
     {canClientView && <Card>
@@ -199,10 +202,11 @@ function OperationsFinancePanel({ projectId, canClientView, canClientManage, can
     </Card>}
     {canPayrollView && <Card><p className="card__title">Выплаты команде</p><div className="stack" style={{marginTop:10}}>{active.map(assignment => {
       const due = assignment.rateEUR ?? 0;
-      const rest = Math.max(0, due - assignment.paidEUR);
+      const paid = Number.isFinite(Number(assignment.paidEUR)) ? Number(assignment.paidEUR) : 0;
+      const rest = Math.max(0, due - paid);
       return <div className="row row--between" key={assignment.id}>
-        <div><p>{name(assignment.userId)} · {assignment.roleNote ?? "Роль"}</p><p className="card__subtitle">ставка {money(due)} · выплачено {money(assignment.paidEUR)}{rest ? ` · осталось ${money(rest)}` : ""}</p></div>
-        {canPayrollManage && <PayrollPaymentEditor paidEUR={assignment.paidEUR} rateEUR={due} pending={updateAssignment.isPending} onSave={paidEUR => updateAssignment.mutate({ id: assignment.id, input: { paidEUR } })} />}
+        <div><p>{name(assignment.userId)} · {assignment.roleNote ?? "Роль"}</p><p className="card__subtitle">ставка {money(due)} · выплачено {money(paid)}{rest ? ` · осталось ${money(rest)}` : ""}</p></div>
+        {canPayrollManage && <PayrollPaymentEditor paidEUR={paid} rateEUR={due} pending={updateAssignment.isPending} onSave={paidEUR => updateAssignment.mutate({ id: assignment.id, input: { paidEUR } })} />}
       </div>;
     })}</div></Card>}
   </>;
