@@ -425,6 +425,44 @@ describe("Tech pickup/return → некомплект", () => {
     await expect(equipment.service.resolveProblem(ret.problemId!)).rejects.toThrow(/only loss/);
   });
 
+  it("reopens a completed warehouse turnover when the operation moves back", async () => {
+    const actor = await makeTech("Turnover rollback");
+    const client = await wiring.projects.service.createClient({ name: `Turnover ${Date.now()}` });
+    const project = await wiring.projects.service.createProject({ name: "Completed turnover", clientId: client.id });
+
+    await wiring.projects.service.setOperationStage(project.id, "return", actor.id);
+    const completed = await wiring.projects.service.completeWarehouseTurnover(project.id, actor.id);
+    expect(completed.warehouseTurnoverCompletedAt).toBeTruthy();
+    expect(completed.status).toBe("completed");
+
+    const reopened = await wiring.projects.service.setOperationStage(project.id, "dismantle", actor.id);
+    expect(reopened.operationStage).toBe("dismantle");
+    expect(reopened.warehouseTurnoverCompletedAt).toBeNull();
+    expect(reopened.status).toBe("in_progress");
+  });
+
+  it("opens a repair with its description in Apex and resolves it when repair closes", async () => {
+    const actor = await makeTech("Repair Tech");
+    const type = await wiring.equipment.service.createType({ name: `Repair-${Date.now()}`, trackingMode: "serial" });
+    const model = await wiring.equipment.service.createModel({ typeId: type.id, name: "Repair Fixture", unitCostEUR: 10, dailyPriceEUR: 2 });
+    const unit = await wiring.equipment.service.createUnit({ modelId: model.id, assetTag: `REPAIR-${Date.now()}` });
+    const client = await wiring.projects.service.createClient({ name: `Repair client ${Date.now()}` });
+    const project = await wiring.projects.service.createProject({ name: "Repair Project", clientId: client.id });
+    await wiring.equipment.service.issueUnits({ projectId: project.id, unitIds: [unit.id], actorId: actor.id });
+
+    const repair = await wiring.equipment.service.openRepair({ unitId: unit.id, problem: "Не включается после демонтажа", actorId: actor.id });
+    expect((await wiring.equipment.service.getUnit(unit.id))?.status).toBe("in_repair");
+    const problem = (await wiring.apex.dashboard()).problems.find((item) => item.kind === "unit_repair" && item.refs.repairId === repair.id);
+    expect(problem).toEqual(expect.objectContaining({
+      title: `Ремонт: ${unit.assetTag}`,
+      detail: expect.stringContaining("Не включается после демонтажа"),
+      refs: expect.objectContaining({ unitId: unit.id, projectId: project.id }),
+    }));
+
+    await wiring.equipment.service.closeRepair(repair.id, { outcome: "repaired", resolution: "Заменён блок питания", actorId: actor.id });
+    expect((await wiring.apex.dashboard()).problems.some((item) => item.id === problem!.id)).toBe(false);
+  });
+
   it("notifications: assignment and issuance notify the assigned crew", async () => {
     const { projects, equipment, notifications } = wiring;
     const tech = await makeTech("Notify Tech");

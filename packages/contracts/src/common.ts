@@ -150,7 +150,8 @@ export type ProblemKind =
   | "overdue_debt"
   | "contractor_return_due"
   | "kit_incomplete"
-  | "unit_lost";
+  | "unit_lost"
+  | "unit_repair";
 
 export type ProblemSeverity = "info" | "warning" | "critical";
 

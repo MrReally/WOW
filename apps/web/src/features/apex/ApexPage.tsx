@@ -69,10 +69,10 @@ function NeedsRow({
       >
         <div className="row" style={{ gap: 8 }}>
           <Chip label={problemKindLabel[problem.kind] ?? problem.kind} tone={tone} />
-          {(projectName || problem.kind === "unit_lost") && (
+          {(projectName || problem.kind === "unit_lost" || problem.kind === "unit_repair") && (
             <span className="lrow__title" style={{ fontSize: 13 }}>{projectName ?? t("apex.noProject")}</span>
           )}
-          {problem.kind === "unit_lost" && (
+          {(problem.kind === "unit_lost" || problem.kind === "unit_repair") && (
             <span className="t-mono" style={{ fontSize: 11, color: "var(--text3)" }}>· {dateTime(problem.createdAt)}</span>
           )}
         </div>

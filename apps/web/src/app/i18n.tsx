@@ -367,9 +367,9 @@ const role: Record<Locale, Record<Role, string>> = {
 };
 
 const problemKind: Record<Locale, Record<string, string>> = {
-  ru: { incomplete_return: "Некомплект", reservation_conflict: "Конфликт", overdue_debt: "Просрочка", contractor_return_due: "Вернуть", unit_lost: "Утеря" },
-  en: { incomplete_return: "Incomplete", reservation_conflict: "Conflict", overdue_debt: "Overdue", contractor_return_due: "Return", unit_lost: "Lost" },
-  sr: { incomplete_return: "Manjak", reservation_conflict: "Konflikt", overdue_debt: "Kašnjenje", contractor_return_due: "Vratiti", unit_lost: "Izgubljeno" },
+  ru: { incomplete_return: "Некомплект", reservation_conflict: "Конфликт", overdue_debt: "Просрочка", contractor_return_due: "Вернуть", unit_lost: "Утеря", unit_repair: "Ремонт" },
+  en: { incomplete_return: "Incomplete", reservation_conflict: "Conflict", overdue_debt: "Overdue", contractor_return_due: "Return", unit_lost: "Lost", unit_repair: "Repair" },
+  sr: { incomplete_return: "Manjak", reservation_conflict: "Konflikt", overdue_debt: "Kašnjenje", contractor_return_due: "Vratiti", unit_lost: "Izgubljeno", unit_repair: "Servis" },
 };
 
 interface I18nContextValue {

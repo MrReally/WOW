@@ -98,6 +98,27 @@ export function useSetOperationUnitMark(projectId: string | null) {
   });
 }
 
+export function useMarkBrokenUnit(projectId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ unitId, stage, problem }: { unitId: string; stage: Projects.ProjectChecklistGroup; problem: string }) => {
+      await api.post<Equipment.RepairDTO>(`/api/equipment/units/${unitId}/repair`, { problem });
+      return api.put<Projects.OperationUnitMarkDTO>(`/api/projects/${projectId}/operation-unit-marks`, {
+        stage,
+        unitId,
+        status: "broken",
+        note: problem,
+      });
+    },
+    meta: { successMessage: "Отправлено в ремонт" },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["equipment"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["apex"] });
+    },
+  });
+}
+
 export function useClearOperationUnitMark(projectId: string | null) {
   const qc = useQueryClient();
   return useMutation({

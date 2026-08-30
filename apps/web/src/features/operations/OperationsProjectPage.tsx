@@ -13,6 +13,7 @@ import {
   useCompleteWarehouseTurnover,
   useCreateProjectTask,
   useDeleteProjectTask,
+  useMarkBrokenUnit,
   useOperationEvents,
   useOperationUnitMarks,
   useProjectTasks,
@@ -20,7 +21,6 @@ import {
   useSetOperationStage,
   useSetOperationUnitMark,
   useUpdateProjectTask,
-  useTurnoverReview,
 } from "./hooks.ts";
 
 const stageOrder: Projects.ProjectChecklistGroup[] = ["prep", "pickup", "delivery", "mount", "show", "dismantle", "return"];
@@ -106,7 +106,6 @@ export function OperationsProjectPage() {
   const events = useOperationEvents(id);
   const setStage = useSetOperationStage(id);
   const completeTurnover = useCompleteWarehouseTurnover(id);
-  const turnoverReview = useTurnoverReview(id, !!project.data?.warehouseTurnoverCompletedAt);
   const canManage = can("projects.timing.manage", "projects.manage");
   const canStepBack = can("operations.stage.back", "projects.timing.manage", "projects.manage");
   const canListPeople = can("people.view", "operations.payroll.view", "operations.payroll.manage");
@@ -153,7 +152,7 @@ export function OperationsProjectPage() {
         <Button block variant="secondary" onClick={() => navigate(`/projects/${id}`)}>Проект</Button>
       </div>
 
-      <StageEquipmentPanel projectId={id} stage={activeStage} />
+      {!project.data.warehouseTurnoverCompletedAt && <StageEquipmentPanel projectId={id} stage={activeStage} />}
       <TaskBoard projectId={id} canManage={canManage} canListPeople={canListPeople} currentUser={user ?? null} />
       <SectionHead label="Этап" />
       <Card>
@@ -170,7 +169,6 @@ export function OperationsProjectPage() {
           {!upcomingStage && !project.data.warehouseTurnoverCompletedAt && <Button block variant="primary" disabled={completeTurnover.isPending} onClick={() => completeTurnover.mutate()}>Завершить оборот</Button>}
         </div>
       </Card>
-      {project.data.warehouseTurnoverCompletedAt && <TurnoverReview rows={turnoverReview.data ?? []} />}
       <StageHistory events={events.data ?? []} people={people.data ?? []} currentUser={user ?? null} />
     </div>
   );
@@ -217,13 +215,6 @@ function PayrollPaymentEditor({ paidEUR, rateEUR, pending, onSave }: { paidEUR: 
   useEffect(() => setDraft(String(paidEUR)), [paidEUR]);
   const value = Math.max(0, Number(draft) || 0);
   return <div className="row"><Input type="number" min="0" value={draft} onChange={event => setDraft(event.target.value)} /><Button variant="secondary" disabled={pending || value === paidEUR} onClick={() => onSave(value)}>Сохранить</Button><label className="chip chip--neutral"><input type="checkbox" checked={rateEUR > 0 && paidEUR >= rateEUR} disabled={pending || rateEUR <= 0} onChange={event => onSave(event.target.checked ? rateEUR : 0)} /> выплачено полностью</label></div>;
-}
-
-function TurnoverReview({ rows }: { rows: Equipment.ProjectTurnoverReviewLineDTO[] }) {
-  const allUnits = useAllUnits(), allModels = useEquipmentModels(), allWarehouses = useWarehouses();
-  const unit = new Map((allUnits.data ?? []).map(x => [x.id,x.assetTag])), model = new Map((allModels.data ?? []).map(x => [x.id,x.name])), warehouse = new Map((allWarehouses.data ?? []).map(x => [x.id,x.name]));
-  const outcome: Record<Equipment.ProjectTurnoverReviewLineDTO["outcome"],string> = { returned:"возвращено", missing:"не возвращено", broken:"ремонт", lost:"утеря" };
-  return <><SectionHead label="Review складского оборота" meta={`${rows.length}`} /><Card><div className="stack">{rows.map((row,index) => <div className="row row--between" key={row.unitId ?? `${row.modelId}:${index}`}><div><p className="card__title">{row.unitId ? unit.get(row.unitId) : model.get(row.modelId ?? "")} {row.qty > 1 ? `× ${row.qty}` : ""}</p><p className="card__subtitle">{warehouse.get(row.fromWarehouseId ?? "") ?? "—"} → {warehouse.get(row.toWarehouseId ?? "") ?? "—"}{row.notes.length ? ` · ${row.notes.join(" · ")}` : ""}</p></div><Chip label={outcome[row.outcome]} tone={row.outcome === "returned" ? "ok" : "warn"} /></div>)}</div></Card></>;
 }
 
 function avatarUrl(user: People.UserDTO | null | undefined): string | null {
@@ -279,6 +270,7 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
   const setMark = useSetOperationUnitMark(projectId);
   const clearMark = useClearOperationUnitMark(projectId);
   const changeStatus = useChangeStatus();
+  const markBroken = useMarkBrokenUnit(projectId);
   const issueUnits = useIssueResolvedUnits();
   const returnUnits = useReturnUnits();
   const journal = useProjectEquipmentJournal(projectId);
@@ -348,10 +340,13 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
       returnUnits.mutate({ projectId, returnedUnitIds: [unitId], expectedUnitIds: [unitId], warehouseId: returnWarehouseByUnit[unitId] || (warehouses.data ?? []).find(w => w.isDefault)?.id }, { onSuccess: () => setMark.mutate({ stage, unitId, status }) });
       return;
     }
-    setMark.mutate({ stage, unitId, status, note });
     if (status === "broken" && canMarkStatus) {
-      changeStatus.mutate({ id: unitId, status: "in_repair", note: `Демонтаж · ${projectId}` });
+      const problem = note?.trim();
+      if (!problem) return;
+      markBroken.mutate({ unitId, stage, problem });
+      return;
     }
+    setMark.mutate({ stage, unitId, status, note });
     if (status === "lost" && canMarkStatus) {
       changeStatus.mutate({ id: unitId, status: "lost", note: `Демонтаж · ${projectId}` });
     }
@@ -384,7 +379,7 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
                       marks={unit ? (marksByUnit.get(unit.id) ?? []) : []}
                       actions={actions}
                       kitComponents={(models.data?.find((model) => model.id === modelId)?.requiredComponentModelIds ?? []).map((componentId) => ({ id: componentId, name: modelName(componentId) }))}
-                      disabled={setMark.isPending || clearMark.isPending || changeStatus.isPending || issueUnits.isPending || returnUnits.isPending}
+                      disabled={setMark.isPending || clearMark.isPending || changeStatus.isPending || markBroken.isPending || issueUnits.isPending || returnUnits.isPending}
                       onOpen={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
                       onMark={(status, active, note) => unit && markUnit(unit.id, status, active, note)}
                       returnWarehouses={stage === "return" ? (warehouses.data ?? []) : []}
@@ -471,11 +466,13 @@ function UnitStageRow({
 }) {
   const missingMark = marks.find((mark) => mark.status === "missing");
   const [editingMissing, setEditingMissing] = useState(false);
+  const [editingBroken, setEditingBroken] = useState(false);
+  const [brokenDescription, setBrokenDescription] = useState("");
   const [missingIds, setMissingIds] = useState<string[]>(() => missingMark?.note?.split(",").filter(Boolean) ?? []);
   useEffect(() => setMissingIds(missingMark?.note?.split(",").filter(Boolean) ?? []), [missingMark?.note]);
   const activeStatuses = new Set(marks.map((mark) => mark.status));
   const missingNames = kitComponents.filter((item) => missingIds.includes(item.id)).map((item) => item.name);
-  const markText = marks.length > 0 ? marks.map((mark) => mark.status === "missing" && missingNames.length ? `нет: ${missingNames.join(", ")}` : markLabel[mark.status]).join(" · ") : "не отмечено";
+  const markText = marks.length > 0 ? marks.map((mark) => mark.status === "missing" && missingNames.length ? `нет: ${missingNames.join(", ")}` : mark.status === "broken" && mark.note ? `ремонт: ${mark.note}` : markLabel[mark.status]).join(" · ") : "не отмечено";
   const hasProblem = marks.some((mark) => mark.status === "lost" || mark.status === "broken" || mark.status === "missing" || mark.status === "left");
   return (
     <div className="stack" style={{ gap: 8 }}>
@@ -502,7 +499,11 @@ function UnitStageRow({
               aria-label={active ? `Снять: ${markLabel[action.status]}` : markLabel[action.status]}
               title={active ? `Снять: ${markLabel[action.status]}` : markLabel[action.status]}
               disabled={disabled}
-              onClick={() => action.status === "missing" && kitComponents.length ? setEditingMissing(!editingMissing) : onMark(action.status, active)}
+              onClick={() => action.status === "missing" && kitComponents.length
+                ? setEditingMissing(!editingMissing)
+                : action.status === "broken" && !active
+                  ? setEditingBroken(!editingBroken)
+                  : onMark(action.status, active)}
             >
               {action.label} {markLabel[action.status]}
             </button>
@@ -518,6 +519,16 @@ function UnitStageRow({
           <div className="row" style={{ marginTop: 8 }}>
             <Button block disabled={disabled || missingIds.length === 0} onClick={() => { onMark("missing", false, missingIds.join(",")); setEditingMissing(false); }}>Отметить некомплект</Button>
             {missingMark && <Button block variant="secondary" disabled={disabled} onClick={() => { onMark("missing", true); setEditingMissing(false); }}>Снять отметку</Button>}
+          </div>
+        </div>
+      )}
+      {editingBroken && (
+        <div className="card card--flat" style={{ padding: 10 }}>
+          <p className="card__subtitle">Опишите, что сломано</p>
+          <Input value={brokenDescription} onChange={(event) => setBrokenDescription(event.target.value)} placeholder="Например: не включается, повреждён разъём" />
+          <div className="row" style={{ marginTop: 8 }}>
+            <Button block disabled={disabled || !brokenDescription.trim()} onClick={() => { onMark("broken", false, brokenDescription.trim()); setEditingBroken(false); }}>Отправить в ремонт</Button>
+            <Button block variant="secondary" disabled={disabled} onClick={() => setEditingBroken(false)}>Отмена</Button>
           </div>
         </div>
       )}

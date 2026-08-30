@@ -56,6 +56,7 @@ export const problemKindLabel: Record<string, string> = {
   overdue_debt: "Просрочка долга",
   contractor_return_due: "Вернуть подрядчику",
   unit_lost: "Утеря",
+  unit_repair: "Ремонт",
 };
 
 export function eur(amount: number): string {

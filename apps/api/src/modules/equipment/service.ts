@@ -1463,6 +1463,8 @@ export function createEquipmentService(
       return tx(async (client) => {
         const unit = await one<UnitRow>(client, `SELECT * FROM equipment.units WHERE id=$1 FOR UPDATE`, [input.unitId]);
         if (!unit) throw NotFound("unit", input.unitId);
+        const alreadyOpen = await one<{ id: string }>(client, `SELECT id FROM equipment.repairs WHERE unit_id=$1 AND status='open' LIMIT 1`, [input.unitId]);
+        if (alreadyOpen) throw BadRequest("для этой единицы уже открыт ремонт");
         await query(client, `UPDATE equipment.units SET status='in_repair' WHERE id=$1`, [input.unitId]);
         const row = await one<RepairRow>(
           client,
@@ -1478,6 +1480,21 @@ export function createEquipmentService(
           actorId: input.actorId,
           note: input.problem,
         });
+        const model = await one<{ name: string }>(client, `SELECT name FROM equipment.models WHERE id=$1`, [unit.model_id]);
+        await query(
+          client,
+          `INSERT INTO equipment.problems (kind, severity, title, detail, refs)
+           VALUES ('unit_repair','warning',$1,$2,$3)`,
+          [
+            `Ремонт: ${unit.asset_tag}`,
+            `${[model?.name, unit.asset_tag].filter(Boolean).join(" · ")} · ${input.problem}`,
+            JSON.stringify({
+              unitId: input.unitId,
+              repairId: row!.id,
+              ...(unit.current_project_id ? { projectId: unit.current_project_id } : {}),
+            }),
+          ]
+        );
         return repairDTO(row!);
       });
     },
@@ -1503,6 +1520,13 @@ export function createEquipmentService(
           actorId: input.actorId,
           note: input.resolution ?? (input.outcome === "written_off" ? "списано после ремонта" : "из ремонта"),
         });
+        await query(
+          client,
+          `UPDATE equipment.problems
+           SET resolved=true, resolved_at=now()
+           WHERE kind='unit_repair' AND refs->>'repairId'=$1 AND resolved=false`,
+          [id]
+        );
         if (input.outcome === "written_off") {
           const model = unit
             ? await one<{ name: string }>(client, `SELECT name FROM equipment.models WHERE id=$1`, [unit.model_id])

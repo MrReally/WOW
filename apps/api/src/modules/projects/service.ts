@@ -740,7 +740,17 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
       await tx(async (client) => {
         row = await one<ProjectRow>(
           client,
-          `UPDATE projects.projects SET operation_stage=$2 WHERE id=$1 RETURNING *`,
+          `UPDATE projects.projects
+           SET operation_stage=$2,
+               warehouse_turnover_completed_at=CASE
+                 WHEN warehouse_turnover_completed_at IS NOT NULL THEN NULL
+                 ELSE warehouse_turnover_completed_at
+               END,
+               status=CASE
+                 WHEN warehouse_turnover_completed_at IS NOT NULL THEN 'in_progress'
+                 ELSE status
+               END
+           WHERE id=$1 RETURNING *`,
           [id, stage]
         );
         await query(
