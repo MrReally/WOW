@@ -521,7 +521,7 @@ describe("Tech pickup/return → некомплект", () => {
     expect((await notifications.service.listForUser(tech.id)).some((n) => n.kind === "assigned")).toBe(true);
   });
 
-  it("advanced notification preferences deliver warehouse transfer events to observers", async () => {
+  it("advanced equipment notifications include warehouse names", async () => {
     const { people, equipment, notifications } = wiring;
     const observerRole = await people.service.createRole({
       name: `Observer ${Date.now()}`,
@@ -544,8 +544,8 @@ describe("Tech pickup/return → некомплект", () => {
       "project.ping.confirmed": false,
       "project.ping.declined": false,
       "project.operation_stage.changed": false,
-      "equipment.units.issued": false,
-      "equipment.unit.returned": false,
+      "equipment.units.issued": true,
+      "equipment.unit.returned": true,
       "equipment.return.incomplete": false,
       "equipment.unit.transferred": true,
       "people.user.created": false,
@@ -559,8 +559,15 @@ describe("Tech pickup/return → некомплект", () => {
     const unit = await equipment.service.createUnit({ modelId: model.id, assetTag: `TR-${Date.now()}`, warehouseId: from.id });
 
     await equipment.service.transferUnit(unit.id, to.id, actor.id);
+    const client = await wiring.projects.service.createClient({ name: `Warehouse notifications ${Date.now()}` });
+    const project = await wiring.projects.service.createProject({ name: "Warehouse notification project", clientId: client.id });
+    await equipment.service.issueUnits({ projectId: project.id, unitIds: [unit.id], actorId: actor.id });
+    await equipment.service.returnUnits({ projectId: project.id, returnedUnitIds: [unit.id], expectedUnitIds: [unit.id], warehouseId: to.id, actorId: actor.id });
+
     const inbox = await notifications.service.listForUser(observer.id);
-    expect(inbox.some((n) => n.title === "Перемещение между складами" && n.body.includes(`${from.name} → ${to.name}`))).toBe(true);
+    expect(inbox.some((n) => n.title === `Перемещение между складами - ${from.name} → ${to.name}` && n.body.includes(`${from.name} → ${to.name}`))).toBe(true);
+    expect(inbox.some((n) => n.title === `Выдача оборудования - ${to.name}`)).toBe(true);
+    expect(inbox.some((n) => n.title === `Возврат оборудования - ${to.name}`)).toBe(true);
   });
 
   it("repairs and contractor handovers: full cycle with status + history", async () => {

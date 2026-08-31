@@ -512,6 +512,8 @@ export interface UnitReturnedEvent {
   type: "equipment.unit.returned";
   unitId: ID;
   projectId: ID;
+  /** Warehouse that accepted the returned unit. */
+  warehouseId: ID;
   complete: boolean;
   actorId?: ID | null;
   at: ISODateTime;
@@ -529,6 +531,8 @@ export interface UnitTransferredEvent {
 export interface IncompleteReturnEvent {
   type: "equipment.return.incomplete";
   projectId: ID;
+  /** Warehouse selected for the return operation. */
+  warehouseId: ID;
   missingUnitIds: ID[];
   at: ISODateTime;
 }
@@ -537,6 +541,8 @@ export interface IncompleteReturnEvent {
 export interface UnitsIssuedBatchEvent {
   type: "equipment.units.issued";
   projectId: ID;
+  /** Source warehouses represented in this issue action. */
+  warehouseIds: ID[];
   count: number;
   actorId: ID;
   at: ISODateTime;

@@ -1244,6 +1244,7 @@ export function createEquipmentService(
         await bus.publish({
           type: "equipment.units.issued",
           projectId: input.projectId,
+          warehouseIds: [...new Set(issued.map((unit) => unit.warehouseId).filter((id): id is string => id !== null))],
           count: issued.length,
           actorId: input.actorId,
           at: new Date().toISOString(),
@@ -1315,6 +1316,7 @@ export function createEquipmentService(
           type: "equipment.unit.returned",
           unitId,
           projectId: input.projectId,
+          warehouseId: targetWarehouseId,
           complete: missing.length === 0,
           actorId: input.actorId,
           at: new Date().toISOString(),
@@ -1324,6 +1326,7 @@ export function createEquipmentService(
         await bus.publish({
           type: "equipment.return.incomplete",
           projectId: input.projectId,
+          warehouseId: targetWarehouseId,
           missingUnitIds: missing,
           at: new Date().toISOString(),
         });

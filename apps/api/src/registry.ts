@@ -119,6 +119,12 @@ export function createModules(bus: EventBus = new EventBus()) {
     return actor?.isSystem ? "Система" : publicName(actor, "Неизвестно");
   };
 
+  const equipmentWarehouseNames = async (warehouseIds: Array<string | null>) => {
+    const warehouses = await equipment.service.listWarehouses();
+    const names = [...new Set(warehouseIds.map((id) => warehouses.find((warehouse) => warehouse.id === id)?.name).filter((name): name is string => Boolean(name)))];
+    return names.length > 0 ? names.join(", ") : "Склад не указан";
+  };
+
   const stageLabel: Record<string, string> = {
     prep: "Подготовка",
     pickup: "Забор",
@@ -197,21 +203,32 @@ export function createModules(bus: EventBus = new EventBus()) {
       case "people.application.submitted":
         return null;
       case "equipment.units.issued": {
-        const project = await projects.service.getProject(event.projectId);
-        return { title: "Выдача оборудования", body: `${event.count} ед. · ${project?.name ?? event.projectId} · ${await fmtActor(event.actorId)}`, link: `/projects/${event.projectId}` };
+        const [project, warehouseNames] = await Promise.all([
+          projects.service.getProject(event.projectId),
+          equipmentWarehouseNames(event.warehouseIds),
+        ]);
+        return { title: `Выдача оборудования - ${warehouseNames}`, body: `${event.count} ед. · ${project?.name ?? event.projectId} · ${await fmtActor(event.actorId)}`, link: `/projects/${event.projectId}` };
       }
       case "equipment.unit.returned": {
-        const [project, unit] = await Promise.all([projects.service.getProject(event.projectId), equipment.service.getUnit(event.unitId)]);
-        return { title: event.complete ? "Возврат оборудования" : "Возврат с некомплектом", body: `${unit?.assetTag ?? event.unitId} · ${project?.name ?? event.projectId} · ${await fmtActor(event.actorId)}`, link: `/projects/${event.projectId}` };
+        const [project, unit, warehouseNames] = await Promise.all([
+          projects.service.getProject(event.projectId),
+          equipment.service.getUnit(event.unitId),
+          equipmentWarehouseNames([event.warehouseId]),
+        ]);
+        const action = event.complete ? "Возврат оборудования" : "Возврат с некомплектом";
+        return { title: `${action} - ${warehouseNames}`, body: `${unit?.assetTag ?? event.unitId} · ${project?.name ?? event.projectId} · ${await fmtActor(event.actorId)}`, link: `/projects/${event.projectId}` };
       }
       case "equipment.return.incomplete": {
-        const project = await projects.service.getProject(event.projectId);
-        return { title: "Некомплект", body: `${event.missingUnitIds.length} ед. · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+        const [project, warehouseNames] = await Promise.all([
+          projects.service.getProject(event.projectId),
+          equipmentWarehouseNames([event.warehouseId]),
+        ]);
+        return { title: `Некомплект - ${warehouseNames}`, body: `${event.missingUnitIds.length} ед. · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
       }
       case "equipment.unit.transferred": {
         const [unit, warehouses] = await Promise.all([equipment.service.getUnit(event.unitId), equipment.service.listWarehouses()]);
         const wh = (id: string | null) => warehouses.find((w) => w.id === id)?.name ?? "—";
-        return { title: "Перемещение между складами", body: `${unit?.assetTag ?? event.unitId} · ${wh(event.fromWarehouseId)} → ${wh(event.toWarehouseId)} · ${await fmtActor(event.actorId)}`, link: `/warehouse/units/${event.unitId}` };
+        return { title: `Перемещение между складами - ${wh(event.fromWarehouseId)} → ${wh(event.toWarehouseId)}`, body: `${unit?.assetTag ?? event.unitId} · ${wh(event.fromWarehouseId)} → ${wh(event.toWarehouseId)} · ${await fmtActor(event.actorId)}`, link: `/warehouse/units/${event.unitId}` };
       }
       case "people.user.created": {
         const user = await people.service.getById(event.userId);
