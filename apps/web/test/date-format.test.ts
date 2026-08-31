@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { formatDateRangeValue, formatDateTimeValue, formatDateValue, formatTimeValue, type AppSettings } from "@sever/contracts";
 
-const at = new Date(2026, 0, 31, 18, 30);
+// 17:30 UTC is 18:30 in Belgrade in January.
+const at = new Date("2026-01-31T17:30:00.000Z");
 
 describe("global date and time formatting", () => {
+  beforeAll(() => vi.stubEnv("TZ", "UTC"));
+  afterAll(() => vi.unstubAllEnvs());
+
   it.each<[AppSettings.DateFormat, string]>([
     ["DD.MM.YYYY", "31.01.2026"],
     ["DD.MM.YY", "31.01.26"],
@@ -37,10 +41,22 @@ describe("global date and time formatting", () => {
     const settings = { dateFormat: "DD MMM YY", timeFormat: "12h" } as const;
     expect(formatDateTimeValue(at, settings, "ru-RU")).toBe("31 янв 26 6:30 PM");
     expect(formatDateRangeValue(
-      new Date(2026, 0, 31, 9, 0).toISOString(),
-      new Date(2026, 0, 31, 18, 30).toISOString(),
+      "2026-01-31T08:00:00.000Z",
+      "2026-01-31T17:30:00.000Z",
       settings,
       "ru-RU",
     )).toBe("31 янв 26 9:00 AM–6:30 PM");
+  });
+
+  it("renders Telegram engagement time in Belgrade even when the server runs in UTC", () => {
+    const settings = { dateFormat: "DD.MM.YYYY", timeFormat: "24h" } as const;
+    expect(formatDateTimeValue("2026-08-31T19:45:00.000Z", settings, "ru-RU")).toBe("31.08.2026 21:45");
+    expect(formatDateTimeValue("2026-09-01T02:00:00.000Z", settings, "ru-RU")).toBe("01.09.2026 04:00");
+    expect(formatDateRangeValue(
+      "2026-08-31T19:45:00.000Z",
+      "2026-09-01T02:00:00.000Z",
+      settings,
+      "ru-RU",
+    )).toBe("31.08.2026 21:45 → 01.09.2026 04:00");
   });
 });

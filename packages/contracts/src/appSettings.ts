@@ -23,6 +23,13 @@ export const DATE_FORMATS = [
 export type DateFormat = typeof DATE_FORMATS[number];
 export type TimeFormat = "24h" | "12h";
 
+/**
+ * SEVER operates in Serbia. Dates are stored as UTC instants, but every
+ * user-facing date/time must be rendered in the business timezone instead of
+ * the timezone of the browser or API process.
+ */
+export const SEVER_TIME_ZONE = "Europe/Belgrade";
+
 export interface DateTimeSettingsDTO {
   dateFormat: DateFormat;
   timeFormat: TimeFormat;
@@ -54,29 +61,63 @@ const pad = (value: number) => String(value).padStart(2, "0");
 
 function asDate(value: string | Date): Date {
   if (value instanceof Date) return value;
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+  // A calendar-only value has no timezone semantics. Noon UTC keeps its
+  // calendar day stable when it is rendered in Belgrade (UTC+1/UTC+2).
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00Z`) : new Date(value);
+}
+
+interface ZonedDateParts {
+  day: string;
+  shortDay: string;
+  month: string;
+  year: string;
+  shortYear: string;
+  hours: number;
+  minutes: string;
+}
+
+function zonedParts(date: Date): ZonedDateParts | null {
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: SEVER_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  const year = part("year");
+  const day = part("day");
+  return {
+    day,
+    shortDay: String(Number(day)),
+    month: part("month"),
+    year,
+    shortYear: year.slice(-2),
+    hours: Number(part("hour")),
+    minutes: part("minute"),
+  };
 }
 
 function shortMonth(date: Date, locale: string): string {
-  const part = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).formatToParts(date).find((item) => item.type === "month");
+  const part = new Intl.DateTimeFormat(locale, { timeZone: SEVER_TIME_ZONE, day: "numeric", month: "short" }).formatToParts(date).find((item) => item.type === "month");
   return (part?.value ?? "").replace(/\.$/, "");
 }
 
 function longMonth(date: Date, locale: string): string {
-  const part = new Intl.DateTimeFormat(locale, { day: "numeric", month: "long" }).formatToParts(date).find((item) => item.type === "month");
+  const part = new Intl.DateTimeFormat(locale, { timeZone: SEVER_TIME_ZONE, day: "numeric", month: "long" }).formatToParts(date).find((item) => item.type === "month");
   return part?.value ?? "";
 }
 
 export function formatDateValue(value: string | Date, settings: DateTimeSettingsDTO, locale = "ru-RU"): string {
   const date = asDate(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  const day = pad(date.getDate());
-  const shortDay = String(date.getDate());
-  const month = pad(date.getMonth() + 1);
+  const parts = zonedParts(date);
+  if (!parts) return "—";
+  const { day, shortDay, month, year, shortYear } = parts;
   const monthName = shortMonth(date, locale);
   const fullMonthName = longMonth(date, locale);
-  const year = String(date.getFullYear());
-  const shortYear = year.slice(-2);
   switch (settings.dateFormat) {
     case "DD.MM.YY": return `${day}.${month}.${shortYear}`;
     case "DD/MM/YYYY": return `${day}/${month}/${year}`;
@@ -102,13 +143,13 @@ export function formatDateValue(value: string | Date, settings: DateTimeSettings
 
 export function formatTimeValue(value: string | Date, settings: DateTimeSettingsDTO): string {
   const date = asDate(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  const minutes = pad(date.getMinutes());
+  const parts = zonedParts(date);
+  if (!parts) return "—";
+  const { hours, minutes } = parts;
   if (settings.timeFormat === "12h") {
-    const hours = date.getHours();
     return `${hours % 12 || 12}:${minutes} ${hours < 12 ? "AM" : "PM"}`;
   }
-  return `${pad(date.getHours())}:${minutes}`;
+  return `${pad(hours)}:${minutes}`;
 }
 
 export function formatDateTimeValue(value: string | Date, settings: DateTimeSettingsDTO, locale = "ru-RU"): string {
@@ -125,9 +166,12 @@ export function formatDateRangeValue(
   if (!startsAt || !endsAt) return emptyLabel;
   const start = asDate(startsAt);
   const end = asDate(endsAt);
-  const sameDay = start.getFullYear() === end.getFullYear()
-    && start.getMonth() === end.getMonth()
-    && start.getDate() === end.getDate();
+  const startParts = zonedParts(start);
+  const endParts = zonedParts(end);
+  const sameDay = !!startParts && !!endParts
+    && startParts.year === endParts.year
+    && startParts.month === endParts.month
+    && startParts.day === endParts.day;
   return sameDay
     ? `${formatDateValue(start, settings, locale)} ${formatTimeValue(start, settings)}–${formatTimeValue(end, settings)}`
     : `${formatDateTimeValue(start, settings, locale)} → ${formatDateTimeValue(end, settings, locale)}`;
