@@ -9,6 +9,7 @@ interface TypeRow {
   id: string;
   name: string;
   tracking_mode: Equipment.TrackingMode;
+  reservation_assignment_mode: Equipment.ReservationAssignmentMode | null;
   created_at: Date;
 }
 interface CategoryRow { id:string; name:string; active:boolean; sort_order:number; created_at:Date }
@@ -17,6 +18,8 @@ interface ModelRow {
   type_id: string;
   category_id: string | null;
   tracking_mode: Equipment.TrackingMode;
+  reservation_assignment_mode: Equipment.ReservationAssignmentMode | null;
+  type_reservation_assignment_mode: Equipment.ReservationAssignmentMode | null;
   name: string;
   manufacturer: string | null;
   image_url: string | null;
@@ -79,6 +82,7 @@ interface StorageZoneRow {
 interface EquipmentSettingsRow {
   cable_connectors: string[];
   cable_name_format: string[];
+  extension_name_format: string[];
 }
 interface CableConnectorRow { id:string; name:string; designation:string; image_data_url:string|null; active:boolean; created_at:Date }
 interface ProblemRow {
@@ -102,6 +106,7 @@ const typeDTO = (r: TypeRow): Equipment.EquipmentTypeDTO => ({
   id: r.id,
   name: r.name,
   trackingMode: r.tracking_mode,
+  reservationAssignmentMode: r.reservation_assignment_mode,
   createdAt: r.created_at.toISOString(),
 });
 const categoryDTO=(r:CategoryRow):Equipment.EquipmentCategoryDTO=>({id:r.id,name:r.name,active:r.active,sortOrder:r.sort_order,createdAt:r.created_at.toISOString()});
@@ -110,6 +115,8 @@ const modelDTO = (r: ModelRow): Equipment.EquipmentModelDTO => ({
   typeId: r.type_id,
   categoryId: r.category_id,
   trackingMode: r.tracking_mode,
+  reservationAssignmentMode: r.reservation_assignment_mode,
+  effectiveReservationAssignmentMode: r.type_reservation_assignment_mode ?? r.reservation_assignment_mode ?? "planning",
   name: r.name,
   manufacturer: r.manufacturer,
   imageUrl: r.image_url,
@@ -172,6 +179,7 @@ const storageZoneDTO = (r: StorageZoneRow): Equipment.StorageZoneDTO => ({
 const cableSettingsDTO = (r: EquipmentSettingsRow): Equipment.CableSettingsDTO => ({
   connectors: r.cable_connectors,
   nameFormat: r.cable_name_format,
+  extensionNameFormat: r.extension_name_format,
 });
 const cableConnectorDTO = (r:CableConnectorRow):Equipment.CableConnectorDTO => ({ id:r.id,name:r.name,designation:r.designation,imageDataUrl:r.image_data_url,active:r.active,createdAt:r.created_at.toISOString() });
 const problemDTO = (r: ProblemRow): Problem => ({
@@ -318,7 +326,7 @@ export function createEquipmentService(
 
   // Models always carry their type's tracking mode (same-schema join is fine).
   const MODEL_SELECT = `
-    SELECT m.*, t.tracking_mode
+    SELECT m.*, t.tracking_mode, t.reservation_assignment_mode AS type_reservation_assignment_mode
     FROM equipment.models m
     JOIN equipment.types t ON t.id = m.type_id`;
 
@@ -350,14 +358,14 @@ export function createEquipmentService(
   async function ensureCableSettings(client: Sql = db): Promise<EquipmentSettingsRow> {
     let row = await one<EquipmentSettingsRow>(
       client,
-      `SELECT cable_connectors, cable_name_format FROM equipment.settings WHERE id=1`
+      `SELECT cable_connectors, cable_name_format, extension_name_format FROM equipment.settings WHERE id=1`
     );
     if (!row) {
       row = await one<EquipmentSettingsRow>(
         client,
         `INSERT INTO equipment.settings (id) VALUES (1)
          ON CONFLICT (id) DO UPDATE SET id=EXCLUDED.id
-         RETURNING cable_connectors, cable_name_format`
+         RETURNING cable_connectors, cable_name_format, extension_name_format`
       );
     }
     return row!;
@@ -453,13 +461,14 @@ export function createEquipmentService(
     async updateCableSettings(input) {
       const connectors = [...new Set(input.connectors.map((x) => x.trim()).filter(Boolean))];
       const format = input.nameFormat.map((x) => x.trim()).filter(Boolean);
+      const extensionFormat = input.extensionNameFormat.map((x) => x.trim()).filter(Boolean);
       const row = await one<EquipmentSettingsRow>(
         db,
-        `INSERT INTO equipment.settings (id, cable_connectors, cable_name_format)
-         VALUES (1,$1,$2)
-         ON CONFLICT (id) DO UPDATE SET cable_connectors=$1, cable_name_format=$2
-         RETURNING cable_connectors, cable_name_format`,
-        [connectors, format.length ? format : ["sideA", "arrow", "sideB", "length"]]
+        `INSERT INTO equipment.settings (id, cable_connectors, cable_name_format, extension_name_format)
+         VALUES (1,$1,$2,$3)
+         ON CONFLICT (id) DO UPDATE SET cable_connectors=$1, cable_name_format=$2, extension_name_format=$3
+         RETURNING cable_connectors, cable_name_format, extension_name_format`,
+        [connectors, format.length ? format : ["sideA", "arrow", "sideB", "length"], extensionFormat.length ? extensionFormat.slice(0, 12) : ["E", "length", "m", "outlets", "s"]]
       );
       return cableSettingsDTO(row!);
     },
@@ -497,20 +506,24 @@ export function createEquipmentService(
     async createType(input) {
       const row = await one<TypeRow>(
         db,
-        `INSERT INTO equipment.types (name, tracking_mode) VALUES ($1,$2) RETURNING *`,
-        [input.name, input.trackingMode]
+        `INSERT INTO equipment.types (name, tracking_mode, reservation_assignment_mode) VALUES ($1,$2,$3) RETURNING *`,
+        [input.name, input.trackingMode, input.reservationAssignmentMode ?? null]
       );
       return typeDTO(row!);
     },
     async updateType(id, input) {
       const existing = await one<TypeRow>(db, `SELECT * FROM equipment.types WHERE id=$1`, [id]);
       if (!existing) throw NotFound("type", id);
-      const row = await one<TypeRow>(
-        db,
-        `UPDATE equipment.types SET name=COALESCE($2, name) WHERE id=$1 RETURNING *`,
-        [id, input.name ?? null]
-      );
-      return typeDTO(row!);
+      return tx(async (client) => {
+        const reservationMode = input.reservationAssignmentMode === undefined ? existing.reservation_assignment_mode : input.reservationAssignmentMode;
+        const row = await one<TypeRow>(
+          client,
+          `UPDATE equipment.types SET name=COALESCE($2, name), reservation_assignment_mode=$3 WHERE id=$1 RETURNING *`,
+          [id, input.name ?? null, reservationMode]
+        );
+        if (reservationMode) await query(client, `UPDATE equipment.models SET reservation_assignment_mode=NULL WHERE type_id=$1`, [id]);
+        return typeDTO(row!);
+      });
     },
 
     // ── Catalog: models ──
@@ -525,13 +538,15 @@ export function createEquipmentService(
       return row ? modelDTO(row) : null;
     },
     async createModel(input) {
-      const defaultCategoryName=input.requiredComponentModelIds?.length?"Комплекты":(await one<TypeRow>(db,`SELECT * FROM equipment.types WHERE id=$1`,[input.typeId]))?.tracking_mode==="cable"?"Кабели":(await one<TypeRow>(db,`SELECT * FROM equipment.types WHERE id=$1`,[input.typeId]))?.tracking_mode==="quantity"?"Комплектующие":"Оборудование";
+      const selectedType = await one<TypeRow>(db,`SELECT * FROM equipment.types WHERE id=$1`,[input.typeId]);
+      if (!selectedType) throw NotFound("type", input.typeId);
+      const defaultCategoryName=input.requiredComponentModelIds?.length?"Комплекты":selectedType.tracking_mode==="cable"?"Кабели":selectedType.tracking_mode==="quantity"?"Комплектующие":"Оборудование";
       const categoryId=input.categoryId??(await one<{id:string}>(db,`SELECT id FROM equipment.categories WHERE name=$1 AND active=true`,[defaultCategoryName]))?.id??null;
       await query(
         db,
         `INSERT INTO equipment.models
-           (type_id, category_id, name, manufacturer, image_url, unit_cost_eur, daily_price_eur, attrs, required_component_model_ids)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+           (type_id, category_id, name, manufacturer, image_url, unit_cost_eur, daily_price_eur, attrs, required_component_model_ids, reservation_assignment_mode)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [
           input.typeId,
           categoryId,
@@ -542,6 +557,7 @@ export function createEquipmentService(
           input.dailyPriceEUR,
           input.attrs ? JSON.stringify(input.attrs) : null,
           input.requiredComponentModelIds ?? [],
+          selectedType.reservation_assignment_mode ? null : input.reservationAssignmentMode ?? null,
         ]
       );
       const row = await one<ModelRow>(
@@ -565,6 +581,14 @@ export function createEquipmentService(
         const found = await query<{ id: string }>(db, `SELECT id FROM equipment.models WHERE id=ANY($1::uuid[])`, [input.requiredComponentModelIds]);
         if (found.length !== new Set(input.requiredComponentModelIds).size) throw BadRequest("одна из обязательных комплектующих не найдена");
       }
+      const effectiveTypeId = input.typeId ?? existing.type_id;
+      const selectedType = await one<TypeRow>(db, `SELECT * FROM equipment.types WHERE id=$1`, [effectiveTypeId]);
+      if (!selectedType) throw NotFound("type", effectiveTypeId);
+      const reservationMode = selectedType.reservation_assignment_mode
+        ? null
+        : input.reservationAssignmentMode === undefined
+          ? existing.reservation_assignment_mode
+          : input.reservationAssignmentMode;
       await query(
         db,
         `UPDATE equipment.models SET
@@ -577,7 +601,8 @@ export function createEquipmentService(
            daily_price_eur  = COALESCE($8, daily_price_eur),
            attrs            = $9,
            required_component_model_ids = $10,
-           archived_at = CASE WHEN $11::boolean IS NULL THEN archived_at WHEN $11 THEN COALESCE(archived_at, now()) ELSE NULL END
+           archived_at = CASE WHEN $11::boolean IS NULL THEN archived_at WHEN $11 THEN COALESCE(archived_at, now()) ELSE NULL END,
+           reservation_assignment_mode = $12
          WHERE id=$1`,
         [
           id,
@@ -591,6 +616,7 @@ export function createEquipmentService(
           input.attrs === undefined ? existing.attrs : input.attrs ? JSON.stringify(input.attrs) : null,
           input.requiredComponentModelIds === undefined ? existing.required_component_model_ids : [...new Set(input.requiredComponentModelIds)],
           input.archived ?? null,
+          reservationMode,
         ]
       );
       const row = await one<ModelRow>(db, `${MODEL_SELECT} WHERE m.id=$1`, [id]);

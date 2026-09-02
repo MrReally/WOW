@@ -466,6 +466,9 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       ) : (
         <div className="stack">
           {(reservations.data ?? []).map((r) => {
+            const reservationModel = (models.data ?? []).find(model => model.id === r.modelId);
+            const requiresPlanningAssignment = reservationModel?.trackingMode === "serial" && (reservationModel.effectiveReservationAssignmentMode ?? "planning") === "planning";
+            const assignInOperations = reservationModel?.trackingMode === "serial" && reservationModel.effectiveReservationAssignmentMode === "operations";
             const resolved = r.resolvedUnitIds.length > 0;
             const unit = (uid: string) => (allUnits.data ?? []).find((u) => u.id === uid);
             const unitTag = (uid: string) => unit(uid)?.assetTag ?? uid.slice(0, 6);
@@ -491,6 +494,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                 {availability && (
                   <ReservationAvailabilityLine availability={availability} compact />
                 )}
+                {assignInOperations && <p className="card__subtitle" style={{ marginTop: 8 }}>Конкретные номера отмечаются по факту на этапе «Забор» в Operations.</p>}
                 {issuedCount > 0 && (
                   <p className="card__subtitle">выдано {Math.min(issuedCount, r.qty)}/{r.qty}</p>
                 )}
@@ -503,9 +507,9 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                 )}
                 {canReserve && (
                   <div className="row" style={{ marginTop: 10 }}>
-                    <Button variant="secondary" block disabled={issued || !r.startsAt || !r.endsAt} onClick={() => setResolving(r)}>
+                    {requiresPlanningAssignment && <Button variant="secondary" block disabled={issued || !r.startsAt || !r.endsAt} onClick={() => setResolving(r)}>
                       {resolved ? "Изменить" : "Распределить"}
-                    </Button>
+                    </Button>}
                     <button
                       className="icon-btn icon-btn--danger"
                       aria-label="Удалить бронь"

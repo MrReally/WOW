@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import type { Equipment } from "@sever/contracts";
 import { Sheet, Field, Input, Button, Select, Chip } from "../../../ui-kit/index.ts";
 import { useSession } from "../../../app/session.ts";
-import { cableAttrs, formatCableModel } from "../cables.ts";
+import { cableAttrs, formatCableModel, formatExtensionModel } from "../cables.ts";
 import { useCableConnectors, useCableSettings, useDeleteModel, useSetModelTrackingMode, useUpdateModel } from "../hooks.ts";
 import { CableDesigner, ModelImageInput } from "../../backoffice/CableDesigner.tsx";
 
-export function EditModelSheet({ model, categories = [], onClose }: { model: Equipment.EquipmentModelDTO | null; categories?: Equipment.EquipmentCategoryDTO[]; onClose: () => void }) {
+export function EditModelSheet({ model, types = [], categories = [], onClose }: { model: Equipment.EquipmentModelDTO | null; types?: Equipment.EquipmentTypeDTO[]; categories?: Equipment.EquipmentCategoryDTO[]; onClose: () => void }) {
   const { can } = useSession();
   const update = useUpdateModel();
   const setTracking = useSetModelTrackingMode();
@@ -27,6 +27,7 @@ export function EditModelSheet({ model, categories = [], onClose }: { model: Equ
   const [sideBQty, setSideBQty] = useState("1");
   const [sideBConnector, setSideBConnector] = useState("");
   const [serialExtension, setSerialExtension] = useState(false);
+  const [reservationMode, setReservationMode] = useState<Equipment.ReservationAssignmentMode | "">("");
   const [sideAEnds,setSideAEnds]=useState<string[]>([""]),[sideBEnds,setSideBEnds]=useState<string[]>([""]);
   const [symbolShape,setSymbolShape]=useState<Equipment.StageSymbol["shape"]>("circle");
   const [symbolCode,setSymbolCode]=useState("");
@@ -37,6 +38,7 @@ export function EditModelSheet({ model, categories = [], onClose }: { model: Equ
     if (model) {
       const attrs = cableAttrs(model);
       setSerialExtension(model.trackingMode === "serial" && !!attrs);
+      setReservationMode(model.reservationAssignmentMode ?? "");
       setName(model.name);
       setCategoryId(model.categoryId??"");
       setManufacturer(model.manufacturer ?? "");
@@ -73,8 +75,13 @@ export function EditModelSheet({ model, categories = [], onClose }: { model: Equ
     connectors: null,
   };
   const cablePreview = formatCableModel({ ...model, attrs: nextCableAttrs }, cableSettings.data?.nameFormat);
+  const extensionPreview = formatExtensionModel({ ...model, attrs: nextCableAttrs }, cableSettings.data?.extensionNameFormat);
+  const selectedType = types.find((type) => type.id === model.typeId);
   const stageSymbol:Equipment.StageSymbol={shape:symbolShape,code:symbolCode.trim(),width:Math.max(4,Number(symbolWidth)||24),height:Math.max(4,Number(symbolHeight)||24),color:/^#[0-9a-f]{6}$/i.test(symbolColor)?symbolColor:null};
   const commonAttrs:Equipment.ModelAttrs={...((model.attrs??{}) as Equipment.ModelAttrs),stageSymbol};
+  if (model.trackingMode === "serial" && !serialExtension) {
+    for (const key of ["cableType", "lengthM", "sideAConnector", "sideAQty", "sideBConnector", "sideBQty", "sideAEnds", "sideBEnds", "connectors"]) delete commonAttrs[key];
+  }
   if(powerW!=="")commonAttrs.powerW=Math.max(0,Number(powerW)||0);else delete commonAttrs.powerW;
   if(dmxChannels!=="")commonAttrs.dmxChannels=Math.max(1,Math.trunc(Number(dmxChannels)||1));else delete commonAttrs.dmxChannels;
   const save = () =>
@@ -89,6 +96,7 @@ export function EditModelSheet({ model, categories = [], onClose }: { model: Equ
           unitCostEUR: unitCost === "" ? undefined : Number(unitCost),
           dailyPriceEUR: dailyPrice === "" ? undefined : Number(dailyPrice),
           attrs: model.trackingMode === "cable" || serialExtension ? { ...nextCableAttrs, stageSymbol } : commonAttrs,
+          reservationAssignmentMode: selectedType?.reservationAssignmentMode ? null : reservationMode || null,
         },
       },
       { onSuccess: onClose }
@@ -135,8 +143,18 @@ export function EditModelSheet({ model, categories = [], onClose }: { model: Equ
         <>
           <CableDesigner value={nextCableAttrs} connectors={connectorCatalog.data??[]} onChange={value=>{setCableType(value.cableType);setLengthM(String(value.lengthM||""));setSideAQty(String(value.sideAQty));setSideAConnector(value.sideAConnector);setSideBQty(String(value.sideBQty));setSideBConnector(value.sideBConnector);setSideAEnds(value.sideAEnds??[value.sideAConnector]);setSideBEnds(value.sideBEnds??[value.sideBConnector]);}}/>
           <p className="card__subtitle">{cablePreview}</p>
+          {serialExtension && <Button variant="secondary" onClick={() => setName(extensionPreview)}>Имя по шаблону: {extensionPreview}</Button>}
         </>
       )}
+      <Field label="Распределение в аренду">
+        <Select
+          value={selectedType?.reservationAssignmentMode ?? reservationMode}
+          disabled={!!selectedType?.reservationAssignmentMode}
+          onChange={(e) => setReservationMode(e.target.value as Equipment.ReservationAssignmentMode | "")}
+          options={[{ value: "", label: "Planning (по умолчанию)" }, { value: "planning", label: "Распределять заранее в Planning" }, { value: "operations", label: "Отмечать по факту в Operations" }]}
+        />
+        {selectedType?.reservationAssignmentMode && <p className="card__subtitle">Наследуется от типа «{selectedType.name}»</p>}
+      </Field>
       <div className="stack" style={{gap:8,margin:"14px 0"}}>
         <p className="card__title">Обозначение на схеме сцены</p>
         <div className="row">

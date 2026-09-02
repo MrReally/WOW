@@ -12,6 +12,8 @@ import {
   Loading,
   ErrorState,
   EmptyState,
+  Select,
+  Sheet,
   type Tone,
 } from "../../ui-kit/index.ts";
 import { eur, unitStatusLabel } from "../../lib/labels.ts";
@@ -101,6 +103,25 @@ function ModelRow({ model, units, last, onEdit }: { model: Equipment.EquipmentMo
   );
 }
 
+function TypeSettingsSheet({ type, onClose }: { type: Equipment.EquipmentTypeDTO | null; onClose: () => void }) {
+  const updateType = useUpdateType();
+  const [name, setName] = useState("");
+  const [mode, setMode] = useState<Equipment.ReservationAssignmentMode | "">("");
+  useEffect(() => {
+    setName(type?.name ?? "");
+    setMode(type?.reservationAssignmentMode ?? "");
+  }, [type]);
+  if (!type) return null;
+  return <Sheet open={!!type} onClose={onClose} title="Настройки типа">
+    <Field label="Название"><Input value={name} onChange={event => setName(event.target.value)} /></Field>
+    <Field label="Распределение в аренду">
+      <Select value={mode} onChange={event => setMode(event.target.value as Equipment.ReservationAssignmentMode | "")} options={[{ value: "", label: "Выбирать в каждой модели" }, { value: "planning", label: "Распределять заранее в Planning" }, { value: "operations", label: "Отмечать по факту в Operations" }]} />
+      {mode && <p className="card__subtitle">Настройка будет унаследована всеми моделями этого типа.</p>}
+    </Field>
+    <Button block disabled={!name.trim() || updateType.isPending} onClick={() => updateType.mutate({ id: type.id, input: { name: name.trim(), reservationAssignmentMode: mode || null } }, { onSuccess: onClose })}>Сохранить</Button>
+  </Sheet>;
+}
+
 type WarehouseTab = "dashboard" | "repair" | "stocklist" | "installed" | "cables" | "models";
 
 const WAREHOUSE_TABS: { id: WarehouseTab; label: string; shortLabel: string; tone: "accent" | "warn" | "info" | "ok" }[] = [
@@ -154,7 +175,6 @@ export function WarehousePage() {
   const updateWarehouse = useUpdateWarehouse();
   const createPlace = useCreateVenue();
   const updatePlace = useUpdateVenue();
-  const updateType = useUpdateType();
   const projects = useProjectsForOps();
   const openRepairs = useOpenRepairs();
   const openHandovers = useOpenHandovers();
@@ -166,6 +186,7 @@ export function WarehousePage() {
   const [opsOpen, setOpsOpen] = useState(false);
   const [cableModel, setCableModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [editModel, setEditModel] = useState<Equipment.EquipmentModelDTO | null>(null);
+  const [editType, setEditType] = useState<Equipment.EquipmentTypeDTO | null>(null);
   const [statusFilter, setStatusFilter] = useState<Equipment.UnitStatus | "all">("all");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [warehouseForm, setWarehouseForm] = useState<{ mode: "create" | "edit"; id?: string } | null>(null);
@@ -254,12 +275,6 @@ export function WarehousePage() {
       next.has(tid) ? next.delete(tid) : next.add(tid);
       return next;
     });
-  const renameType = (tid: string) => {
-    const current = getTypeName(tid);
-    const next = prompt("Новое название типа", current)?.trim();
-    if (!next || next === current) return;
-    updateType.mutate({ id: tid, input: { name: next } });
-  };
   const repairCount = (openRepairs.data ?? []).length + (openHandovers.data ?? []).length;
   const searchField = (
     <Field label="Поиск по складу">
@@ -385,6 +400,12 @@ export function WarehousePage() {
           {canImport && <Button block variant="secondary" onClick={() => setImportOpen(true)}>Импорт CSV</Button>}
         </div>
       )}
+      {canCatalog && (types.data ?? []).length > 0 && <>
+        <SectionHead label="Типы" meta={`${types.data?.length ?? 0}`} />
+        <div className="row" style={{ flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+          {(types.data ?? []).map(type => <Button key={type.id} variant="ghost" onClick={() => setEditType(type)}>{type.name} · {type.reservationAssignmentMode === "operations" ? "Operations" : type.reservationAssignmentMode === "planning" ? "Planning" : "по модели"}</Button>)}
+        </div>
+      </>}
       {allModels.length === 0 ? (
         <EmptyState title="Каталог пуст" hint={canEdit ? "Добавьте модели или импортируйте CSV" : undefined} />
       ) : (
@@ -479,7 +500,7 @@ export function WarehousePage() {
                 <SectionHead label={getTypeName(tid)} meta={`${list.length}`} />
                 <div className="row" style={{ gap: 6 }}>
                   {canCatalog && (
-                    <button className="icon-btn" aria-label="Редактировать тип" title="Редактировать тип" onClick={() => renameType(tid)}>
+                    <button className="icon-btn" aria-label="Редактировать тип" title="Редактировать тип" onClick={() => setEditType((types.data ?? []).find(type => type.id === tid) ?? null)}>
                       ✎
                     </button>
                   )}
@@ -546,7 +567,8 @@ export function WarehousePage() {
       {canIssue && (
         <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} models={allModels} />
       )}
-      {canCatalog && <EditModelSheet model={editModel} categories={categories.data??[]} onClose={() => setEditModel(null)} />}
+      {canCatalog && <EditModelSheet model={editModel} types={types.data??[]} categories={categories.data??[]} onClose={() => setEditModel(null)} />}
+      {canCatalog && <TypeSettingsSheet type={editType} onClose={() => setEditType(null)} />}
       <CableMoveSheet model={cableModel} warehouses={warehouseList} selectedWarehouseId={warehouseFilter === "all" ? null : warehouseFilter} onClose={() => setCableModel(null)} />
       <div className="project-tabbar" role="tablist" aria-label="Warehouse">
         {WAREHOUSE_TABS.map((tab) => {

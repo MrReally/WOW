@@ -1,6 +1,7 @@
 import type { ID, ISODateTime, Problem } from "./common.js";
 
 export type TrackingMode = "serial" | "quantity" | "cable";
+export type ReservationAssignmentMode = "planning" | "operations";
 export type StorageZoneKind = "room" | "rack" | "shelf" | "bin" | "floor" | "other";
 
 // ── Status model (no "written off" status, by design) ────────────────────────
@@ -33,6 +34,8 @@ export interface EquipmentTypeDTO {
   name: string;
   /** Serial units, generic counted stock, or cable stock with cable attrs. */
   trackingMode: TrackingMode;
+  /** Null lets each model choose; otherwise every model of this type inherits it. */
+  reservationAssignmentMode?: ReservationAssignmentMode | null;
   createdAt: ISODateTime;
 }
 
@@ -51,6 +54,10 @@ export interface EquipmentModelDTO {
   categoryId?: ID | null;
   /** Inherited from the model's type — serial units vs counted quantity. */
   trackingMode: TrackingMode;
+  /** Model-level choice. Null means default Planning or inheritance from type. */
+  reservationAssignmentMode?: ReservationAssignmentMode | null;
+  /** Effective value after applying type inheritance and the Planning default. */
+  effectiveReservationAssignmentMode?: ReservationAssignmentMode;
   name: string;
   manufacturer: string | null;
   /** Optional model photo shared by mobile and desktop. PNG/JPEG data URL or hosted URL. */
@@ -107,6 +114,7 @@ export interface CableAttrs {
 export interface CableSettingsDTO {
   connectors: string[];
   nameFormat: string[];
+  extensionNameFormat: string[];
 }
 
 export interface CableConnectorDTO {
@@ -404,8 +412,8 @@ export interface EquipmentService {
   listCableConnectors(includeArchived?: boolean): Promise<CableConnectorDTO[]>;
   createCableConnector(input: { name: string; designation: string; imageDataUrl?: string | null }): Promise<CableConnectorDTO>;
   updateCableConnector(id: ID, input: { name?: string; designation?: string; imageDataUrl?: string | null; active?: boolean }): Promise<CableConnectorDTO>;
-  createType(input: { name: string; trackingMode: TrackingMode }): Promise<EquipmentTypeDTO>;
-  updateType(id: ID, input: { name?: string }): Promise<EquipmentTypeDTO>;
+  createType(input: { name: string; trackingMode: TrackingMode; reservationAssignmentMode?: ReservationAssignmentMode | null }): Promise<EquipmentTypeDTO>;
+  updateType(id: ID, input: { name?: string; reservationAssignmentMode?: ReservationAssignmentMode | null }): Promise<EquipmentTypeDTO>;
   listModels(typeId?: ID, includeArchived?: boolean): Promise<EquipmentModelDTO[]>;
   getModel(id: ID): Promise<EquipmentModelDTO | null>;
   createModel(input: CreateModelInput): Promise<EquipmentModelDTO>;
@@ -482,6 +490,7 @@ export interface CreateModelInput {
   dailyPriceEUR: number;
   attrs?: CableAttrs | Record<string, unknown> | null;
   requiredComponentModelIds?: ID[];
+  reservationAssignmentMode?: ReservationAssignmentMode | null;
 }
 
 export interface UpdateModelInput {
@@ -495,6 +504,7 @@ export interface UpdateModelInput {
   attrs?: CableAttrs | Record<string, unknown> | null;
   requiredComponentModelIds?: ID[];
   archived?: boolean;
+  reservationAssignmentMode?: ReservationAssignmentMode | null;
 }
 
 // ── Domain events (in-process bus now, broker later) ─────────────────────────

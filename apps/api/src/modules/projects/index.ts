@@ -9,9 +9,10 @@ import { registerProjectsRoutes } from "./routes.js";
 export function createProjectsModule(
   db: Sql,
   bus: EventBus,
-  loadEquipmentUnits: (unitIds: string[]) => Promise<(Equipment.EquipmentUnitDTO | null)[]>
+  loadEquipmentUnits: (unitIds: string[]) => Promise<(Equipment.EquipmentUnitDTO | null)[]>,
+  loadEquipmentModels: (modelIds: string[]) => Promise<(Equipment.EquipmentModelDTO | null)[]>
 ): SeverModule<Projects.ProjectsService> {
-  const service = createProjectsService(db, bus, loadEquipmentUnits);
+  const service = createProjectsService(db, bus, loadEquipmentUnits, loadEquipmentModels);
   return {
     name: "projects",
     migration: projectsMigration,

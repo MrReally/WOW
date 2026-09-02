@@ -37,3 +37,15 @@ export function formatCableModel(model: Equipment.EquipmentModelDTO, format: str
   };
   return format.map((key) => parts[key] ?? key).filter(Boolean).join(" ").replace(/\s+->\s+/g, " -> ").trim();
 }
+
+export function formatExtensionModel(model: Equipment.EquipmentModelDTO, format: string[] = ["E", "length", "m", "outlets", "s"]): string {
+  const attrs = cableAttrs(model);
+  if (!attrs) return model.name;
+  const parts: Record<string, string> = {
+    length: String(attrs.lengthM || 0),
+    outlets: String(attrs.sideBQty || 1),
+    type: attrs.cableType,
+    name: model.name,
+  };
+  return format.map((token) => parts[token] ?? token).join("").trim();
+}

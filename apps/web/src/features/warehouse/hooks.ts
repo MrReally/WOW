@@ -134,7 +134,7 @@ function invalidateEquipment(qc: ReturnType<typeof useQueryClient>) {
 export function useCreateType() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name: string; trackingMode: Equipment.TrackingMode }) =>
+    mutationFn: (input: { name: string; trackingMode: Equipment.TrackingMode; reservationAssignmentMode?: Equipment.ReservationAssignmentMode | null }) =>
       api.post("/api/equipment/types", input),
     onSuccess: () => invalidateEquipment(qc),
   });
@@ -143,7 +143,7 @@ export function useCreateType() {
 export function useUpdateType() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: { name?: string } }) =>
+    mutationFn: ({ id, input }: { id: string; input: { name?: string; reservationAssignmentMode?: Equipment.ReservationAssignmentMode | null } }) =>
       api.patch<Equipment.EquipmentTypeDTO>(`/api/equipment/types/${id}`, input),
     meta: { successMessage: "Тип обновлён" },
     onSuccess: () => invalidateEquipment(qc),

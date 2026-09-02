@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Equipment } from "@sever/contracts";
 import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
-import { formatCableModel } from "../cables.ts";
+import { formatCableModel, formatExtensionModel } from "../cables.ts";
 import { useCableSettings, useCategories, useCreateModel, useCreateType, useCreateUnit, useModelStockAtWarehouse, useSetModelStock, useWarehouses } from "../hooks.ts";
 
 interface Props {
@@ -25,6 +25,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
   // type form
   const [typeName, setTypeName] = useState("");
   const [trackingMode, setTrackingMode] = useState<Equipment.TrackingMode>("serial");
+  const [typeReservationMode, setTypeReservationMode] = useState<Equipment.ReservationAssignmentMode | "">("");
 
   // model form
   const [typeId, setTypeId] = useState(types[0]?.id ?? "");
@@ -39,6 +40,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
   const [sideBQty, setSideBQty] = useState("1");
   const [sideBConnector, setSideBConnector] = useState("");
   const [serialExtension, setSerialExtension] = useState(false);
+  const [modelReservationMode, setModelReservationMode] = useState<Equipment.ReservationAssignmentMode | "">("");
 
   // unit form
   const [modelId, setModelId] = useState("");
@@ -105,6 +107,10 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
     },
     cableSettings.data?.nameFormat
   );
+  const extensionPreview = formatExtensionModel(
+    { id: "preview", typeId: effTypeId, trackingMode: "serial", name: modelName.trim(), manufacturer: null, imageUrl: null, unitCostEUR: 0, dailyPriceEUR: 0, attrs: cableAttrs, requiredComponentModelIds: [], createdAt: "" },
+    cableSettings.data?.extensionNameFormat
+  );
 
   const pickModelBySearch = (value: string) => {
     setModelSearch(value);
@@ -147,10 +153,13 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
               ]}
             />
           </Field>
+          <Field label="Распределение в аренду">
+            <Select value={typeReservationMode} onChange={(e) => setTypeReservationMode(e.target.value as Equipment.ReservationAssignmentMode | "")} options={[{ value: "", label: "Выбирать в каждой модели" }, { value: "planning", label: "Распределять заранее в Planning" }, { value: "operations", label: "Отмечать по факту в Operations" }]} />
+          </Field>
           <Button
             block
             disabled={!typeName || createType.isPending}
-            onClick={() => createType.mutate({ name: typeName, trackingMode }, { onSuccess: () => { setTypeName(""); } })}
+            onClick={() => createType.mutate({ name: typeName, trackingMode, reservationAssignmentMode: typeReservationMode || null }, { onSuccess: () => { setTypeName(""); } })}
           >
             Создать тип
           </Button>
@@ -164,7 +173,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
           </Field>
           <Field label="Категория"><Select value={categoryId} onChange={e=>setCategoryId(e.target.value)} options={[{value:"",label:"Без категории"},...(categories.data??[]).map(category=>({value:category.id,label:category.name}))]}/></Field>
           <Field label="Название модели">
-            <Input value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder={selectedType?.trackingMode === "cable" ? cablePreview : "Robe MegaPointe"} />
+            <Input value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder={selectedType?.trackingMode === "cable" ? cablePreview : serialExtension ? extensionPreview : "Robe MegaPointe"} />
           </Field>
           {selectedType?.trackingMode === "serial" && (
             <label className="chip chip--neutral" style={{ marginBottom: 10 }}>
@@ -202,8 +211,18 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
                 {connectorOptions.map((connector) => <option key={connector} value={connector} />)}
               </datalist>
               <p className="card__subtitle">{cablePreview}</p>
+              {selectedType?.trackingMode === "serial" && <p className="card__subtitle">Автоимя: {extensionPreview}</p>}
             </>
           )}
+          <Field label="Распределение в аренду">
+            <Select
+              value={selectedType?.reservationAssignmentMode ?? modelReservationMode}
+              disabled={!!selectedType?.reservationAssignmentMode}
+              onChange={(e) => setModelReservationMode(e.target.value as Equipment.ReservationAssignmentMode | "")}
+              options={[{ value: "", label: "Planning (по умолчанию)" }, { value: "planning", label: "Распределять заранее в Planning" }, { value: "operations", label: "Отмечать по факту в Operations" }]}
+            />
+            {selectedType?.reservationAssignmentMode && <p className="card__subtitle">Наследуется от типа</p>}
+          </Field>
           <div className="row">
             <Field label="Стоимость, €">
               <Input type="number" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
@@ -214,16 +233,17 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
           </div>
           <Button
             block
-            disabled={(!modelName.trim() && selectedType?.trackingMode !== "cable") || !effTypeId || createModel.isPending}
+            disabled={(!modelName.trim() && selectedType?.trackingMode !== "cable" && !serialExtension) || !effTypeId || createModel.isPending}
             onClick={() =>
               createModel.mutate(
                 {
                   typeId: effTypeId,
                   categoryId: categoryId || null,
-                  name: hasExtensionAttrs && selectedType?.trackingMode === "cable" ? (modelName.trim() || cablePreview) : modelName,
+                  name: modelName.trim() || (selectedType?.trackingMode === "cable" ? cablePreview : serialExtension ? extensionPreview : ""),
                   unitCostEUR: Number(unitCost),
                   dailyPriceEUR: Number(dailyPrice),
                   attrs: hasExtensionAttrs ? cableAttrs : undefined,
+                  reservationAssignmentMode: selectedType?.reservationAssignmentMode ? null : modelReservationMode || null,
                 },
                 { onSuccess: () => { setModelName(""); setCableType(""); setLengthM(""); setSideAConnector(""); setSideBConnector(""); } }
               )

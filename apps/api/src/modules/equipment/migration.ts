@@ -7,6 +7,9 @@ CREATE TABLE IF NOT EXISTS equipment.types (
   tracking_mode text NOT NULL CHECK (tracking_mode IN ('serial','quantity','cable')),
   created_at    timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE equipment.types ADD COLUMN IF NOT EXISTS reservation_assignment_mode text;
+ALTER TABLE equipment.types DROP CONSTRAINT IF EXISTS types_reservation_assignment_mode_check;
+ALTER TABLE equipment.types ADD CONSTRAINT types_reservation_assignment_mode_check CHECK (reservation_assignment_mode IS NULL OR reservation_assignment_mode IN ('planning','operations'));
 ALTER TABLE equipment.types DROP CONSTRAINT IF EXISTS types_tracking_mode_check;
 ALTER TABLE equipment.types ADD CONSTRAINT types_tracking_mode_check CHECK (tracking_mode IN ('serial','quantity','cable'));
 UPDATE equipment.types
@@ -24,6 +27,7 @@ CREATE TABLE IF NOT EXISTS equipment.settings (
   ],
   cable_name_format text[] NOT NULL DEFAULT ARRAY['sideA','arrow','sideB','length']
 );
+ALTER TABLE equipment.settings ADD COLUMN IF NOT EXISTS extension_name_format text[] NOT NULL DEFAULT ARRAY['E','length','m','outlets','s'];
 INSERT INTO equipment.settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS equipment.models (
@@ -38,6 +42,9 @@ CREATE TABLE IF NOT EXISTS equipment.models (
   required_component_model_ids uuid[] NOT NULL DEFAULT '{}',
   created_at                   timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE equipment.models ADD COLUMN IF NOT EXISTS reservation_assignment_mode text;
+ALTER TABLE equipment.models DROP CONSTRAINT IF EXISTS models_reservation_assignment_mode_check;
+ALTER TABLE equipment.models ADD CONSTRAINT models_reservation_assignment_mode_check CHECK (reservation_assignment_mode IS NULL OR reservation_assignment_mode IN ('planning','operations'));
 ALTER TABLE equipment.models ADD COLUMN IF NOT EXISTS image_url text;
 
 CREATE TABLE IF NOT EXISTS equipment.categories (

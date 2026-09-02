@@ -348,7 +348,12 @@ const stageRequiredMarks: Partial<Record<Projects.ProjectChecklistGroup, Project
   return: [["returned"]],
 };
 
-export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits: (unitIds: string[]) => Promise<(Equipment.EquipmentUnitDTO | null)[]>): Projects.ProjectsService {
+export function createProjectsService(
+  db: Sql,
+  bus: EventBus,
+  loadEquipmentUnits: (unitIds: string[]) => Promise<(Equipment.EquipmentUnitDTO | null)[]>,
+  loadEquipmentModels: (modelIds: string[]) => Promise<(Equipment.EquipmentModelDTO | null)[]>
+): Projects.ProjectsService {
   async function activateDueProjects(): Promise<void> {
     await query(
       db,
@@ -731,7 +736,13 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
             throw BadRequest("сначала отметьте приборы текущего этапа");
           }
         }
-        const unresolved = reservations.some((r) => r.resolved_unit_ids.length < r.qty);
+        const modelIds = [...new Set(reservations.map((reservation) => reservation.model_id))];
+        const reservationModels = await loadEquipmentModels(modelIds);
+        const modelById = new Map(modelIds.map((modelId, index) => [modelId, reservationModels[index]]));
+        const unresolved = reservations.some((r) => {
+          const model = modelById.get(r.model_id);
+          return model?.trackingMode === "serial" && (model.effectiveReservationAssignmentMode ?? "planning") === "planning" && r.resolved_unit_ids.length < r.qty;
+        });
         if (existing.operation_stage !== "return" && unresolved) {
           throw BadRequest("сначала распределите оборудование проекта");
         }
@@ -902,6 +913,10 @@ export function createProjectsService(db: Sql, bus: EventBus, loadEquipmentUnits
     async resolveReservation(id, unitIds) {
       const res = await one<ReservationRow>(db, `SELECT * FROM projects.reservations WHERE id=$1`, [id]);
       if (!res) throw NotFound("reservation", id);
+      const [model] = await loadEquipmentModels([res.model_id]);
+      if (model?.effectiveReservationAssignmentMode === "operations") {
+        throw BadRequest("эта модель отмечается по факту на этапе «Забор» в Operations");
+      }
       if (!res.starts_at || !res.ends_at) throw BadRequest("сначала укажите даты проекта и отдельно подтвердите наличие");
       // No duplicates within the selection.
       if (new Set(unitIds).size !== unitIds.length) throw BadRequest("одна и та же единица выбрана дважды");

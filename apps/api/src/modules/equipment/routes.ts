@@ -10,16 +10,19 @@ import { BadRequest } from "../../core/errors.js";
 const createTypeSchema = z.object({
   name: z.string().min(1),
   trackingMode: z.enum(["serial", "quantity", "cable"]),
+  reservationAssignmentMode: z.enum(["planning", "operations"]).nullable().optional(),
 });
 const cableSettingsSchema = z.object({
   connectors: z.array(z.string().min(1)).max(200),
   nameFormat: z.array(z.string().min(1)).max(12),
+  extensionNameFormat: z.array(z.string().min(1)).max(12),
 });
 const imageSchema=z.string().max(2_000_000).refine(value=>value.startsWith("data:image/png;base64,")||value.startsWith("data:image/jpeg;base64,")||value.startsWith("https://"),"используйте PNG/JPEG до 1,5 МБ");
 const connectorSchema=z.object({name:z.string().min(1),designation:z.string().min(1).max(24),imageDataUrl:imageSchema.nullable().optional()});
 const updateConnectorSchema=connectorSchema.partial().extend({active:z.boolean().optional()});
 const updateTypeSchema = z.object({
   name: z.string().min(1).optional(),
+  reservationAssignmentMode: z.enum(["planning", "operations"]).nullable().optional(),
 });
 const categorySchema=z.object({name:z.string().trim().min(1).max(120),sortOrder:z.number().int().optional()});
 const updateCategorySchema=categorySchema.partial().extend({active:z.boolean().optional()});
@@ -52,6 +55,7 @@ const createModelSchema = z.object({
   dailyPriceEUR: z.number().nonnegative(),
   attrs: modelAttrsSchema.nullable().optional(),
   requiredComponentModelIds: z.array(z.string().uuid()).optional(),
+  reservationAssignmentMode: z.enum(["planning", "operations"]).nullable().optional(),
 });
 const updateModelSchema = z.object({
   typeId: z.string().uuid().optional(),
@@ -64,6 +68,7 @@ const updateModelSchema = z.object({
   attrs: modelAttrsSchema.nullable().optional(),
   requiredComponentModelIds: z.array(z.string().uuid()).optional(),
   archived: z.boolean().optional(),
+  reservationAssignmentMode: z.enum(["planning", "operations"]).nullable().optional(),
 });
 const modelTrackingSchema = z.object({ trackingMode: z.enum(["serial", "quantity", "cable"]) });
 const modelIdParamsSchema = z.object({ id: z.string().uuid() });

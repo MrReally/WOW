@@ -278,6 +278,8 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
   const returnQuantity = useReturnProjectQuantity();
   const canMarkStatus = can("warehouse.unit.status");
   const [returnWarehouseByUnit, setReturnWarehouseByUnit] = useState<Record<string,string>>({});
+  const [actualUnitIdsByReservation, setActualUnitIdsByReservation] = useState<Record<string, string[]>>({});
+  const [actualQuantityByModel, setActualQuantityByModel] = useState<Record<string, string>>({});
   const shouldShow = stage !== "show";
   if (!shouldShow) return null;
 
@@ -305,7 +307,9 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
     byWarehouse.get(key)!.rows.push(row);
   }
   const serialModelIds = new Set((models.data ?? []).filter((model) => model.trackingMode === "serial").map((model) => model.id));
-  const unresolved = (reservations.data ?? []).filter((reservation) => serialModelIds.has(reservation.modelId) && reservation.resolvedUnitIds.length < reservation.qty);
+  const modelById = new Map((models.data ?? []).map((model) => [model.id, model]));
+  const planningUnresolved = (reservations.data ?? []).filter((reservation) => serialModelIds.has(reservation.modelId) && (modelById.get(reservation.modelId)?.effectiveReservationAssignmentMode ?? "planning") === "planning" && reservation.resolvedUnitIds.length < reservation.qty);
+  const operationsReservations = (reservations.data ?? []).filter((reservation) => serialModelIds.has(reservation.modelId) && modelById.get(reservation.modelId)?.effectiveReservationAssignmentMode === "operations");
   const quantityNeeds = [...(reservations.data ?? []).filter((reservation) => !serialModelIds.has(reservation.modelId)).reduce((map, reservation) => {
     map.set(reservation.modelId, (map.get(reservation.modelId) ?? 0) + reservation.qty);
     return map;
@@ -360,7 +364,7 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
           <Loading />
         ) : marks.error ? (
           <ErrorState error={marks.error} onRetry={marks.refetch} />
-        ) : resolved.length === 0 && unresolved.length === 0 && quantityNeeds.length === 0 ? (
+        ) : resolved.length === 0 && planningUnresolved.length === 0 && operationsReservations.length === 0 && quantityNeeds.length === 0 ? (
           <EmptyState title="Список пуст" />
         ) : (
           <>
@@ -400,12 +404,15 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
                   {quantityNeeds.map((need) => {
                     const outstanding = quantityOutstanding(need.modelId);
                     const remaining = Math.max(0, need.qty - outstanding);
+                    const assignByFact = modelById.get(need.modelId)?.effectiveReservationAssignmentMode === "operations";
+                    const actualQuantity = Math.max(0, Math.trunc(Number(actualQuantityByModel[need.modelId] ?? remaining) || 0));
                     return <div key={need.modelId} className="row row--between">
                       <div style={{ minWidth: 0 }}>
                         <p className="card__title" style={{ fontSize: 16 }}>{modelName(need.modelId)} × {need.qty}</p>
-                        <p className="card__subtitle">{outstanding > 0 ? `на проекте ${outstanding}` : "на складе"}</p>
+                        <p className="card__subtitle">{outstanding > 0 ? `на проекте ${outstanding}` : assignByFact ? "количество отмечается по факту" : "на складе"}</p>
                       </div>
-                      {stage === "pickup" && remaining > 0 ? <Button disabled={issueQuantity.isPending} onClick={() => issueQuantity.mutate({ projectId, modelId: need.modelId, qty: remaining })}>Выдать {remaining}</Button>
+                      {stage === "pickup" && assignByFact ? <div className="row"><Input type="number" min="1" value={actualQuantityByModel[need.modelId] ?? String(remaining || 1)} onChange={event => setActualQuantityByModel(current => ({ ...current, [need.modelId]: event.target.value }))} /><Button disabled={issueQuantity.isPending || actualQuantity < 1} onClick={() => issueQuantity.mutate({ projectId, modelId: need.modelId, qty: actualQuantity }, { onSuccess: () => setActualQuantityByModel(current => ({ ...current, [need.modelId]: "" })) })}>Выдать {actualQuantity}</Button></div>
+                        : stage === "pickup" && remaining > 0 ? <Button disabled={issueQuantity.isPending} onClick={() => issueQuantity.mutate({ projectId, modelId: need.modelId, qty: remaining })}>Выдать {remaining}</Button>
                         : stage === "return" && outstanding > 0 ? <Button disabled={returnQuantity.isPending} onClick={() => returnQuantity.mutate({ projectId, modelId: need.modelId, qty: outstanding })}>Вернуть {outstanding}</Button>
                         : <Chip label={outstanding > 0 ? "ВЫДАНО" : "ОЖИДАЕТ"} tone={outstanding > 0 ? "warn" : "neutral"} />}
                     </div>;
@@ -413,14 +420,37 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
                 </div>
               </Card>
             )}
-            {unresolved.length > 0 && (
+            {operationsReservations.length > 0 && (
+              <Card>
+                <div className="row row--between">
+                  <p className="card__title">По факту при заборе</p>
+                  <Chip label={`${operationsReservations.length}`} tone="info" />
+                </div>
+                <div className="stack" style={{ marginTop: 10 }}>
+                  {operationsReservations.map((reservation) => {
+                    const selected = new Set(actualUnitIdsByReservation[reservation.id] ?? []);
+                    const available = (units.data ?? []).filter(unit => unit.modelId === reservation.modelId && unit.status === "in_stock");
+                    const issuedCount = (units.data ?? []).filter(unit => unit.modelId === reservation.modelId && unit.status === "on_project" && unit.currentProjectId === projectId).length;
+                    const toggle = (unitId: string) => setActualUnitIdsByReservation(current => ({ ...current, [reservation.id]: selected.has(unitId) ? [...selected].filter(id => id !== unitId) : [...selected, unitId] }));
+                    return <div key={reservation.id} className="stack" style={{ gap: 8 }}>
+                      <div className="row row--between"><div><p className="card__title" style={{ fontSize: 16 }}>{modelName(reservation.modelId)}</p><p className="card__subtitle">план {reservation.qty} · уже взято {issuedCount} · выбрано {selected.size}</p></div>{stage !== "pickup" && <Chip label="выбор на заборе" tone="neutral" />}</div>
+                      {stage === "pickup" && <>
+                        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>{available.map(unit => <label key={unit.id} className={`chip ${selected.has(unit.id) ? "chip--info chip--solid" : "chip--neutral"}`}><input type="checkbox" checked={selected.has(unit.id)} onChange={() => toggle(unit.id)} /> {unit.assetTag}</label>)}</div>
+                        {available.length === 0 ? <p className="card__subtitle">Нет свободных единиц на складе.</p> : <Button disabled={selected.size === 0 || issueUnits.isPending} onClick={() => issueUnits.mutate({ projectId, unitIds: [...selected] }, { onSuccess: () => { for (const unitId of selected) setMark.mutate({ stage: "pickup", unitId, status: "picked" }); setActualUnitIdsByReservation(current => ({ ...current, [reservation.id]: [] })); } })}>Выдать по факту · {selected.size}</Button>}
+                      </>}
+                    </div>;
+                  })}
+                </div>
+              </Card>
+            )}
+            {planningUnresolved.length > 0 && (
               <Card>
                 <div className="row row--between">
                   <p className="card__title">Не распределено</p>
-                  <Chip label={`${unresolved.length}`} tone="warn" />
+                  <Chip label={`${planningUnresolved.length}`} tone="warn" />
                 </div>
                 <div className="stack" style={{ marginTop: 10 }}>
-                  {unresolved.map((reservation) => (
+                  {planningUnresolved.map((reservation) => (
                     <div key={reservation.id} className="row row--between">
                       <div style={{ minWidth: 0 }}>
                         <p className="card__title" style={{ fontSize: 16 }}>{modelName(reservation.modelId)}</p>
