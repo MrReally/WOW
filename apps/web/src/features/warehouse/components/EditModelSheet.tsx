@@ -26,6 +26,7 @@ export function EditModelSheet({ model, categories = [], onClose }: { model: Equ
   const [sideAConnector, setSideAConnector] = useState("");
   const [sideBQty, setSideBQty] = useState("1");
   const [sideBConnector, setSideBConnector] = useState("");
+  const [serialExtension, setSerialExtension] = useState(false);
   const [sideAEnds,setSideAEnds]=useState<string[]>([""]),[sideBEnds,setSideBEnds]=useState<string[]>([""]);
   const [symbolShape,setSymbolShape]=useState<Equipment.StageSymbol["shape"]>("circle");
   const [symbolCode,setSymbolCode]=useState("");
@@ -35,6 +36,7 @@ export function EditModelSheet({ model, categories = [], onClose }: { model: Equ
   useEffect(() => {
     if (model) {
       const attrs = cableAttrs(model);
+      setSerialExtension(model.trackingMode === "serial" && !!attrs);
       setName(model.name);
       setCategoryId(model.categoryId??"");
       setManufacturer(model.manufacturer ?? "");
@@ -86,7 +88,7 @@ export function EditModelSheet({ model, categories = [], onClose }: { model: Equ
           imageUrl,
           unitCostEUR: unitCost === "" ? undefined : Number(unitCost),
           dailyPriceEUR: dailyPrice === "" ? undefined : Number(dailyPrice),
-          attrs: model.trackingMode === "cable" ? { ...nextCableAttrs, stageSymbol } : commonAttrs,
+          attrs: model.trackingMode === "cable" || serialExtension ? { ...nextCableAttrs, stageSymbol } : commonAttrs,
         },
       },
       { onSuccess: onClose }
@@ -113,7 +115,7 @@ export function EditModelSheet({ model, categories = [], onClose }: { model: Equ
   return (
     <Sheet open={!!model} onClose={onClose} title="Редактировать модель">
       <div className="row" style={{ marginBottom: 10 }}>
-        <Chip label={model.trackingMode === "cable" ? "кабель" : model.trackingMode === "quantity" ? "количество" : "серийный учёт"} tone={model.trackingMode === "serial" ? "info" : "warn"} />
+        <Chip label={model.trackingMode === "cable" ? "кабель" : model.trackingMode === "quantity" ? "количество" : serialExtension ? "удлинитель · серийный учёт" : "серийный учёт"} tone={model.trackingMode === "serial" ? "info" : "warn"} />
       </div>
       <Field label="Название"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
       <Field label="Категория"><Select value={categoryId} onChange={e=>setCategoryId(e.target.value)} options={[{value:"",label:"Без категории"},...categories.map(category=>({value:category.id,label:category.name}))]}/></Field>
@@ -123,7 +125,13 @@ export function EditModelSheet({ model, categories = [], onClose }: { model: Equ
         <Field label="Стоимость (замена), €"><Input type="number" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} /></Field>
         <Field label="Аренда / сутки, €"><Input type="number" step="0.01" value={dailyPrice} onChange={(e) => setDailyPrice(e.target.value)} /></Field>
       </div>
-      {model.trackingMode === "cable" && (
+      {model.trackingMode === "serial" && (
+        <label className="chip chip--neutral" style={{ marginBottom: 10 }}>
+          <input type="checkbox" checked={serialExtension} onChange={(e) => setSerialExtension(e.target.checked)} />
+          Это удлинитель: хранить длину и розетки
+        </label>
+      )}
+      {(model.trackingMode === "cable" || serialExtension) && (
         <>
           <CableDesigner value={nextCableAttrs} connectors={connectorCatalog.data??[]} onChange={value=>{setCableType(value.cableType);setLengthM(String(value.lengthM||""));setSideAQty(String(value.sideAQty));setSideAConnector(value.sideAConnector);setSideBQty(String(value.sideBQty));setSideBConnector(value.sideBConnector);setSideAEnds(value.sideAEnds??[value.sideAConnector]);setSideBEnds(value.sideBEnds??[value.sideBConnector]);}}/>
           <p className="card__subtitle">{cablePreview}</p>

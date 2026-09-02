@@ -42,7 +42,7 @@ export function stageSymbol(model: Equipment.EquipmentModelDTO | undefined): Equ
 }
 
 export function cableAttrs(model: Equipment.EquipmentModelDTO | undefined): Equipment.CableAttrs | null {
-  if (!model || model.trackingMode !== "cable" || !model.attrs) return null;
+  if (!model || !model.attrs) return null;
   const attrs = model.attrs as Partial<Equipment.CableAttrs>;
   return typeof attrs.cableType === "string" && typeof attrs.lengthM === "number" ? attrs as Equipment.CableAttrs : null;
 }

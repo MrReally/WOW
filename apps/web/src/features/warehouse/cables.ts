@@ -4,7 +4,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 export function cableAttrs(model: Equipment.EquipmentModelDTO): Equipment.CableAttrs | null {
-  if (model.trackingMode !== "cable" || !isRecord(model.attrs)) return null;
+  // `cable` controls stock counting; serial-tracked extensions can carry the
+  // same physical characteristics in attrs.
+  if (!isRecord(model.attrs)) return null;
+  const hasCableShape = typeof model.attrs.cableType === "string" || model.attrs.lengthM != null;
+  if (!hasCableShape) return null;
   const legacy = typeof model.attrs.connectors === "string" ? model.attrs.connectors : "";
   return {
     cableType: typeof model.attrs.cableType === "string" ? model.attrs.cableType : "",

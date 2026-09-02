@@ -308,7 +308,7 @@ function ElementInspector({ element, elements, models, units, editable, saving, 
       <div className="stage-plan__inspector-head"><div><Chip label={LAYER_LABEL[element.layer]} tone="neutral" /><h3>Параметры элемента</h3></div><Button variant="danger" onClick={onDelete}>Удалить</Button></div>
       <div className="stage-plan__form-grid">
         <Field label="Подпись"><Input value={label} maxLength={120} onChange={(event) => setLabel(event.target.value)} /></Field>
-        <Field label="Модель"><Select value={modelId} onChange={(event) => setModelId(event.target.value)} options={[{ value: "", label: "— без модели —" }, ...models.filter((item) => isCable ? item.trackingMode === "cable" && (item.id===modelId||isCableCompatible(element.layer,item)) : item.trackingMode !== "cable").map((item) => ({ value: item.id, label: item.name }))]} /></Field>
+        <Field label="Модель"><Select value={modelId} onChange={(event) => setModelId(event.target.value)} options={[{ value: "", label: "— без модели —" }, ...models.filter((item) => isCable ? (item.id===modelId||isCableCompatible(element.layer,item)) : item.trackingMode !== "cable").map((item) => ({ value: item.id, label: item.name }))]} /></Field>
         {!isCable && element.kind !== "power" && <Field label="Физическая единица"><Select value={unitId} onChange={(event) => setUnitId(event.target.value)} options={[{ value: "", label: "— без единицы —" }, ...units.filter((item) => !modelId || item.modelId === modelId).map((item) => ({ value: item.id, label: item.assetTag }))]} /></Field>}
         <Field label="Поворот, °"><Input type="number" value={rotation} onChange={(event) => setRotation(event.target.value)} /></Field>
         {!isCable && <><Field label="Ширина (пусто = модель)"><Input type="number" min="1" value={width} onChange={(event) => setWidth(event.target.value)} /></Field><Field label="Высота (пусто = модель)"><Input type="number" min="1" value={height} onChange={(event) => setHeight(event.target.value)} /></Field></>}
@@ -344,7 +344,7 @@ function AddElementPanel({ plan, elements, models, units, pending, onAdd }: {
   const [sourcePower, setSourcePower] = useState("3500");
   const [sourceCircuit, setSourceCircuit] = useState("");
   const deviceModels = models.filter((model) => model.trackingMode !== "cable");
-  const cableModels = models.filter((model) => model.trackingMode === "cable" && isCableCompatible(layer,model));
+  const cableModels = models.filter((model) => isCableCompatible(layer,model));
   const devices = elements.filter((element) => element.kind !== "cable");
   const chosenModel = models.find((model) => model.id === modelId);
 

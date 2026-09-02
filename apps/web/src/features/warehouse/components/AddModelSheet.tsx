@@ -38,6 +38,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
   const [sideAConnector, setSideAConnector] = useState("");
   const [sideBQty, setSideBQty] = useState("1");
   const [sideBConnector, setSideBConnector] = useState("");
+  const [serialExtension, setSerialExtension] = useState(false);
 
   // unit form
   const [modelId, setModelId] = useState("");
@@ -51,6 +52,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
   const effTypeId = typeId || types[0]?.id || "";
   const effModelId = modelId;
   const selectedType = types.find((t) => t.id === effTypeId);
+  const hasExtensionAttrs = selectedType?.trackingMode === "cable" || (selectedType?.trackingMode === "serial" && serialExtension);
   const connectorOptions = cableSettings.data?.connectors ?? [];
   const typeNameById = new Map(types.map((t) => [t.id, t.name]));
   const duplicateModelNames = new Set(
@@ -164,7 +166,13 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
           <Field label="Название модели">
             <Input value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder={selectedType?.trackingMode === "cable" ? cablePreview : "Robe MegaPointe"} />
           </Field>
-          {selectedType?.trackingMode === "cable" && (
+          {selectedType?.trackingMode === "serial" && (
+            <label className="chip chip--neutral" style={{ marginBottom: 10 }}>
+              <input type="checkbox" checked={serialExtension} onChange={(e) => setSerialExtension(e.target.checked)} />
+              Это удлинитель: хранить длину и розетки
+            </label>
+          )}
+          {hasExtensionAttrs && (
             <>
               <div className="row">
                 <Field label="Тип кабеля">
@@ -212,10 +220,10 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
                 {
                   typeId: effTypeId,
                   categoryId: categoryId || null,
-                  name: selectedType?.trackingMode === "cable" ? (modelName.trim() || cablePreview) : modelName,
+                  name: hasExtensionAttrs && selectedType?.trackingMode === "cable" ? (modelName.trim() || cablePreview) : modelName,
                   unitCostEUR: Number(unitCost),
                   dailyPriceEUR: Number(dailyPrice),
-                  attrs: selectedType?.trackingMode === "cable" ? cableAttrs : undefined,
+                  attrs: hasExtensionAttrs ? cableAttrs : undefined,
                 },
                 { onSuccess: () => { setModelName(""); setCableType(""); setLengthM(""); setSideAConnector(""); setSideBConnector(""); } }
               )

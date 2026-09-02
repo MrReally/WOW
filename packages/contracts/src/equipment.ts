@@ -59,7 +59,7 @@ export interface EquipmentModelDTO {
   unitCostEUR: number;
   /** Default daily rental price in EUR. */
   dailyPriceEUR: number;
-  /** For cable models: structured cable properties. */
+  /** Structured cable properties for counted cables and serial extensions. */
   attrs: CableAttrs | Record<string, unknown> | null;
   /** Component model ids required when issuing a unit of this model. */
   requiredComponentModelIds: ID[];

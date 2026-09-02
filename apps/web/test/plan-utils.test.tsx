@@ -31,6 +31,7 @@ describe("stage plan calculations and abuse cases", () => {
 
   it("offers cable models only on compatible technical layers",()=>{
     expect(isCableCompatible("power",model("power",{cableType:"Power",lengthM:10,sideAConnector:"A",sideAQty:1,sideBConnector:"B",sideBQty:1},"cable"))).toBe(true);
+    expect(isCableCompatible("power",model("extension",{cableType:"Power",lengthM:10,sideAConnector:"Schuko plug",sideAQty:1,sideBConnector:"Schuko socket",sideBQty:4},"serial"))).toBe(true);
     expect(isCableCompatible("dmx",model("power",{cableType:"Power",lengthM:10,sideAConnector:"A",sideAQty:1,sideBConnector:"B",sideBQty:1},"cable"))).toBe(false);
   });
 
