@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS notifications.notifications (
   read       boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE notifications.notifications ADD COLUMN IF NOT EXISTS source_key text;
+CREATE UNIQUE INDEX IF NOT EXISTS notif_source_idx ON notifications.notifications(user_id, source_key);
 CREATE INDEX IF NOT EXISTS notif_user_idx ON notifications.notifications(user_id, read, created_at DESC);
 
 -- Per-user delivery preferences. A row means an explicit choice; absence = on.
@@ -29,6 +31,7 @@ CREATE TABLE IF NOT EXISTS notifications.prefs (
 `;
 
 interface Row {
+  source_key: string | null;
   id: string;
   user_id: string;
   kind: Notifications.NotificationKind;
@@ -39,6 +42,7 @@ interface Row {
   created_at: Date;
 }
 const toDTO = (r: Row): Notifications.NotificationDTO => ({
+  sourceKey: r.source_key,
   id: r.id,
   userId: r.user_id,
   kind: r.kind,
@@ -71,10 +75,16 @@ function createService(db: Sql): Notifications.NotificationsService {
     async create(input) {
       const row = await one<Row>(
         db,
-        `INSERT INTO notifications.notifications (user_id, kind, title, body, link) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-        [input.userId, input.kind, input.title, input.body, input.link ?? null]
+        `INSERT INTO notifications.notifications (user_id, kind, title, body, link, source_key) VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (user_id, source_key) DO UPDATE SET title=EXCLUDED.title, body=EXCLUDED.body, link=EXCLUDED.link, read=false RETURNING *`,
+        [input.userId, input.kind, input.title, input.body, input.link ?? null, input.sourceKey ?? null]
       );
       return toDTO(row!);
+    },
+    async update(id, input) {
+      const row = await one<Row>(db, `UPDATE notifications.notifications SET title=$3, body=$4, link=$5, source_key=$6, read=false WHERE id=$1 AND user_id=$2 RETURNING *`, [id, input.userId, input.title, input.body, input.link ?? null, input.sourceKey ?? null]);
+      if (!row) throw new Error("notification not found");
+      return toDTO(row);
     },
     async markRead(id, userId) {
       await query(db, `UPDATE notifications.notifications SET read=true WHERE id=$1 AND user_id=$2`, [id, userId]);

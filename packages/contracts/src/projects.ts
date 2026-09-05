@@ -696,7 +696,15 @@ export interface ProjectPingDeclinedEvent {
   at: ISODateTime;
 }
 
+export interface ProjectDressCodeChangedEvent {
+  type: "project.dress_code.changed";
+  projectId: ID;
+  roleId: ID | null;
+  at: ISODateTime;
+}
+
 export type ProjectsEvent =
+  | ProjectDressCodeChangedEvent
   | ProjectConfirmedEvent
   | ProjectDuplicatedEvent
   | ReservationConflictEvent

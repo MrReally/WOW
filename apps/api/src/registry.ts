@@ -324,7 +324,7 @@ export function createModules(bus: EventBus = new EventBus()) {
   });
 
   // ── Invitations: deliver an accept/decline message to the invited person ──
-  bus.on("project.invited", async (e) => {
+  async function deliverInvitation(e: { projectId: string; userId: string; assignmentId: string }, refresh = false) {
     const [project, user, assignment, roles, dateTimeSettings] = await Promise.all([
       projects.service.getProject(e.projectId),
       people.service.getById(e.userId),
@@ -340,13 +340,17 @@ export function createModules(bus: EventBus = new EventBus()) {
     const engagementEndsAt = role?.endsAt ?? project.endsAt;
     const displayDateTime = (value: string | null) => value ? formatDateTimeValue(value, dateTimeSettings, "ru-RU") : "дата не указана";
     // In-app record so it shows in their inbox too.
-    await notifications.service.create({
+    const invitation = {
+      sourceKey: `invite:${e.assignmentId}`,
       userId: e.userId,
-      kind: "assigned",
+      kind: "assigned" as const,
       title: "Приглашение на проект",
       body: `${project.name} · ${assignment.roleNote ?? "роль не указана"} · ${displayDateTime(engagementStartsAt)} — ${displayDateTime(engagementEndsAt)}${assignment.dressCodeEnabled ? ` · Дресс-код: ${[project.dressCodeLabel, project.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ") || "не указан"}` : ""}`,
       link: `/projects/${e.projectId}`,
-    });
+    };
+    const legacy = refresh ? (await notifications.service.listForUser(e.userId, { limit: 100 })).filter(item => !item.sourceKey && item.title === invitation.title && item.link === invitation.link && item.body.startsWith(`${project.name} · ${assignment.roleNote ?? "роль не указана"} · `)) : [];
+    if (legacy.length === 1) await notifications.service.update(legacy[0]!.id, invitation);
+    else await notifications.service.create(invitation);
     const rate = assignment.rateEUR != null ? `${assignment.rateEUR} €` : "по договорённости";
     const lines = [
       `<b>Приглашение на проект</b>`,
@@ -357,15 +361,35 @@ export function createModules(bus: EventBus = new EventBus()) {
       ...(assignment.dressCodeEnabled && (project.dressCodeLabel || project.dressCodeUniform) ? [`👔 Дресс-код: ${[project.dressCodeLabel, project.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}`] : []),
       `💶 Ставка: ${rate}`,
     ];
-    const sent = await sendTelegramMessage(user?.telegramId ?? null, lines.join("\n"), {
-      inlineKeyboard: [
-        [
-          { text: "✅ Принять", callbackData: `inv:accept:${e.assignmentId}` },
-          { text: "❌ Отклонить", callbackData: `inv:decline:${e.assignmentId}` },
-        ],
-      ],
-    });
-    if (sent) await projects.service.recordAssignmentTelegramMessage(e.assignmentId, sent.chatId, sent.messageId);
+    const keyboard = { inlineKeyboard: [[
+      { text: "✅ Принять", callbackData: `inv:accept:${e.assignmentId}` },
+      { text: "❌ Отклонить", callbackData: `inv:decline:${e.assignmentId}` },
+    ]] };
+    const edited = refresh && await editTelegramMessage(assignment.telegramChatId, assignment.telegramMessageId, lines.join("\n"), keyboard);
+    if (!edited) {
+      const sent = await sendTelegramMessage(user?.telegramId ?? null, lines.join("\n"), keyboard);
+      if (sent) await projects.service.recordAssignmentTelegramMessage(e.assignmentId, sent.chatId, sent.messageId);
+    }
+  }
+  bus.on("project.invited", e => deliverInvitation(e));
+  bus.on("project.dress_code.changed", async e => {
+    const [project, assignments] = await Promise.all([projects.service.getProject(e.projectId), projects.service.listAssignments(e.projectId)]);
+    if (!project || project.status === "cancelled") return;
+    for (const assignment of assignments) {
+      if (e.roleId ? assignment.roleId !== e.roleId : !assignment.dressCodeEnabled) continue;
+      if (assignment.status === "invited") {
+        await deliverInvitation({ projectId: e.projectId, userId: assignment.userId, assignmentId: assignment.id }, true);
+      } else if (assignment.status === "accepted" || assignment.status === "added") {
+        const dressCode = assignment.dressCodeEnabled
+          ? [project.dressCodeLabel, project.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ") || "не указан"
+          : "снят";
+        await notify(assignment.userId, {
+          kind: "assigned", title: "Дресс-код изменён",
+          body: `«${escapeHtml(project.name)}» · ${escapeHtml(assignment.roleNote ?? "роль не указана")}\nДресс-код: ${escapeHtml(dressCode)}`,
+          link: `/projects/${e.projectId}`,
+        });
+      }
+    }
   });
 
   bus.on("project.invite.responded", async (e) => {

@@ -1,6 +1,7 @@
+import * as telegram from "../src/core/telegram.js";
 import { randomUUID } from "node:crypto";
 import { createProjectsService } from "../src/modules/projects/service.js";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { runMigrations } from "../src/core/migrate.js";
 import { pool, closePool } from "../src/core/db.js";
 import { EventBus, type DomainEvent } from "../src/core/eventBus.js";
@@ -1093,4 +1094,55 @@ it("inherits role dress code and applies changes to every assignment", async () 
   await expect(service.updateAssignment(a.id, { dressCodeEnabled: false })).rejects.toThrow("для роли");
 });
 
+});
+
+it("refreshes pending invitations and notifies confirmed crew when dress code changes", async () => {
+  const send = vi.spyOn(telegram, "sendTelegramMessage").mockResolvedValue({ chatId: "12345", messageId: 99 });
+  const edit = vi.spyOn(telegram, "editTelegramMessage").mockResolvedValue(true);
+  try {
+    const { projects, notifications } = wiring;
+    const client = await projects.service.createClient({ name: "Dress refresh" });
+    const project = await projects.service.createProject({ name: "Dress refresh", clientId: client.id, dressCodeLabel: "Чёрный" });
+    const role = await projects.service.createProjectRole({ projectId: project.id, title: "Монтаж", requiredCount: 5 });
+    const pendingUser = await makeTech("Pending dress");
+    const confirmedUser = await makeTech("Confirmed dress");
+    const declinedUser = await makeTech("Declined dress");
+    const pending = await projects.service.addAssignment({ projectId: project.id, roleId: role.id, userId: pendingUser.id, invite: true });
+    const confirmed = await projects.service.addAssignment({ projectId: project.id, roleId: role.id, userId: confirmedUser.id, invite: true });
+    const declined = await projects.service.addAssignment({ projectId: project.id, roleId: role.id, userId: declinedUser.id, invite: true });
+    await projects.service.respondToInvite(confirmed.id, true, confirmedUser.id);
+    await projects.service.respondToInvite(declined.id, false, declinedUser.id);
+    const initial = (await notifications.service.listForUser(pendingUser.id)).find(n => n.title === "Приглашение на проект")!;
+    // Simulate an invitation created before stable source keys were introduced.
+    await notifications.service.update(initial.id, { userId: pendingUser.id, kind: initial.kind, title: initial.title, body: initial.body, link: initial.link });
+    await notifications.service.markRead(initial.id, pendingUser.id);
+    edit.mockClear(); send.mockClear();
+    await projects.service.updateProjectRole(role.id, { dressCodeEnabled: true });
+    expect(edit).toHaveBeenCalledOnce();
+    expect(edit.mock.calls[0]?.[2]).toContain("Дресс-код: Чёрный");
+    expect(edit.mock.calls[0]?.[3]?.inlineKeyboard?.[0]).toEqual([
+      { text: "✅ Принять", callbackData: `inv:accept:${pending.id}` },
+      { text: "❌ Отклонить", callbackData: `inv:decline:${pending.id}` },
+    ]);
+    const refreshed = (await notifications.service.listForUser(pendingUser.id)).filter(n => n.title === "Приглашение на проект");
+    expect(refreshed).toHaveLength(1);
+    expect(refreshed[0]).toEqual(expect.objectContaining({ id: initial.id, read: false, body: expect.stringContaining("Дресс-код: Чёрный") }));
+    expect((await notifications.service.listForUser(confirmedUser.id)).some(n => n.title === "Дресс-код изменён" && n.body.includes("Чёрный"))).toBe(true);
+    expect((await notifications.service.listForUser(declinedUser.id)).some(n => n.title === "Дресс-код изменён")).toBe(false);
+    edit.mockClear(); send.mockClear();
+    await projects.service.updateProjectRole(role.id, { dressCodeEnabled: true });
+    expect(edit).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled();
+    await projects.service.updateProject(project.id, { dressCodeLabel: "Белый" });
+    expect(edit.mock.calls[0]?.[2]).toContain("Дресс-код: Белый");
+    edit.mockClear();
+    await projects.service.updateProjectRole(role.id, { dressCodeEnabled: false });
+    expect(edit.mock.calls[0]?.[2]).not.toContain("Дресс-код:");
+    expect((await notifications.service.listForUser(confirmedUser.id)).some(n => n.body.includes("Дресс-код: снят"))).toBe(true);
+    edit.mockResolvedValue(false); send.mockClear();
+    await projects.service.updateProjectRole(role.id, { dressCodeEnabled: true });
+    expect(send.mock.calls.some(call => call[2]?.inlineKeyboard?.[0]?.[0]?.callbackData === `inv:accept:${pending.id}`)).toBe(true);
+    expect((await projects.service.getAssignment(pending.id))?.telegramMessageId).toBe(99);
+  } finally {
+    vi.restoreAllMocks();
+  }
 });

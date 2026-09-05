@@ -42,6 +42,7 @@ export type NotificationPrefs = Record<NotificationKind, boolean>;
 export type AdvancedNotificationPrefs = Record<AdvancedNotificationEvent, boolean>;
 
 export interface NotificationDTO {
+  sourceKey?: string | null;
   id: ID;
   userId: ID; // recipient (people id)
   kind: NotificationKind;
@@ -54,6 +55,8 @@ export interface NotificationDTO {
 }
 
 export interface CreateNotificationInput {
+  /** Stable source identity; repeated creates refresh the same inbox item. */
+  sourceKey?: string;
   userId: ID;
   kind: NotificationKind;
   title: string;
@@ -65,6 +68,7 @@ export interface NotificationsService {
   listForUser(userId: ID, opts?: { unreadOnly?: boolean; limit?: number }): Promise<NotificationDTO[]>;
   unreadCount(userId: ID): Promise<number>;
   create(input: CreateNotificationInput): Promise<NotificationDTO>;
+  update(id: ID, input: CreateNotificationInput): Promise<NotificationDTO>;
   markRead(id: ID, userId: ID): Promise<void>;
   markAllRead(userId: ID): Promise<void>;
 

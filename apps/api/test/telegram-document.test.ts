@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { env } from "../src/env.js";
-import { sendTelegramDocument } from "../src/core/telegram.js";
+import { editTelegramMessage, sendTelegramDocument } from "../src/core/telegram.js";
 
 const originalBotToken = env.auth.telegramBotToken;
 
@@ -39,4 +39,13 @@ describe("Telegram document delivery", () => {
     await expect(sendTelegramDocument("@username", Buffer.from("pdf"), "invoice.pdf")).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+});
+
+it("preserves invitation buttons when editing Telegram and reports delivery failure", async () => {
+  env.auth.telegramBotToken = "test-token";
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+  expect(await editTelegramMessage("12345", 7, "Updated", { inlineKeyboard: [[{ text: "Принять", callbackData: "inv:accept:7" }]] })).toBe(true);
+  expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).reply_markup).toEqual({ inline_keyboard: [[{ text: "Принять", callback_data: "inv:accept:7" }]] });
+  fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: false, description: "message to edit not found" })));
+  expect(await editTelegramMessage("12345", 7, "Updated")).toBe(false);
 });

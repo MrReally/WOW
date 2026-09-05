@@ -69,23 +69,25 @@ export async function sendTelegramMessage(
 export async function editTelegramMessage(
   chatId: string | null,
   messageId: number | null,
-  text: string
-): Promise<void> {
+  text: string,
+  opts?: { inlineKeyboard?: InlineButton[][] }
+): Promise<boolean> {
   const token = env.auth.telegramBotToken;
-  if (!token || !chatId || !messageId) return;
-  if (!/^\d+$/.test(chatId)) return;
+  if (!token || !chatId || !messageId) return false;
+  if (!/^\d+$/.test(chatId)) return false;
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, message_id: messageId, text, parse_mode: "HTML" }),
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, text, parse_mode: "HTML", ...(opts?.inlineKeyboard ? { reply_markup: { inline_keyboard: opts.inlineKeyboard.map(row => row.map(button => ({ text: button.text, callback_data: button.callbackData }))) } } : {}) }),
     });
-    const json = await res.json() as { ok?: boolean };
+    const json = await res.json() as { ok?: boolean; description?: string };
     if (json.ok) {
       await logBotMessage({ telegramId: chatId, direction: "bot", messageType: "system", text, telegramMessageId: messageId });
     }
+    return json.ok === true || !!json.description?.includes("message is not modified");
   } catch {
-    // Best-effort.
+    return false;
   }
 }
 

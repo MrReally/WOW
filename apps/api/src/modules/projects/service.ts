@@ -689,7 +689,11 @@ export function createProjectsService(
         }
         return updated;
       });
-      return projectDTO(row!);
+      const updated = projectDTO(row!);
+      if (existing.dressCodeLabel !== updated.dressCodeLabel || existing.dressCodeUniform !== updated.dressCodeUniform) {
+        await bus.publish({ type: "project.dress_code.changed", projectId: id, roleId: null, at: new Date().toISOString() });
+      }
+      return updated;
     },
     async setStatus(id, status, actorId) {
       const existing = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
@@ -1232,6 +1236,9 @@ export function createProjectsService(
         const cancelled = await cancelOverflowInvites(client, id);
         await publishCancelled(cancelled, "role_filled");
       });
+      if (input.dressCodeEnabled !== undefined && input.dressCodeEnabled !== existing.dress_code_enabled) {
+        await bus.publish({ type: "project.dress_code.changed", projectId: existing.project_id, roleId: id, at: new Date().toISOString() });
+      }
       return projectRoleDTO(row!);
     },
     async deleteProjectRole(id) {
