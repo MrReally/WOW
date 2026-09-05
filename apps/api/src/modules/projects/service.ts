@@ -92,6 +92,7 @@ interface OperationUnitMarkRow {
   updated_at: Date;
 }
 interface ProjectRoleRow {
+  dress_code_enabled: boolean;
   id: string;
   project_id: string;
   title: string;
@@ -102,6 +103,7 @@ interface ProjectRoleRow {
   created_at: Date;
 }
 interface AssignmentRow {
+  cancellation_reason: Projects.InviteCancelledEvent["reason"] | null;
   id: string;
   project_id: string;
   role_id: string | null;
@@ -250,6 +252,7 @@ const operationUnitMarkDTO = (r: OperationUnitMarkRow): Projects.OperationUnitMa
   updatedAt: r.updated_at.toISOString(),
 });
 const projectRoleDTO = (r: ProjectRoleRow): Projects.ProjectRoleDTO => ({
+  dressCodeEnabled: r.dress_code_enabled,
   id: r.id,
   projectId: r.project_id,
   title: r.title,
@@ -260,6 +263,7 @@ const projectRoleDTO = (r: ProjectRoleRow): Projects.ProjectRoleDTO => ({
   createdAt: r.created_at.toISOString(),
 });
 const assignmentDTO = (r: AssignmentRow): Projects.AssignmentDTO => ({
+  cancellationReason: r.cancellation_reason,
   id: r.id,
   projectId: r.project_id,
   roleId: r.role_id,
@@ -590,9 +594,9 @@ export function createProjectsService(
         };
         for (const role of sourceRoles) {
           const inserted = await one<{ id: string }>(client,
-            `INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur, starts_at, ends_at)
-             VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-            [newId, role.title, role.required_count, role.rate_eur, shiftRoleDate(role.starts_at), shiftRoleDate(role.ends_at)]
+            `INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur, starts_at, ends_at, dress_code_enabled)
+             VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+            [newId, role.title, role.required_count, role.rate_eur, shiftRoleDate(role.starts_at), shiftRoleDate(role.ends_at), role.dress_code_enabled]
           );
           sourceRefMap[role.id] = inserted!.id;
         }
@@ -690,13 +694,17 @@ export function createProjectsService(
     async setStatus(id, status, actorId) {
       const existing = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
       if (!existing) throw NotFound("project", id);
-      if (existing.status === status) return projectDTO(existing);
-      const row = await one<ProjectRow>(
-        db,
-        `UPDATE projects.projects SET status=$2 WHERE id=$1 RETURNING *`,
-        [id, status]
-      );
+      let row: ProjectRow | null = null;
+      let cancelled: AssignmentRow[] = [];
+      await tx(async (client) => {
+        row = await one<ProjectRow>(client, `UPDATE projects.projects SET status=$2 WHERE id=$1 RETURNING *`, [id, status]);
+        if (status === "cancelled") {
+          cancelled = await query<AssignmentRow>(client, `UPDATE projects.assignments SET status='cancelled', cancellation_reason='project_cancelled', responded_at=now() WHERE project_id=$1 AND status IN ('invited','accepted','added') RETURNING *`, [id]);
+        }
+      });
       if (!row) throw NotFound("project", id);
+      await publishCancelled(cancelled, "project_cancelled");
+      if (existing.status === status) return projectDTO(row);
       if (status === "confirmed") {
         await bus.publish({ type: "project.confirmed", projectId: id, at: new Date().toISOString() });
       }
@@ -1187,9 +1195,9 @@ export function createProjectsService(
       assertRange(startsAt, endsAt);
       const row = await one<ProjectRoleRow>(
         db,
-        `INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur, starts_at, ends_at)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [input.projectId, input.title.trim(), input.requiredCount, input.rateEUR ?? null, startsAt, endsAt]
+        `INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur, starts_at, ends_at, dress_code_enabled)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [input.projectId, input.title.trim(), input.requiredCount, input.rateEUR ?? null, startsAt, endsAt, input.dressCodeEnabled ?? false]
       );
       return projectRoleDTO(row!);
     },
@@ -1211,14 +1219,15 @@ export function createProjectsService(
              required_count=$3,
              rate_eur=$4,
              starts_at=$5,
-             ends_at=$6
+             ends_at=$6,
+             dress_code_enabled=$7
            WHERE id=$1 RETURNING *`,
-          [id, nextTitle, nextRequiredCount, nextRateEUR, nextStartsAt, nextEndsAt]
+          [id, nextTitle, nextRequiredCount, nextRateEUR, nextStartsAt, nextEndsAt, input.dressCodeEnabled ?? existing.dress_code_enabled]
         );
         await query(
           client,
-          `UPDATE projects.assignments SET role_note=$2, rate_eur=$3 WHERE role_id=$1`,
-          [id, nextTitle, nextRateEUR]
+          `UPDATE projects.assignments SET role_note=$2, rate_eur=$3, dress_code_enabled=$4 WHERE role_id=$1`,
+          [id, nextTitle, nextRateEUR, input.dressCodeEnabled ?? existing.dress_code_enabled]
         );
         const cancelled = await cancelOverflowInvites(client, id);
         await publishCancelled(cancelled, "role_filled");
@@ -1260,12 +1269,16 @@ export function createProjectsService(
       return row ? assignmentDTO(row) : null;
     },
     async updateAssignment(id, input) {
-      const row = await one<AssignmentRow>(db, `UPDATE projects.assignments SET dress_code_enabled=COALESCE($2,dress_code_enabled), paid_eur=COALESCE($3,paid_eur) WHERE id=$1 RETURNING *`, [id,input.dressCodeEnabled??null,input.paidEUR??null]);
+      if (input.dressCodeEnabled !== undefined) throw BadRequest("дресс-код настраивается для роли");
+      const row = await one<AssignmentRow>(db, `UPDATE projects.assignments SET paid_eur=COALESCE($2,paid_eur) WHERE id=$1 RETURNING *`, [id,input.paidEUR??null]);
       if (!row) throw NotFound("assignment", id);
       if (input.paidEUR !== undefined) await bus.publish({ type: "project.assignment.payment.updated", projectId: row.project_id, assignmentId: id, at: new Date().toISOString() });
       return assignmentDTO(row);
     },
     async addAssignment(input) {
+      const project = await this.getProject(input.projectId);
+      if (!project) throw NotFound("project", input.projectId);
+      if (project.status === "cancelled") throw BadRequest("мероприятие отменено");
       let role: ProjectRoleRow | null = null;
       if (input.roleId) {
         role = await one<ProjectRoleRow>(db, `SELECT * FROM projects.project_roles WHERE id=$1 AND project_id=$2`, [input.roleId, input.projectId]);
@@ -1285,12 +1298,16 @@ export function createProjectsService(
       const status: Projects.AssignmentStatus = input.invite ? "invited" : "added";
       const roleNote = role?.title ?? input.roleNote ?? null;
       const rateEUR = role?.rate_eur === undefined ? (input.rateEUR ?? null) : role.rate_eur;
-      const row = await one<AssignmentRow>(
-        db,
+      const row = await tx(async (client) => {
+        const currentProject = await one<ProjectRow>(client, `SELECT * FROM projects.projects WHERE id=$1 FOR UPDATE`, [input.projectId]);
+        if (currentProject?.status === "cancelled") throw BadRequest("мероприятие отменено");
+        return one<AssignmentRow>(
+        client,
         `INSERT INTO projects.assignments (project_id, role_id, user_id, role_note, status, rate_eur, invited_by, dress_code_enabled)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [input.projectId, input.roleId ?? null, input.userId, roleNote, status, rateEUR, input.invitedByUserId ?? null, input.dressCodeEnabled ?? false]
+        [input.projectId, input.roleId ?? null, input.userId, roleNote, status, rateEUR, input.invitedByUserId ?? null, role?.dress_code_enabled ?? false]
       );
+      });
       if (row?.role_id && status === "added") {
         let cancelled: AssignmentRow[] = [];
         await tx(async (client) => {
@@ -1337,6 +1354,10 @@ export function createProjectsService(
       let cancelledRoleRows: AssignmentRow[] = [];
       let ownCancelReason: Projects.InviteCancelledEvent["reason"] = "role_filled";
       await tx(async (client) => {
+        const project = await one<ProjectRow>(client, `SELECT * FROM projects.projects WHERE id=$1 FOR UPDATE`, [row.project_id]);
+        if (project?.status === "cancelled") throw BadRequest("мероприятие отменено");
+        const current = await one<AssignmentRow>(client, `SELECT * FROM projects.assignments WHERE id=$1 FOR UPDATE`, [assignmentId]);
+        if (current?.status !== "invited") throw BadRequest("приглашение уже закрыто");
         if (accept) {
           if (row.role_id && await roleFilled(client, row.role_id, assignmentId)) {
             updated = (await one<AssignmentRow>(

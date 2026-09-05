@@ -1,3 +1,4 @@
+import { inviteCancellationReasonLabel } from "../../lib/labels.ts";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useLocation, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type { Equipment, Finance, People, Projects, Transport } from "@sever/contracts";
@@ -25,7 +26,6 @@ import {
   useSetTimingAssignees,
   useDeleteTiming,
   useAddAssignment,
-  useUpdateAssignment,
   useRemoveAssignment,
   useCreateProjectRole,
   useUpdateProjectRole,
@@ -48,6 +48,7 @@ import { TimingTimeline } from "./components/TimingTimeline.tsx";
 import { TimingReminderPicker } from "./components/TimingReminderPicker.tsx";
 import { RoleEngagementPicker } from "./components/RoleEngagementPicker.tsx";
 import { ContractorEquipment } from "./components/ContractorEquipment.tsx";
+import { ProjectStageProgress } from "./components/ProjectStageProgress.tsx";
 import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
 import { configuredDate } from "../../lib/dateFormat.ts";
 import { personName } from "../../lib/people.ts";
@@ -181,7 +182,6 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const setTimingAssignees = useSetTimingAssignees();
   const deleteTiming = useDeleteTiming();
   const addAssignment = useAddAssignment();
-  const updateAssignment = useUpdateAssignment();
   const removeAssignment = useRemoveAssignment();
   const createProjectRole = useCreateProjectRole();
   const updateProjectRole = useUpdateProjectRole();
@@ -217,7 +217,6 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [roleEndsAt, setRoleEndsAt] = useState<string | null>(null);
   const [roleDrafts, setRoleDrafts] = useState<Record<string, { title: string; requiredCount: string; rateEUR: string }>>({});
   const [assignCandidates, setAssignCandidates] = useState<Record<string, string[]>>({});
-  const [assignDressCodes, setAssignDressCodes] = useState<Record<string, boolean>>({});
   const [candidateQueries, setCandidateQueries] = useState<Record<string, string>>({});
   const [pingTitle, setPingTitle] = useState("");
   const [pingMessage, setPingMessage] = useState("");
@@ -410,6 +409,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
           <StatusBadge tone={projectStatusTone[p.status]}>{projectStatusLabel[p.status]}</StatusBadge>
         </div>
         <p className="card__subtitle" style={{ marginTop: "var(--space-2)" }}>{dateRange(p.startsAt, p.endsAt)}</p>
+        <ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} />
         {(p.dressCodeLabel || p.dressCodeUniform) && <p className="card__subtitle" style={{ marginTop: 4 }}>👔 {[p.dressCodeLabel, p.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}</p>}
         {canManage && (
           <div className="row" style={{ marginTop: "var(--space-3)" }}>
@@ -773,7 +773,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             const submit = async (invite: boolean) => {
               if (selected.length === 0) return;
               for (const userId of selected) {
-                await addAssignment.mutateAsync({ projectId: p.id, roleId: role.id, userId, invite, dressCodeEnabled: assignDressCodes[role.id] ?? false });
+                await addAssignment.mutateAsync({ projectId: p.id, roleId: role.id, userId, invite });
               }
               setAssignCandidates((prev) => ({ ...prev, [role.id]: [] }));
             };
@@ -798,6 +798,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   <div className="row" style={{ gap: 8 }}>
                     {canAssign && (
                       <>
+                        <button type="button" className={`chip ${role.dressCodeEnabled ? "chip--warn chip--solid" : "chip--neutral"}`} aria-pressed={role.dressCodeEnabled} disabled={updateProjectRole.isPending} onClick={() => updateProjectRole.mutate({ id: role.id, input: { dressCodeEnabled: !role.dressCodeEnabled } })}>👔 {role.dressCodeEnabled ? "Дресс-код роли" : "Без дресс-кода"}</button>
                         <RoleEngagementPicker
                           startsAt={role.startsAt}
                           endsAt={role.endsAt}
@@ -828,9 +829,10 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                           <div className="row" style={{ gap: 6, minWidth: 0 }}>
                             <Chip label={userName(a.userId)} tone={a.status === "declined" || a.status === "cancelled" ? "neutral" : "ok"} />
                             <Chip label={st.label} tone={st.tone} />
+                            {a.cancellationReason && <span className="card__subtitle">{inviteCancellationReasonLabel[a.cancellationReason]}</span>}
                           </div>
                           {canAssign && (
-                            <div className="row"><button className={`icon-btn ${a.dressCodeEnabled ? "icon-btn--warn" : ""}`} aria-label="Дресс-код" title="Применить дресс-код к приглашению" onClick={() => updateAssignment.mutate({ id: a.id, input: { dressCodeEnabled: !a.dressCodeEnabled } }, { onSuccess: () => toast("success", a.dressCodeEnabled ? "Дресс-код для роли отменён" : "Дресс-код применён к роли") })}>👔</button><button
+                            <div className="row"><button
                               className="icon-btn"
                               aria-label="Снять кандидата"
                               title="Снять"
@@ -876,7 +878,6 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                     </div>
                     {available.length > 0 && (
                       <>
-                        {(p.dressCodeLabel || p.dressCodeUniform) && <button type="button" className={`chip ${(assignDressCodes[role.id] ?? false) ? "chip--warn chip--solid" : "chip--neutral"}`} style={{border:"none",cursor:"pointer"}} onClick={() => setAssignDressCodes(current => ({...current,[role.id]:!(current[role.id] ?? false)}))}>👔 {(assignDressCodes[role.id] ?? false) ? "дресс-код будет отправлен" : "без дресс-кода"}</button>}
                         <CandidatePicker
                           people={available}
                           selectedIds={selected}
@@ -918,6 +919,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                 <div className="row row--between">
                   <p className="card__title">{a.roleNote || "Роль"}</p>
                   <Chip label={st.label} tone={st.tone} />
+                            {a.cancellationReason && <span className="card__subtitle">{inviteCancellationReasonLabel[a.cancellationReason]}</span>}
                 </div>
                 <p className="card__subtitle" style={{ marginTop: 2 }}>
                   {userName(a.userId)}{a.rateEUR != null ? ` · ${a.rateEUR} €` : ""}

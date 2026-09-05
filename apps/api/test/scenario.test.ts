@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
+import { createProjectsService } from "../src/modules/projects/service.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runMigrations } from "../src/core/migrate.js";
-import { closePool } from "../src/core/db.js";
+import { pool, closePool } from "../src/core/db.js";
 import { EventBus, type DomainEvent } from "../src/core/eventBus.js";
 import { createModules } from "../src/registry.js";
 
@@ -1053,4 +1055,42 @@ describe("Tech pickup/return → некомплект", () => {
     await wiring.equipment.service.uninstallUnit(unit.id, source.id, actor.id);
     expect(await wiring.equipment.service.getUnit(unit.id)).toEqual(expect.objectContaining({ status: "in_stock", warehouseId: source.id, installedVenueId: null }));
   });
+});
+
+describe("Project personnel cancellation and dress code", () => {
+const bus = new EventBus();
+const service = createProjectsService(pool, bus, async () => [], async () => []);
+it("cancels pending and confirmed personnel and prevents accepting stale invites", async () => {
+  const client = await service.createClient({ name: "Cancellation test" });
+  const project = await service.createProject({ name: "Cancelled event", clientId: client.id });
+  const role = await service.createProjectRole({ projectId: project.id, title: "Crew", requiredCount: 4 });
+  const pending = await service.addAssignment({ projectId: project.id, roleId: role.id, userId: randomUUID(), invite: true });
+  const accepted = await service.addAssignment({ projectId: project.id, roleId: role.id, userId: randomUUID(), invite: true });
+  await service.respondToInvite(accepted.id, true, accepted.userId);
+  await service.addAssignment({ projectId: project.id, roleId: role.id, userId: randomUUID() });
+  const reasons: string[] = [];
+  bus.on("project.invite.cancelled", e => { if (e.projectId === project.id) reasons.push(e.reason); });
+  await service.setStatus(project.id, "cancelled");
+  expect((await service.listAssignments(project.id)).every(a => a.status === "cancelled" && a.cancellationReason === "project_cancelled")).toBe(true);
+  expect(reasons).toEqual(Array(3).fill("project_cancelled"));
+  await service.setStatus(project.id, "cancelled");
+  expect(reasons).toHaveLength(3);
+  await expect(service.respondToInvite(pending.id, true, pending.userId)).rejects.toThrow("мероприятие отменено");
+  await expect(service.addAssignment({ projectId: project.id, userId: randomUUID(), invite: true })).rejects.toThrow("мероприятие отменено");
+});
+
+it("inherits role dress code and applies changes to every assignment", async () => {
+  const client = await service.createClient({ name: "Dress code test" });
+  const project = await service.createProject({ name: "Dress code event", clientId: client.id, dressCodeLabel: "Чёрный" });
+  const role = await service.createProjectRole({ projectId: project.id, title: "Crew", requiredCount: 4, dressCodeEnabled: true });
+  const a = await service.addAssignment({ projectId: project.id, roleId: role.id, userId: randomUUID(), invite: true, dressCodeEnabled: false });
+  expect(a.dressCodeEnabled).toBe(true);
+  await service.addAssignment({ projectId: project.id, roleId: role.id, userId: randomUUID(), invite: true });
+  await service.updateProjectRole(role.id, { dressCodeEnabled: false });
+  expect((await service.listAssignments(project.id)).every(a => !a.dressCodeEnabled)).toBe(true);
+  await service.updateProjectRole(role.id, { dressCodeEnabled: true });
+  expect((await service.listAssignments(project.id)).every(a => a.dressCodeEnabled)).toBe(true);
+  await expect(service.updateAssignment(a.id, { dressCodeEnabled: false })).rejects.toThrow("для роли");
+});
+
 });

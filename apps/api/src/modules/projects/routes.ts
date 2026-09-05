@@ -101,6 +101,7 @@ const contractorBookedSchema = z.object({ projectId: z.string().uuid(), contract
 const contractorGroupSchema = z.object({ projectId: z.string().uuid(), contractorId: z.string().uuid() });
 const contractorPaidSchema = contractorGroupSchema.extend({ paid: z.boolean() });
 const projectRoleSchema = z.object({
+  dressCodeEnabled: z.boolean().optional(),
   projectId: z.string().uuid(),
   title: z.string().trim().min(1),
   requiredCount: z.number().int().positive(),
@@ -109,6 +110,7 @@ const projectRoleSchema = z.object({
   endsAt: z.string().datetime().nullable().optional(),
 });
 const updateProjectRoleSchema = z.object({
+  dressCodeEnabled: z.boolean().optional(),
   title: z.string().trim().min(1).optional(),
   requiredCount: z.number().int().positive().optional(),
   rateEUR: z.number().nonnegative().nullable().optional(),

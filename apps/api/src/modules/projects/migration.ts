@@ -163,6 +163,14 @@ ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS telegram_message_id in
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS role_id      uuid REFERENCES projects.project_roles(id) ON DELETE SET NULL;
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS dress_code_enabled boolean NOT NULL DEFAULT false;
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS paid_eur numeric(12,2) NOT NULL DEFAULT 0 CHECK (paid_eur >= 0);
+ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS cancellation_reason text;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='projects' AND table_name='project_roles' AND column_name='dress_code_enabled') THEN
+    ALTER TABLE projects.project_roles ADD COLUMN dress_code_enabled boolean NOT NULL DEFAULT false;
+    UPDATE projects.project_roles r SET dress_code_enabled=true WHERE EXISTS (SELECT 1 FROM projects.assignments a WHERE a.role_id=r.id AND a.dress_code_enabled);
+    UPDATE projects.assignments a SET dress_code_enabled=r.dress_code_enabled FROM projects.project_roles r WHERE a.role_id=r.id;
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS assignments_role_idx ON projects.assignments(role_id);
 
 CREATE TABLE IF NOT EXISTS projects.project_reminders (

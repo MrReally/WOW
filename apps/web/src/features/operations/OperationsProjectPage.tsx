@@ -1,3 +1,4 @@
+import { ProjectStageProgress } from "../projects/components/ProjectStageProgress.tsx";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { Equipment, People, Projects } from "@sever/contracts";
@@ -133,6 +134,7 @@ export function OperationsProjectPage() {
           </div>
           <Chip label={projectStatusLabel[project.data.status]} tone={projectStatusTone[project.data.status]} />
         </div>
+        <ProjectStageProgress stage={activeStage} complete={!!project.data.warehouseTurnoverCompletedAt} />
       </Card>
 
       {(can("operations.finance.view", "operations.finance.manage") || can("operations.payroll.view", "operations.payroll.manage")) && <OperationsFinancePanel projectId={id} canClientView={can("operations.finance.view", "operations.finance.manage")} canClientManage={can("operations.finance.manage")} canPayrollView={can("operations.payroll.view", "operations.payroll.manage")} canPayrollManage={can("operations.payroll.manage")} />}

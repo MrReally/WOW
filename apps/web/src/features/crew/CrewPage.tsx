@@ -1,3 +1,4 @@
+import { inviteCancellationReasonLabel } from "../../lib/labels.ts";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Equipment, People, Projects } from "@sever/contracts";
@@ -718,6 +719,7 @@ export function CrewPage() {
                 </div>
                 <p className="card__subtitle" style={{ marginTop: 6 }}>
                   {assignment.roleNote || "роль не указана"}{assignment.rateEUR != null ? ` · ${assignment.rateEUR} €` : ""}
+                  {assignment.cancellationReason && ` · ${inviteCancellationReasonLabel[assignment.cancellationReason]}`}
                 </p>
               </Card>
             ))}

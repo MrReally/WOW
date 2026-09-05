@@ -195,7 +195,7 @@ export function createModules(bus: EventBus = new EventBus()) {
       }
       case "project.invite.cancelled": {
         const [project, user] = await Promise.all([projects.service.getProject(event.projectId), people.service.getById(event.userId)]);
-        return { title: "Приглашение отменено", body: `${publicName(user)} · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+        return { title: "Приглашение отменено", body: `${publicName(user)} · ${project?.name ?? event.projectId}${event.reason === "project_cancelled" ? " · Отмена мероприятия" : ""}`, link: `/projects/${event.projectId}` };
       }
       case "project.operation_stage.changed": {
         const project = await projects.service.getProject(event.projectId);
@@ -285,7 +285,7 @@ export function createModules(bus: EventBus = new EventBus()) {
     ]);
     if (!project) return;
     const activeUserIds = [...new Set(assignments
-      .filter((assignment) => assignment.status === "added" || assignment.status === "accepted")
+      .filter((assignment) => assignment.status === "added" || assignment.status === "accepted" || (project.status === "cancelled" && assignment.cancellationReason === "project_cancelled"))
       .map((assignment) => assignment.userId)
       .filter((userId) => userId !== e.actorId))];
     const leadership = await Promise.all(activeUserIds.map(async (userId) => ({
@@ -310,7 +310,7 @@ export function createModules(bus: EventBus = new EventBus()) {
     ]);
     if (!project) return;
     const recipientIds = [...new Set(assignments
-      .filter((assignment) => assignment.status === "added" || assignment.status === "accepted")
+      .filter((assignment) => assignment.status === "added" || assignment.status === "accepted" || (project.status === "cancelled" && assignment.cancellationReason === "project_cancelled"))
       .map((assignment) => assignment.userId)
       .filter((userId) => userId !== e.actorId))];
     for (const userId of recipientIds) {
@@ -332,7 +332,7 @@ export function createModules(bus: EventBus = new EventBus()) {
       projects.service.listProjectRoles(e.projectId),
       appSettings.service.getDateTimeSettings(),
     ]);
-    if (!project || !assignment) return;
+    if (!project || !assignment || project.status === "cancelled" || assignment.status !== "invited") return;
     if (!(await notifications.service.isEnabled(e.userId, "assigned"))) return;
     const role = roles.find((item) => item.id === assignment.roleId);
     const venue = project.venueId ? await venues.service.get(project.venueId) : null;
@@ -344,7 +344,7 @@ export function createModules(bus: EventBus = new EventBus()) {
       userId: e.userId,
       kind: "assigned",
       title: "Приглашение на проект",
-      body: `${project.name} · ${assignment.roleNote ?? "роль не указана"} · ${displayDateTime(engagementStartsAt)} — ${displayDateTime(engagementEndsAt)}`,
+      body: `${project.name} · ${assignment.roleNote ?? "роль не указана"} · ${displayDateTime(engagementStartsAt)} — ${displayDateTime(engagementEndsAt)}${assignment.dressCodeEnabled ? ` · Дресс-код: ${[project.dressCodeLabel, project.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ") || "не указан"}` : ""}`,
       link: `/projects/${e.projectId}`,
     });
     const rate = assignment.rateEUR != null ? `${assignment.rateEUR} €` : "по договорённости";
@@ -390,7 +390,9 @@ export function createModules(bus: EventBus = new EventBus()) {
     ]);
     const roleNote = assignment?.roleNote ?? e.roleNote;
     const role = roleNote ? `«${roleNote}»` : "эта роль";
-    const body = e.reason === "already_assigned"
+    const body = e.reason === "project_cancelled"
+      ? `Приглашение на проект «${project?.name ?? ""}» отменено. Причина: отмена мероприятия.`
+      : e.reason === "already_assigned"
       ? `Вы уже участвуете в проекте «${project?.name ?? ""}» в другой роли. Это приглашение отменено.`
       : e.reason === "role_removed"
         ? `Роль ${role} в проекте «${project?.name ?? ""}» удалена. Это приглашение отменено.`

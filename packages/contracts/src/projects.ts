@@ -284,6 +284,7 @@ export interface ClearOperationUnitMarkInput {
 // rate. Assignments are candidates/confirmed people attached to that role.
 
 export interface ProjectRoleDTO {
+  dressCodeEnabled: boolean;
   id: ID;
   projectId: ID;
   title: string;
@@ -297,6 +298,7 @@ export interface ProjectRoleDTO {
 }
 
 export interface CreateProjectRoleInput {
+  dressCodeEnabled?: boolean;
   projectId: ID;
   title: string;
   requiredCount: number;
@@ -306,6 +308,7 @@ export interface CreateProjectRoleInput {
 }
 
 export interface UpdateProjectRoleInput {
+  dressCodeEnabled?: boolean;
   title?: string;
   requiredCount?: number;
   rateEUR?: number | null;
@@ -323,6 +326,7 @@ export type AssignmentStatus = "added" | "invited" | "accepted" | "declined" | "
 export const ASSIGNMENT_STATUSES: AssignmentStatus[] = ["added", "invited", "accepted", "declined", "cancelled"];
 
 export interface AssignmentDTO {
+  cancellationReason?: InviteCancelledEvent["reason"] | null;
   id: ID;
   projectId: ID;
   roleId: ID | null;
@@ -621,7 +625,7 @@ export interface InviteCancelledEvent {
   projectId: ID;
   userId: ID;
   assignmentId: ID;
-  reason: "role_filled" | "already_assigned" | "role_removed";
+  reason: "role_filled" | "already_assigned" | "role_removed" | "project_cancelled";
   roleNote?: string | null;
   telegramChatId?: string | null;
   telegramMessageId?: number | null;

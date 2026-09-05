@@ -82,3 +82,20 @@ export function dateTime(iso: string): string {
 export function dateRange(startIso: string | null, endIso: string | null): string {
   return configuredDateRange(startIso, endIso);
 }
+
+export const projectStagePresentation: Record<Projects.ProjectChecklistGroup, { label: string; icon: string }> = {
+  prep: { label: "Сбор", icon: "▣" },
+  pickup: { label: "Забор", icon: "↑" },
+  delivery: { label: "Доставка", icon: "→" },
+  mount: { label: "Монтаж", icon: "⌂" },
+  show: { label: "Шоу", icon: "★" },
+  dismantle: { label: "Демонтаж", icon: "↓" },
+  return: { label: "Возврат", icon: "↩" },
+};
+
+export const inviteCancellationReasonLabel: Record<Projects.InviteCancelledEvent["reason"], string> = {
+  project_cancelled: "Отмена мероприятия",
+  role_filled: "Роль укомплектована",
+  already_assigned: "Уже назначен на проект",
+  role_removed: "Роль удалена",
+};
