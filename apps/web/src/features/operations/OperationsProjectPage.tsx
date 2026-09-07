@@ -1,13 +1,15 @@
-import { ProjectStageProgress } from "../projects/components/ProjectStageProgress.tsx";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { Equipment, People, Projects } from "@sever/contracts";
+import type { Equipment, Finance, People, Projects } from "@sever/contracts";
 import { Avatar, Button, Card, Chip, EmptyState, ErrorState, Input, Loading, SectionHead, Select, WSGlyph } from "../../ui-kit/index.ts";
 import { dateRange, dateTime, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
 import { personInitials, personName } from "../../lib/people.ts";
 import { useSession } from "../../app/session.ts";
-import { useAllUnits, useAssignments, useEquipmentModels, useIssueProjectQuantity, useIssueResolvedUnits, usePeople, useProject, useProjectEquipmentJournal, useProjectInvoice, useReservations, useReturnProjectQuantity, useUpdateAssignment } from "../projects/hooks.ts";
-import { useAccounts, useCreateTransaction } from "../finance/hooks.ts";
+import { useAllUnits, useAssignments, useContractorItems, useEquipmentModels, useIssueProjectQuantity, useIssueResolvedUnits, usePeople, useProject, useProjectEquipmentJournal, useProjectInvoice, useProjectVenues, useReservations, useReturnProjectQuantity, useSetProjectFinanceTracking, useUpdateAssignment } from "../projects/hooks.ts";
+import { useAccounts, useCreateTransaction, useTransactions, useUpdateTransaction, useVoidTransaction } from "../finance/hooks.ts";
+import { useContractors } from "../contractors/hooks.ts";
+import { TimingTimeline } from "../projects/components/TimingTimeline.tsx";
+import { PROJECT_STAGE_ORDER, ProjectStageProgress } from "../projects/components/ProjectStageProgress.tsx";
 import { useChangeStatus, useReturnUnits, useWarehouses } from "../warehouse/hooks.ts";
 import {
   useClearOperationUnitMark,
@@ -24,7 +26,9 @@ import {
   useUpdateProjectTask,
 } from "./hooks.ts";
 
-const stageOrder: Projects.ProjectChecklistGroup[] = ["prep", "pickup", "delivery", "mount", "show", "dismantle", "return"];
+const stageOrder = PROJECT_STAGE_ORDER;
+
+type OperationsTab = "turnover" | "timing" | "finance";
 
 const stageLabel: Record<Projects.ProjectChecklistGroup, string> = {
   prep: "Подготовка",
@@ -111,18 +115,21 @@ export function OperationsProjectPage() {
   const canStepBack = can("operations.stage.back", "projects.timing.manage", "projects.manage");
   const canListPeople = can("people.view", "operations.payroll.view", "operations.payroll.manage");
   const people = usePeople(canListPeople);
+  const [activeTab, setActiveTab] = useState<OperationsTab>("turnover");
 
   if (project.isLoading) return <Loading />;
   if (project.error) return <ErrorState error={project.error} onRetry={project.refetch} />;
   if (!project.data) return <EmptyState title="Проект не найден" />;
 
-  const activeTiming = currentTiming(timings.data ?? []);
   const activeStage = project.data.operationStage ?? "prep";
   const upcomingStage = nextStage(activeStage);
   const rollbackStage = previousStage(activeStage);
+  const seesWholeTiming = !!user?.operationsShowAllProjects || can("projects.timing.viewAll", "projects.timing.manage");
+  const visibleTimings = seesWholeTiming ? (timings.data ?? []) : (timings.data ?? []).filter(timing => !!user && timing.assigneeIds.includes(user.id));
+  const activeTiming = currentTiming(visibleTimings);
 
   return (
-    <div className="stack">
+    <div className="stack" style={{ paddingBottom: 92 }}>
       <Button variant="ghost" onClick={() => navigate("/operations")}>← Operations</Button>
 
       <Card>
@@ -137,86 +144,105 @@ export function OperationsProjectPage() {
         <ProjectStageProgress stage={activeStage} complete={!!project.data.warehouseTurnoverCompletedAt} />
       </Card>
 
-      {(can("operations.finance.view", "operations.finance.manage") || can("operations.payroll.view", "operations.payroll.manage")) && <OperationsFinancePanel projectId={id} canClientView={can("operations.finance.view", "operations.finance.manage")} canClientManage={can("operations.finance.manage")} canPayrollView={can("operations.payroll.view", "operations.payroll.manage")} canPayrollManage={can("operations.payroll.manage")} />}
-
-      <SectionHead label="Сейчас" />
-      {activeTiming ? (
+      {activeTab === "turnover" && <>
+        <SectionHead label="Сейчас" />
+        {activeTiming ? <Card><p className="card__title">{activeTiming.title}</p><p className="card__subtitle">{dateTime(activeTiming.startsAt)} → {dateTime(activeTiming.endsAt)}</p></Card> : <EmptyState title="Сейчас нет назначенного события" />}
+        <div className="row"><Button block variant="secondary" onClick={() => navigate(`/projects/${id}/plan`)}>Схема</Button><Button block variant="secondary" onClick={() => navigate(`/projects/${id}`)}>Проект</Button></div>
+        {!project.data.warehouseTurnoverCompletedAt && <StageEquipmentPanel projectId={id} venueId={project.data.venueId} stage={activeStage} />}
+        <TaskBoard projectId={id} canManage={canManage} canListPeople={canListPeople} currentUser={user ?? null} />
+        <SectionHead label="Этап" />
         <Card>
-          <p className="card__title">{activeTiming.title}</p>
-          <p className="card__subtitle">{dateTime(activeTiming.startsAt)} → {dateTime(activeTiming.endsAt)}</p>
-        </Card>
-      ) : (
-        <EmptyState title="Тайминга нет" />
-      )}
-
-      <div className="row">
-        <Button block variant="secondary" onClick={() => navigate(`/projects/${id}/plan`)}>Схема</Button>
-        <Button block variant="secondary" onClick={() => navigate(`/projects/${id}`)}>Проект</Button>
-      </div>
-
-      {!project.data.warehouseTurnoverCompletedAt && <StageEquipmentPanel projectId={id} stage={activeStage} />}
-      <TaskBoard projectId={id} canManage={canManage} canListPeople={canListPeople} currentUser={user ?? null} />
-      <SectionHead label="Этап" />
-      <Card>
-        <div className="row row--between">
-          <div style={{ minWidth: 0 }}>
-            <p className="card__title">{stageLabel[activeStage]}</p>
-            <p className="card__subtitle">{upcomingStage ? `Дальше: ${stageLabel[upcomingStage]}` : project.data.warehouseTurnoverCompletedAt ? "Складской оборот завершён" : "Финальный этап"}</p>
+          <div className="row row--between">
+            <div style={{ minWidth: 0 }}><p className="card__title">{stageLabel[activeStage]}</p><p className="card__subtitle">{upcomingStage ? `Дальше: ${stageLabel[upcomingStage]}` : project.data.warehouseTurnoverCompletedAt ? "Складской оборот завершён" : "Финальный этап"}</p></div>
+            <Chip label={`${stageOrder.indexOf(activeStage) + 1}/${stageOrder.length}`} tone="accent" />
           </div>
-          <Chip label={`${stageOrder.indexOf(activeStage) + 1}/${stageOrder.length}`} tone="accent" />
-        </div>
-        <div className="row" style={{ marginTop: 12 }}>
-          {rollbackStage && canStepBack && <Button block variant="secondary" disabled={setStage.isPending} onClick={() => setStage.mutate(rollbackStage)}>Назад · {stageLabel[rollbackStage]}</Button>}
-          {upcomingStage && <Button block variant="primary" disabled={setStage.isPending} onClick={() => setStage.mutate(upcomingStage)}>Далее · {stageLabel[upcomingStage]}</Button>}
-          {!upcomingStage && !project.data.warehouseTurnoverCompletedAt && <Button block variant="primary" disabled={completeTurnover.isPending} onClick={() => completeTurnover.mutate()}>Завершить оборот</Button>}
-        </div>
-      </Card>
-      <StageHistory events={events.data ?? []} people={people.data ?? []} currentUser={user ?? null} />
+          <div className="row" style={{ marginTop: 12 }}>{rollbackStage && canStepBack && <Button block variant="secondary" disabled={setStage.isPending} onClick={() => setStage.mutate(rollbackStage)}>Назад · {stageLabel[rollbackStage]}</Button>}{upcomingStage && <Button block variant="primary" disabled={setStage.isPending} onClick={() => setStage.mutate(upcomingStage)}>Далее · {stageLabel[upcomingStage]}</Button>}{!upcomingStage && !project.data.warehouseTurnoverCompletedAt && <Button block variant="primary" disabled={completeTurnover.isPending} onClick={() => completeTurnover.mutate()}>Завершить оборот</Button>}</div>
+        </Card>
+        <StageHistory events={events.data ?? []} people={people.data ?? []} currentUser={user ?? null} />
+      </>}
+
+      {activeTab === "timing" && <><SectionHead label={seesWholeTiming ? "Полный тайминг" : "Мой тайминг"} meta={`${visibleTimings.length}`} />{visibleTimings.length ? <TimingTimeline timings={visibleTimings} userName={userId => personName(userId === user?.id ? user : (people.data ?? []).find(person => person.id === userId), "—")} /> : <EmptyState title="Вас пока не добавили ни на одно событие" />}</>}
+
+      {activeTab === "finance" && (can("operations.finance.view", "operations.finance.manage") || can("operations.payroll.view", "operations.payroll.manage")) && <OperationsFinancePanel project={project.data} canClientView={can("operations.finance.view", "operations.finance.manage")} canClientManage={can("operations.finance.manage")} canPayrollView={can("operations.payroll.view", "operations.payroll.manage")} canPayrollManage={can("operations.payroll.manage")} />}
+
+      <div className="project-tabbar" role="tablist" aria-label="Operations">
+        {([{ id: "turnover", label: "Оборот", icon: "▣" }, { id: "timing", label: "Тайминг", icon: "◷" }, { id: "finance", label: "Финансы", icon: "€" }] as const).filter(tab => tab.id !== "finance" || can("operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage")).map(tab => <button key={tab.id} className={`project-tabbar__item ${activeTab === tab.id ? "project-tabbar__item--active" : ""}`} onClick={() => setActiveTab(tab.id)} role="tab" aria-selected={activeTab === tab.id} style={{ ["--tab-c" as string]: "var(--accent)" }}><span className="project-tabbar__icon" style={{ fontWeight: 800, fontSize: 20 }}>{tab.icon}</span><span className="project-tabbar__label">{tab.label}</span></button>)}
+      </div>
     </div>
   );
 }
 
-function OperationsFinancePanel({ projectId, canClientView, canClientManage, canPayrollView, canPayrollManage }: { projectId: string; canClientView: boolean; canClientManage: boolean; canPayrollView: boolean; canPayrollManage: boolean }) {
-  const invoice = useProjectInvoice(projectId, canClientView), accounts = useAccounts(canClientView), createTransaction = useCreateTransaction(), assignments = useAssignments(projectId), people = usePeople(canPayrollView), updateAssignment = useUpdateAssignment();
-  const [amount,setAmount] = useState(""), [accountId,setAccountId] = useState("");
-  const account = (accounts.data ?? []).find(x => x.id === accountId) ?? accounts.data?.[0];
+function OperationsFinancePanel({ project, canClientView, canClientManage, canPayrollView, canPayrollManage }: { project: Projects.ProjectDTO; canClientView: boolean; canClientManage: boolean; canPayrollView: boolean; canPayrollManage: boolean }) {
+  const projectId = project.id;
+  const invoice = useProjectInvoice(projectId, canClientView && project.financeTracked), accounts = useAccounts(canClientView || canPayrollView), createTransaction = useCreateTransaction(), assignments = useAssignments(projectId), people = usePeople(canPayrollView || canClientView), transactions = useTransactions(projectId, true), contractorItems = useContractorItems(projectId), contractors = useContractors(), setFinanceTracking = useSetProjectFinanceTracking();
+  const activeTransactions = (transactions.data ?? []).filter(transaction => !transaction.voidedAt);
   const active = (assignments.data ?? []).filter(x => x.status === "added" || x.status === "accepted");
-  const name = (id:string) => (people.data ?? []).find(x => x.id === id)?.displayName ?? id;
+  const name = (id:string) => personName((people.data ?? []).find(x => x.id === id), id);
   const money = (value: number | null | undefined) => {
     const amount = Number(value);
     return `${(Number.isFinite(amount) ? amount : 0).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} €`;
   };
   return <>
     <SectionHead label="Финансы проекта" />
+    <Card><div className="row row--between"><div><p className="card__title">{project.financeTracked ? "Финансы учитываются" : "Финансы не учитываются"}</p><p className="card__subtitle">{project.financeTracked ? "Проект участвует в долгах клиентов и подрядчиков" : "Исключён из долгов и не блокирует завершение"}</p></div>{canClientManage && <Button variant="secondary" disabled={setFinanceTracking.isPending} onClick={() => setFinanceTracking.mutate({ id: projectId, financeTracked: !project.financeTracked })}>{project.financeTracked ? "Не учитывать" : "Включить учёт"}</Button>}</div></Card>
+    {!project.financeTracked && <ProjectTransactionList transactions={transactions.data ?? []} accounts={accounts.data ?? []} people={people.data ?? []} canClientManage={canClientManage} canPayrollManage={canPayrollManage} />}
+    {project.financeTracked && <>
     {canClientView && <Card>
       <div className="row row--between">
         <div><p className="card__subtitle">Счёт</p><p className="card__title">{money(invoice.data?.invoiceEUR ?? 0)}</p></div>
         <div><p className="card__subtitle">Получено</p><p className="card__title">{money(invoice.data?.paidEUR ?? 0)}</p></div>
         <div><p className="card__subtitle">{(invoice.data?.dueEUR ?? 0) >= 0 ? "Осталось" : "Переплата"}</p><p className="card__title">{money(Math.abs(invoice.data?.dueEUR ?? 0))}</p></div>
       </div>
-      {canClientManage && <div className="row" style={{marginTop:12}}>
-        <Select value={account?.id ?? ""} onChange={e=>setAccountId(e.target.value)} options={(accounts.data ?? []).map(x=>({value:x.id,label:`${x.name} · ${x.currency}`}))}/>
-        <Input type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="Оплата клиента"/>
-        <Button disabled={!account || !(Number(amount)>0) || createTransaction.isPending} onClick={()=>createTransaction.mutate({accountId:account!.id,projectId,kind:"income",category:(invoice.data?.paidEUR ?? 0)>0?"debt_settlement":"prepayment",amount:Number(amount),currency:account!.currency,note:"Оплата клиента из Operations"},{onSuccess:()=>{setAmount("");invoice.refetch();}})}>Внести</Button>
-      </div>}
+      {canClientManage && <PaymentComposer accounts={accounts.data ?? []} label="Оплата клиента" pending={createTransaction.isPending} onPay={(account, amount) => createTransaction.mutate({ accountId: account.id, projectId, kind: "income", category: (invoice.data?.paidEUR ?? 0) > 0 ? "debt_settlement" : "prepayment", amount, currency: account.currency, note: "Оплата клиента из Operations" }, { onSuccess: () => invoice.refetch() })} />}
     </Card>}
     {canPayrollView && <Card><p className="card__title">Выплаты команде</p><div className="stack" style={{marginTop:10}}>{active.map(assignment => {
       const due = assignment.rateEUR ?? 0;
-      const paid = Number.isFinite(Number(assignment.paidEUR)) ? Number(assignment.paidEUR) : 0;
+      const recorded = activeTransactions.filter(transaction => transaction.assignmentId === assignment.id && transaction.kind === "expense").reduce((sum, transaction) => sum + transaction.amountEUR, 0);
+      const paid = Math.max(Number.isFinite(Number(assignment.paidEUR)) ? Number(assignment.paidEUR) : 0, recorded);
       const rest = Math.max(0, due - paid);
-      return <div className="row row--between" key={assignment.id}>
-        <div><p>{name(assignment.userId)} · {assignment.roleNote ?? "Роль"}</p><p className="card__subtitle">ставка {money(due)} · выплачено {money(paid)}{rest ? ` · осталось ${money(rest)}` : ""}</p></div>
-        {canPayrollManage && <PayrollPaymentEditor paidEUR={paid} rateEUR={due} pending={updateAssignment.isPending} onSave={paidEUR => updateAssignment.mutate({ id: assignment.id, input: { paidEUR } })} />}
-      </div>;
+      return <div className="stack" style={{ gap: 6 }} key={assignment.id}><div className="row row--between"><div><p>{name(assignment.userId)} · {assignment.roleNote ?? "Роль"}</p><p className="card__subtitle">ставка {money(due)} · выплачено {money(paid)}{rest ? ` · осталось ${money(rest)}` : ""}</p></div><label className="chip chip--neutral"><input type="checkbox" checked={due <= 0 || rest <= 0.005} readOnly /> оплачено</label></div>{canPayrollManage && due > 0 && rest > 0.005 && <PaymentComposer accounts={accounts.data ?? []} label="Выплата" max={rest} pending={createTransaction.isPending} onPay={(account, amount) => createTransaction.mutate({ accountId: account.id, projectId, assignmentId: assignment.id, kind: "expense", category: "salary", amount, currency: account.currency, note: `Выплата ${name(assignment.userId)} · ${assignment.roleNote ?? "роль"}` })} />}</div>;
     })}</div></Card>}
+    {canClientView && <ContractorPayments projectId={projectId} items={contractorItems.data ?? []} contractors={contractors.data ?? []} transactions={activeTransactions} accounts={accounts.data ?? []} canManage={canClientManage} createTransaction={createTransaction} money={money} />}
+    <ProjectTransactionList transactions={transactions.data ?? []} accounts={accounts.data ?? []} people={people.data ?? []} canClientManage={canClientManage} canPayrollManage={canPayrollManage} />
+    </>}
   </>;
 }
 
-function PayrollPaymentEditor({ paidEUR, rateEUR, pending, onSave }: { paidEUR: number; rateEUR: number; pending: boolean; onSave: (paidEUR: number) => void }) {
-  const [draft, setDraft] = useState(String(paidEUR));
-  useEffect(() => setDraft(String(paidEUR)), [paidEUR]);
-  const value = Math.max(0, Number(draft) || 0);
-  return <div className="row"><Input type="number" min="0" value={draft} onChange={event => setDraft(event.target.value)} /><Button variant="secondary" disabled={pending || value === paidEUR} onClick={() => onSave(value)}>Сохранить</Button><label className="chip chip--neutral"><input type="checkbox" checked={rateEUR > 0 && paidEUR >= rateEUR} disabled={pending || rateEUR <= 0} onChange={event => onSave(event.target.checked ? rateEUR : 0)} /> выплачено полностью</label></div>;
+function PaymentComposer({ accounts, label, max, pending, onPay }: { accounts: Finance.AccountDTO[]; label: string; max?: number; pending: boolean; onPay: (account: Finance.AccountDTO, amount: number) => void }) {
+  const [accountId, setAccountId] = useState(""), [amount, setAmount] = useState("");
+  const account = accounts.find(item => item.id === accountId) ?? accounts[0];
+  const limit = account?.currency === "EUR" ? max : undefined;
+  const value = Math.min(limit ?? Number.POSITIVE_INFINITY, Math.max(0, Number(amount) || 0));
+  return <div className="row"><Select value={account?.id ?? ""} onChange={event => setAccountId(event.target.value)} options={accounts.map(item => ({ value: item.id, label: `${item.name} · ${item.currency}` }))} /><Input type="number" min="0" max={limit} value={amount} onChange={event => setAmount(event.target.value)} placeholder={`${label}${account ? `, ${account.currency}` : ""}`} /><Button variant="secondary" disabled={!account || value <= 0 || pending} onClick={() => { onPay(account!, value); setAmount(""); }}>{label}</Button></div>;
+}
+
+function ContractorPayments({ projectId, items, contractors, transactions, accounts, canManage, createTransaction, money }: { projectId: string; items: Projects.ContractorItemDTO[]; contractors: Equipment.ContractorDTO[]; transactions: Finance.TransactionDTO[]; accounts: Finance.AccountDTO[]; canManage: boolean; createTransaction: ReturnType<typeof useCreateTransaction>; money: (value: number | null | undefined) => string }) {
+  const contractorIds = [...new Set(items.map(item => item.contractorId))];
+  if (!contractorIds.length) return null;
+  return <Card><p className="card__title">Оплата подрядчиков</p><div className="stack" style={{ marginTop: 10 }}>{contractorIds.map(contractorId => {
+    const due = items.filter(item => item.contractorId === contractorId).reduce((sum, item) => sum + item.costEUR * item.qty, 0);
+    const paid = transactions.filter(transaction => transaction.contractorId === contractorId && transaction.kind === "expense").reduce((sum, transaction) => sum + transaction.amountEUR, 0);
+    const rest = Math.max(0, due - paid);
+    const contractorName = contractors.find(contractor => contractor.id === contractorId)?.name ?? "Подрядчик";
+    return <div className="stack" style={{ gap: 6 }} key={contractorId}><div className="row row--between"><div><p>{contractorName}</p><p className="card__subtitle">к оплате {money(due)} · выплачено {money(paid)}{rest ? ` · осталось ${money(rest)}` : ""}</p></div><Chip label={rest <= 0.005 ? "оплачено" : "не оплачено"} tone={rest <= 0.005 ? "ok" : "warn"} /></div>{canManage && rest > 0.005 && <PaymentComposer accounts={accounts} label="Оплатить" max={rest} pending={createTransaction.isPending} onPay={(account, amount) => createTransaction.mutate({ accountId: account.id, projectId, contractorId, kind: "expense", category: "other", amount, currency: account.currency, note: `Оплата подрядчику ${contractorName}` })} />}</div>;
+  })}</div></Card>;
+}
+
+function ProjectTransactionList({ transactions, accounts, people, canClientManage, canPayrollManage }: { transactions: Finance.TransactionDTO[]; accounts: Finance.AccountDTO[]; people: People.UserDTO[]; canClientManage: boolean; canPayrollManage: boolean }) {
+  const update = useUpdateTransaction(), voidTx = useVoidTransaction();
+  if (!transactions.length) return <EmptyState title="Транзакций по проекту пока нет" />;
+  const accountName = (id: string) => accounts.find(account => account.id === id)?.name ?? "Неизвестный счёт";
+  const actorName = (id: string | null) => id ? personName(people.find(person => person.id === id), id.slice(0, 8)) : "Система";
+  return <details><summary className="btn btn--ghost">Транзакции · {transactions.length}</summary><div className="stack" style={{ marginTop: 8 }}>{transactions.map(transaction => {
+    const canManage = transaction.category === "salary" ? canPayrollManage : canClientManage;
+    return <TransactionEditor key={transaction.id} transaction={transaction} accounts={accounts} accountName={accountName} actorName={actorName} canManage={canManage} pending={update.isPending || voidTx.isPending} onSave={input => update.mutate({ id: transaction.id, input })} onVoid={() => { if (confirm("Отменить эту оплату? Баланс счёта и итог проекта будут пересчитаны.")) voidTx.mutate(transaction.id); }} />;
+  })}</div></details>;
+}
+
+function TransactionEditor({ transaction, accounts, accountName, actorName, canManage, pending, onSave, onVoid }: { transaction: Finance.TransactionDTO; accounts: Finance.AccountDTO[]; accountName: (id: string) => string; actorName: (id: string | null) => string; canManage: boolean; pending: boolean; onSave: (input: Finance.UpdateTransactionInput) => void; onVoid: () => void }) {
+  const [editing, setEditing] = useState(false), [accountId, setAccountId] = useState(transaction.accountId), [amount, setAmount] = useState(String(transaction.amount)), [note, setNote] = useState(transaction.note ?? "");
+  const compatibleAccounts = accounts.filter(account => account.currency === transaction.currency);
+  return <Card style={transaction.voidedAt ? { opacity: 0.55 } : undefined}><div className="row row--between"><div><p className="card__title">{transaction.note || (transaction.kind === "income" ? "Оплата клиента" : "Выплата")}</p><p className="card__subtitle">{dateTime(transaction.createdAt)} · {accountName(transaction.accountId)} · внёс {actorName(transaction.createdByUserId)}{transaction.updatedAt ? ` · изменил ${actorName(transaction.updatedByUserId)}` : ""}{transaction.voidedAt ? ` · отменил ${actorName(transaction.voidedByUserId)}` : ""}</p></div><strong style={{ color: transaction.kind === "income" ? "var(--ok)" : "var(--danger)" }}>{transaction.kind === "income" ? "+" : "−"}{transaction.amount.toLocaleString("ru-RU")} {transaction.currency}</strong></div>{editing && !transaction.voidedAt && <div className="stack" style={{ marginTop: 8 }}><Select value={accountId} onChange={event => setAccountId(event.target.value)} options={compatibleAccounts.map(account => ({ value: account.id, label: account.name }))} /><Input type="number" min="0.01" value={amount} onChange={event => setAmount(event.target.value)} /><Input value={note} onChange={event => setNote(event.target.value)} placeholder="Комментарий" /><div className="row"><Button disabled={pending || !(Number(amount) > 0)} onClick={() => { onSave({ accountId, amount: Number(amount), note: note.trim() || null }); setEditing(false); }}>Сохранить</Button><Button variant="ghost" onClick={() => setEditing(false)}>Отмена</Button></div></div>}{canManage && !transaction.voidedAt && !editing && <div className="row" style={{ marginTop: 8 }}><Button variant="ghost" onClick={() => setEditing(true)}>Изменить</Button><Button variant="ghost" disabled={pending} onClick={onVoid}>Отменить оплату</Button></div>}</Card>;
 }
 
 function avatarUrl(user: People.UserDTO | null | undefined): string | null {
@@ -261,13 +287,14 @@ function StageHistory({
   );
 }
 
-function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: Projects.ProjectChecklistGroup }) {
+function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string; venueId: string | null; stage: Projects.ProjectChecklistGroup }) {
   const navigate = useNavigate();
   const { can } = useSession();
   const reservations = useReservations(projectId);
   const models = useEquipmentModels();
   const units = useAllUnits();
   const warehouses = useWarehouses();
+  const venues = useProjectVenues();
   const marks = useOperationUnitMarks(projectId);
   const setMark = useSetOperationUnitMark(projectId);
   const clearMark = useClearOperationUnitMark(projectId);
@@ -279,13 +306,24 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
   const issueQuantity = useIssueProjectQuantity();
   const returnQuantity = useReturnProjectQuantity();
   const canMarkStatus = can("warehouse.unit.status");
-  const [returnWarehouseByUnit, setReturnWarehouseByUnit] = useState<Record<string,string>>({});
+  const [returnLocationByUnit, setReturnLocationByUnit] = useState<Record<string,string>>({});
+  const [quantityLocationByModel, setQuantityLocationByModel] = useState<Record<string,string>>({});
+  const [issueWarehouseByModel, setIssueWarehouseByModel] = useState<Record<string,string>>({});
   const [actualUnitIdsByReservation, setActualUnitIdsByReservation] = useState<Record<string, string[]>>({});
   const [actualQuantityByModel, setActualQuantityByModel] = useState<Record<string, string>>({});
   const shouldShow = stage !== "show";
   if (!shouldShow) return null;
 
   const modelName = (modelId: string) => models.data?.find((m) => m.id === modelId)?.name ?? modelId;
+  const venue = (venues.data ?? []).find((item) => item.id === venueId);
+  const venueWarehouse = (warehouses.data ?? []).find((item) => item.placeId === venueId);
+  const venueLocationValue = venueId ? venueWarehouse?.id ?? `venue:${venueId}` : null;
+  const defaultWarehouseId = (warehouses.data ?? []).find((warehouse) => warehouse.isDefault)?.id ?? (warehouses.data ?? [])[0]?.id ?? "";
+  const returnLocationOptions = [
+    ...(venue && venueLocationValue ? [{ value: venueLocationValue, label: `Оставить на площадке: ${venue.name}` }] : []),
+    ...(warehouses.data ?? []).filter((warehouse) => warehouse.placeId !== venueId).map((warehouse) => ({ value: warehouse.id, label: `Вернуть: ${warehouse.name}` })),
+  ];
+  const returnInput = (location: string) => location.startsWith("venue:") ? { venueId: location.slice(6) } : { warehouseId: location };
   const unitById = new Map((units.data ?? []).map((unit) => [unit.id, unit]));
   const marksByUnit = new Map<string, Projects.OperationUnitMarkDTO[]>();
   for (const mark of (marks.data ?? []).filter((item) => item.stage === stage)) {
@@ -343,7 +381,8 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
       return;
     }
     if (stage === "return" && status === "returned" && unit?.status === "on_project") {
-      returnUnits.mutate({ projectId, returnedUnitIds: [unitId], expectedUnitIds: [unitId], warehouseId: returnWarehouseByUnit[unitId] || (warehouses.data ?? []).find(w => w.isDefault)?.id }, { onSuccess: () => setMark.mutate({ stage, unitId, status }) });
+      const location = returnLocationByUnit[unitId] || defaultWarehouseId;
+      returnUnits.mutate({ projectId, returnedUnitIds: [unitId], expectedUnitIds: [unitId], ...returnInput(location) }, { onSuccess: () => setMark.mutate({ stage, unitId, status }) });
       return;
     }
     if (status === "broken" && canMarkStatus) {
@@ -362,7 +401,7 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
     <>
       <SectionHead label="По приборам" meta={title} />
       <div className="stack">
-        {reservations.isLoading || models.isLoading || units.isLoading || warehouses.isLoading || marks.isLoading || journal.isLoading ? (
+        {reservations.isLoading || models.isLoading || units.isLoading || warehouses.isLoading || venues.isLoading || marks.isLoading || journal.isLoading ? (
           <Loading />
         ) : marks.error ? (
           <ErrorState error={marks.error} onRetry={marks.refetch} />
@@ -388,9 +427,10 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
                       disabled={setMark.isPending || clearMark.isPending || changeStatus.isPending || markBroken.isPending || issueUnits.isPending || returnUnits.isPending}
                       onOpen={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
                       onMark={(status, active, note) => unit && markUnit(unit.id, status, active, note)}
-                      returnWarehouses={stage === "return" ? (warehouses.data ?? []) : []}
-                      selectedWarehouseId={unit ? (returnWarehouseByUnit[unit.id] || (warehouses.data ?? []).find(w => w.isDefault)?.id || "") : ""}
-                      onSelectWarehouse={warehouseId => unit && setReturnWarehouseByUnit(current => ({ ...current, [unit.id]: warehouseId }))}
+                      returnLocations={stage === "return" ? returnLocationOptions : []}
+                      returnedLocationName={unit ? warehouseName(unit.warehouseId) : "Возвращено"}
+                      selectedLocation={unit ? (returnLocationByUnit[unit.id] || defaultWarehouseId) : ""}
+                      onSelectLocation={location => unit && setReturnLocationByUnit(current => ({ ...current, [unit.id]: location }))}
                     />
                   ))}
                 </div>
@@ -408,14 +448,16 @@ function StageEquipmentPanel({ projectId, stage }: { projectId: string; stage: P
                     const remaining = Math.max(0, need.qty - outstanding);
                     const assignByFact = modelById.get(need.modelId)?.effectiveReservationAssignmentMode === "operations";
                     const actualQuantity = Math.max(0, Math.trunc(Number(actualQuantityByModel[need.modelId] ?? remaining) || 0));
-                    return <div key={need.modelId} className="row row--between">
+                    const returnLocation = quantityLocationByModel[need.modelId] || defaultWarehouseId;
+                    const issueWarehouseId = issueWarehouseByModel[need.modelId] || defaultWarehouseId;
+                    return <div key={need.modelId} className="row row--between" style={{ flexWrap: "wrap" }}>
                       <div style={{ minWidth: 0 }}>
                         <p className="card__title" style={{ fontSize: 16 }}>{modelName(need.modelId)} × {need.qty}</p>
                         <p className="card__subtitle">{outstanding > 0 ? `на проекте ${outstanding}` : assignByFact ? "количество отмечается по факту" : "на складе"}</p>
                       </div>
-                      {stage === "pickup" && assignByFact ? <div className="row"><Input type="number" min="1" value={actualQuantityByModel[need.modelId] ?? String(remaining || 1)} onChange={event => setActualQuantityByModel(current => ({ ...current, [need.modelId]: event.target.value }))} /><Button disabled={issueQuantity.isPending || actualQuantity < 1} onClick={() => issueQuantity.mutate({ projectId, modelId: need.modelId, qty: actualQuantity }, { onSuccess: () => setActualQuantityByModel(current => ({ ...current, [need.modelId]: "" })) })}>Выдать {actualQuantity}</Button></div>
-                        : stage === "pickup" && remaining > 0 ? <Button disabled={issueQuantity.isPending} onClick={() => issueQuantity.mutate({ projectId, modelId: need.modelId, qty: remaining })}>Выдать {remaining}</Button>
-                        : stage === "return" && outstanding > 0 ? <Button disabled={returnQuantity.isPending} onClick={() => returnQuantity.mutate({ projectId, modelId: need.modelId, qty: outstanding })}>Вернуть {outstanding}</Button>
+                      {stage === "pickup" && assignByFact ? <div className="row"><Select value={issueWarehouseId} onChange={event => setIssueWarehouseByModel(current => ({ ...current, [need.modelId]: event.target.value }))} options={(warehouses.data ?? []).map(warehouse => ({ value: warehouse.id, label: warehouse.name }))} /><Input type="number" min="1" value={actualQuantityByModel[need.modelId] ?? String(remaining || 1)} onChange={event => setActualQuantityByModel(current => ({ ...current, [need.modelId]: event.target.value }))} /><Button disabled={issueQuantity.isPending || actualQuantity < 1} onClick={() => issueQuantity.mutate({ projectId, modelId: need.modelId, warehouseId: issueWarehouseId, qty: actualQuantity }, { onSuccess: () => setActualQuantityByModel(current => ({ ...current, [need.modelId]: "" })) })}>Выдать {actualQuantity}</Button></div>
+                        : stage === "pickup" && remaining > 0 ? <div className="row"><Select value={issueWarehouseId} onChange={event => setIssueWarehouseByModel(current => ({ ...current, [need.modelId]: event.target.value }))} options={(warehouses.data ?? []).map(warehouse => ({ value: warehouse.id, label: warehouse.name }))} /><Button disabled={issueQuantity.isPending} onClick={() => issueQuantity.mutate({ projectId, modelId: need.modelId, warehouseId: issueWarehouseId, qty: remaining })}>Выдать {remaining}</Button></div>
+                        : stage === "return" && outstanding > 0 ? <div className="row"><Select value={returnLocation} onChange={event => setQuantityLocationByModel(current => ({ ...current, [need.modelId]: event.target.value }))} options={returnLocationOptions} /><Button disabled={returnQuantity.isPending || !returnLocation} onClick={() => returnQuantity.mutate({ projectId, modelId: need.modelId, qty: outstanding, ...returnInput(returnLocation) })}>Разместить {outstanding}</Button></div>
                         : <Chip label={outstanding > 0 ? "ВЫДАНО" : "ОЖИДАЕТ"} tone={outstanding > 0 ? "warn" : "neutral"} />}
                     </div>;
                   })}
@@ -480,9 +522,10 @@ function UnitStageRow({
   disabled,
   onOpen,
   onMark,
-  returnWarehouses,
-  selectedWarehouseId,
-  onSelectWarehouse,
+  returnLocations,
+  returnedLocationName,
+  selectedLocation,
+  onSelectLocation,
 }: {
   unit: Equipment.EquipmentUnitDTO | undefined;
   modelName: string;
@@ -492,9 +535,10 @@ function UnitStageRow({
   disabled: boolean;
   onOpen: () => void;
   onMark: (status: Projects.OperationUnitMarkStatus, active: boolean, note?: string | null) => void;
-  returnWarehouses: Equipment.WarehouseDTO[];
-  selectedWarehouseId: string;
-  onSelectWarehouse: (warehouseId: string) => void;
+  returnLocations: { value: string; label: string }[];
+  returnedLocationName: string;
+  selectedLocation: string;
+  onSelectLocation: (location: string) => void;
 }) {
   const missingMark = marks.find((mark) => mark.status === "missing");
   const [editingMissing, setEditingMissing] = useState(false);
@@ -520,7 +564,7 @@ function UnitStageRow({
         <Chip label={markText} tone={marks.length > 0 ? (hasProblem ? "warn" : "ok") : "neutral"} />
       </div>
       <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-        {unit && returnWarehouses.length > 0 && (activeStatuses.has("returned") ? <Chip label={returnWarehouses.find(w => w.id === unit.warehouseId)?.name ?? "Возвращено"} tone="ok" /> : <Select value={selectedWarehouseId} onChange={e => onSelectWarehouse(e.target.value)} options={returnWarehouses.map(w => ({ value: w.id, label: `Вернуть: ${w.name}` }))} />)}
+        {unit && returnLocations.length > 0 && (activeStatuses.has("returned") ? <Chip label={returnedLocationName} tone="ok" /> : <Select value={selectedLocation} onChange={e => onSelectLocation(e.target.value)} options={returnLocations} />)}
         {unit && actions.map((action) => {
           const active = activeStatuses.has(action.status);
           return (

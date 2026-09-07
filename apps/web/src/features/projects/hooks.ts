@@ -107,6 +107,15 @@ export function useUpdateProject() {
   });
 }
 
+export function useSetProjectFinanceTracking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, financeTracked }: { id: string; financeTracked: boolean }) => api.patch<Projects.ProjectDTO>(`/api/projects/${id}/finance-tracking`, { financeTracked }),
+    meta: { successMessage: "Финансовый учёт проекта обновлён" },
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
 export function useSetProjectStatus() {
   const qc = useQueryClient();
   return useMutation({
@@ -484,8 +493,8 @@ export function useIssueProjectQuantity() {
 export function useReturnProjectQuantity() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { projectId: string; modelId: string; warehouseId?: string | null; qty: number }) =>
-      api.post("/api/operations/return", { projectId: input.projectId, returnedUnitIds: [], expectedUnitIds: [], quantityLines: [{ modelId: input.modelId, warehouseId: input.warehouseId, qty: input.qty }] }),
+    mutationFn: (input: { projectId: string; modelId: string; warehouseId?: string | null; venueId?: string | null; qty: number }) =>
+      api.post("/api/operations/return", { projectId: input.projectId, returnedUnitIds: [], expectedUnitIds: [], venueId: input.venueId, quantityLines: [{ modelId: input.modelId, warehouseId: input.warehouseId, qty: input.qty }] }),
     onSuccess: () => {
       invalidateProjects(qc);
       qc.invalidateQueries({ queryKey: ["equipment"] });

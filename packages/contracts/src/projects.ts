@@ -49,6 +49,8 @@ export interface ProjectDTO {
   status: ProjectStatus;
   operationStage: ProjectChecklistGroup;
   warehouseTurnoverCompletedAt: ISODateTime | null;
+  /** False excludes a legacy/project exception from client and contractor debt tracking. */
+  financeTracked: boolean;
   /** Opaque id of the venue (venues module, later phase). */
   venueId: ID | null;
   dressCodeOptionId: ID | null;
@@ -68,6 +70,7 @@ export interface CreateProjectInput {
   dressCodeOptionId?: ID | null;
   dressCodeLabel?: string | null;
   dressCodeUniform?: boolean;
+  financeTracked?: boolean;
 }
 
 export interface UpdateProjectInput {
@@ -79,6 +82,7 @@ export interface UpdateProjectInput {
   dressCodeOptionId?: ID | null;
   dressCodeLabel?: string | null;
   dressCodeUniform?: boolean;
+  financeTracked?: boolean;
 }
 
 export interface DuplicateProjectInput {

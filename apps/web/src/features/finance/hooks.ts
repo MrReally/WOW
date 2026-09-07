@@ -99,8 +99,12 @@ export function useCreateInvoiceVersion(projectId: string) {
   });
 }
 
-export function useTransactions() {
-  return useQuery({ queryKey: ["finance", "transactions"], queryFn: () => api.get<Finance.TransactionDTO[]>("/api/finance/transactions") });
+export function useTransactions(projectId?: string, includeVoided = false) {
+  const params = new URLSearchParams();
+  if (projectId) params.set("projectId", projectId);
+  if (includeVoided) params.set("includeVoided", "true");
+  const suffix = params.size ? `?${params}` : "";
+  return useQuery({ queryKey: ["finance", "transactions", projectId ?? null, includeVoided], queryFn: () => api.get<Finance.TransactionDTO[]>(`/api/finance/transactions${suffix}`) });
 }
 
 export function useDebts() {
@@ -114,6 +118,10 @@ export function useProjectsForFinance() {
 function invalidate(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["finance"] });
   qc.invalidateQueries({ queryKey: ["apex"] });
+  qc.invalidateQueries({ queryKey: ["projects", "assignments"] });
+  qc.invalidateQueries({ queryKey: ["projects", "contractor-items"] });
+  qc.invalidateQueries({ queryKey: ["projects", "contractor-debts"] });
+  qc.invalidateQueries({ queryKey: ["projects", "invoice"] });
 }
 
 export function useCreateAccount() {
@@ -121,6 +129,14 @@ export function useCreateAccount() {
   return useMutation({
     mutationFn: (input: { name: string; currency: Finance.AccountDTO["currency"] }) =>
       api.post("/api/finance/accounts", input),
+    onSuccess: () => invalidate(qc),
+  });
+}
+
+export function useUpdateAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.patch<Finance.AccountDTO>(`/api/finance/accounts/${id}`, { name }),
     onSuccess: () => invalidate(qc),
   });
 }
@@ -138,6 +154,22 @@ export function useCreateTransaction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: Finance.CreateTransactionInput) => api.post("/api/finance/transactions", input),
+    onSuccess: () => invalidate(qc),
+  });
+}
+
+export function useUpdateTransaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Finance.UpdateTransactionInput }) => api.patch<Finance.TransactionDTO>(`/api/finance/transactions/${id}`, input),
+    onSuccess: () => invalidate(qc),
+  });
+}
+
+export function useVoidTransaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<Finance.TransactionDTO>(`/api/finance/transactions/${id}/void`, {}),
     onSuccess: () => invalidate(qc),
   });
 }

@@ -19,6 +19,10 @@ export interface AccountDTO {
   createdAt: ISODateTime;
 }
 
+export interface UpdateAccountInput {
+  name: string;
+}
+
 // ── Transactions (FX snapshot frozen at creation) ────────────────────────────
 
 export type TxKind = "income" | "expense";
@@ -37,6 +41,10 @@ export interface TransactionDTO {
   projectId: ID | null;
   /** When attributing revenue to a unit's payback. */
   unitId: ID | null;
+  /** Opaque project assignment id for a crew payout. */
+  assignmentId: ID | null;
+  /** Opaque contractor id for a vendor payout. */
+  contractorId: ID | null;
   kind: TxKind;
   category: TxCategory;
   amount: number; // in `currency`
@@ -46,6 +54,10 @@ export interface TransactionDTO {
   note: string | null;
   /** Who recorded it (people id), null for legacy/system entries. */
   createdByUserId: ID | null;
+  updatedByUserId: ID | null;
+  updatedAt: ISODateTime | null;
+  voidedByUserId: ID | null;
+  voidedAt: ISODateTime | null;
   createdAt: ISODateTime;
 }
 
@@ -53,12 +65,20 @@ export interface CreateTransactionInput {
   accountId: ID;
   projectId?: ID | null;
   unitId?: ID | null;
+  assignmentId?: ID | null;
+  contractorId?: ID | null;
   kind: TxKind;
   category: TxCategory;
   amount: number;
   currency: Currency;
   note?: string | null;
   createdByUserId?: ID | null;
+}
+
+export interface UpdateTransactionInput {
+  accountId: ID;
+  amount: number;
+  note?: string | null;
 }
 
 // ── Payback per unit ─────────────────────────────────────────────────────────
@@ -289,10 +309,13 @@ export interface FinanceService {
   // Accounts
   listAccounts(): Promise<AccountDTO[]>;
   createAccount(input: { name: string; currency: Currency }): Promise<AccountDTO>;
+  updateAccount(id: ID, input: UpdateAccountInput): Promise<AccountDTO>;
 
   // Transactions
-  listTransactions(filter?: { projectId?: ID; unitId?: ID }): Promise<TransactionDTO[]>;
+  listTransactions(filter?: { projectId?: ID; unitId?: ID; includeVoided?: boolean }): Promise<TransactionDTO[]>;
   createTransaction(input: CreateTransactionInput): Promise<TransactionDTO>;
+  updateTransaction(id: ID, input: UpdateTransactionInput, actorId: ID): Promise<TransactionDTO>;
+  voidTransaction(id: ID, actorId: ID): Promise<TransactionDTO>;
 
   // Aggregates (all in EUR via frozen snapshots)
   unitPayback(unitId: ID, unitCostEUR: number): Promise<UnitPaybackDTO>;
@@ -330,7 +353,18 @@ export interface TransactionCreatedEvent {
   projectId: ID | null;
   unitId: ID | null;
   amountEUR: number;
+  assignmentId: ID | null;
+  contractorId: ID | null;
   at: ISODateTime;
 }
 
-export type FinanceEvent = TransactionCreatedEvent;
+export interface TransactionChangedEvent {
+  type: "finance.transaction.changed";
+  transactionId: ID;
+  projectId: ID | null;
+  assignmentId: ID | null;
+  contractorId: ID | null;
+  at: ISODateTime;
+}
+
+export type FinanceEvent = TransactionCreatedEvent | TransactionChangedEvent;

@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import { createBillingService, type BillingDeps } from "../src/modules/billing/service.js";
 
 describe("billing reserve equipment", () => {
+  it("excludes projects explicitly disabled from legacy debt tracking", async () => {
+    const start = "2026-07-17T10:00:00.000Z", end = "2026-07-18T10:00:00.000Z";
+    const project = { id: "legacy", status: "completed", financeTracked: false, startsAt: start, endsAt: end };
+    const billing = createBillingService({
+      projects: { getProject: async () => project, listProjects: async () => [project], listReservations: async () => [], listAssignments: async () => [], listProjectRoles: async () => [], listContractorItems: async () => [] },
+      equipment: { listModels: async () => [], listTypes: async () => [] },
+      finance: { listTransactions: async () => [], listProjectEstimateLines: async () => [], getProjectEstimateSettings: async () => ({ projectId: "legacy", totalDiscountType: "percent", totalDiscountValue: 0 }), listFxRates: async () => [] },
+      people: {},
+    } as unknown as BillingDeps);
+    expect(await billing.outstandingClientDebts()).toEqual([]);
+  });
+
   it("keeps reserve reservations out of the client invoice", async () => {
     const start = "2026-07-17T10:00:00.000Z";
     const end = "2026-07-19T10:00:00.000Z";

@@ -3,7 +3,7 @@ import { CURRENCIES } from "@sever/contracts";
 import type { Finance } from "@sever/contracts";
 import { Card, Button, SectionTitle, Metric, StatusBadge, Loading, ErrorState, EmptyState, Field, Input, Select } from "../../ui-kit/index.ts";
 import { useI18n } from "../../app/i18n.tsx";
-import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreateAccount, usePeopleNames, useContractorDebts, useContractorsList } from "./hooks.ts";
+import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreateAccount, useUpdateAccount, usePeopleNames, useContractorDebts, useContractorsList } from "./hooks.ts";
 import { AddTransactionSheet } from "./components/AddTransactionSheet.tsx";
 import { useSession } from "../../app/session.ts";
 import { toast } from "../../lib/toastBus.ts";
@@ -21,20 +21,23 @@ const categoryLabel: Record<string, string> = {
 
 export function FinancePage() {
   const accounts = useAccounts();
-  const transactions = useTransactions();
+  const transactions = useTransactions(undefined, true);
   const debts = useDebts();
   const contractorDebts = useContractorDebts();
   const contractors = useContractorsList();
   const projects = useProjectsForFinance();
   const createAccount = useCreateAccount();
+  const updateAccount = useUpdateAccount();
   const { can, user } = useSession();
   const { t, eur, money, dateTime } = useI18n();
   const canManage = can("finance.manage");
-  const people = usePeopleNames(can("people.view"));
+  const people = usePeopleNames(can("people.view", "finance.view", "finance.manage"));
   const [txOpen, setTxOpen] = useState(false);
   const [accountFormOpen, setAccountFormOpen] = useState(false);
   const [accountName, setAccountName] = useState("");
   const [accountCurrency, setAccountCurrency] = useState<Finance.AccountDTO["currency"]>("EUR");
+  const [editingAccountId, setEditingAccountId] = useState("");
+  const [editingAccountName, setEditingAccountName] = useState("");
   const authorName = (uid: string | null) => {
     if (!uid) return `${t("finance.addedBy")}: ${t("common.system")}`;
     return `${t("finance.addedBy")}: ${personName((people.data ?? []).find((u) => u.id === uid), uid.slice(0, 8))}`;
@@ -127,9 +130,10 @@ export function FinancePage() {
           {(accounts.data ?? []).map((a) => (
             <Card key={a.id}>
               <div className="row row--between">
-                <p className="card__title">{a.name}</p>
+                {editingAccountId === a.id ? <Input value={editingAccountName} onChange={event => setEditingAccountName(event.target.value)} /> : <p className="card__title">{a.name}</p>}
                 <span className="metric__value">{money(a.balance, a.currency)}</span>
               </div>
+              {canManage && <div className="row" style={{ marginTop: 8 }}>{editingAccountId === a.id ? <><Button disabled={!editingAccountName.trim() || updateAccount.isPending} onClick={() => updateAccount.mutate({ id: a.id, name: editingAccountName.trim() }, { onSuccess: () => setEditingAccountId("") })}>Сохранить</Button><Button variant="ghost" onClick={() => setEditingAccountId("")}>Отмена</Button></> : <Button variant="ghost" onClick={() => { setEditingAccountId(a.id); setEditingAccountName(a.name); }}>Изменить счёт</Button>}</div>}
             </Card>
           ))}
         </div>
@@ -173,13 +177,13 @@ export function FinancePage() {
       ) : (
         <div className="stack">
           {(transactions.data ?? []).slice(0, 30).map((t) => (
-            <Card key={t.id}>
+            <Card key={t.id} style={t.voidedAt ? { opacity: 0.55 } : undefined}>
               <div className="row row--between">
                 <div style={{ minWidth: 0 }}>
                   <p className="card__title">{categoryLabel[t.category] ?? t.category}{t.note ? ` · ${t.note}` : ""}</p>
                   <p className="card__subtitle">
-                    {t.projectId ? projectName(t.projectId) : "без проекта"} · {dateTime(t.createdAt)}
-                    {" · "}{authorName(t.createdByUserId)}
+                    {t.projectId ? projectName(t.projectId) : "без проекта"} · {dateTime(t.createdAt)} · {(accounts.data ?? []).find(account => account.id === t.accountId)?.name ?? "счёт удалён"}
+                    {" · "}{authorName(t.createdByUserId)}{t.voidedAt ? " · отменена" : t.updatedAt ? ` · изменена ${dateTime(t.updatedAt)}` : ""}
                   </p>
                 </div>
                 <div style={{ textAlign: "right" }}>

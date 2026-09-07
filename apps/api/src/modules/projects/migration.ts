@@ -25,6 +25,7 @@ CREATE INDEX IF NOT EXISTS projects_status_idx ON projects.projects(status);
 CREATE INDEX IF NOT EXISTS projects_window_idx ON projects.projects(starts_at, ends_at);
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS operation_stage text NOT NULL DEFAULT 'prep';
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS warehouse_turnover_completed_at timestamptz;
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS finance_tracked boolean NOT NULL DEFAULT true;
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_option_id uuid;
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_label text;
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_uniform boolean NOT NULL DEFAULT false;

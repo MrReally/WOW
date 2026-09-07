@@ -18,6 +18,7 @@ const projectSchema = z.object({
   dressCodeOptionId: z.string().uuid().nullable().optional(),
   dressCodeLabel: z.string().nullable().optional(),
   dressCodeUniform: z.boolean().optional(),
+  financeTracked: z.boolean().optional(),
 });
 const statusSchema = z.object({ status: z.enum(PROJECT_STATUSES as [string, ...string[]]) });
 const operationStageSchema = z.object({ stage: z.enum(PROJECT_CHECKLIST_GROUPS as [string, ...string[]]) });
@@ -36,6 +37,7 @@ const updateProjectSchema = z.object({
   dressCodeOptionId: z.string().uuid().nullable().optional(),
   dressCodeLabel: z.string().nullable().optional(),
   dressCodeUniform: z.boolean().optional(),
+  financeTracked: z.boolean().optional(),
 });
 const duplicateProjectSchema = z.object({
   name: z.string().trim().min(1),
@@ -222,6 +224,12 @@ export function registerProjectsRoutes(
     requirePermission(auth, "projects.manage");
     return service.updateProject(req.params.id, updateProjectSchema.parse(req.body) as Projects.UpdateProjectInput);
   });
+  app.patch<{ Params: { id: string } }>("/api/projects/:id/finance-tracking", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.manage", "operations.finance.manage");
+    const body = z.object({ financeTracked: z.boolean() }).parse(req.body);
+    return service.updateProject(req.params.id, body);
+  });
 
   // ── Reservations ──
   app.get<{ Params: { id: string } }>("/api/projects/:id/reservations", async (req) => {
@@ -262,7 +270,7 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     // Whoever can see the whole timing (or manage it) gets every block;
     // everyone else sees only the blocks they're personally on.
-    const seesAll =
+    const seesAll = auth.operationsShowAllProjects ||
       auth.permissions.includes("projects.timing.viewAll") || auth.permissions.includes("projects.timing.manage");
     return service.listTimings(req.params.id, seesAll ? undefined : { forUserId: auth.userId });
   });

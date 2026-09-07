@@ -256,7 +256,7 @@ export function useIssueUnits() {
 export function useReturnUnits() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { projectId: string; returnedUnitIds: string[]; expectedUnitIds: string[]; warehouseId?: string | null; note?: string }) =>
+    mutationFn: (input: { projectId: string; returnedUnitIds: string[]; expectedUnitIds: string[]; warehouseId?: string | null; venueId?: string | null; note?: string }) =>
       api.post<Operations.OperationDocumentDTO>("/api/operations/return", input),
     onSuccess: () => invalidateEquipment(qc),
   });

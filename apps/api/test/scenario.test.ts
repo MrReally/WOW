@@ -208,6 +208,28 @@ describe("Tech pickup/return → некомплект", () => {
     expect(again.amountEUR).toBe(85);
   });
 
+  it("edits and voids payments while keeping account balances and audit data consistent", async () => {
+    const { finance } = wiring;
+    const actor = await makeTech("Payment Editor");
+    const first = await finance.service.createAccount({ name: `Cash A ${Date.now()}`, currency: "EUR" });
+    const second = await finance.service.createAccount({ name: `Cash B ${Date.now()}`, currency: "EUR" });
+    const payment = await finance.service.createTransaction({ accountId: first.id, kind: "expense", category: "salary", amount: 40, currency: "EUR", createdByUserId: actor.id });
+    const edited = await finance.service.updateTransaction(payment.id, { accountId: second.id, amount: 25, note: "исправлено" }, actor.id);
+    expect(edited.amount).toBe(25);
+    expect(edited.accountId).toBe(second.id);
+    expect(edited.updatedByUserId).toBe(actor.id);
+    let accounts = await finance.service.listAccounts();
+    expect(accounts.find(account => account.id === first.id)?.balance).toBe(0);
+    expect(accounts.find(account => account.id === second.id)?.balance).toBe(-25);
+
+    const voided = await finance.service.voidTransaction(payment.id, actor.id);
+    expect(voided.voidedByUserId).toBe(actor.id);
+    expect((await finance.service.listTransactions()).some(transaction => transaction.id === payment.id)).toBe(false);
+    expect((await finance.service.listTransactions({ includeVoided: true })).find(transaction => transaction.id === payment.id)?.voidedAt).not.toBeNull();
+    accounts = await finance.service.listAccounts();
+    expect(accounts.find(account => account.id === second.id)?.balance).toBe(0);
+  });
+
   it("tracks cables by quantity (no serials) through issue/return", async () => {
     const { equipment, projects } = wiring;
     const type = await equipment.service.createType({ name: `Cables-${Date.now()}`, trackingMode: "cable" });

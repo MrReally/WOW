@@ -35,6 +35,8 @@ interface TxRow {
   account_id: string;
   project_id: string | null;
   unit_id: string | null;
+  assignment_id: string | null;
+  contractor_id: string | null;
   kind: Finance.TxKind;
   category: Finance.TxCategory;
   amount: string;
@@ -43,6 +45,10 @@ interface TxRow {
   amount_eur: string;
   note: string | null;
   created_by: string | null;
+  updated_by: string | null;
+  updated_at: Date | null;
+  voided_by: string | null;
+  voided_at: Date | null;
   created_at: Date;
 }
 interface InvoiceCompanySettingsRow {
@@ -109,6 +115,8 @@ const txDTO = (r: TxRow): Finance.TransactionDTO => ({
   accountId: r.account_id,
   projectId: r.project_id,
   unitId: r.unit_id,
+  assignmentId: r.assignment_id,
+  contractorId: r.contractor_id,
   kind: r.kind,
   category: r.category,
   amount: Number(r.amount),
@@ -117,6 +125,10 @@ const txDTO = (r: TxRow): Finance.TransactionDTO => ({
   amountEUR: Number(r.amount_eur),
   note: r.note,
   createdByUserId: r.created_by,
+  updatedByUserId: r.updated_by,
+  updatedAt: r.updated_at?.toISOString() ?? null,
+  voidedByUserId: r.voided_by,
+  voidedAt: r.voided_at?.toISOString() ?? null,
   createdAt: r.created_at.toISOString(),
 });
 const invoiceCompanyDTO = (r: InvoiceCompanySettingsRow): Finance.InvoiceCompanySettingsDTO => ({
@@ -208,6 +220,11 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
       );
       return accountDTO(row!);
     },
+    async updateAccount(id, input) {
+      const row = await one<AccountRow>(db, `UPDATE finance.accounts SET name=$2 WHERE id=$1 RETURNING *`, [id, input.name.trim()]);
+      if (!row) throw NotFound("account", id);
+      return accountDTO(row);
+    },
 
     // ── Transactions ──
     async listTransactions(filter) {
@@ -221,6 +238,7 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
         params.push(filter.unitId);
         conds.push(`unit_id=$${params.length}`);
       }
+      if (!filter?.includeVoided) conds.push(`voided_at IS NULL`);
       const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
       const rows = await query<TxRow>(
         db,
@@ -239,13 +257,15 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
         const row = await one<TxRow>(
           client,
           `INSERT INTO finance.transactions
-             (account_id, project_id, unit_id, kind, category, amount, currency, fx_rate_to_eur, amount_eur, note, created_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+             (account_id, project_id, unit_id, assignment_id, contractor_id, kind, category, amount, currency, fx_rate_to_eur, amount_eur, note, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
            RETURNING *`,
           [
             input.accountId,
             input.projectId ?? null,
             input.unitId ?? null,
+            input.assignmentId ?? null,
+            input.contractorId ?? null,
             input.kind,
             input.category,
             input.amount,
@@ -273,8 +293,49 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
         projectId: dto.projectId,
         unitId: dto.unitId,
         amountEUR: dto.amountEUR,
+        assignmentId: dto.assignmentId,
+        contractorId: dto.contractorId,
         at: new Date().toISOString(),
       });
+      return dto;
+    },
+    async updateTransaction(id, input, actorId) {
+      const updated = await tx(async (client) => {
+        const previous = await one<TxRow>(client, `SELECT * FROM finance.transactions WHERE id=$1 FOR UPDATE`, [id]);
+        if (!previous) throw NotFound("transaction", id);
+        if (previous.voided_at) throw BadRequest("отменённую транзакцию нельзя редактировать");
+        const account = await one<AccountRow>(client, `SELECT * FROM finance.accounts WHERE id=$1`, [input.accountId]);
+        if (!account) throw NotFound("account", input.accountId);
+        if (account.currency !== previous.currency) throw BadRequest("счёт при редактировании должен быть в той же валюте");
+        if (CASH_CATEGORIES.has(previous.category)) {
+          const oldDelta = previous.kind === "income" ? Number(previous.amount) : -Number(previous.amount);
+          const newDelta = previous.kind === "income" ? input.amount : -input.amount;
+          await query(client, `UPDATE finance.accounts SET balance=balance-$2 WHERE id=$1`, [previous.account_id, oldDelta]);
+          await query(client, `UPDATE finance.accounts SET balance=balance+$2 WHERE id=$1`, [input.accountId, newDelta]);
+        }
+        return one<TxRow>(client,
+          `UPDATE finance.transactions SET account_id=$2, amount=$3, amount_eur=$3*fx_rate_to_eur,
+             note=$4, updated_by=$5, updated_at=now() WHERE id=$1 RETURNING *`,
+          [id, input.accountId, input.amount, input.note ?? null, actorId]
+        );
+      });
+      const dto = txDTO(updated!);
+      await bus.publish({ type: "finance.transaction.changed", transactionId: dto.id, projectId: dto.projectId, assignmentId: dto.assignmentId, contractorId: dto.contractorId, at: new Date().toISOString() });
+      return dto;
+    },
+    async voidTransaction(id, actorId) {
+      const voided = await tx(async (client) => {
+        const previous = await one<TxRow>(client, `SELECT * FROM finance.transactions WHERE id=$1 FOR UPDATE`, [id]);
+        if (!previous) throw NotFound("transaction", id);
+        if (previous.voided_at) return previous;
+        if (CASH_CATEGORIES.has(previous.category)) {
+          const delta = previous.kind === "income" ? Number(previous.amount) : -Number(previous.amount);
+          await query(client, `UPDATE finance.accounts SET balance=balance-$2 WHERE id=$1`, [previous.account_id, delta]);
+        }
+        return one<TxRow>(client, `UPDATE finance.transactions SET voided_by=$2, voided_at=now() WHERE id=$1 RETURNING *`, [id, actorId]);
+      });
+      const dto = txDTO(voided!);
+      await bus.publish({ type: "finance.transaction.changed", transactionId: dto.id, projectId: dto.projectId, assignmentId: dto.assignmentId, contractorId: dto.contractorId, at: new Date().toISOString() });
       return dto;
     },
 
@@ -284,7 +345,7 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
         db,
         `SELECT COALESCE(SUM(amount_eur),0)::text AS earned
          FROM finance.transactions
-         WHERE unit_id=$1 AND kind='income' AND category='rental_revenue'`,
+         WHERE unit_id=$1 AND kind='income' AND category='rental_revenue' AND voided_at IS NULL`,
         [unitId]
       );
       const earnedEUR = Number(row?.earned ?? 0);
@@ -302,7 +363,7 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
            COALESCE(SUM(amount_eur) FILTER (WHERE kind='income' AND category IN ('prepayment','debt_settlement')),0)::text AS paid,
            COALESCE(SUM(amount_eur) FILTER (WHERE kind='expense'),0)::text AS cost
          FROM finance.transactions
-         WHERE project_id=$1`,
+         WHERE project_id=$1 AND voided_at IS NULL`,
         [projectId]
       );
       const revenueEUR = Number(row?.revenue ?? 0);
@@ -325,7 +386,7 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
            COALESCE(SUM(amount_eur) FILTER (WHERE kind='income' AND category IN ('prepayment','debt_settlement')),0)::text AS paid,
            COALESCE(SUM(amount_eur) FILTER (WHERE kind='expense'),0)::text AS cost
          FROM finance.transactions
-         WHERE project_id IS NOT NULL
+         WHERE project_id IS NOT NULL AND voided_at IS NULL
          GROUP BY project_id`
       );
       return rows

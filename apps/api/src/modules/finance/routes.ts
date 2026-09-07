@@ -4,6 +4,7 @@ import type { Finance } from "@sever/contracts";
 import { CURRENCIES } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
 import { requirePermission } from "../../core/auth.js";
+import { NotFound } from "../../core/errors.js";
 
 const fxSchema = z.object({
   currency: z.enum(CURRENCIES as [string, ...string[]]),
@@ -13,10 +14,13 @@ const accountSchema = z.object({
   name: z.string().min(1),
   currency: z.enum(CURRENCIES as [string, ...string[]]),
 });
+const accountUpdateSchema = z.object({ name: z.string().trim().min(1) });
 const txSchema = z.object({
   accountId: z.string().uuid(),
   projectId: z.string().uuid().nullable().optional(),
   unitId: z.string().uuid().nullable().optional(),
+  assignmentId: z.string().uuid().nullable().optional(),
+  contractorId: z.string().uuid().nullable().optional(),
   kind: z.enum(["income", "expense"]),
   category: z.enum([
     "rental_revenue",
@@ -31,6 +35,7 @@ const txSchema = z.object({
   currency: z.enum(CURRENCIES as [string, ...string[]]),
   note: z.string().nullable().optional(),
 });
+const txUpdateSchema = z.object({ accountId: z.string().uuid(), amount: z.number().positive(), note: z.string().nullable().optional() });
 const invoiceCompanySchema = z.object({
   name: z.string(),
   requisites: z.string(),
@@ -105,7 +110,7 @@ export function registerFinanceRoutes(
   // ── Accounts ──
   app.get("/api/finance/accounts", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "finance.view", "operations.finance.view", "operations.finance.manage");
+    requirePermission(auth, "finance.view", "operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage");
     return service.listAccounts();
   });
   app.post("/api/finance/accounts", async (req) => {
@@ -113,21 +118,42 @@ export function registerFinanceRoutes(
     requirePermission(auth, "finance.manage");
     return service.createAccount(accountSchema.parse(req.body) as { name: string; currency: Finance.AccountDTO["currency"] });
   });
+  app.patch<{ Params: { id: string } }>("/api/finance/accounts/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.manage", "operations.finance.manage");
+    return service.updateAccount(req.params.id, accountUpdateSchema.parse(req.body));
+  });
 
   // ── Transactions ──
-  app.get<{ Querystring: { projectId?: string; unitId?: string } }>(
+  app.get<{ Querystring: { projectId?: string; unitId?: string; includeVoided?: string } }>(
     "/api/finance/transactions",
     async (req) => {
       const auth = await ctx.auth(req);
-      requirePermission(auth, "finance.view", "operations.finance.view", "operations.finance.manage");
-      return service.listTransactions({ projectId: req.query.projectId, unitId: req.query.unitId });
+      requirePermission(auth, "finance.view", "operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage");
+      return service.listTransactions({ projectId: req.query.projectId, unitId: req.query.unitId, includeVoided: req.query.includeVoided === "true" });
     }
   );
   app.post("/api/finance/transactions", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "finance.manage", "operations.finance.manage");
+    requirePermission(auth, "finance.manage", "operations.finance.manage", "operations.payroll.manage");
     const body = txSchema.parse(req.body);
     return service.createTransaction({ ...body, createdByUserId: auth.userId } as Finance.CreateTransactionInput);
+  });
+  app.patch<{ Params: { id: string } }>("/api/finance/transactions/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    const transaction = (await service.listTransactions({ includeVoided: true })).find(item => item.id === req.params.id);
+    if (!transaction) throw NotFound("transaction", req.params.id);
+    if (transaction.category === "salary") requirePermission(auth, "finance.manage", "operations.payroll.manage");
+    else requirePermission(auth, "finance.manage", "operations.finance.manage");
+    return service.updateTransaction(req.params.id, txUpdateSchema.parse(req.body), auth.userId);
+  });
+  app.post<{ Params: { id: string } }>("/api/finance/transactions/:id/void", async (req) => {
+    const auth = await ctx.auth(req);
+    const transaction = (await service.listTransactions({ includeVoided: true })).find(item => item.id === req.params.id);
+    if (!transaction) throw NotFound("transaction", req.params.id);
+    if (transaction.category === "salary") requirePermission(auth, "finance.manage", "operations.payroll.manage");
+    else requirePermission(auth, "finance.manage", "operations.finance.manage");
+    return service.voidTransaction(req.params.id, auth.userId);
   });
 
   // ── Aggregates ──

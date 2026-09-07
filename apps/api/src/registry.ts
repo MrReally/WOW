@@ -51,7 +51,7 @@ export function createModules(bus: EventBus = new EventBus()) {
   });
   const notifications = createNotificationsModule(pool);
   const catalog = createCatalogModule(pool);
-  const operations = createOperationsModule(pool, equipment.service, projects.service);
+  const operations = createOperationsModule(pool, equipment.service, projects.service, venues.service);
   const audit = createAuditModule(pool);
   const transport = createTransportModule(pool);
   const appSettings = createAppSettingsModule(pool);
@@ -76,14 +76,39 @@ export function createModules(bus: EventBus = new EventBus()) {
   const completeProjectWhenSettled = async (projectId: string, actorId: string | null = null) => {
     const project = await projects.service.getProject(projectId);
     if (!project?.warehouseTurnoverCompletedAt || project.status === "completed") return;
+    if (!project.financeTracked) {
+      await projects.service.setStatus(projectId, "completed", actorId);
+      return;
+    }
     const [invoice, assignments] = await Promise.all([billing.projectInvoice(projectId), projects.service.listAssignments(projectId)]);
     const active = assignments.filter(a => a.status === "added" || a.status === "accepted");
     const payrollSettled = active.every(a => a.paidEUR + 0.005 >= (a.rateEUR ?? 0));
     if (invoice.dueEUR <= 0.005 && payrollSettled) await projects.service.setStatus(projectId, "completed", actorId);
   };
+  const syncProjectPayment = async (event: { projectId: string | null; assignmentId: string | null; contractorId: string | null }) => {
+    if (!event.projectId) return;
+    const transactions = await finance.service.listTransactions({ projectId: event.projectId });
+    if (event.assignmentId) {
+      const paidEUR = Math.round(transactions
+        .filter(transaction => transaction.assignmentId === event.assignmentId && transaction.kind === "expense")
+        .reduce((sum, transaction) => sum + transaction.amountEUR, 0) * 100) / 100;
+      await projects.service.updateAssignment(event.assignmentId, { paidEUR });
+    }
+    if (event.contractorId) {
+      const items = (await projects.service.listContractorItems(event.projectId)).filter(item => item.contractorId === event.contractorId);
+      const dueEUR = items.reduce((sum, item) => sum + item.costEUR * item.qty, 0);
+      const paidEUR = transactions
+        .filter(transaction => transaction.contractorId === event.contractorId && transaction.kind === "expense")
+        .reduce((sum, transaction) => sum + transaction.amountEUR, 0);
+      await projects.service.setContractorItemsPaid(event.projectId, event.contractorId, dueEUR <= 0.005 || paidEUR + 0.005 >= dueEUR);
+    }
+  };
   bus.on("project.warehouse_turnover.completed", event => completeProjectWhenSettled(event.projectId, event.actorId));
   bus.on("project.assignment.payment.updated", event => completeProjectWhenSettled(event.projectId));
   bus.on("finance.transaction.created", event => event.projectId ? completeProjectWhenSettled(event.projectId) : undefined);
+  bus.on("finance.transaction.created", syncProjectPayment);
+  bus.on("finance.transaction.changed", syncProjectPayment);
+  bus.on("finance.transaction.changed", event => event.projectId ? completeProjectWhenSettled(event.projectId) : undefined);
 
   // ── Notifications: react to domain events, deliver in-app + Telegram ──
   // This is the canonical cross-module reaction, wired here (never inside a

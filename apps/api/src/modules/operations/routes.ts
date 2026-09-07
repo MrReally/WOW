@@ -6,7 +6,7 @@ import { requirePermission } from "../../core/auth.js";
 const uuid=z.string().uuid();
 const quantityLine=z.object({modelId:uuid,warehouseId:uuid.nullable().optional(),qty:z.number().int().positive()});
 const issuePayload=z.object({kind:z.literal("issue"),projectId:uuid,unitIds:z.array(uuid),quantityLines:z.array(quantityLine).optional(),note:z.string().nullable().optional()});
-const returnPayload=z.object({kind:z.literal("return"),projectId:uuid,returnedUnitIds:z.array(uuid),expectedUnitIds:z.array(uuid),warehouseId:uuid.nullable().optional(),quantityLines:z.array(quantityLine).optional(),note:z.string().nullable().optional()});
+const returnPayload=z.object({kind:z.literal("return"),projectId:uuid,returnedUnitIds:z.array(uuid),expectedUnitIds:z.array(uuid),warehouseId:uuid.nullable().optional(),venueId:uuid.nullable().optional(),quantityLines:z.array(quantityLine).optional(),note:z.string().nullable().optional()});
 const payload=z.discriminatedUnion("kind",[
  issuePayload,
  returnPayload,
@@ -15,6 +15,7 @@ const payload=z.discriminatedUnion("kind",[
 ]).superRefine((value,ctx)=>{
  if(value.kind==="issue"&&value.unitIds.length===0&&!value.quantityLines?.length)ctx.addIssue({code:z.ZodIssueCode.custom,message:"добавьте оборудование"});
  if(value.kind==="return"&&value.expectedUnitIds.length===0&&!value.quantityLines?.length)ctx.addIssue({code:z.ZodIssueCode.custom,message:"добавьте оборудование"});
+ if(value.kind==="return"&&value.warehouseId&&value.venueId)ctx.addIssue({code:z.ZodIssueCode.custom,message:"укажите склад или площадку, но не оба места возврата"});
 });
 const documentInput=z.intersection(payload,z.object({documentAt:z.string().datetime({offset:true}).optional()}));
 const quickIssue=issuePayload.omit({kind:true});

@@ -66,6 +66,7 @@ interface WarehouseRow {
   name: string;
   address: string | null;
   is_default: boolean;
+  is_temporary: boolean;
   created_at: Date;
 }
 interface StorageZoneRow {
@@ -163,6 +164,7 @@ const warehouseDTO = (r: WarehouseRow): Equipment.WarehouseDTO => ({
   name: r.name,
   address: r.address,
   isDefault: r.is_default,
+  temporary: r.is_temporary,
   createdAt: r.created_at.toISOString(),
 });
 const storageZoneDTO = (r: StorageZoneRow): Equipment.StorageZoneDTO => ({
@@ -393,7 +395,22 @@ export function createEquipmentService(
   return {
     // ── Warehouses ──
     async listWarehouses() {
-      const rows = await query<WarehouseRow>(db, `SELECT * FROM equipment.warehouses ORDER BY is_default DESC, name`);
+      const rows = await query<WarehouseRow>(db, `SELECT w.* FROM equipment.warehouses w
+        WHERE NOT w.is_temporary
+          OR EXISTS (SELECT 1 FROM equipment.units u WHERE u.warehouse_id=w.id AND u.status IN ('in_stock','reserved','on_project'))
+          OR EXISTS (
+            SELECT 1 FROM equipment.model_stock ms
+            WHERE ms.warehouse_id=w.id AND ms.total_qty-COALESCE((
+              SELECT SUM(CASE WHEN j.action IN ('issued','sent_to_repair','sent_to_contractor') THEN j.qty WHEN j.action IN ('returned','return_incomplete','back_from_repair','back_from_contractor') THEN -j.qty ELSE 0 END)
+              FROM equipment.journal j WHERE j.model_id=ms.model_id AND j.warehouse_id=w.id
+            ),0)>0
+          )
+          OR EXISTS (
+            SELECT 1 FROM equipment.journal source
+            WHERE source.warehouse_id=w.id AND source.action='issued' AND source.project_id IS NOT NULL AND source.model_id IS NOT NULL
+              AND (SELECT COALESCE(SUM(CASE WHEN j.action='issued' THEN j.qty WHEN j.action IN ('returned','return_incomplete') THEN -j.qty ELSE 0 END),0) FROM equipment.journal j WHERE j.project_id=source.project_id AND j.model_id=source.model_id)>0
+          )
+        ORDER BY w.is_default DESC, w.name`);
       return rows.map(warehouseDTO);
     },
     async createWarehouse(input) {
@@ -403,6 +420,28 @@ export function createEquipmentService(
         [input.name, input.address ?? null, input.placeId ?? null]
       );
       return warehouseDTO(row!);
+    },
+    async ensurePlaceWarehouse(input) {
+      return tx(async (client) => {
+        // A place is an opaque venues id here. The lock makes two simultaneous
+        // returns to a new venue converge on the same warehouse row.
+        await query(client, `SELECT pg_advisory_xact_lock(hashtext($1))`, [input.placeId]);
+        const existing = await one<WarehouseRow>(client, `SELECT * FROM equipment.warehouses WHERE place_id=$1 LIMIT 1`, [input.placeId]);
+        if (existing) {
+          const row = await one<WarehouseRow>(
+            client,
+            `UPDATE equipment.warehouses SET name=$2,address=$3 WHERE id=$1 RETURNING *`,
+            [existing.id, input.name, input.address ?? null]
+          );
+          return warehouseDTO(row!);
+        }
+        const row = await one<WarehouseRow>(
+          client,
+          `INSERT INTO equipment.warehouses (name,address,place_id,is_temporary) VALUES ($1,$2,$3,true) RETURNING *`,
+          [input.name, input.address ?? null, input.placeId]
+        );
+        return warehouseDTO(row!);
+      });
     },
     async updateWarehouse(id, input) {
       return tx(async (client) => {

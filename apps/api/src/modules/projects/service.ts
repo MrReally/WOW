@@ -24,6 +24,7 @@ interface ProjectRow {
   status: Projects.ProjectStatus;
   operation_stage: Projects.ProjectChecklistGroup;
   warehouse_turnover_completed_at: Date | null;
+  finance_tracked: boolean;
   venue_id: string | null;
   dress_code_option_id: string | null;
   dress_code_label: string | null;
@@ -184,6 +185,7 @@ const projectDTO = (r: ProjectRow): Projects.ProjectDTO => ({
   status: r.status,
   operationStage: r.operation_stage ?? "prep",
   warehouseTurnoverCompletedAt: r.warehouse_turnover_completed_at ? r.warehouse_turnover_completed_at.toISOString() : null,
+  financeTracked: r.finance_tracked ?? true,
   venueId: r.venue_id,
   dressCodeOptionId: r.dress_code_option_id,
   dressCodeLabel: r.dress_code_label,
@@ -568,9 +570,9 @@ export function createProjectsService(
       if (!client) throw NotFound("client", input.clientId);
       const row = await one<ProjectRow>(
         db,
-        `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [input.name, input.clientId, input.venueId ?? null, startsAt, endsAt, input.dressCodeOptionId ?? null, input.dressCodeLabel ?? null, input.dressCodeUniform ?? false]
+        `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [input.name, input.clientId, input.venueId ?? null, startsAt, endsAt, input.dressCodeOptionId ?? null, input.dressCodeLabel ?? null, input.dressCodeUniform ?? false, input.financeTracked ?? true]
       );
       return projectDTO(row!);
     },
@@ -582,8 +584,8 @@ export function createProjectsService(
       const sourceRefMap: Record<string, string> = {};
       await tx(async (client) => {
         created = await one<ProjectRow>(client,
-          `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+          `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true) RETURNING *`,
           [input.name, source.client_id, source.venue_id, input.startsAt, input.endsAt, source.dress_code_option_id, source.dress_code_label, source.dress_code_uniform]
         );
         const newId = created!.id;
@@ -674,12 +676,14 @@ export function createProjectsService(
              ends_at   = $6,
              dress_code_option_id=$7,
              dress_code_label=$8,
-             dress_code_uniform=$9
+             dress_code_uniform=$9,
+             finance_tracked=$10
            WHERE id=$1 RETURNING *`,
           [id, input.name ?? null, input.clientId ?? null, input.venueId === undefined ? existing.venueId : input.venueId, startsAt, endsAt,
             input.dressCodeOptionId === undefined ? existing.dressCodeOptionId : input.dressCodeOptionId,
             input.dressCodeLabel === undefined ? existing.dressCodeLabel : input.dressCodeLabel,
-            input.dressCodeUniform === undefined ? existing.dressCodeUniform : input.dressCodeUniform]
+            input.dressCodeUniform === undefined ? existing.dressCodeUniform : input.dressCodeUniform,
+            input.financeTracked === undefined ? existing.financeTracked : input.financeTracked]
         );
         if ((startsAt !== existing.startsAt || endsAt !== existing.endsAt) && startsAt && endsAt) {
           await query(client,
@@ -1617,8 +1621,11 @@ export function createProjectsService(
     async contractorDebts() {
       const rows = await query<{ contractor_id: string; debt: string }>(
         db,
-        `SELECT contractor_id, COALESCE(SUM(cost_eur * qty),0)::text AS debt
-         FROM projects.contractor_items WHERE paid_at IS NULL GROUP BY contractor_id`
+        `SELECT ci.contractor_id, COALESCE(SUM(ci.cost_eur * ci.qty),0)::text AS debt
+         FROM projects.contractor_items ci
+         JOIN projects.projects p ON p.id=ci.project_id
+         WHERE ci.paid_at IS NULL AND p.finance_tracked=true
+         GROUP BY ci.contractor_id`
       );
       return rows
         .map((r) => ({ contractorId: r.contractor_id, debtEUR: Math.round(Number(r.debt) * 100) / 100 }))

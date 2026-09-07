@@ -169,6 +169,8 @@ export interface WarehouseDTO {
   name: string;
   address: string | null;
   isDefault: boolean;
+  /** Temporary place-backed storage is listed only while equipment is there or away from it. */
+  temporary: boolean;
   createdAt: ISODateTime;
 }
 
@@ -397,6 +399,8 @@ export interface EquipmentService {
   // Warehouses
   listWarehouses(): Promise<WarehouseDTO[]>;
   createWarehouse(input: { name: string; address?: string | null; placeId?: ID | null }): Promise<WarehouseDTO>;
+  /** Return the warehouse linked to a place, creating it when the place first holds stock. */
+  ensurePlaceWarehouse(input: { placeId: ID; name: string; address?: string | null }): Promise<WarehouseDTO>;
   updateWarehouse(id: ID, input: { name?: string; address?: string | null; placeId?: ID | null; isDefault?: boolean }): Promise<WarehouseDTO>;
   listStorageZones(warehouseId?: ID): Promise<StorageZoneDTO[]>;
   createStorageZone(input: { warehouseId: ID; parentId?: ID | null; name: string; code: string; kind: StorageZoneKind; sortOrder?: number }): Promise<StorageZoneDTO>;

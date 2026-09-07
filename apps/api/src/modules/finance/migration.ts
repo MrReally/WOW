@@ -36,6 +36,14 @@ CREATE INDEX IF NOT EXISTS tx_unit_idx ON finance.transactions(unit_id);
 
 -- Who recorded the transaction (opaque people id).
 ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS created_by uuid;
+ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS assignment_id uuid;
+ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS contractor_id uuid;
+ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS updated_by uuid;
+ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS updated_at timestamptz;
+ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS voided_by uuid;
+ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS voided_at timestamptz;
+CREATE INDEX IF NOT EXISTS tx_assignment_idx ON finance.transactions(assignment_id);
+CREATE INDEX IF NOT EXISTS tx_contractor_idx ON finance.transactions(contractor_id);
 
 -- Singleton config row (amortization formula, etc.).
 CREATE TABLE IF NOT EXISTS finance.settings (
