@@ -421,7 +421,9 @@ export function startTelegramBot(deps: BotDeps): void {
   const parseNumberedAnswers = (text: string): { field: ApplicationField; value: string }[] => {
     const out: { field: ApplicationField; value: string }[] = [];
     for (const line of text.split(/\n+/)) {
-      const match = line.match(/^\s*(\d{1,2})[.)]\s*(.+)\s*$/);
+      // A dot needs a separating space: otherwise 06.11.1998 becomes
+      // answer #6 with the invalid date value "11.1998".
+      const match = line.match(/^\s*(\d{1,2})(?:\.\s+|\)\s*)(.+)\s*$/);
       if (!match) continue;
       const step = APPLICATION_FIELDS[Number(match[1]) - 1];
       if (step && step.field !== "photoFileId") out.push({ field: step.field, value: match[2]!.trim() });
