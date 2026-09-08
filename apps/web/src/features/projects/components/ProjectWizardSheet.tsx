@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Equipment, Finance, Projects } from "@sever/contracts";
-import { Button, Card, Chip, Field, Input, Select, Sheet } from "../../../ui-kit/index.ts";
+import { Button, Card, Chip, Field, Input, Select, Sheet, Textarea } from "../../../ui-kit/index.ts";
 import { eur } from "../../../lib/labels.ts";
 import { api } from "../../../lib/api.ts";
 import {
@@ -19,6 +19,7 @@ import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
 import { RoleEngagementPicker } from "./RoleEngagementPicker.tsx";
 import { useDressCodeOptions } from "../../settings/hooks.ts";
+import { useSession } from "../../../app/session.ts";
 
 type StepId = "name" | "client" | "venue" | "time" | "reservations" | "crew" | "contractors" | "finance" | "finish";
 
@@ -69,6 +70,8 @@ const steps: { id: StepId; label: string; skip?: boolean }[] = [
 ];
 
 export function ProjectWizardSheet({ open, onClose }: Props) {
+  const { can } = useSession();
+  const canViewNote = can("projects.note.view");
   const navigate = useNavigate();
   const clients = useClients();
   const venues = useVenues();
@@ -102,6 +105,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const [newContractorName, setNewContractorName] = useState("");
   const [newContractorContacts, setNewContractorContacts] = useState("");
   const [financeDrafts, setFinanceDrafts] = useState<FinanceDraft[]>([{ name: "", client: "", cost: "" }]);
+  const [projectNote, setProjectNote] = useState("");
   const [busy, setBusy] = useState(false);
 
   const step = steps[stepIndex]!;
@@ -138,6 +142,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       setNewContractorName("");
       setNewContractorContacts("");
       setFinanceDrafts([{ name: "", client: "", cost: "" }]);
+      setProjectNote("");
     }, 150);
   };
 
@@ -165,6 +170,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
         dressCodeOptionId: dressCodeOptionId || null,
         dressCodeLabel: dressCodes.data?.find(x => x.id === dressCodeOptionId)?.label ?? null,
         dressCodeUniform,
+        ...(canViewNote ? { note: projectNote.trim() || null } : {}),
         ...(validRange ? { startsAt: new Date(starts).toISOString(), endsAt: new Date(ends).toISOString() } : {}),
       });
       let createdContractorId = "";
@@ -350,6 +356,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
             <p className="card__title">{project?.name ?? projectName}</p>
             <p className="card__subtitle">{selectedClientName || "Клиент"} · можно открыть проект или сразу перейти к смете.</p>
           </Card>
+          {!project && canViewNote && <Field label="Общая заметка по проекту"><Textarea value={projectNote} onChange={(e) => setProjectNote(e.target.value)} placeholder="Важная информация для команды и планирования" /></Field>}
         </WizardScreen>
       )}
 

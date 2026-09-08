@@ -23,6 +23,7 @@ export type Permission =
   | "apex.view"
   | "operations.view"
   | "operations.stage.back"
+  | "operations.stage.back.after.warehouse.turnover"
   | "warehouse.view"
   | "warehouse.catalog.manage"
   | "warehouse.model.convert"
@@ -37,6 +38,7 @@ export type Permission =
   | "projects.timing.manage"
   | "projects.timing.viewAll"
   | "projects.assignment.manage"
+  | "projects.note.view"
   | "clients.manage"
   | "finance.view"
   | "finance.manage"
@@ -72,6 +74,7 @@ export const PERMISSIONS: PermissionMeta[] = [
   { key: "apex.view", group: "Apex (управление)", label: "Видеть Apex — прокаты, проблемы, долги" },
   { key: "operations.view", group: "Operations (бригада)", label: "Видеть Operations — рабочее окно бригады" },
   { key: "operations.stage.back", group: "Operations (бригада)", label: "Возвращать проект на предыдущий этап" },
+  { key: "operations.stage.back.after.warehouse.turnover", group: "Operations (бригада)", label: "Возвращать проект назад после завершения складского оборота" },
   { key: "warehouse.view", group: "Склад", label: "Видеть склад и каталог" },
   { key: "warehouse.catalog.manage", group: "Склад", label: "Управлять каталогом (типы/модели/единицы)" },
   { key: "warehouse.model.convert", group: "Склад", label: "Менять режим учёта модели" },
@@ -86,6 +89,7 @@ export const PERMISSIONS: PermissionMeta[] = [
   { key: "projects.timing.manage", group: "Планирование", label: "Тайминги — создавать и редактировать" },
   { key: "projects.timing.viewAll", group: "Планирование", label: "Видеть весь тайминг (параллельные процессы)" },
   { key: "projects.assignment.manage", group: "Планирование", label: "Назначать и приглашать людей на проект" },
+  { key: "projects.note.view", group: "Планирование", label: "Видеть заметку по проекту" },
   { key: "clients.manage", group: "Планирование", label: "Управлять клиентами" },
   { key: "finance.view", group: "Финансы", label: "Видеть финансы" },
   { key: "finance.manage", group: "Финансы", label: "Транзакции, счета, курсы" },

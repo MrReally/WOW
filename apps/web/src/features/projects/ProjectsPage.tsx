@@ -15,9 +15,10 @@ type ProjectCardProps = {
   project: NonNullable<ReturnType<typeof useProjects>["data"]>[number];
   clientName: (id: string) => string;
   onOpen: () => void;
+  canViewNote: boolean;
 };
 
-function ProjectCard({ project, clientName, onOpen }: ProjectCardProps) {
+function ProjectCard({ project, clientName, onOpen, canViewNote }: ProjectCardProps) {
   return (
     <Card onClick={onOpen}>
       <div className="row row--between">
@@ -30,6 +31,7 @@ function ProjectCard({ project, clientName, onOpen }: ProjectCardProps) {
       <p className="card__subtitle" style={{ marginTop: "var(--space-2)" }}>
         {dateRange(project.startsAt, project.endsAt)}
       </p>
+      {canViewNote && project.note && <p className="project-note project-note--preview">📝 {project.note}</p>}
     </Card>
   );
 }
@@ -37,6 +39,7 @@ function ProjectCard({ project, clientName, onOpen }: ProjectCardProps) {
 export function ProjectsPage() {
   const { can } = useSession();
   const canCreate = can("projects.manage");
+  const canViewNote = can("projects.note.view");
   const navigate = useNavigate();
   const projects = useProjects();
   const clients = useClients();
@@ -98,6 +101,7 @@ export function ProjectsPage() {
               project={project}
               clientName={clientName}
               onOpen={() => navigate(`/projects/${project.id}`)}
+              canViewNote={canViewNote}
             />
           ))}
           {mobileProjects.archived.length > 0 && (
@@ -113,6 +117,7 @@ export function ProjectsPage() {
                     project={project}
                     clientName={clientName}
                     onOpen={() => navigate(`/projects/${project.id}`)}
+                    canViewNote={canViewNote}
                   />
                 ))}
               </div>
@@ -134,7 +139,7 @@ export function ProjectsPage() {
             <tbody>
               {mobileProjects.active.map((p) => (
                 <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
-                  <td><strong>{p.name}</strong><small>#{p.id.slice(0, 8)}</small></td>
+                  <td><strong>{p.name}</strong><small>{canViewNote && p.note ? `📝 ${p.note}` : `#${p.id.slice(0, 8)}`}</small></td>
                   <td>{clientName(p.clientId)}</td>
                   <td className="data-table__mono">{p.startsAt ? configuredDate(p.startsAt) : "—"}</td>
                   <td className="data-table__mono">{p.endsAt ? configuredDate(p.endsAt) : "—"}</td>
@@ -151,7 +156,7 @@ export function ProjectsPage() {
                 <tbody>
                   {mobileProjects.archived.map((p) => (
                     <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
-                      <td><strong>{p.name}</strong><small>#{p.id.slice(0, 8)}</small></td>
+                      <td><strong>{p.name}</strong><small>{canViewNote && p.note ? `📝 ${p.note}` : `#${p.id.slice(0, 8)}`}</small></td>
                       <td>{clientName(p.clientId)}</td>
                       <td className="data-table__mono">{p.startsAt ? configuredDate(p.startsAt) : "—"}</td>
                       <td className="data-table__mono">{p.endsAt ? configuredDate(p.endsAt) : "—"}</td>

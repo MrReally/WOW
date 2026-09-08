@@ -1,4 +1,5 @@
 import type { Projects } from "@sever/contracts";
+import { useEffect, useState } from "react";
 import { configuredDate, configuredTime } from "../../../lib/dateFormat.ts";
 
 // Days are stacked vertically. Inside a day, overlapping blocks are packed into
@@ -73,72 +74,76 @@ function groupByDay(timings: Projects.TimingDTO[]) {
 }
 
 export function TimingTimeline({ timings, userName }: Props) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   if (timings.length === 0) return null;
   const days = groupByDay(timings);
-  const now = new Date();
+  const nowMs = now.getTime();
 
   return (
     <div className="stack" style={{ gap: 10 }}>
       {days.map((day) => {
         const dayStart = Math.min(...day.map((t) => Date.parse(t.startsAt)));
         const dayEnd = Math.max(...day.map((t) => Date.parse(t.endsAt)));
-        const showNow = Date.now() >= dayStart && Date.now() <= dayEnd && dayKey(now.toISOString()) === dayKey(day[0]!.startsAt);
+        const showNow = nowMs >= dayStart && nowMs <= dayEnd && dayKey(now.toISOString()) === dayKey(day[0]!.startsAt);
+        const clusters = packLanes(day);
+        const clusterRanges = clusters.map((cluster) => {
+          const items = cluster.lanes.flat();
+          return {
+            start: Math.min(...items.map((item) => Date.parse(item.startsAt))),
+            end: Math.max(...items.map((item) => Date.parse(item.endsAt))),
+          };
+        });
+        const activeClusterIndex = showNow ? clusterRanges.findIndex((range) => nowMs >= range.start && nowMs <= range.end) : -1;
+        const markerBeforeIndex = showNow && activeClusterIndex < 0
+          ? clusterRanges.findIndex((range) => nowMs < range.start)
+          : -1;
         return (
         <div key={dayKey(day[0]!.startsAt)}>
           <div className="card__subtitle" style={{ marginBottom: 6 }}>{configuredDate(day[0]!.startsAt)}</div>
-          {showNow && (
-            <div className="timeline-now">
-              <span className="timeline-now__line" />
-              <span className="timeline-now__label">{configuredTime(now)}</span>
-            </div>
-          )}
           <div className="stack" style={{ gap: 6 }}>
-            {packLanes(day).map((cluster, clusterIndex) => (
-              <div
-                key={clusterIndex}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: `repeat(${cluster.lanes.length}, minmax(0, 1fr))`,
-                  gap: 6,
-                }}
-              >
-                {cluster.lanes.map((lane, laneIndex) => (
-                  <div key={laneIndex} className="stack" style={{ gap: 6 }}>
-                    {lane.map((t) => {
-                      const who = t.assigneeIds.map(userName).filter(Boolean).join(", ");
-                      const concurrent = day.some((other) => other.id !== t.id && overlaps(t, other));
-                      return (
-                        <div
-                          key={t.id}
-                          title={`${t.title} · ${configuredTime(t.startsAt)}–${configuredTime(t.endsAt)}${who ? ` · ${who}` : ""}`}
-                          style={{
-                            minHeight: 48,
-                            background: concurrent ? "var(--accent)" : "var(--s2)",
-                            color: concurrent ? "#fff" : "var(--text)",
-                            borderRadius: 8,
-                            padding: "7px 9px",
-                            overflow: "hidden",
-                            boxSizing: "border-box",
-                            border: concurrent ? "none" : "1px solid var(--bdr)",
-                          }}
-                        >
-                          <div style={{ fontWeight: 700, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {configuredTime(t.startsAt)}–{configuredTime(t.endsAt)} · {t.title}
-                          </div>
-                          <div style={{ fontSize: 11, opacity: 0.86, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>
-                            {who || "—"}
-                          </div>
-                        </div>
-                      );
-                    })}
+            {clusters.map((cluster, clusterIndex) => {
+              const range = clusterRanges[clusterIndex]!;
+              const markerPercent = range.end === range.start ? 50 : Math.max(0, Math.min(100, ((nowMs - range.start) / (range.end - range.start)) * 100));
+              return (
+                <div key={clusterIndex} className="stack" style={{ gap: 6 }}>
+                  {markerBeforeIndex === clusterIndex && <NowLine now={now} />}
+                  <div className="timeline-cluster" style={{ gridTemplateColumns: `repeat(${cluster.lanes.length}, minmax(0, 1fr))` }}>
+                    {activeClusterIndex === clusterIndex && <NowLine now={now} absolute top={markerPercent} />}
+                    {cluster.lanes.map((lane, laneIndex) => (
+                      <div key={laneIndex} className="stack" style={{ gap: 6 }}>
+                        {lane.map((t) => {
+                          const who = t.assigneeIds.map(userName).filter(Boolean).join(", ");
+                          const concurrent = day.some((other) => other.id !== t.id && overlaps(t, other));
+                          return (
+                            <div key={t.id} title={`${t.title} · ${configuredTime(t.startsAt)}–${configuredTime(t.endsAt)}${who ? ` · ${who}` : ""}`} style={{ minHeight: 48, background: concurrent ? "var(--accent)" : "var(--s2)", color: concurrent ? "var(--accent-text)" : "var(--text)", borderRadius: 8, padding: "7px 9px", overflow: "hidden", boxSizing: "border-box", border: concurrent ? "none" : "1px solid var(--bdr)" }}>
+                              <div style={{ fontWeight: 700, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{configuredTime(t.startsAt)}–{configuredTime(t.endsAt)} · {t.title}</div>
+                              <div style={{ fontSize: 11, opacity: 0.86, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>{who || "—"}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
         </div>
         );
       })}
+    </div>
+  );
+}
+
+function NowLine({ now, absolute = false, top = 0 }: { now: Date; absolute?: boolean; top?: number }) {
+  return (
+    <div className={`timeline-now${absolute ? " timeline-now--absolute" : ""}`} style={absolute ? { top: `${top}%` } : undefined}>
+      <span className="timeline-now__line" />
+      <span className="timeline-now__label">{configuredTime(now)}</span>
     </div>
   );
 }

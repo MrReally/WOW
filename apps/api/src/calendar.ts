@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { Projects } from "@sever/contracts";
 import type { RouteContext } from "./core/module.js";
 import type { Wiring } from "./registry.js";
+import { requirePermission } from "./core/auth.js";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (iso: string) => {
@@ -25,7 +26,7 @@ function originOf(req: { headers: Record<string, string | string[] | undefined>;
   return `${proto}://${host}`;
 }
 
-function eventBlock(input: { uid: string; summary: string; description: string; allDay?: boolean; startsAt: string; endsAt: string }) {
+function eventBlock(input: { uid: string; summary: string; description: string; allDay?: boolean; startsAt: string; endsAt: string; categories?: string[]; projectId?: string }) {
   const lines = [
     "BEGIN:VEVENT",
     `UID:${esc(input.uid)}`,
@@ -33,6 +34,8 @@ function eventBlock(input: { uid: string; summary: string; description: string; 
     `SUMMARY:${esc(input.summary)}`,
     `DESCRIPTION:${esc(input.description)}`,
   ];
+  if (input.categories?.length) lines.push(`CATEGORIES:${input.categories.map(esc).join(",")}`);
+  if (input.projectId) lines.push(`X-SEVER-PROJECT-ID:${esc(input.projectId)}`);
   if (input.allDay) {
     lines.push(`DTSTART;VALUE=DATE:${ymd(input.startsAt)}`);
     lines.push(`DTEND;VALUE=DATE:${ymdNext(input.endsAt)}`);
@@ -44,9 +47,9 @@ function eventBlock(input: { uid: string; summary: string; description: string; 
   return lines.join("\r\n");
 }
 
-async function calendarFor(userId: string, wiring: Wiring): Promise<string> {
+async function calendarFor(userId: string, wiring: Wiring, includeAll = false): Promise<string> {
   const [projects, clients] = await Promise.all([
-    wiring.projects.service.listProjectsForUser(userId),
+    includeAll ? wiring.projects.service.listProjects() : wiring.projects.service.listProjectsForUser(userId),
     wiring.projects.service.listClients(),
   ]);
   const clientName = (project: Projects.ProjectDTO) => clients.find((c) => c.id === project.clientId)?.name ?? "—";
@@ -60,16 +63,20 @@ async function calendarFor(userId: string, wiring: Wiring): Promise<string> {
         allDay: true,
         startsAt: project.startsAt,
         endsAt: project.endsAt,
+        categories: ["SEVER", project.name],
+        projectId: project.id,
       }));
     }
-    const timings = await wiring.projects.service.listTimings(project.id, { forUserId: userId });
+    const timings = await wiring.projects.service.listTimings(project.id, includeAll ? undefined : { forUserId: userId });
     for (const t of timings) {
       events.push(eventBlock({
         uid: `timing-${t.id}-${userId}@sever`,
-        summary: `SEVER: ${t.title}`,
+        summary: includeAll ? `${project.name} · ${t.title}` : `SEVER: ${t.title}`,
         description: `${project.name}\\nClient: ${clientName(project)}`,
         startsAt: t.startsAt,
         endsAt: t.endsAt,
+        categories: ["SEVER", project.name],
+        projectId: project.id,
       }));
     }
   }
@@ -79,7 +86,7 @@ async function calendarFor(userId: string, wiring: Wiring): Promise<string> {
     "PRODID:-//SEVER App//Calendar Feed//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
-    "X-WR-CALNAME:SEVER App",
+    `X-WR-CALNAME:${includeAll ? "SEVER · Все проекты" : "SEVER App"}`,
     ...events,
     "END:VCALENDAR",
   ].join("\r\n");
@@ -92,10 +99,31 @@ export function registerCalendarRoutes(app: FastifyInstance, ctx: RouteContext, 
     return { url: `${originOf(req)}/calendar/${token}.ics` };
   });
 
+  app.get("/api/me/all-calendar-feed", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.timing.viewAll", "projects.manage");
+    const token = await wiring.people.service.ensureCalendarToken(auth.userId);
+    return { url: `${originOf(req)}/calendar/all/${token}.ics` };
+  });
+
   app.get<{ Params: { token: string } }>("/calendar/:token.ics", async (req, reply) => {
     const user = await wiring.people.service.getByCalendarToken(req.params.token);
     if (!user) return reply.status(404).send("not found");
     const body = await calendarFor(user.id, wiring);
+    return reply
+      .header("Content-Type", "text/calendar; charset=utf-8")
+      .header("Cache-Control", "no-store")
+      .send(body);
+  });
+
+  app.get<{ Params: { token: string } }>("/calendar/all/:token.ics", async (req, reply) => {
+    const user = await wiring.people.service.getByCalendarToken(req.params.token);
+    if (!user) return reply.status(404).send("not found");
+    const permissions = await wiring.people.service.permissionsForUser(user.id);
+    if (!permissions.includes("projects.timing.viewAll") && !permissions.includes("projects.manage")) {
+      return reply.status(404).send("not found");
+    }
+    const body = await calendarFor(user.id, wiring, true);
     return reply
       .header("Content-Type", "text/calendar; charset=utf-8")
       .header("Cache-Control", "no-store")

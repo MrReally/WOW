@@ -56,6 +56,8 @@ export interface ProjectDTO {
   dressCodeOptionId: ID | null;
   dressCodeLabel: string | null;
   dressCodeUniform: boolean;
+  /** Shared operational note. Null when the caller lacks permission. */
+  note: string | null;
   startsAt: ISODateTime | null;
   endsAt: ISODateTime | null;
   createdAt: ISODateTime;
@@ -70,6 +72,7 @@ export interface CreateProjectInput {
   dressCodeOptionId?: ID | null;
   dressCodeLabel?: string | null;
   dressCodeUniform?: boolean;
+  note?: string | null;
   financeTracked?: boolean;
 }
 
@@ -82,6 +85,7 @@ export interface UpdateProjectInput {
   dressCodeOptionId?: ID | null;
   dressCodeLabel?: string | null;
   dressCodeUniform?: boolean;
+  note?: string | null;
   financeTracked?: boolean;
 }
 

@@ -22,6 +22,9 @@ export function useBotInfo() {
 export function useCalendarFeed() {
   return useQuery({ queryKey: ["me", "calendar-feed"], queryFn: () => api.get<People.CalendarFeedDTO>("/api/me/calendar-feed") });
 }
+export function useAllCalendarFeed(enabled: boolean) {
+  return useQuery({ enabled, queryKey: ["me", "all-calendar-feed"], queryFn: () => api.get<People.CalendarFeedDTO>("/api/me/all-calendar-feed") });
+}
 export function useTelegramInboxSettings(enabled: boolean) {
   return useQuery({
     enabled,

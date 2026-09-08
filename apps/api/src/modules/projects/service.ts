@@ -29,6 +29,7 @@ interface ProjectRow {
   dress_code_option_id: string | null;
   dress_code_label: string | null;
   dress_code_uniform: boolean;
+  note: string | null;
   starts_at: Date | null;
   ends_at: Date | null;
   created_at: Date;
@@ -190,6 +191,7 @@ const projectDTO = (r: ProjectRow): Projects.ProjectDTO => ({
   dressCodeOptionId: r.dress_code_option_id,
   dressCodeLabel: r.dress_code_label,
   dressCodeUniform: r.dress_code_uniform ?? false,
+  note: r.note,
   startsAt: r.starts_at?.toISOString() ?? null,
   endsAt: r.ends_at?.toISOString() ?? null,
   createdAt: r.created_at.toISOString(),
@@ -570,9 +572,9 @@ export function createProjectsService(
       if (!client) throw NotFound("client", input.clientId);
       const row = await one<ProjectRow>(
         db,
-        `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-        [input.name, input.clientId, input.venueId ?? null, startsAt, endsAt, input.dressCodeOptionId ?? null, input.dressCodeLabel ?? null, input.dressCodeUniform ?? false, input.financeTracked ?? true]
+        `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, note)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [input.name, input.clientId, input.venueId ?? null, startsAt, endsAt, input.dressCodeOptionId ?? null, input.dressCodeLabel ?? null, input.dressCodeUniform ?? false, input.financeTracked ?? true, input.note?.trim() || null]
       );
       return projectDTO(row!);
     },
@@ -584,9 +586,9 @@ export function createProjectsService(
       const sourceRefMap: Record<string, string> = {};
       await tx(async (client) => {
         created = await one<ProjectRow>(client,
-          `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true) RETURNING *`,
-          [input.name, source.client_id, source.venue_id, input.startsAt, input.endsAt, source.dress_code_option_id, source.dress_code_label, source.dress_code_uniform]
+          `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, note)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9) RETURNING *`,
+          [input.name, source.client_id, source.venue_id, input.startsAt, input.endsAt, source.dress_code_option_id, source.dress_code_label, source.dress_code_uniform, source.note]
         );
         const newId = created!.id;
         const sourceRoles = await query<ProjectRoleRow>(client, `SELECT * FROM projects.project_roles WHERE project_id=$1 ORDER BY created_at`, [id]);
@@ -677,13 +679,15 @@ export function createProjectsService(
              dress_code_option_id=$7,
              dress_code_label=$8,
              dress_code_uniform=$9,
-             finance_tracked=$10
+             finance_tracked=$10,
+             note=$11
            WHERE id=$1 RETURNING *`,
           [id, input.name ?? null, input.clientId ?? null, input.venueId === undefined ? existing.venueId : input.venueId, startsAt, endsAt,
             input.dressCodeOptionId === undefined ? existing.dressCodeOptionId : input.dressCodeOptionId,
             input.dressCodeLabel === undefined ? existing.dressCodeLabel : input.dressCodeLabel,
             input.dressCodeUniform === undefined ? existing.dressCodeUniform : input.dressCodeUniform,
-            input.financeTracked === undefined ? existing.financeTracked : input.financeTracked]
+            input.financeTracked === undefined ? existing.financeTracked : input.financeTracked,
+            input.note === undefined ? existing.note : input.note?.trim() || null]
         );
         if ((startsAt !== existing.startsAt || endsAt !== existing.endsAt) && startsAt && endsAt) {
           await query(client,

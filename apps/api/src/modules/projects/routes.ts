@@ -18,6 +18,7 @@ const projectSchema = z.object({
   dressCodeOptionId: z.string().uuid().nullable().optional(),
   dressCodeLabel: z.string().nullable().optional(),
   dressCodeUniform: z.boolean().optional(),
+  note: z.string().nullable().optional(),
   financeTracked: z.boolean().optional(),
 });
 const statusSchema = z.object({ status: z.enum(PROJECT_STATUSES as [string, ...string[]]) });
@@ -37,6 +38,7 @@ const updateProjectSchema = z.object({
   dressCodeOptionId: z.string().uuid().nullable().optional(),
   dressCodeLabel: z.string().nullable().optional(),
   dressCodeUniform: z.boolean().optional(),
+  note: z.string().nullable().optional(),
   financeTracked: z.boolean().optional(),
 });
 const duplicateProjectSchema = z.object({
@@ -147,6 +149,10 @@ export function registerProjectsRoutes(
   ctx: RouteContext,
   service: Projects.ProjectsService
 ): void {
+  const visibleProjectNote = (project: Projects.ProjectDTO | null, canView: boolean) =>
+    project && !canView ? { ...project, note: null } : project;
+  const visibleProjectNotes = (projects: Projects.ProjectDTO[], canView: boolean) =>
+    canView ? projects : projects.map((project) => ({ ...project, note: null }));
   // ── Clients ──
   app.get("/api/clients", async (req) => {
     await ctx.auth(req);
@@ -167,22 +173,24 @@ export function registerProjectsRoutes(
       // (who issue/return gear and manage reservations) see all of them.
       const seesAll = auth.permissions.includes("projects.manage") || auth.permissions.includes("projects.reservation.manage");
       if (req.query.mine === "true" && auth.isOwner && auth.operationsShowAllProjects) {
-        return service.listProjects({ status: req.query.status });
+        return visibleProjectNotes(await service.listProjects({ status: req.query.status }), auth.permissions.includes("projects.note.view"));
       }
       if (req.query.mine === "true" || !seesAll) {
-        return service.listProjectsForUser(auth.userId);
+        return visibleProjectNotes(await service.listProjectsForUser(auth.userId), auth.permissions.includes("projects.note.view"));
       }
-      return service.listProjects({ status: req.query.status });
+      return visibleProjectNotes(await service.listProjects({ status: req.query.status }), auth.permissions.includes("projects.note.view"));
     }
   );
   app.get<{ Params: { id: string } }>("/api/projects/:id", async (req) => {
-    await ctx.auth(req);
-    return service.getProject(req.params.id);
+    const auth = await ctx.auth(req);
+    return visibleProjectNote(await service.getProject(req.params.id), auth.permissions.includes("projects.note.view"));
   });
   app.post("/api/projects", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.manage");
-    return service.createProject(projectSchema.parse(req.body) as Projects.CreateProjectInput);
+    const body = projectSchema.parse(req.body);
+    if (body.note !== undefined) requirePermission(auth, "projects.note.view");
+    return service.createProject(body as Projects.CreateProjectInput);
   });
   app.post<{ Params: { id: string } }>("/api/projects/:id/duplicate", async (req) => {
     const auth = await ctx.auth(req);
@@ -208,7 +216,11 @@ export function registerProjectsRoutes(
     const currentIndex = PROJECT_CHECKLIST_GROUPS.indexOf(current.operationStage);
     const nextIndex = PROJECT_CHECKLIST_GROUPS.indexOf(body.stage as Projects.ProjectChecklistGroup);
     if (nextIndex < currentIndex) {
-      requirePermission(auth, "operations.stage.back", "projects.timing.manage", "projects.manage");
+      if (current.warehouseTurnoverCompletedAt) {
+        requirePermission(auth, "operations.stage.back.after.warehouse.turnover", "projects.timing.manage", "projects.manage");
+      } else {
+        requirePermission(auth, "operations.stage.back", "projects.timing.manage", "projects.manage");
+      }
     } else {
       requirePermission(auth, "operations.view", "projects.timing.manage", "projects.manage");
     }
@@ -222,7 +234,9 @@ export function registerProjectsRoutes(
   app.patch<{ Params: { id: string } }>("/api/projects/:id", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.manage");
-    return service.updateProject(req.params.id, updateProjectSchema.parse(req.body) as Projects.UpdateProjectInput);
+    const body = updateProjectSchema.parse(req.body);
+    if (body.note !== undefined) requirePermission(auth, "projects.note.view");
+    return service.updateProject(req.params.id, body as Projects.UpdateProjectInput);
   });
   app.patch<{ Params: { id: string } }>("/api/projects/:id/finance-tracking", async (req) => {
     const auth = await ctx.auth(req);

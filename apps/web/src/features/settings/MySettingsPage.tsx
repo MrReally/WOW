@@ -6,7 +6,7 @@ import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
 import { LOCALE_OPTIONS, useI18n } from "../../app/i18n.tsx";
 import { useAdvancedNotifPrefs, useNotifPrefs, useSetAdvancedNotifPrefs, useSetNotifPrefs } from "../notifications/hooks.ts";
-import { useCalendarFeed, useSetMyPreferences } from "./hooks.ts";
+import { useAllCalendarFeed, useCalendarFeed, useSetMyPreferences } from "./hooks.ts";
 import { personName } from "../../lib/people.ts";
 import { useInvoiceCompanySettings, useSetInvoiceCompanySettings } from "../finance/hooks.ts";
 
@@ -49,6 +49,8 @@ export function MySettingsPage() {
   const advancedPrefs = useAdvancedNotifPrefs(canAdvancedNotifications);
   const setAdvancedPrefs = useSetAdvancedNotifPrefs();
   const calendar = useCalendarFeed();
+  const canViewAllCalendar = can("projects.timing.viewAll", "projects.manage");
+  const allCalendar = useAllCalendarFeed(canViewAllCalendar);
   const setMyPreferences = useSetMyPreferences();
   const serverInvoiceCompany = useInvoiceCompanySettings();
   const setServerInvoiceCompany = useSetInvoiceCompanySettings();
@@ -263,6 +265,26 @@ export function MySettingsPage() {
           </>
         )}
       </Card>
+      {canViewAllCalendar && (
+        <Card>
+          <p className="card__title">Все проекты и тайминги</p>
+          <p className="card__subtitle" style={{ marginTop: 4 }}>
+            Технический календарь со всеми событиями. Каждая аренда отмечена отдельной календарной категорией.
+          </p>
+          {allCalendar.isLoading ? <Loading /> : (
+            <>
+              <div style={{ marginTop: 10 }}>
+                <code style={{ display: "block", wordBreak: "break-all", color: "var(--text)", fontSize: 12 }}>{allCalendar.data?.url ?? "—"}</code>
+              </div>
+              <div className="row" style={{ marginTop: 10 }}>
+                <Button variant="secondary" disabled={!allCalendar.data?.url} onClick={() => allCalendar.data?.url && navigator.clipboard?.writeText(allCalendar.data.url)}>
+                  {t("common.copy")}
+                </Button>
+              </div>
+            </>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

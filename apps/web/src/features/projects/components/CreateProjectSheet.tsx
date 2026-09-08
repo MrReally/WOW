@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
+import { Sheet, Field, Input, Select, Button, Textarea } from "../../../ui-kit/index.ts";
 import { useClients, useCreateClient, useCreateProject } from "../hooks.ts";
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
+import { useSession } from "../../../app/session.ts";
 
 export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { can } = useSession();
+  const canViewNote = can("projects.note.view");
   const clients = useClients();
   const venues = useVenues();
   const createClient = useCreateClient();
@@ -20,6 +23,7 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
   const [newVenueAddress, setNewVenueAddress] = useState("");
   const [starts, setStarts] = useState("");
   const [ends, setEnds] = useState("");
+  const [note, setNote] = useState("");
 
   const clientOptions = [
     { value: "", label: "— выбрать клиента —" },
@@ -34,11 +38,13 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
         name,
         clientId,
         venueId: venueId || null,
+        ...(canViewNote ? { note: note.trim() || null } : {}),
         ...(validRange ? { startsAt: new Date(starts).toISOString(), endsAt: new Date(ends).toISOString() } : {}),
       },
       {
         onSuccess: () => {
           setName("");
+          setNote("");
           onClose();
         },
       }
@@ -134,6 +140,9 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
 
       {(starts || ends) && !validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Укажите обе даты; конец должен быть позже начала</p>}
       {!starts && !ends && <p className="card__subtitle">Дата необязательна — её можно добавить позже.</p>}
+      {canViewNote && <Field label="Общая заметка по проекту">
+        <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Важная информация для команды и планирования" />
+      </Field>}
       <Button block disabled={!name || !clientId || ((!!starts || !!ends) && !validRange) || createProject.isPending} onClick={submit}>
         Создать проект
       </Button>

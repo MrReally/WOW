@@ -80,10 +80,19 @@ export function createModules(bus: EventBus = new EventBus()) {
       await projects.service.setStatus(projectId, "completed", actorId);
       return;
     }
-    const [invoice, assignments] = await Promise.all([billing.projectInvoice(projectId), projects.service.listAssignments(projectId)]);
+    const [invoice, assignments, contractorItems] = await Promise.all([
+      billing.projectInvoice(projectId),
+      projects.service.listAssignments(projectId),
+      projects.service.listContractorItems(projectId),
+    ]);
     const active = assignments.filter(a => a.status === "added" || a.status === "accepted");
     const payrollSettled = active.every(a => a.paidEUR + 0.005 >= (a.rateEUR ?? 0));
-    if (invoice.dueEUR <= 0.005 && payrollSettled) await projects.service.setStatus(projectId, "completed", actorId);
+    const contractorSettled = contractorItems.every(item =>
+      !!item.paidAt && (item.kind !== "equipment" || !!item.returnedAt)
+    );
+    if (invoice.dueEUR <= 0.005 && payrollSettled && contractorSettled) {
+      await projects.service.setStatus(projectId, "completed", actorId);
+    }
   };
   const syncProjectPayment = async (event: { projectId: string | null; assignmentId: string | null; contractorId: string | null }) => {
     if (!event.projectId) return;
@@ -410,7 +419,7 @@ export function createModules(bus: EventBus = new EventBus()) {
           : "снят";
         await notify(assignment.userId, {
           kind: "assigned", title: "Дресс-код изменён",
-          body: `«${escapeHtml(project.name)}» · ${escapeHtml(assignment.roleNote ?? "роль не указана")}\nДресс-код: ${escapeHtml(dressCode)}`,
+          body: `«${escapeHtml(project.name)}»\n🎚 Роль: ${escapeHtml(assignment.roleNote ?? "роль не указана")}\n👔 Дресс-код: ${escapeHtml(dressCode)}`,
           link: `/projects/${e.projectId}`,
         });
       }

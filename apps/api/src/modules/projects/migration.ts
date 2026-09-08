@@ -29,6 +29,7 @@ ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS finance_tracked boolean N
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_option_id uuid;
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_label text;
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_uniform boolean NOT NULL DEFAULT false;
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS note text;
 ALTER TABLE projects.projects ALTER COLUMN starts_at DROP NOT NULL;
 ALTER TABLE projects.projects ALTER COLUMN ends_at DROP NOT NULL;
 ALTER TABLE projects.projects DROP CONSTRAINT IF EXISTS projects_status_check;

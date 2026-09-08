@@ -112,8 +112,15 @@ export function OperationsProjectPage() {
   const setStage = useSetOperationStage(id);
   const completeTurnover = useCompleteWarehouseTurnover(id);
   const canManage = can("projects.timing.manage", "projects.manage");
-  const canStepBack = can("operations.stage.back", "projects.timing.manage", "projects.manage");
+  const canStepBack = can(
+    project.data?.warehouseTurnoverCompletedAt
+      ? "operations.stage.back.after.warehouse.turnover"
+      : "operations.stage.back",
+    "projects.timing.manage",
+    "projects.manage",
+  );
   const canListPeople = can("people.view", "operations.payroll.view", "operations.payroll.manage");
+  const canViewProjectNote = can("projects.note.view");
   const people = usePeople(canListPeople);
   const [activeTab, setActiveTab] = useState<OperationsTab>("turnover");
 
@@ -138,6 +145,7 @@ export function OperationsProjectPage() {
             <p className="card__title">{project.data.name}</p>
             <p className="card__subtitle">{dateRange(project.data.startsAt, project.data.endsAt)}</p>
             {(project.data.dressCodeLabel || project.data.dressCodeUniform) && <p className="card__subtitle">👔 {[project.data.dressCodeLabel, project.data.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}</p>}
+            {canViewProjectNote && project.data.note && <p className="project-note">📝 {project.data.note}</p>}
           </div>
           <Chip label={projectStatusLabel[project.data.status]} tone={projectStatusTone[project.data.status]} />
         </div>

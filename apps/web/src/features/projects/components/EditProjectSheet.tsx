@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import type { Projects } from "@sever/contracts";
-import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
+import { Sheet, Field, Input, Select, Button, Textarea } from "../../../ui-kit/index.ts";
 import { useUpdateProject } from "../hooks.ts";
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
 import { toLocalInput } from "../../../lib/datetime.ts";
 import { useDressCodeOptions } from "../../settings/hooks.ts";
+import { useSession } from "../../../app/session.ts";
 
 interface Props {
   open: boolean;
@@ -15,6 +16,8 @@ interface Props {
 }
 
 export function EditProjectSheet({ open, project, clients, onClose }: Props) {
+  const { can } = useSession();
+  const canViewNote = can("projects.note.view");
   const update = useUpdateProject();
   const venues = useVenues();
   const createVenue = useCreateVenue();
@@ -29,6 +32,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
   const [ends, setEnds] = useState(toLocalInput(project.endsAt));
   const [dressCodeOptionId, setDressCodeOptionId] = useState(project.dressCodeOptionId ?? "");
   const [dressCodeUniform, setDressCodeUniform] = useState(project.dressCodeUniform);
+  const [note, setNote] = useState(project.note ?? "");
 
   // Re-sync when opening on a different project / after external changes.
   useEffect(() => {
@@ -40,6 +44,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
       setEnds(toLocalInput(project.endsAt));
       setDressCodeOptionId(project.dressCodeOptionId ?? "");
       setDressCodeUniform(project.dressCodeUniform);
+      setNote(project.note ?? "");
     }
   }, [open, project.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -59,6 +64,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
           dressCodeOptionId: dressCodeOptionId || null,
           dressCodeLabel: dressCodes.data?.find(x => x.id === dressCodeOptionId)?.label ?? null,
           dressCodeUniform,
+          ...(canViewNote ? { note: note.trim() || null } : {}),
         },
       },
       { onSuccess: onClose }
@@ -127,6 +133,9 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
         </Field>
       </div>
       {(starts || ends) && !validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Укажите обе даты; конец должен быть позже начала</p>}
+      {canViewNote && <Field label="Общая заметка по проекту">
+        <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Важная информация для команды и планирования" />
+      </Field>}
       <Button block disabled={!name || !datesValid || update.isPending} onClick={submit}>
         Сохранить
       </Button>

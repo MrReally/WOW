@@ -151,6 +151,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const canFinance = can("finance.view");
   const canManageFinance = can("finance.manage");
   const canPlans = can("plans.view", "plans.manage");
+  const canViewNote = can("projects.note.view");
 
   const project = useProject(id);
   const clients = useClients();
@@ -411,6 +412,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
         <p className="card__subtitle" style={{ marginTop: "var(--space-2)" }}>{dateRange(p.startsAt, p.endsAt)}</p>
         <ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} />
         {(p.dressCodeLabel || p.dressCodeUniform) && <p className="card__subtitle" style={{ marginTop: 4 }}>👔 {[p.dressCodeLabel, p.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}</p>}
+        {canViewNote && p.note && <p className="project-note" style={{ marginTop: "var(--space-3)" }}>📝 {p.note}</p>}
         {canManage && (
           <div className="row" style={{ marginTop: "var(--space-3)" }}>
             <div style={{ flex: 1 }}>
