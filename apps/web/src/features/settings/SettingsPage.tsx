@@ -4,7 +4,7 @@ import { CURRENCIES, DATE_FORMATS, formatDateValue, formatTimeValue } from "@sev
 import { Card, Button, SectionTitle, Input, Select, Loading } from "../../ui-kit/index.ts";
 import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
-import { useCreateDressCodeOption, useDateTimeSettings, useDressCodeOptions, useFxRates, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetTelegramInboxSettings, useTelegramInboxSettings, useUpdateDressCodeOption } from "./hooks.ts";
+import { useAllCalendarFeed, useCreateDressCodeOption, useDateTimeSettings, useDressCodeOptions, useFxRates, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetTelegramInboxSettings, useTelegramInboxSettings, useUpdateDressCodeOption } from "./hooks.ts";
 import { RoleEditor } from "./components/RoleEditor.tsx";
 import { useCableSettings, useSetCableSettings } from "../warehouse/hooks.ts";
 import { BackupManager } from "./components/BackupManager.tsx";
@@ -19,6 +19,8 @@ export function SettingsPage() {
   const resetStatus = useResetStatus(can("data.reset"));
   const canResetData = can("data.reset") && resetStatus.data?.available === true;
   const canTelegramInbox = can("telegram.inbox.manage", "people.manage");
+  const canViewAllCalendar = can("projects.timing.viewAll", "projects.manage", "roles.manage");
+  const allCalendar = useAllCalendarFeed(canViewAllCalendar);
   const telegramInbox = useTelegramInboxSettings(canTelegramInbox);
   const setTelegramInbox = useSetTelegramInboxSettings();
   const cableSettings = useCableSettings(can("warehouse.catalog.manage"));
@@ -56,6 +58,30 @@ export function SettingsPage() {
       {can("roles.manage") && <RoleEditor />}
 
       {can("projects.manage") && <DressCodeSettings />}
+
+      {canViewAllCalendar && (
+        <>
+          <SectionTitle>Google Calendar</SectionTitle>
+          <Card>
+            <p className="card__title">Все проекты и тайминги</p>
+            <p className="card__subtitle" style={{ marginTop: 4 }}>
+              Технический календарь со всеми событиями. Название аренды указано в каждом событии и отдельной календарной категории.
+            </p>
+            {allCalendar.isLoading ? <Loading /> : (
+              <>
+                <div style={{ marginTop: 10 }}>
+                  <code style={{ display: "block", wordBreak: "break-all", color: "var(--text)", fontSize: 12 }}>{allCalendar.data?.url ?? "—"}</code>
+                </div>
+                <div className="row" style={{ marginTop: 10 }}>
+                  <Button variant="secondary" disabled={!allCalendar.data?.url} onClick={() => allCalendar.data?.url && navigator.clipboard?.writeText(allCalendar.data.url)}>
+                    Скопировать
+                  </Button>
+                </div>
+              </>
+            )}
+          </Card>
+        </>
+      )}
 
       {can("finance.manage", "projects.manage") && <><SectionTitle>Автопарк</SectionTitle><FleetManager /></>}
 

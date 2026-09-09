@@ -101,7 +101,7 @@ export function registerCalendarRoutes(app: FastifyInstance, ctx: RouteContext, 
 
   app.get("/api/me/all-calendar-feed", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "projects.timing.viewAll", "projects.manage");
+    requirePermission(auth, "projects.timing.viewAll", "projects.manage", "roles.manage");
     const token = await wiring.people.service.ensureCalendarToken(auth.userId);
     return { url: `${originOf(req)}/calendar/all/${token}.ics` };
   });
@@ -120,7 +120,7 @@ export function registerCalendarRoutes(app: FastifyInstance, ctx: RouteContext, 
     const user = await wiring.people.service.getByCalendarToken(req.params.token);
     if (!user) return reply.status(404).send("not found");
     const permissions = await wiring.people.service.permissionsForUser(user.id);
-    if (!permissions.includes("projects.timing.viewAll") && !permissions.includes("projects.manage")) {
+    if (!permissions.includes("projects.timing.viewAll") && !permissions.includes("projects.manage") && !permissions.includes("roles.manage")) {
       return reply.status(404).send("not found");
     }
     const body = await calendarFor(user.id, wiring, true);
