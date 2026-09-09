@@ -21,6 +21,7 @@ import {
   useOperationUnitMarks,
   useProjectTasks,
   useProjectTimings,
+  useRelocateReturnedUnit,
   useSetOperationStage,
   useSetOperationUnitMark,
   useUpdateProjectTask,
@@ -310,6 +311,7 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
   const markBroken = useMarkBrokenUnit(projectId);
   const issueUnits = useIssueResolvedUnits();
   const returnUnits = useReturnUnits();
+  const relocateReturnedUnit = useRelocateReturnedUnit(projectId);
   const journal = useProjectEquipmentJournal(projectId);
   const issueQuantity = useIssueProjectQuantity();
   const returnQuantity = useReturnProjectQuantity();
@@ -331,6 +333,7 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
     ...(venue && venueLocationValue ? [{ value: venueLocationValue, label: `Оставить на площадке: ${venue.name}` }] : []),
     ...(warehouses.data ?? []).filter((warehouse) => warehouse.placeId !== venueId).map((warehouse) => ({ value: warehouse.id, label: `Вернуть: ${warehouse.name}` })),
   ];
+  const activeWarehouseOptions = (warehouses.data ?? []).map((warehouse) => ({ value: warehouse.id, label: `Склад: ${warehouse.name}` }));
   const returnInput = (location: string) => location.startsWith("venue:") ? { venueId: location.slice(6) } : { warehouseId: location };
   const unitById = new Map((units.data ?? []).map((unit) => [unit.id, unit]));
   const marksByUnit = new Map<string, Projects.OperationUnitMarkDTO[]>();
@@ -424,23 +427,37 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
                   <Chip label={`${group.rows.length}`} tone="neutral" />
                 </div>
                 <div className="stack" style={{ marginTop: 10 }}>
-                  {group.rows.map(({ key, modelId, unit }) => (
+                  {group.rows.map(({ key, modelId, unit }) => {
+                    const unitMarks = unit ? (marksByUnit.get(unit.id) ?? []) : [];
+                    const alreadyReturned = unitMarks.some((mark) => mark.status === "returned");
+                    const unitReturnLocations = alreadyReturned ? activeWarehouseOptions : returnLocationOptions;
+                    const selectedLocation = unit ? (returnLocationByUnit[unit.id] || (alreadyReturned ? unit.warehouseId : defaultWarehouseId) || "") : "";
+                    return (
                     <UnitStageRow
                       key={key}
                       unit={unit}
                       modelName={modelName(modelId)}
-                      marks={unit ? (marksByUnit.get(unit.id) ?? []) : []}
+                      marks={unitMarks}
                       actions={actions}
                       kitComponents={(models.data?.find((model) => model.id === modelId)?.requiredComponentModelIds ?? []).map((componentId) => ({ id: componentId, name: modelName(componentId) }))}
-                      disabled={setMark.isPending || clearMark.isPending || changeStatus.isPending || markBroken.isPending || issueUnits.isPending || returnUnits.isPending}
+                      disabled={setMark.isPending || clearMark.isPending || changeStatus.isPending || markBroken.isPending || issueUnits.isPending || returnUnits.isPending || relocateReturnedUnit.isPending}
                       onOpen={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
                       onMark={(status, active, note) => unit && markUnit(unit.id, status, active, note)}
-                      returnLocations={stage === "return" ? returnLocationOptions : []}
-                      returnedLocationName={unit ? warehouseName(unit.warehouseId) : "Возвращено"}
-                      selectedLocation={unit ? (returnLocationByUnit[unit.id] || defaultWarehouseId) : ""}
-                      onSelectLocation={location => unit && setReturnLocationByUnit(current => ({ ...current, [unit.id]: location }))}
+                      returnLocations={stage === "return" ? unitReturnLocations : []}
+                      selectedLocation={selectedLocation}
+                      onSelectLocation={location => {
+                        if (!unit) return;
+                        if (alreadyReturned && unit.status === "in_stock") {
+                          relocateReturnedUnit.mutate({ unitId: unit.id, warehouseId: location }, {
+                            onSuccess: () => setReturnLocationByUnit(current => ({ ...current, [unit.id]: location })),
+                          });
+                          return;
+                        }
+                        setReturnLocationByUnit(current => ({ ...current, [unit.id]: location }));
+                      }}
                     />
-                  ))}
+                    );
+                  })}
                 </div>
               </Card>
             ))}
@@ -531,7 +548,6 @@ function UnitStageRow({
   onOpen,
   onMark,
   returnLocations,
-  returnedLocationName,
   selectedLocation,
   onSelectLocation,
 }: {
@@ -544,7 +560,6 @@ function UnitStageRow({
   onOpen: () => void;
   onMark: (status: Projects.OperationUnitMarkStatus, active: boolean, note?: string | null) => void;
   returnLocations: { value: string; label: string }[];
-  returnedLocationName: string;
   selectedLocation: string;
   onSelectLocation: (location: string) => void;
 }) {
@@ -572,7 +587,7 @@ function UnitStageRow({
         <Chip label={markText} tone={marks.length > 0 ? (hasProblem ? "warn" : "ok") : "neutral"} />
       </div>
       <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-        {unit && returnLocations.length > 0 && (activeStatuses.has("returned") ? <Chip label={returnedLocationName} tone="ok" /> : <Select value={selectedLocation} onChange={e => onSelectLocation(e.target.value)} options={returnLocations} />)}
+        {unit && returnLocations.length > 0 && <Select value={selectedLocation} disabled={disabled} onChange={e => onSelectLocation(e.target.value)} options={returnLocations} />}
         {unit && actions.map((action) => {
           const active = activeStatuses.has(action.status);
           return (

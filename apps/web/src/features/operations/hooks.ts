@@ -80,6 +80,19 @@ export function useCompleteWarehouseTurnover(projectId: string | null) {
   });
 }
 
+export function useRelocateReturnedUnit(projectId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ unitId, warehouseId }: { unitId: string; warehouseId: string }) =>
+      api.post(`/api/operations/return/${unitId}/warehouse`, { projectId, warehouseId }),
+    meta: { successMessage: "Склад возврата изменён" },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["equipment"] });
+      qc.invalidateQueries({ queryKey: ["projects", "operation-unit-marks", projectId] });
+    },
+  });
+}
+
 function invalidateOps(qc: ReturnType<typeof useQueryClient>, projectId?: string | null) {
   qc.invalidateQueries({ queryKey: ["projects", "tasks", projectId] });
   qc.invalidateQueries({ queryKey: ["projects", "checklist", projectId] });
