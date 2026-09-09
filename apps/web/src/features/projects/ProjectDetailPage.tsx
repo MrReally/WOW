@@ -50,6 +50,7 @@ import { RoleEngagementPicker } from "./components/RoleEngagementPicker.tsx";
 import { ContractorEquipment } from "./components/ContractorEquipment.tsx";
 import { ProjectStageProgress } from "./components/ProjectStageProgress.tsx";
 import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
+import { ConfiguredDateTimeInput } from "../../app/ConfiguredDateTimeInput.tsx";
 import { configuredDate } from "../../lib/dateFormat.ts";
 import { personName } from "../../lib/people.ts";
 import { useFxRates, useInvoiceVersions, useProjectEstimateLines, useProjectEstimateSettings, useReplaceProjectEstimateLines, useSetProjectEstimateSettings } from "../finance/hooks.ts";
@@ -635,8 +636,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                 <div className="stack" style={{ gap: 8 }}>
                   <Input value={timingEditTitle} onChange={(e) => setTimingEditTitle(e.target.value)} placeholder="Название события" />
                   <div className="row">
-                    <Input type="datetime-local" value={timingEditStart} onChange={(e) => setTimingEditStart(e.target.value)} />
-                    <Input type="datetime-local" value={timingEditEnd} onChange={(e) => setTimingEditEnd(e.target.value)} />
+                    <ConfiguredDateTimeInput value={timingEditStart} onChange={setTimingEditStart} />
+                    <ConfiguredDateTimeInput value={timingEditEnd} onChange={setTimingEditEnd} />
                   </div>
                   <div className="row">
                     <Button block disabled={!timingEditTitle.trim() || new Date(timingEditEnd).getTime() <= new Date(timingEditStart).getTime() || updateTiming.isPending} onClick={() => updateTiming.mutate({ id: t.id, input: { title: timingEditTitle.trim(), startsAt: isoFromLocal(timingEditStart), endsAt: isoFromLocal(timingEditEnd) } }, { onSuccess: () => setEditingTimingId("") })}>Сохранить</Button>
@@ -708,10 +709,10 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             </Field>
             <div className="row">
               <Field label="Начало">
-                <Input type="datetime-local" value={tStart} onChange={(e) => setTimingStart(e.target.value)} />
+                <ConfiguredDateTimeInput value={tStart} onChange={setTimingStart} />
               </Field>
               <Field label="Конец">
-                <Input type="datetime-local" value={tEnd} onChange={(e) => setTimingEnd(e.target.value)} />
+                <ConfiguredDateTimeInput value={tEnd} onChange={setTimingEnd} />
               </Field>
             </div>
             {!validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Конец должен быть позже начала</p>}

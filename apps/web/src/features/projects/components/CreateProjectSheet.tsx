@@ -4,6 +4,7 @@ import { useClients, useCreateClient, useCreateProject } from "../hooks.ts";
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
 import { useSession } from "../../../app/session.ts";
+import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
 
 export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { can } = useSession();
@@ -131,10 +132,10 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
 
       <div className="row">
         <Field label="Начало">
-          <Input type="datetime-local" value={starts} onChange={(e) => setStarts(e.target.value)} />
+          <ConfiguredDateTimeInput value={starts} onChange={setStarts} />
         </Field>
         <Field label="Конец">
-          <Input type="datetime-local" value={ends} onChange={(e) => setEnds(e.target.value)} />
+          <ConfiguredDateTimeInput value={ends} onChange={setEnds} />
         </Field>
       </div>
 

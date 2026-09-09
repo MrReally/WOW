@@ -1,9 +1,20 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { engagementDuration, RoleEngagementPicker } from "../src/features/projects/components/RoleEngagementPicker.tsx";
 
 describe("RoleEngagementPicker", () => {
+  const setDateTime = (label: string, value: string) => {
+    const editor = within(screen.getByRole("group", { name: label }));
+    const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+    if (!match) throw new Error(`Invalid test date-time: ${value}`);
+    fireEvent.change(editor.getByLabelText("Год"), { target: { value: match[1] } });
+    fireEvent.change(editor.getByLabelText("Месяц"), { target: { value: match[2] } });
+    fireEvent.change(editor.getByLabelText("День"), { target: { value: match[3] } });
+    fireEvent.change(editor.getByLabelText("Часы"), { target: { value: match[4] } });
+    fireEvent.change(editor.getByLabelText("Минуты"), { target: { value: match[5] } });
+  };
+
   it("formats hours and day-plus-hours durations", () => {
     expect(engagementDuration("2026-08-24T10:00", "2026-08-24T18:00")).toBe("8 ч");
     expect(engagementDuration("2026-08-24T10:00", "2026-08-25T13:30")).toBe("1 сут. 3 ч 30 мин");
@@ -23,8 +34,8 @@ describe("RoleEngagementPicker", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Указать время занятости" }));
-    fireEvent.change(screen.getByLabelText("Начало работы"), { target: { value: "2026-08-24T10:00" } });
-    fireEvent.change(screen.getByLabelText("Конец работы"), { target: { value: "2026-08-25T13:30" } });
+    setDateTime("Начало работы", "2026-08-24T10:00");
+    setDateTime("Конец работы", "2026-08-25T13:30");
 
     expect(screen.getByText("Продолжительность · 1 сут. 3 ч 30 мин")).not.toBeNull();
     await user.click(screen.getByRole("button", { name: "Сохранить" }));

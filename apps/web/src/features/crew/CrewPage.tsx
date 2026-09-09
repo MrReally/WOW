@@ -11,6 +11,7 @@ import { useArchiveUser, useBotInfo, useCreateUser, useDeleteUserPermanently, us
 import { useProjectsForFinance } from "../finance/hooks.ts";
 import { personName } from "../../lib/people.ts";
 import { configuredDate } from "../../lib/dateFormat.ts";
+import { ConfiguredDateInput } from "../../app/ConfiguredDateTimeInput.tsx";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -626,7 +627,7 @@ export function CrewPage() {
         )}
         <div className="row">
           <Field label="Дата рождения">
-            <Input type="date" value={draft.birthDate ?? ""} onChange={(e) => setDraft((d) => ({ ...d, birthDate: e.target.value }))} />
+            <ConfiguredDateInput value={draft.birthDate ?? ""} onChange={(birthDate) => setDraft((d) => ({ ...d, birthDate }))} />
           </Field>
           <Field label="Ставка, €">
             <Input type="number" value={draft.hourlyRateEUR ?? ""} onChange={(e) => setDraft((d) => ({ ...d, hourlyRateEUR: e.target.value ? Number(e.target.value) : null }))} />

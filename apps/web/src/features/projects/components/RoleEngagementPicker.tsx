@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, Field, Input } from "../../../ui-kit/index.ts";
+import { Button, Field } from "../../../ui-kit/index.ts";
 import { isoFromLocal, toLocalInput } from "../../../lib/datetime.ts";
+import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
 
 interface RoleEngagementPickerProps {
   startsAt: string | null;
@@ -112,10 +113,10 @@ export function RoleEngagementPicker({
       {open && (
         <div className="role-engagement-picker__menu" role="dialog" aria-label="Время занятости">
           <Field label="Начало работы">
-            <Input type="datetime-local" value={draftStartsAt} disabled={saving} onChange={(event) => setDraftStartsAt(event.target.value)} />
+            <ConfiguredDateTimeInput aria-label="Начало работы" value={draftStartsAt} disabled={saving} onChange={setDraftStartsAt} />
           </Field>
           <Field label="Конец работы">
-            <Input type="datetime-local" value={draftEndsAt} disabled={saving} onChange={(event) => setDraftEndsAt(event.target.value)} />
+            <ConfiguredDateTimeInput aria-label="Конец работы" value={draftEndsAt} disabled={saving} onChange={setDraftEndsAt} />
           </Field>
           <div className={`role-engagement-picker__duration ${duration ? "is-valid" : ""}`}>
             {duration ? `Продолжительность · ${duration}` : "Укажите корректный интервал"}

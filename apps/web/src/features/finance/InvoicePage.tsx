@@ -11,6 +11,7 @@ import { useVenues } from "../plans/hooks.ts";
 import { useCreateInvoiceVersion, useFxRates, useInvoiceCompanySettings, useInvoiceVersions, useProjectEstimateLines, useProjectEstimateSettings, useReplaceProjectEstimateLines, useSetInvoiceCompanySettings } from "./hooks.ts";
 import "./invoice.css";
 import { useDateFormatSettings } from "../../app/dateFormat.tsx";
+import { ConfiguredDateInput } from "../../app/ConfiguredDateTimeInput.tsx";
 
 interface Line {
   id: string;
@@ -418,7 +419,7 @@ export function InvoicePage() {
         <Card>
           <div className="row">
             <Field label="Номер"><Input value={number} onChange={(e) => setNumber(e.target.value)} /></Field>
-            <Field label="Дата"><Input type="date" value={dateStr} onChange={(e) => setDateStr(e.target.value)} /></Field>
+            <Field label="Дата"><ConfiguredDateInput value={dateStr} onChange={setDateStr} /></Field>
           </div>
           <div className="row">
             <Field label="Язык"><Select value={lang} onChange={(e) => setLang(e.target.value as InvoiceLang)} options={langOptions} /></Field>

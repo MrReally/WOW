@@ -20,6 +20,7 @@ import { AddressInput } from "../../places/AddressInput.tsx";
 import { RoleEngagementPicker } from "./RoleEngagementPicker.tsx";
 import { useDressCodeOptions } from "../../settings/hooks.ts";
 import { useSession } from "../../../app/session.ts";
+import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
 
 type StepId = "name" | "client" | "venue" | "time" | "reservations" | "crew" | "contractors" | "finance" | "finish";
 
@@ -263,8 +264,8 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
 
       {step.id === "time" && (
         <WizardScreen title="Время мероприятия">
-          <Field label="Начало"><Input type="datetime-local" value={starts} onChange={(e) => setStarts(e.target.value)} /></Field>
-          <Field label="Конец"><Input type="datetime-local" value={ends} onChange={(e) => setEnds(e.target.value)} /></Field>
+          <Field label="Начало"><ConfiguredDateTimeInput value={starts} onChange={setStarts} /></Field>
+          <Field label="Конец"><ConfiguredDateTimeInput value={ends} onChange={setEnds} /></Field>
           {(starts || ends) && !validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Укажите обе даты; конец должен быть позже начала</p>}
           {!starts && !ends && <p className="card__subtitle">Можно пропустить и добавить дату позже.</p>}
         </WizardScreen>

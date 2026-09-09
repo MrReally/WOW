@@ -7,6 +7,7 @@ import { AddressInput } from "../../places/AddressInput.tsx";
 import { toLocalInput } from "../../../lib/datetime.ts";
 import { useDressCodeOptions } from "../../settings/hooks.ts";
 import { useSession } from "../../../app/session.ts";
+import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
 
 interface Props {
   open: boolean;
@@ -126,10 +127,10 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
       <label className="row"><input type="checkbox" checked={dressCodeUniform} onChange={e => setDressCodeUniform(e.target.checked)} /> В форме SEVER</label>
       <div className="row">
         <Field label="Начало">
-          <Input type="datetime-local" value={starts} onChange={(e) => setStarts(e.target.value)} />
+          <ConfiguredDateTimeInput value={starts} onChange={setStarts} />
         </Field>
         <Field label="Конец">
-          <Input type="datetime-local" value={ends} onChange={(e) => setEnds(e.target.value)} />
+          <ConfiguredDateTimeInput value={ends} onChange={setEnds} />
         </Field>
       </div>
       {(starts || ends) && !validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Укажите обе даты; конец должен быть позже начала</p>}
