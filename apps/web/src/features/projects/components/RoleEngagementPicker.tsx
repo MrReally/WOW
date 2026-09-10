@@ -13,7 +13,12 @@ interface RoleEngagementPickerProps {
 }
 
 export function engagementDuration(startsAt: string, endsAt: string): string | null {
-  const durationMinutes = Math.floor((new Date(endsAt).getTime() - new Date(startsAt).getTime()) / 60_000);
+  let durationMinutes: number;
+  try {
+    durationMinutes = Math.floor((Date.parse(isoFromLocal(endsAt)) - Date.parse(isoFromLocal(startsAt))) / 60_000);
+  } catch {
+    return null;
+  }
   if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return null;
   const days = Math.floor(durationMinutes / (24 * 60));
   const hours = Math.floor((durationMinutes % (24 * 60)) / 60);

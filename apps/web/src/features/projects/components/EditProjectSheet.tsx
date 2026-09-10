@@ -4,7 +4,7 @@ import { Sheet, Field, Input, Select, Button, Textarea } from "../../../ui-kit/i
 import { useUpdateProject } from "../hooks.ts";
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
-import { toLocalInput } from "../../../lib/datetime.ts";
+import { isoFromLocal, toLocalInput } from "../../../lib/datetime.ts";
 import { useDressCodeOptions } from "../../settings/hooks.ts";
 import { useSession } from "../../../app/session.ts";
 import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
@@ -49,7 +49,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
     }
   }, [open, project.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const validRange = new Date(ends).getTime() > new Date(starts).getTime();
+  const validRange = !!starts && ends > starts;
   const datesValid = (!starts && !ends) || validRange;
 
   const submit = () => {
@@ -60,8 +60,8 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
           name,
           clientId,
           venueId: venueId || null,
-          startsAt: starts ? new Date(starts).toISOString() : null,
-          endsAt: ends ? new Date(ends).toISOString() : null,
+          startsAt: starts ? isoFromLocal(starts) : null,
+          endsAt: ends ? isoFromLocal(ends) : null,
           dressCodeOptionId: dressCodeOptionId || null,
           dressCodeLabel: dressCodes.data?.find(x => x.id === dressCodeOptionId)?.label ?? null,
           dressCodeUniform,

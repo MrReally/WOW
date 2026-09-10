@@ -21,6 +21,7 @@ import { RoleEngagementPicker } from "./RoleEngagementPicker.tsx";
 import { useDressCodeOptions } from "../../settings/hooks.ts";
 import { useSession } from "../../../app/session.ts";
 import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
+import { isoFromLocal } from "../../../lib/datetime.ts";
 
 type StepId = "name" | "client" | "venue" | "time" | "reservations" | "crew" | "contractors" | "finance" | "finish";
 
@@ -110,7 +111,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const [busy, setBusy] = useState(false);
 
   const step = steps[stepIndex]!;
-  const validRange = new Date(ends).getTime() > new Date(starts).getTime();
+  const validRange = !!starts && ends > starts;
   const selectedClientName = clients.data?.find((c) => c.id === clientId)?.name ?? clientName;
   const totals = useMemo(() => {
     const extrasClient = financeDrafts.reduce((sum, line) => sum + (Number(line.client) || 0), 0);
@@ -172,7 +173,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
         dressCodeLabel: dressCodes.data?.find(x => x.id === dressCodeOptionId)?.label ?? null,
         dressCodeUniform,
         ...(canViewNote ? { note: projectNote.trim() || null } : {}),
-        ...(validRange ? { startsAt: new Date(starts).toISOString(), endsAt: new Date(ends).toISOString() } : {}),
+        ...(validRange ? { startsAt: isoFromLocal(starts), endsAt: isoFromLocal(ends) } : {}),
       });
       let createdContractorId = "";
       if (newContractorName.trim()) {
@@ -299,8 +300,8 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
                 <RoleEngagementPicker
                   startsAt={draft.startsAt}
                   endsAt={draft.endsAt}
-                  fallbackStartsAt={starts ? new Date(starts).toISOString() : null}
-                  fallbackEndsAt={ends ? new Date(ends).toISOString() : null}
+                  fallbackStartsAt={starts ? isoFromLocal(starts) : null}
+                  fallbackEndsAt={ends ? isoFromLocal(ends) : null}
                   onSave={(startsAt, endsAt) => patchCrew(idx, { startsAt, endsAt })}
                 />
               </div>

@@ -645,7 +645,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                     <ConfiguredDateTimeInput value={timingEditEnd} onChange={setTimingEditEnd} />
                   </div>
                   <div className="row">
-                    <Button block disabled={!timingEditTitle.trim() || new Date(timingEditEnd).getTime() <= new Date(timingEditStart).getTime() || updateTiming.isPending} onClick={() => updateTiming.mutate({ id: t.id, input: { title: timingEditTitle.trim(), startsAt: isoFromLocal(timingEditStart), endsAt: isoFromLocal(timingEditEnd) } }, { onSuccess: () => setEditingTimingId("") })}>Сохранить</Button>
+                    <Button block disabled={!timingEditTitle.trim() || timingEditEnd <= timingEditStart || updateTiming.isPending} onClick={() => updateTiming.mutate({ id: t.id, input: { title: timingEditTitle.trim(), startsAt: isoFromLocal(timingEditStart), endsAt: isoFromLocal(timingEditEnd) } }, { onSuccess: () => setEditingTimingId("") })}>Сохранить</Button>
                     <Button block variant="ghost" onClick={() => setEditingTimingId("")}>Отмена</Button>
                   </div>
                 </div>
@@ -706,7 +706,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       {canTiming && (() => {
         const tStart = timingStart || toLocalInput(p.startsAt);
         const tEnd = timingEnd || toLocalInput(p.endsAt);
-        const validRange = new Date(tEnd).getTime() > new Date(tStart).getTime();
+        const validRange = !!tStart && tEnd > tStart;
         return (
           <Card>
             <Field label="Название (доставка / монтаж / демонтаж…)">

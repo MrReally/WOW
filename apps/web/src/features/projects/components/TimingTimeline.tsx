@@ -1,6 +1,7 @@
 import type { Projects } from "@sever/contracts";
 import { useEffect, useState } from "react";
 import { configuredDate, configuredTime } from "../../../lib/dateFormat.ts";
+import { toLocalInput } from "../../../lib/datetime.ts";
 
 // Days are stacked vertically. Inside a day, overlapping blocks are packed into
 // columns; non-overlapping blocks stay full-width and read top-to-bottom.
@@ -57,10 +58,7 @@ function packCluster(timings: Projects.TimingDTO[]): Projects.TimingDTO[][] {
   return lanes.map((l) => l.items);
 }
 
-const dayKey = (iso: string) => {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
+const dayKey = (iso: string) => toLocalInput(iso).slice(0, 10);
 
 function groupByDay(timings: Projects.TimingDTO[]) {
   const byDay = new Map<string, Projects.TimingDTO[]>();

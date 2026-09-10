@@ -40,8 +40,8 @@ describe("RoleEngagementPicker", () => {
     expect(screen.getByText("Продолжительность · 1 сут. 3 ч 30 мин")).not.toBeNull();
     await user.click(screen.getByRole("button", { name: "Сохранить" }));
     expect(onSave).toHaveBeenCalledWith(
-      new Date("2026-08-24T10:00").toISOString(),
-      new Date("2026-08-25T13:30").toISOString(),
+      "2026-08-24T08:00:00.000Z",
+      "2026-08-25T11:30:00.000Z",
     );
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Время занятости" })).toBeNull());
   });

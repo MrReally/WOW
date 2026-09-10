@@ -5,6 +5,7 @@ import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
 import { useSession } from "../../../app/session.ts";
 import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
+import { isoFromLocal } from "../../../lib/datetime.ts";
 
 export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { can } = useSession();
@@ -31,7 +32,7 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
     ...(clients.data ?? []).map((c) => ({ value: c.id, label: c.name })),
   ];
 
-  const validRange = new Date(ends).getTime() > new Date(starts).getTime();
+  const validRange = !!starts && ends > starts;
 
   const submit = () => {
     createProject.mutate(
@@ -40,7 +41,7 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
         clientId,
         venueId: venueId || null,
         ...(canViewNote ? { note: note.trim() || null } : {}),
-        ...(validRange ? { startsAt: new Date(starts).toISOString(), endsAt: new Date(ends).toISOString() } : {}),
+        ...(validRange ? { startsAt: isoFromLocal(starts), endsAt: isoFromLocal(ends) } : {}),
       },
       {
         onSuccess: () => {

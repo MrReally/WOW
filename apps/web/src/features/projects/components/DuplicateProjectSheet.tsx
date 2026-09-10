@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Projects } from "@sever/contracts";
 import { Button, Field, Input, Sheet } from "../../../ui-kit/index.ts";
-import { toLocalInput } from "../../../lib/datetime.ts";
+import { isoFromLocal, toLocalInput } from "../../../lib/datetime.ts";
 import { useDuplicateProject } from "../hooks.ts";
 import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
 
@@ -29,10 +29,10 @@ export function DuplicateProjectSheet({ open, project, onClose }: {
 
   const changeStart = (value: string) => {
     setStartsAt(value);
-    const next = new Date(value).getTime();
+    const next = Date.parse(isoFromLocal(value));
     if (Number.isFinite(next)) setEndsAt(toLocalInput(new Date(next + duration).toISOString()));
   };
-  const valid = name.trim() && Date.parse(endsAt) > Date.parse(startsAt);
+  const valid = name.trim() && !!startsAt && endsAt > startsAt;
 
   return (
     <Sheet open={open} onClose={onClose} title="Дублировать проект">
@@ -44,7 +44,7 @@ export function DuplicateProjectSheet({ open, project, onClose }: {
       </div>
       <Button block disabled={!valid || duplicate.isPending} onClick={() => duplicate.mutate({
         id: project.id,
-        input: { name: name.trim(), startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString() },
+        input: { name: name.trim(), startsAt: isoFromLocal(startsAt), endsAt: isoFromLocal(endsAt) },
       }, { onSuccess: (copy) => { onClose(); navigate(`/projects/${copy.id}`); } })}>
         Создать копию
       </Button>
