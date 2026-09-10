@@ -933,6 +933,8 @@ export function createProjectsService(
     async resolveReservation(id, unitIds) {
       const res = await one<ReservationRow>(db, `SELECT * FROM projects.reservations WHERE id=$1`, [id]);
       if (!res) throw NotFound("reservation", id);
+      const project = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [res.project_id]);
+      if (!project) throw NotFound("project", res.project_id);
       const [model] = await loadEquipmentModels([res.model_id]);
       if (model?.effectiveReservationAssignmentMode === "operations") {
         throw BadRequest("эта модель отмечается по факту на этапе «Забор» в Operations");
@@ -945,6 +947,8 @@ export function createProjectsService(
       if (selectedUnits.some((unit) => unit?.modelId !== res.model_id)) throw BadRequest("выбрана единица другой модели");
       const unavailable = selectedUnits.find((unit) => unit && ["in_repair", "at_contractor", "lost"].includes(unit.status));
       if (unavailable) throw Conflict(`единица ${unavailable.assetTag} сейчас недоступна`);
+      const installedElsewhere = selectedUnits.find((unit) => unit?.status === "installed" && (!project.venue_id || unit.installedVenueId !== project.venue_id));
+      if (installedElsewhere) throw Conflict(`инсталлированная единица ${installedElsewhere.assetTag} недоступна на площадке этого проекта`);
       for (const unit of selectedUnits) {
         if (!unit || unit.status !== "on_project" || !unit.currentProjectId || unit.currentProjectId === res.project_id) continue;
         const currentProject = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [unit.currentProjectId]);

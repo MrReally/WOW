@@ -26,6 +26,7 @@ import {
   useSetOperationUnitMark,
   useUpdateProjectTask,
 } from "./hooks.ts";
+import { isUnitVisibleForProject } from "../projects/reservationUnitAvailability.ts";
 
 const stageOrder = PROJECT_STAGE_ORDER;
 
@@ -345,7 +346,7 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
     (warehouses.data ?? []).find((w) => w.id === warehouseId)?.name ?? "Склад ?";
   const reservedRows = (reservations.data ?? []).flatMap((reservation) =>
     reservation.resolvedUnitIds.map((unitId) => ({ key: `${reservation.id}:${unitId}`, modelId: reservation.modelId, unit: unitById.get(unitId) }))
-  );
+  ).filter((row) => !row.unit || isUnitVisibleForProject(row.unit, { venueId }));
   const reservedUnitIds = new Set(reservedRows.map((row) => row.unit?.id).filter(Boolean));
   // Also show units that were issued without being resolved into a reservation.
   // This is what makes legacy rentals such as Space X Wedding returnable again.
@@ -359,7 +360,11 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
   }
   const serialModelIds = new Set((models.data ?? []).filter((model) => model.trackingMode === "serial").map((model) => model.id));
   const modelById = new Map((models.data ?? []).map((model) => [model.id, model]));
-  const planningUnresolved = (reservations.data ?? []).filter((reservation) => serialModelIds.has(reservation.modelId) && (modelById.get(reservation.modelId)?.effectiveReservationAssignmentMode ?? "planning") === "planning" && reservation.resolvedUnitIds.length < reservation.qty);
+  const visibleResolvedCount = (reservation: Projects.ReservationDTO) => reservation.resolvedUnitIds.filter((unitId) => {
+    const unit = unitById.get(unitId);
+    return !unit || isUnitVisibleForProject(unit, { venueId });
+  }).length;
+  const planningUnresolved = (reservations.data ?? []).filter((reservation) => serialModelIds.has(reservation.modelId) && (modelById.get(reservation.modelId)?.effectiveReservationAssignmentMode ?? "planning") === "planning" && visibleResolvedCount(reservation) < reservation.qty);
   const operationsReservations = (reservations.data ?? []).filter((reservation) => serialModelIds.has(reservation.modelId) && modelById.get(reservation.modelId)?.effectiveReservationAssignmentMode === "operations");
   const quantityNeeds = [...(reservations.data ?? []).filter((reservation) => !serialModelIds.has(reservation.modelId)).reduce((map, reservation) => {
     map.set(reservation.modelId, (map.get(reservation.modelId) ?? 0) + reservation.qty);
@@ -498,13 +503,13 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
                 <div className="stack" style={{ marginTop: 10 }}>
                   {operationsReservations.map((reservation) => {
                     const selected = new Set(actualUnitIdsByReservation[reservation.id] ?? []);
-                    const available = (units.data ?? []).filter(unit => unit.modelId === reservation.modelId && unit.status === "in_stock");
+                    const available = (units.data ?? []).filter(unit => unit.modelId === reservation.modelId && (unit.status === "in_stock" || (unit.status === "installed" && !!venueId && unit.installedVenueId === venueId)));
                     const issuedCount = (units.data ?? []).filter(unit => unit.modelId === reservation.modelId && unit.status === "on_project" && unit.currentProjectId === projectId).length;
                     const toggle = (unitId: string) => setActualUnitIdsByReservation(current => ({ ...current, [reservation.id]: selected.has(unitId) ? [...selected].filter(id => id !== unitId) : [...selected, unitId] }));
                     return <div key={reservation.id} className="stack" style={{ gap: 8 }}>
                       <div className="row row--between"><div><p className="card__title" style={{ fontSize: 16 }}>{modelName(reservation.modelId)}</p><p className="card__subtitle">план {reservation.qty} · уже взято {issuedCount} · выбрано {selected.size}</p></div>{stage !== "pickup" && <Chip label="выбор на заборе" tone="neutral" />}</div>
                       {stage === "pickup" && <>
-                        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>{available.map(unit => <label key={unit.id} className={`chip ${selected.has(unit.id) ? "chip--info chip--solid" : "chip--neutral"}`}><input type="checkbox" checked={selected.has(unit.id)} onChange={() => toggle(unit.id)} /> {unit.assetTag}</label>)}</div>
+                        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>{available.map(unit => <label key={unit.id} className={`chip ${selected.has(unit.id) ? "chip--info chip--solid" : "chip--neutral"}`}><input type="checkbox" checked={selected.has(unit.id)} onChange={() => toggle(unit.id)} /> {unit.assetTag}{unit.status === "installed" ? " · инсталлировано" : ""}</label>)}</div>
                         {available.length === 0 ? <p className="card__subtitle">Нет свободных единиц на складе.</p> : <Button disabled={selected.size === 0 || issueUnits.isPending} onClick={() => issueUnits.mutate({ projectId, unitIds: [...selected] }, { onSuccess: () => { for (const unitId of selected) setMark.mutate({ stage: "pickup", unitId, status: "picked" }); setActualUnitIdsByReservation(current => ({ ...current, [reservation.id]: [] })); } })}>Выдать по факту · {selected.size}</Button>}
                       </>}
                     </div>;
@@ -523,7 +528,7 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
                     <div key={reservation.id} className="row row--between">
                       <div style={{ minWidth: 0 }}>
                         <p className="card__title" style={{ fontSize: 16 }}>{modelName(reservation.modelId)}</p>
-                        <p className="card__subtitle">{reservation.resolvedUnitIds.length}/{reservation.qty}</p>
+                        <p className="card__subtitle">{visibleResolvedCount(reservation)}/{reservation.qty}</p>
                       </div>
                       <Chip label="резерв" tone="warn" />
                     </div>

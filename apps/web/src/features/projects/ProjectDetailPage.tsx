@@ -58,6 +58,7 @@ import { useVenues } from "../plans/hooks.ts";
 import { useWarehouses } from "../warehouse/hooks.ts";
 import { useRouteQuote, useTransportConfig, useVehicles } from "../transport/hooks.ts";
 import { staleDurationEstimateIds, withoutSourceEstimateLine } from "./estimateReconciliation.ts";
+import { isUnitVisibleForProject } from "./reservationUnitAvailability.ts";
 import { ISSUED_RESERVATION_DELETE_ERROR, issuedUnitsForReservation } from "./reservationIssuedUnits.ts";
 import { type InvoiceMessageLang } from "./invoiceMessage.ts";
 import { useInvoiceMessageCopy } from "./useInvoiceMessageCopy.ts";
@@ -472,13 +473,17 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             const reservationModel = (models.data ?? []).find(model => model.id === r.modelId);
             const requiresPlanningAssignment = reservationModel?.trackingMode === "serial" && (reservationModel.effectiveReservationAssignmentMode ?? "planning") === "planning";
             const assignInOperations = reservationModel?.trackingMode === "serial" && reservationModel.effectiveReservationAssignmentMode === "operations";
-            const resolved = r.resolvedUnitIds.length > 0;
             const unit = (uid: string) => (allUnits.data ?? []).find((u) => u.id === uid);
+            const visibleResolvedUnitIds = r.resolvedUnitIds.filter((uid) => {
+              const assignedUnit = unit(uid);
+              return !assignedUnit || isUnitVisibleForProject(assignedUnit, p);
+            });
+            const resolved = visibleResolvedUnitIds.length > 0;
             const unitTag = (uid: string) => unit(uid)?.assetTag ?? uid.slice(0, 6);
             const issuedUnits = issuedUnitsForReservation(r, allUnits.data ?? []);
             const issuedCount = issuedUnits.length;
             const issued = issuedCount >= r.qty;
-            const shownIds = [...new Set([...r.resolvedUnitIds, ...issuedUnits.map((u) => u.id)])];
+            const shownIds = [...new Set([...visibleResolvedUnitIds, ...issuedUnits.map((u) => u.id)])];
             const availability = reservationAvailabilities.data?.[r.id];
             return (
               <Card key={r.id}>

@@ -6,6 +6,14 @@ export interface ReservationUnitAvailability {
   currentProjectName: string | null;
 }
 
+/** Installed units only belong in allocation lists for their own venue. */
+export function isUnitVisibleForProject(
+  unit: Equipment.EquipmentUnitDTO,
+  project: Pick<Projects.ProjectDTO, "venueId"> | null | undefined,
+): boolean {
+  return unit.status !== "installed" || (!!project?.venueId && unit.installedVenueId === project.venueId);
+}
+
 export function getReservationUnitAvailability(
   unit: Equipment.EquipmentUnitDTO,
   reservation: Projects.ReservationDTO,

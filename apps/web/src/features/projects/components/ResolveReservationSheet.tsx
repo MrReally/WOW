@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { Projects } from "@sever/contracts";
 import { Sheet, Button, Chip, Loading, Field, Input } from "../../../ui-kit/index.ts";
 import { useInStockUnits, useOverlappingReservations, useProjects, useResolveReservation } from "../hooks.ts";
-import { getReservationUnitAvailability } from "../reservationUnitAvailability.ts";
+import { getReservationUnitAvailability, isUnitVisibleForProject } from "../reservationUnitAvailability.ts";
 
 interface Props {
   reservation: Projects.ReservationDTO | null;
@@ -50,18 +50,18 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
     onClose();
   };
 
-  const submit = () => {
-    resolve.mutate({ id: reservation.id, unitIds: [...selected] }, { onSuccess: close });
-  };
-
   const q = search.trim().toLowerCase();
-  const list = (units.data ?? []).filter((u) => !q || [u.assetTag, u.serial ?? "", modelName].some((v) => v.toLowerCase().includes(q)));
-  const enough = selected.size === reservation.qty;
+  const project = (projects.data ?? []).find((item) => item.id === reservation.projectId);
+  const visibleUnits = (units.data ?? []).filter((unit) => isUnitVisibleForProject(unit, project));
+  const list = visibleUnits.filter((u) => !q || [u.assetTag, u.serial ?? "", modelName].some((v) => v.toLowerCase().includes(q)));
+  const visibleUnitIds = new Set(visibleUnits.map((unit) => unit.id));
+  const effectiveSelected = new Set([...selected].filter((unitId) => visibleUnitIds.has(unitId)));
+  const enough = effectiveSelected.size === reservation.qty;
 
   return (
     <Sheet open={!!reservation} onClose={close} title={`Распределить · ${modelName}`}>
       <p className="card__subtitle" style={{ marginBottom: 12 }}>
-        Нужно {reservation.qty} ед. Выбери конкретные единицы со склада. Выбрано {selected.size}.
+        Нужно {reservation.qty} ед. Выбери конкретные единицы. Выбрано {effectiveSelected.size}.
       </p>
       <Field label="Поиск">
         <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, номер, серийник" />
@@ -107,7 +107,7 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
                   >
                     ↗
                   </button>
-                  {reason ? <Chip label="НЕДОСТУПНО" tone="warn" /> : selected.has(u.id) ? <Chip label="ВЫБРАНО" tone="accent" /> : <Chip label={currentlyAway ? "СВОБОДНО К ДАТЕ" : "СВОБОДНО"} tone="ok" />}
+                  {reason ? <Chip label="НЕДОСТУПНО" tone="warn" /> : selected.has(u.id) ? <Chip label="ВЫБРАНО" tone="accent" /> : u.status === "installed" ? <Chip label="ИНСТАЛЛИРОВАНО" tone="info" /> : <Chip label={currentlyAway ? "СВОБОДНО К ДАТЕ" : "СВОБОДНО"} tone="ok" />}
                 </div>
               </div>
             </div>
@@ -115,8 +115,8 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
         </div>
       )}
       <div style={{ marginTop: 14 }}>
-        <Button block disabled={selected.size === 0 || resolve.isPending} onClick={submit}>
-          {enough ? `Распределить ${selected.size}` : `Распределить ${selected.size} / ${reservation.qty}`}
+        <Button block disabled={effectiveSelected.size === 0 || resolve.isPending} onClick={() => resolve.mutate({ id: reservation.id, unitIds: [...effectiveSelected] }, { onSuccess: close })}>
+          {enough ? `Распределить ${effectiveSelected.size}` : `Распределить ${effectiveSelected.size} / ${reservation.qty}`}
         </Button>
       </div>
     </Sheet>

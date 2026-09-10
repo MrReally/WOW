@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { Equipment, Projects } from "@sever/contracts";
-import { getReservationUnitAvailability } from "./reservationUnitAvailability.ts";
+import { getReservationUnitAvailability, isUnitVisibleForProject } from "./reservationUnitAvailability.ts";
 
 const unit = { id: "unit", assetTag: "SP-001", modelId: "model", status: "on_project", currentProjectId: "current" } as Equipment.EquipmentUnitDTO;
 const target = { id: "target-reservation", projectId: "target", modelId: "model", qty: 1, isReserve: false, startsAt: "2026-08-12T10:00:00.000Z", endsAt: "2026-08-12T12:00:00.000Z", resolvedUnitIds: [], createdAt: "2026-08-01T10:00:00.000Z" } as Projects.ReservationDTO;
 const project = (startsAt: string, endsAt: string) => ({ id: "current", name: "Space X Wedding", startsAt, endsAt }) as Projects.ProjectDTO;
 
 describe("reservation unit availability", () => {
+  it("only shows an installed unit for a project at the same venue", () => {
+    const installed = { ...unit, status: "installed", installedVenueId: "venue-a" } as Equipment.EquipmentUnitDTO;
+    expect(isUnitVisibleForProject(installed, { venueId: "venue-a" })).toBe(true);
+    expect(isUnitVisibleForProject(installed, { venueId: "venue-b" })).toBe(false);
+    expect(isUnitVisibleForProject(installed, { venueId: null })).toBe(false);
+  });
+
   it("requires a separate availability confirmation when project dates are missing", () => {
     const result = getReservationUnitAvailability(unit, { ...target, startsAt: null, endsAt: null }, [], []);
     expect(result.reason).toBe("Дата проекта не указана");
