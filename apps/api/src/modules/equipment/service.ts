@@ -1249,8 +1249,9 @@ export function createEquipmentService(
     // ── Operations ──
     async issueUnits(input) {
       if (input.unitIds.length === 0) throw BadRequest("no units to issue");
-      const issued = await tx(async (client) => {
+      const { issued, newlyIssued } = await tx(async (client) => {
         const results: Equipment.EquipmentUnitDTO[] = [];
+        const changed: Equipment.EquipmentUnitDTO[] = [];
         for (const unitId of input.unitIds) {
           const unit = await one<UnitRow>(
             client,
@@ -1287,13 +1288,14 @@ export function createEquipmentService(
             note: input.note ?? null,
           });
           results.push(unitDTO(updated!));
+          changed.push(unitDTO(updated!));
         }
 
         await syncProjectKitProblems(client,input.projectId);
-        return results;
+        return { issued: results, newlyIssued: changed };
       });
 
-      for (const u of issued) {
+      for (const u of newlyIssued) {
         await bus.publish({
           type: "equipment.unit.issued",
           unitId: u.id,
@@ -1305,12 +1307,13 @@ export function createEquipmentService(
       }
       // One batch event for notifications (avoids per-unit spam). Only count
       // units that actually changed (idempotent re-issues stay quiet enough).
-      if (issued.length > 0) {
+      if (newlyIssued.length > 0) {
         await bus.publish({
           type: "equipment.units.issued",
           projectId: input.projectId,
-          warehouseIds: [...new Set(issued.map((unit) => unit.warehouseId).filter((id): id is string => id !== null))],
-          count: issued.length,
+          unitIds: newlyIssued.map((unit) => unit.id),
+          warehouseIds: [...new Set(newlyIssued.map((unit) => unit.warehouseId).filter((id): id is string => id !== null))],
+          count: newlyIssued.length,
           actorId: input.actorId,
           at: new Date().toISOString(),
         });

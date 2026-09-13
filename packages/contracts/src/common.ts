@@ -58,6 +58,9 @@ export type Permission =
   | "telegram.inbox.manage"
   | "roles.manage"
   | "notifications.advanced"
+  | "notifications.project.stage"
+  | "notifications.equipment.issued"
+  | "notifications.equipment.incomplete"
   | "data.backup"
   | "data.restore"
   | "data.reset";
@@ -109,6 +112,9 @@ export const PERMISSIONS: PermissionMeta[] = [
   { key: "telegram.inbox.manage", group: "Администрирование", label: "Рабочий Telegram-чат от лица бота" },
   { key: "roles.manage", group: "Администрирование", label: "Управлять ролями и правами" },
   { key: "notifications.advanced", group: "Администрирование", label: "Расширенные уведомления о действиях в системе" },
+  { key: "notifications.project.stage", group: "Уведомления", label: "Получать уведомления о смене рабочего этапа проекта" },
+  { key: "notifications.equipment.issued", group: "Уведомления", label: "Получать уведомления о выдаче оборудования" },
+  { key: "notifications.equipment.incomplete", group: "Уведомления", label: "Получать уведомления о некомплекте при возврате" },
   { key: "data.backup", group: "Администрирование", label: "Скачивать полные резервные копии базы" },
   { key: "data.restore", group: "Администрирование", label: "Восстанавливать базу из резервной копии" },
   { key: "data.reset", group: "Администрирование", label: "Сброс/очистка базы данных" },

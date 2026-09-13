@@ -555,6 +555,8 @@ export interface IncompleteReturnEvent {
 export interface UnitsIssuedBatchEvent {
   type: "equipment.units.issued";
   projectId: ID;
+  /** Units actually issued by this action, excluding idempotent re-issues. */
+  unitIds: ID[];
   /** Source warehouses represented in this issue action. */
   warehouseIds: ID[];
   count: number;

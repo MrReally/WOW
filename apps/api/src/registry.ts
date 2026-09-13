@@ -127,7 +127,7 @@ export function createModules(bus: EventBus = new EventBus()) {
     if (!(await notifications.service.isEnabled(userId, n.kind))) return;
     await notifications.service.create({ userId, ...n });
     const user = await people.service.getById(userId);
-    await sendTelegramMessage(user?.telegramId ?? null, `<b>${n.title}</b>\n${n.body}`);
+    await sendTelegramMessage(user?.telegramId ?? null, `<b>${escapeHtml(n.title)}</b>\n${escapeHtml(n.body)}`);
   }
 
   const publicName = (user: { nickname?: string | null; displayName?: string | null } | null | undefined, fallback = "Человек") =>
@@ -162,6 +162,10 @@ export function createModules(bus: EventBus = new EventBus()) {
     const warehouses = await equipment.service.listWarehouses();
     const names = [...new Set(warehouseIds.map((id) => warehouses.find((warehouse) => warehouse.id === id)?.name).filter((name): name is string => Boolean(name)))];
     return names.length > 0 ? names.join(", ") : "Склад не указан";
+  };
+  const equipmentNumbers = async (unitIds: string[]) => {
+    const units = await Promise.all(unitIds.map((id) => equipment.service.getUnit(id)));
+    return units.map((unit, index) => unit?.assetTag ?? unitIds[index]!).join(", ");
   };
 
   const stageLabel: Record<string, string> = {
@@ -242,11 +246,12 @@ export function createModules(bus: EventBus = new EventBus()) {
       case "people.application.submitted":
         return null;
       case "equipment.units.issued": {
-        const [project, warehouseNames] = await Promise.all([
+        const [project, warehouseNames, numbers] = await Promise.all([
           projects.service.getProject(event.projectId),
           equipmentWarehouseNames(event.warehouseIds),
+          equipmentNumbers(event.unitIds),
         ]);
-        return { title: `Выдача оборудования - ${warehouseNames}`, body: `${event.count} ед. · ${project?.name ?? event.projectId} · ${await fmtActor(event.actorId)}`, link: `/projects/${event.projectId}` };
+        return { title: `Выдача оборудования - ${warehouseNames}`, body: `${event.count} ед. · ${project?.name ?? event.projectId} · ${await fmtActor(event.actorId)}\nНомера: ${numbers}`, link: `/projects/${event.projectId}` };
       }
       case "equipment.unit.returned": {
         const [project, unit, warehouseNames] = await Promise.all([
@@ -258,11 +263,12 @@ export function createModules(bus: EventBus = new EventBus()) {
         return { title: `${action} - ${warehouseNames}`, body: `${unit?.assetTag ?? event.unitId} · ${project?.name ?? event.projectId} · ${await fmtActor(event.actorId)}`, link: `/projects/${event.projectId}` };
       }
       case "equipment.return.incomplete": {
-        const [project, warehouseNames] = await Promise.all([
+        const [project, warehouseNames, numbers] = await Promise.all([
           projects.service.getProject(event.projectId),
           equipmentWarehouseNames([event.warehouseId]),
+          equipmentNumbers(event.missingUnitIds),
         ]);
-        return { title: `Некомплект - ${warehouseNames}`, body: `${event.missingUnitIds.length} ед. · ${project?.name ?? event.projectId}`, link: `/projects/${event.projectId}` };
+        return { title: `Некомплект - ${warehouseNames}`, body: `${event.missingUnitIds.length} ед. · ${project?.name ?? event.projectId}\nНомера: ${numbers}`, link: `/projects/${event.projectId}` };
       }
       case "equipment.unit.transferred": {
         const [unit, warehouses] = await Promise.all([equipment.service.getUnit(event.unitId), equipment.service.listWarehouses()]);
@@ -283,10 +289,28 @@ export function createModules(bus: EventBus = new EventBus()) {
     const msg = await advancedMessage(event);
     if (!msg) return;
     const recipients = await people.service.listWithPermission("notifications.advanced");
+    const projectId = "projectId" in event && typeof event.projectId === "string" ? event.projectId : null;
+    const projectAssignments = projectId
+      ? await projects.service.listAssignments(projectId)
+      : [];
+    const activeProjectUserIds = new Set(projectAssignments
+      .filter((assignment) => assignment.status === "added" || assignment.status === "accepted")
+      .map((assignment) => assignment.userId));
     for (const user of recipients) {
+      if (projectId) {
+        const permissions = await people.service.permissionsForUser(user.id);
+        const eventPermission = event.type === "project.operation_stage.changed" ? "notifications.project.stage"
+          : event.type === "equipment.units.issued" ? "notifications.equipment.issued"
+          : event.type === "equipment.return.incomplete" ? "notifications.equipment.incomplete"
+          : null;
+        if (eventPermission && !permissions.includes(eventPermission)) continue;
+        const seesAllProjects = permissions.includes("projects.manage") || permissions.includes("projects.reservation.manage");
+        const seesOwnProject = (permissions.includes("projects.view") || permissions.includes("operations.view")) && activeProjectUserIds.has(user.id);
+        if (!seesAllProjects && !seesOwnProject) continue;
+      }
       if (!(await notifications.service.isAdvancedEnabled(user.id, event.type as Notifications.AdvancedNotificationEvent))) continue;
       await notifications.service.create({ userId: user.id, kind: msg.kind ?? "info", title: msg.title, body: msg.body, link: msg.link ?? null });
-      await sendTelegramMessage(user.telegramId, `<b>${msg.title}</b>\n${msg.body}`);
+      await sendTelegramMessage(user.telegramId, `<b>${escapeHtml(msg.title)}</b>\n${escapeHtml(msg.body)}`);
     }
   });
 
@@ -419,7 +443,7 @@ export function createModules(bus: EventBus = new EventBus()) {
           : "снят";
         await notify(assignment.userId, {
           kind: "assigned", title: "Дресс-код изменён",
-          body: `«${escapeHtml(project.name)}»\n🎚 Роль: ${escapeHtml(assignment.roleNote ?? "роль не указана")}\n👔 Дресс-код: ${escapeHtml(dressCode)}`,
+          body: `«${project.name}»\n🎚 Роль: ${assignment.roleNote ?? "роль не указана"}\n👔 Дресс-код: ${dressCode}`,
           link: `/projects/${e.projectId}`,
         });
       }
@@ -496,6 +520,7 @@ export function createModules(bus: EventBus = new EventBus()) {
         .filter((id) => id !== e.actorId)
     )];
     for (const userId of recipientIds) {
+      if (!(await people.service.permissionsForUser(userId)).includes("notifications.project.stage")) continue;
       await notify(userId, {
         kind: "stage",
         title: project.name,
@@ -553,12 +578,14 @@ export function createModules(bus: EventBus = new EventBus()) {
       projects.service.listAssignments(e.projectId),
     ]);
     if (!project) return;
-    for (const a of assignees) {
+    const numbers = await equipmentNumbers(e.unitIds);
+    for (const a of assignees.filter((assignment) => assignment.status === "added" || assignment.status === "accepted")) {
       if (a.userId === e.actorId) continue; // don't notify the person doing it
+      if (!(await people.service.permissionsForUser(a.userId)).includes("notifications.equipment.issued")) continue;
       await notify(a.userId, {
         kind: "issued",
         title: "Оборудование выдано",
-        body: `${e.count} ед. на проект «${project.name}»`,
+        body: `${e.count} ед. на проект «${project.name}»\nНомера: ${numbers}`,
         link: `/projects/${e.projectId}`,
       });
     }
@@ -570,11 +597,13 @@ export function createModules(bus: EventBus = new EventBus()) {
       projects.service.listAssignments(e.projectId),
     ]);
     if (!project) return;
-    for (const a of assignees) {
+    const numbers = await equipmentNumbers(e.missingUnitIds);
+    for (const a of assignees.filter((assignment) => assignment.status === "added" || assignment.status === "accepted")) {
+      if (!(await people.service.permissionsForUser(a.userId)).includes("notifications.equipment.incomplete")) continue;
       await notify(a.userId, {
         kind: "problem",
         title: "Некомплект при возврате",
-        body: `${e.missingUnitIds.length} ед. не вернулись с «${project.name}»`,
+        body: `${e.missingUnitIds.length} ед. не вернулись с «${project.name}»\nНомера: ${numbers}`,
         link: `/projects/${e.projectId}`,
       });
     }

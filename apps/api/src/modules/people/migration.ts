@@ -110,6 +110,24 @@ CREATE TABLE IF NOT EXISTS people.app_settings (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Keep existing roles' notification delivery on first upgrade. This marker
+-- prevents later migration runs from restoring permissions an admin removed.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM people.app_settings WHERE key='notification_permissions_backfill_v1') THEN
+    UPDATE people.roles
+    SET permissions = ARRAY(
+      SELECT DISTINCT p.permission FROM unnest(permissions || ARRAY[
+        'notifications.project.stage',
+        'notifications.equipment.issued',
+        'notifications.equipment.incomplete'
+      ]) AS p(permission)
+    )
+    WHERE NOT is_owner;
+    INSERT INTO people.app_settings (key, value) VALUES ('notification_permissions_backfill_v1', 'done');
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS people.telegram_dialog_messages (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   telegram_id         text NOT NULL,

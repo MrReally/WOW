@@ -546,11 +546,76 @@ describe("Tech pickup/return → некомплект", () => {
     expect((await notifications.service.listForUser(tech.id)).some((n) => n.kind === "assigned")).toBe(true);
   });
 
+  it("checks separate crew notification rights and shows actual equipment numbers", async () => {
+    const { people, projects, equipment, notifications } = wiring;
+    const allowedRole = await people.service.createRole({
+      name: `Notification crew ${randomUUID()}`,
+      permissions: ["projects.view", "operations.view", "notifications.project.stage", "notifications.equipment.issued", "notifications.equipment.incomplete"],
+    });
+    const deniedRole = await people.service.createRole({
+      name: `Muted crew ${randomUUID()}`,
+      permissions: ["projects.view", "operations.view"],
+    });
+    const allowed = (await people.service.create({ displayName: "Allowed crew", roleId: allowedRole.id, email: `allowed-${randomUUID()}@example.test` })).user;
+    const denied = (await people.service.create({ displayName: "Denied crew", roleId: deniedRole.id, email: `denied-${randomUUID()}@example.test` })).user;
+    const client = await projects.service.createClient({ name: `Crew notice ${randomUUID()}` });
+    const project = await projects.service.createProject({ name: "Crew notice project", clientId: client.id });
+    await projects.service.addAssignment({ projectId: project.id, userId: allowed.id });
+    await projects.service.addAssignment({ projectId: project.id, userId: denied.id });
+    await projects.service.setOperationStage(project.id, "pickup", null);
+
+    const type = await equipment.service.createType({ name: `Notice type ${randomUUID()}`, trackingMode: "serial" });
+    const model = await equipment.service.createModel({ typeId: type.id, name: "Notice model", unitCostEUR: 1, dailyPriceEUR: 1 });
+    const first = await equipment.service.createUnit({ modelId: model.id, assetTag: `NOTICE-A-${randomUUID()}` });
+    const second = await equipment.service.createUnit({ modelId: model.id, assetTag: `NOTICE-B-${randomUUID()}` });
+    await equipment.service.issueUnits({ projectId: project.id, unitIds: [first.id, second.id], actorId: denied.id });
+    const batchCount = bus.history().filter((event) => event.type === "equipment.units.issued" && event.projectId === project.id).length;
+    await equipment.service.issueUnits({ projectId: project.id, unitIds: [first.id, second.id], actorId: denied.id });
+    expect(bus.history().filter((event) => event.type === "equipment.units.issued" && event.projectId === project.id)).toHaveLength(batchCount);
+    await equipment.service.returnUnits({ projectId: project.id, returnedUnitIds: [first.id], expectedUnitIds: [first.id, second.id], actorId: denied.id });
+
+    const allowedInbox = await notifications.service.listForUser(allowed.id);
+    const deniedInbox = await notifications.service.listForUser(denied.id);
+    expect(allowedInbox.some((notice) => notice.kind === "stage")).toBe(true);
+    expect(deniedInbox.some((notice) => notice.kind === "stage")).toBe(false);
+    expect(allowedInbox.some((notice) => notice.title === "Оборудование выдано" && notice.body.includes(first.assetTag) && notice.body.includes(second.assetTag))).toBe(true);
+    expect(deniedInbox.some((notice) => notice.title === "Оборудование выдано")).toBe(false);
+    expect(allowedInbox.some((notice) => notice.title === "Некомплект при возврате" && notice.body.includes(second.assetTag) && !notice.body.includes(first.assetTag))).toBe(true);
+    expect(deniedInbox.some((notice) => notice.title === "Некомплект при возврате")).toBe(false);
+  });
+
+  it("limits advanced project events to assigned projects unless the role sees all", async () => {
+    const { people, projects, notifications } = wiring;
+    const ownRole = await people.service.createRole({ name: `Own notices ${randomUUID()}`, permissions: ["notifications.advanced", "projects.view"] });
+    const allRole = await people.service.createRole({ name: `All notices ${randomUUID()}`, permissions: ["notifications.advanced", "projects.manage"] });
+    const own = (await people.service.create({ displayName: "Own observer", roleId: ownRole.id, email: `own-${randomUUID()}@example.test` })).user;
+    const outsider = (await people.service.create({ displayName: "Outside observer", roleId: ownRole.id, email: `outside-${randomUUID()}@example.test` })).user;
+    const all = (await people.service.create({ displayName: "All observer", roleId: allRole.id, email: `all-${randomUUID()}@example.test` })).user;
+    for (const user of [own, outsider, all]) {
+      await notifications.service.setAdvancedPrefs(user.id, { ...await notifications.service.getAdvancedPrefs(user.id), "project.assigned": true });
+    }
+    const client = await projects.service.createClient({ name: `Advanced access ${randomUUID()}` });
+    const ownProject = await projects.service.createProject({ name: `Own project ${randomUUID()}`, clientId: client.id });
+    const otherProject = await projects.service.createProject({ name: `Other project ${randomUUID()}`, clientId: client.id });
+    await projects.service.addAssignment({ projectId: ownProject.id, userId: own.id });
+    const tech = await makeTech("Other assignee");
+    await projects.service.addAssignment({ projectId: otherProject.id, userId: tech.id });
+
+    const ownInbox = await notifications.service.listForUser(own.id);
+    const outsiderInbox = await notifications.service.listForUser(outsider.id);
+    const allInbox = await notifications.service.listForUser(all.id);
+    expect(ownInbox.some((notice) => notice.title === "Назначение на проект" && notice.body.includes(ownProject.name))).toBe(true);
+    expect(ownInbox.some((notice) => notice.title === "Назначение на проект" && notice.body.includes(otherProject.name))).toBe(false);
+    expect(outsiderInbox.some((notice) => notice.title === "Назначение на проект")).toBe(false);
+    expect(allInbox.some((notice) => notice.title === "Назначение на проект" && notice.body.includes(ownProject.name))).toBe(true);
+    expect(allInbox.some((notice) => notice.title === "Назначение на проект" && notice.body.includes(otherProject.name))).toBe(true);
+  });
+
   it("advanced equipment notifications include warehouse names", async () => {
     const { people, equipment, notifications } = wiring;
     const observerRole = await people.service.createRole({
       name: `Observer ${Date.now()}`,
-      permissions: ["notifications.advanced"],
+      permissions: ["notifications.advanced", "projects.manage", "notifications.equipment.issued"],
     });
     const observer = (await people.service.create({
       displayName: "Observer Owner",
@@ -591,7 +656,7 @@ describe("Tech pickup/return → некомплект", () => {
 
     const inbox = await notifications.service.listForUser(observer.id);
     expect(inbox.some((n) => n.title === `Перемещение между складами - ${from.name} → ${to.name}` && n.body.includes(`${from.name} → ${to.name}`))).toBe(true);
-    expect(inbox.some((n) => n.title === `Выдача оборудования - ${to.name}`)).toBe(true);
+    expect(inbox.some((n) => n.title === `Выдача оборудования - ${to.name}` && n.body.includes(unit.assetTag))).toBe(true);
     expect(inbox.some((n) => n.title === `Возврат оборудования - ${to.name}`)).toBe(true);
   });
 

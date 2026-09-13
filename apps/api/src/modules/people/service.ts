@@ -176,8 +176,12 @@ const WAREHOUSE_PERMS: Permission[] = [
   "warehouse.issue", "warehouse.unit.status", "projects.view", "projects.reservation.manage",
   "projects.timing.manage", "projects.timing.viewAll", "projects.assignment.manage", "clients.manage",
   "venues.view", "venues.manage", "venues.archive", "plans.view", "plans.manage", "people.view",
+  "notifications.project.stage", "notifications.equipment.issued", "notifications.equipment.incomplete",
 ];
-const TECH_PERMS: Permission[] = ["operations.view", "warehouse.view", "warehouse.issue", "projects.view", "plans.view"];
+const TECH_PERMS: Permission[] = [
+  "operations.view", "warehouse.view", "warehouse.issue", "projects.view", "plans.view",
+  "notifications.project.stage", "notifications.equipment.issued", "notifications.equipment.incomplete",
+];
 
 export function createPeopleService(db: Sql, bus: EventBus): People.PeopleService {
   async function permsForRow(u: UserRow): Promise<Permission[]> {
