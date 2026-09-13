@@ -166,6 +166,8 @@ ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS role_id      uuid REFE
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS dress_code_enabled boolean NOT NULL DEFAULT false;
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS paid_eur numeric(12,2) NOT NULL DEFAULT 0 CHECK (paid_eur >= 0);
 ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS cancellation_reason text;
+ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS status_before_project_cancel text;
+ALTER TABLE projects.assignments ADD COLUMN IF NOT EXISTS responded_at_before_project_cancel timestamptz;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='projects' AND table_name='project_roles' AND column_name='dress_code_enabled') THEN
     ALTER TABLE projects.project_roles ADD COLUMN dress_code_enabled boolean NOT NULL DEFAULT false;

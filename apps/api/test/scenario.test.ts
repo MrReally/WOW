@@ -1155,7 +1155,7 @@ it("cancels pending and confirmed personnel and prevents accepting stale invites
   const pending = await service.addAssignment({ projectId: project.id, roleId: role.id, userId: randomUUID(), invite: true });
   const accepted = await service.addAssignment({ projectId: project.id, roleId: role.id, userId: randomUUID(), invite: true });
   await service.respondToInvite(accepted.id, true, accepted.userId);
-  await service.addAssignment({ projectId: project.id, roleId: role.id, userId: randomUUID() });
+  const added = await service.addAssignment({ projectId: project.id, roleId: role.id, userId: randomUUID() });
   const reasons: string[] = [];
   bus.on("project.invite.cancelled", e => { if (e.projectId === project.id) reasons.push(e.reason); });
   await service.setStatus(project.id, "cancelled");
@@ -1165,6 +1165,14 @@ it("cancels pending and confirmed personnel and prevents accepting stale invites
   expect(reasons).toHaveLength(3);
   await expect(service.respondToInvite(pending.id, true, pending.userId)).rejects.toThrow("мероприятие отменено");
   await expect(service.addAssignment({ projectId: project.id, userId: randomUUID(), invite: true })).rejects.toThrow("мероприятие отменено");
+  await service.setStatus(project.id, "draft");
+  const restored = await service.listAssignments(project.id);
+  expect(restored.find(a => a.id === pending.id)).toMatchObject({ status: "invited", cancellationReason: null, respondedAt: null });
+  expect(restored.find(a => a.id === accepted.id)).toMatchObject({ status: "accepted", cancellationReason: null });
+  expect(restored.find(a => a.id === added.id)).toMatchObject({ status: "added", cancellationReason: null, respondedAt: null });
+  expect((await service.listProjectsForUser(accepted.userId)).some(p => p.id === project.id)).toBe(true);
+  expect((await service.listProjectsForUser(added.userId)).some(p => p.id === project.id)).toBe(true);
+  expect((await service.listProjectsForUser(pending.userId)).some(p => p.id === project.id)).toBe(false);
 });
 
 it("inherits role dress code and applies changes to every assignment", async () => {

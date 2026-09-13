@@ -711,7 +711,16 @@ export function createProjectsService(
       await tx(async (client) => {
         row = await one<ProjectRow>(client, `UPDATE projects.projects SET status=$2 WHERE id=$1 RETURNING *`, [id, status]);
         if (status === "cancelled") {
-          cancelled = await query<AssignmentRow>(client, `UPDATE projects.assignments SET status='cancelled', cancellation_reason='project_cancelled', responded_at=now() WHERE project_id=$1 AND status IN ('invited','accepted','added') RETURNING *`, [id]);
+          cancelled = await query<AssignmentRow>(client, `UPDATE projects.assignments SET status_before_project_cancel=status, responded_at_before_project_cancel=responded_at, status='cancelled', cancellation_reason='project_cancelled', responded_at=now() WHERE project_id=$1 AND status IN ('invited','accepted','added') RETURNING *`, [id]);
+        } else if (existing.status === "cancelled") {
+          await query(client, `UPDATE projects.assignments
+            SET status=status_before_project_cancel,
+                responded_at=responded_at_before_project_cancel,
+                cancellation_reason=NULL,
+                status_before_project_cancel=NULL,
+                responded_at_before_project_cancel=NULL
+            WHERE project_id=$1 AND status='cancelled' AND cancellation_reason='project_cancelled'
+              AND status_before_project_cancel IN ('invited','accepted','added')`, [id]);
         }
       });
       if (!row) throw NotFound("project", id);

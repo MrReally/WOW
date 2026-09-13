@@ -55,6 +55,7 @@ async function calendarFor(userId: string, wiring: Wiring, includeAll = false): 
   const clientName = (project: Projects.ProjectDTO) => clients.find((c) => c.id === project.clientId)?.name ?? "—";
   const events: string[] = [];
   for (const project of projects) {
+    if (project.status === "cancelled") continue;
     if (project.startsAt && project.endsAt) {
       events.push(eventBlock({
         uid: `project-${project.id}@sever`,
