@@ -888,6 +888,7 @@ describe("Tech pickup/return → некомплект", () => {
     await projects.service.respondToInvite(b.id, true, person.id);
     expect((await projects.service.getAssignment(a.id))?.status).toBe("accepted");
     expect((await projects.service.getAssignment(b.id))?.status).toBe("accepted");
+    expect((await projects.service.listProjectsForUser(person.id)).filter((p) => p.id === project.id)).toHaveLength(1);
   });
 
   it("project roles: direct additions cannot overfill and reducing seats cancels pending invites", async () => {

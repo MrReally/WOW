@@ -1442,8 +1442,11 @@ export function createProjectsService(
       const rows = await query<ProjectRow>(
         db,
         `SELECT p.* FROM projects.projects p
-         JOIN projects.assignments a ON a.project_id = p.id
-         WHERE a.user_id = $1 AND a.status IN ('added','accepted')
+         WHERE EXISTS (
+           SELECT 1 FROM projects.assignments a
+           WHERE a.project_id = p.id AND a.user_id = $1
+             AND a.status IN ('added','accepted')
+         )
          ORDER BY p.starts_at`,
         [userId]
       );
