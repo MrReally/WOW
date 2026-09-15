@@ -40,7 +40,7 @@ export function SettingsPage() {
     if (!cableSettings.data) return;
     setConnectors(cableSettings.data.connectors.join("\n"));
     setNameFormat(cableSettings.data.nameFormat.join(" "));
-    setExtensionNameFormat((cableSettings.data.extensionNameFormat ?? ["E", "length", "m", "outlets", "s"]).join(" "));
+    setExtensionNameFormat((cableSettings.data.extensionNameFormat ?? ["E[length]m[outlets]s"]).join(" "));
   }, [cableSettings.data]);
 
   return (
@@ -124,13 +124,13 @@ export function SettingsPage() {
               </div>
               <div>
                 <p className="card__title">Формат имени</p>
-                <Input value={nameFormat} onChange={(e) => setNameFormat(e.target.value)} placeholder="sideA arrow sideB length" />
-                <p className="card__subtitle" style={{ marginTop: 6 }}>Токены: sideA, arrow, sideB, length, type, name</p>
+                <Input value={nameFormat} onChange={(e) => setNameFormat(e.target.value)} placeholder="[sideA] [arrow] [sideB] [length]" />
+                <p className="card__subtitle" style={{ marginTop: 6 }}>Переменные: [sideA], [arrow], [sideB], [length], [type], [name]</p>
               </div>
               <div>
                 <p className="card__title">Формат имени удлинителя</p>
-                <Input value={extensionNameFormat} onChange={(e) => setExtensionNameFormat(e.target.value)} placeholder="E length m outlets s" />
-                <p className="card__subtitle" style={{ marginTop: 6 }}>Токены: length, outlets, type, name. Например: E length m outlets s → E10m4s</p>
+                <Input value={extensionNameFormat} onChange={(e) => setExtensionNameFormat(e.target.value)} placeholder="E[length]m[outlets]s" />
+                <p className="card__subtitle" style={{ marginTop: 6 }}>Переменные: [length], [outlets], [type], [name]. Например: E[length]m[outlets]s → E10m4s</p>
               </div>
               <Button
                 variant="secondary"
@@ -139,7 +139,7 @@ export function SettingsPage() {
                   setCableSettings.mutate({
                     connectors: connectors.split("\n").map((x) => x.trim()).filter(Boolean),
                     nameFormat: nameFormat.split(/\s+/).map((x) => x.trim()).filter(Boolean),
-                    extensionNameFormat: extensionNameFormat.split(/[\s*]+/).map((x) => x.trim()).filter(Boolean),
+                    extensionNameFormat: extensionNameFormat.split(/\s+/).map((x) => x.trim()).filter(Boolean),
                   })
                 }
               >

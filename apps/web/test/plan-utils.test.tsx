@@ -3,7 +3,7 @@ import { render } from "@testing-library/react";
 import type { Equipment, Plans } from "@sever/contracts";
 import { StageCanvas } from "../src/features/plans/StageCanvas.tsx";
 import { calculatePower, findDmxConflicts, isCableCompatible, stageSymbol } from "../src/features/plans/planUtils.ts";
-import { formatExtensionModel } from "../src/features/warehouse/cables.ts";
+import { formatCableModel, formatExtensionModel } from "../src/features/warehouse/cables.ts";
 
 const now = "2026-07-17T00:00:00.000Z";
 const model = (id: string, attrs: Record<string, unknown>, trackingMode: Equipment.TrackingMode = "serial"): Equipment.EquipmentModelDTO => ({ id, typeId: "type", trackingMode, name: id, manufacturer: null, imageUrl: null, unitCostEUR: 0, dailyPriceEUR: 0, attrs, requiredComponentModelIds: [], createdAt: now });
@@ -12,7 +12,13 @@ const element = (id: string, layer: Plans.PlanLayer, kind: Plans.PlanElementKind
 describe("stage plan calculations and abuse cases", () => {
   it("builds a serial extension name from the configured template", () => {
     const extension = model("Удлинитель", { cableType: "Power", lengthM: 10, sideAConnector: "Schuko plug", sideAQty: 1, sideBConnector: "Schuko socket", sideBQty: 4 }, "serial");
-    expect(formatExtensionModel(extension, ["E", "length", "m", "outlets", "s"])).toBe("E10m4s");
+    expect(formatExtensionModel(extension, ["E[length]m[outlets]s"])).toBe("E10m4s");
+  });
+
+  it("replaces only bracketed variables inside auto-name text", () => {
+    const extension = model("Удлинитель", { cableType: "Power", lengthM: 10, sideAConnector: "Schuko plug", sideAQty: 1, sideBConnector: "Schuko socket", sideBQty: 4 }, "serial");
+    expect(formatExtensionModel(extension, ["length-[length]m-[outlets]s"])).toBe("length-10m-4s");
+    expect(formatCableModel(extension, ["[type]", "cable", "[length]"])).toBe("Power cable 10m");
   });
 
   it("detects overlapping DMX ranges only inside the same universe", () => {

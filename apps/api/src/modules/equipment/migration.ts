@@ -25,10 +25,30 @@ CREATE TABLE IF NOT EXISTS equipment.settings (
     'CEE 16A male','CEE 16A female','CEE 32A male','CEE 32A female',
     'RCA male','RCA female','etherCON','RJ45'
   ],
-  cable_name_format text[] NOT NULL DEFAULT ARRAY['sideA','arrow','sideB','length']
+  cable_name_format text[] NOT NULL DEFAULT ARRAY['[sideA]','[arrow]','[sideB]','[length]']
 );
-ALTER TABLE equipment.settings ADD COLUMN IF NOT EXISTS extension_name_format text[] NOT NULL DEFAULT ARRAY['E','length','m','outlets','s'];
+ALTER TABLE equipment.settings ALTER COLUMN cable_name_format SET DEFAULT ARRAY['[sideA]','[arrow]','[sideB]','[length]'];
+ALTER TABLE equipment.settings ADD COLUMN IF NOT EXISTS extension_name_format text[] NOT NULL DEFAULT ARRAY['E[length]m[outlets]s'];
+ALTER TABLE equipment.settings ALTER COLUMN extension_name_format SET DEFAULT ARRAY['E[length]m[outlets]s'];
 INSERT INTO equipment.settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+UPDATE equipment.settings
+SET cable_name_format = ARRAY(
+  SELECT CASE token
+    WHEN 'sideA' THEN '[sideA]' WHEN 'arrow' THEN '[arrow]' WHEN 'sideB' THEN '[sideB]'
+    WHEN 'length' THEN '[length]' WHEN 'type' THEN '[type]' WHEN 'name' THEN '[name]'
+    ELSE token END
+  FROM unnest(cable_name_format) WITH ORDINALITY AS item(token, position)
+  ORDER BY position
+);
+UPDATE equipment.settings
+SET extension_name_format = ARRAY(
+  SELECT CASE token
+    WHEN 'length' THEN '[length]' WHEN 'outlets' THEN '[outlets]'
+    WHEN 'type' THEN '[type]' WHEN 'name' THEN '[name]'
+    ELSE token END
+  FROM unnest(extension_name_format) WITH ORDINALITY AS item(token, position)
+  ORDER BY position
+);
 
 CREATE TABLE IF NOT EXISTS equipment.models (
   id                           uuid PRIMARY KEY DEFAULT gen_random_uuid(),

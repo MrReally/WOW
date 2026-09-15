@@ -23,7 +23,11 @@ export function cableAttrs(model: Equipment.EquipmentModelDTO): Equipment.CableA
   };
 }
 
-export function formatCableModel(model: Equipment.EquipmentModelDTO, format: string[] = ["sideA", "arrow", "sideB", "length"]): string {
+function interpolateNameFormat(format: string[], values: Record<string, string>, separator: string): string {
+  return format.map((fragment) => fragment.replace(/\[([A-Za-z][A-Za-z0-9]*)\]/g, (placeholder, key: string) => values[key] ?? placeholder)).join(separator);
+}
+
+export function formatCableModel(model: Equipment.EquipmentModelDTO, format: string[] = ["[sideA]", "[arrow]", "[sideB]", "[length]"]): string {
   const attrs = cableAttrs(model);
   if (!attrs) return model.name;
   const side = (qty: number, connector: string, ends?:string[]) => ends?.length ? ends.join(" + ") : `${qty > 1 ? `${qty}x ` : ""}${connector || "?"}`;
@@ -35,10 +39,10 @@ export function formatCableModel(model: Equipment.EquipmentModelDTO, format: str
     length: attrs.lengthM ? `${attrs.lengthM}m` : "",
     name: model.name,
   };
-  return format.map((key) => parts[key] ?? key).filter(Boolean).join(" ").replace(/\s+->\s+/g, " -> ").trim();
+  return interpolateNameFormat(format, parts, " ").replace(/\s+/g, " ").replace(/\s+->\s+/g, " -> ").trim();
 }
 
-export function formatExtensionModel(model: Equipment.EquipmentModelDTO, format: string[] = ["E", "length", "m", "outlets", "s"]): string {
+export function formatExtensionModel(model: Equipment.EquipmentModelDTO, format: string[] = ["E[length]m[outlets]s"]): string {
   const attrs = cableAttrs(model);
   if (!attrs) return model.name;
   const parts: Record<string, string> = {
@@ -47,5 +51,5 @@ export function formatExtensionModel(model: Equipment.EquipmentModelDTO, format:
     type: attrs.cableType,
     name: model.name,
   };
-  return format.map((token) => parts[token] ?? token).join("").trim();
+  return interpolateNameFormat(format, parts, "").trim();
 }

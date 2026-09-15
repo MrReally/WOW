@@ -507,7 +507,7 @@ export function createEquipmentService(
          VALUES (1,$1,$2,$3)
          ON CONFLICT (id) DO UPDATE SET cable_connectors=$1, cable_name_format=$2, extension_name_format=$3
          RETURNING cable_connectors, cable_name_format, extension_name_format`,
-        [connectors, format.length ? format : ["sideA", "arrow", "sideB", "length"], extensionFormat.length ? extensionFormat.slice(0, 12) : ["E", "length", "m", "outlets", "s"]]
+        [connectors, format.length ? format : ["[sideA]", "[arrow]", "[sideB]", "[length]"], extensionFormat.length ? extensionFormat.slice(0, 12) : ["E[length]m[outlets]s"]]
       );
       return cableSettingsDTO(row!);
     },
