@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { env } from "../src/env.js";
-import { editTelegramMessage, sendTelegramDocument } from "../src/core/telegram.js";
+import { downloadTelegramFile, editTelegramMessage, sendTelegramDocument } from "../src/core/telegram.js";
 
 const originalBotToken = env.auth.telegramBotToken;
 
@@ -38,6 +38,31 @@ describe("Telegram document delivery", () => {
 
     await expect(sendTelegramDocument("@username", Buffer.from("pdf"), "invoice.pdf")).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("Telegram file download", () => {
+  it("downloads a Telegram photo with its content type", async () => {
+    env.auth.telegramBotToken = "test-token";
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ ok: true, result: { file_path: "photos/portrait.jpg" } }))
+      .mockResolvedValueOnce(new Response("photo-bytes", { headers: { "Content-Type": "image/jpeg" } }));
+
+    const file = await downloadTelegramFile("portrait id");
+
+    expect(file?.contentType).toBe("image/jpeg");
+    expect(file?.bytes.toString()).toBe("photo-bytes");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://api.telegram.org/bottest-token/getFile?file_id=portrait%20id",
+      "https://api.telegram.org/file/bottest-token/photos/portrait.jpg",
+    ]);
+  });
+
+  it("returns null when Telegram cannot provide the file", async () => {
+    env.auth.telegramBotToken = "test-token";
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+
+    await expect(downloadTelegramFile("portrait")).resolves.toBeNull();
   });
 });
 

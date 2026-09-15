@@ -16,6 +16,11 @@ type MessageLogger = (message: {
 
 let messageLogger: MessageLogger | null = null;
 
+export interface TelegramFile {
+  bytes: Buffer;
+  contentType: string;
+}
+
 export function setTelegramMessageLogger(logger: MessageLogger): void {
   messageLogger = logger;
 }
@@ -25,6 +30,28 @@ async function logBotMessage(input: Parameters<MessageLogger>[0]): Promise<void>
     await messageLogger?.(input);
   } catch {
     // Logging must never break Telegram delivery.
+  }
+}
+
+export async function downloadTelegramFile(fileId: string): Promise<TelegramFile | null> {
+  const token = env.auth.telegramBotToken;
+  if (!token || !fileId) return null;
+
+  try {
+    const fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${encodeURIComponent(fileId)}`);
+    if (!fileRes.ok) return null;
+    const fileJson = await fileRes.json() as { ok?: boolean; result?: { file_path?: string } };
+    const filePath = fileJson.result?.file_path;
+    if (!fileJson.ok || !filePath) return null;
+
+    const contentRes = await fetch(`https://api.telegram.org/file/bot${token}/${filePath}`);
+    if (!contentRes.ok) return null;
+    return {
+      bytes: Buffer.from(await contentRes.arrayBuffer()),
+      contentType: contentRes.headers.get("content-type") ?? "application/octet-stream",
+    };
+  } catch {
+    return null;
   }
 }
 

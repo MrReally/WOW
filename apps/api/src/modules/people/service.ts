@@ -5,6 +5,7 @@ import { BadRequest, Conflict, Forbidden, NotFound, Unauthorized } from "../../c
 import { hashPassword, verifyPassword, randomToken, temporaryPassword } from "../../core/crypto.js";
 import type { EventBus } from "../../core/eventBus.js";
 import { env } from "../../env.js";
+import { downloadTelegramFile } from "../../core/telegram.js";
 
 const SESSION_TTL_DAYS = 30;
 
@@ -722,6 +723,11 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
       const app = await one<CrewApplicationRow>(db, `SELECT * FROM people.crew_applications WHERE id=$1`, [id]);
       if (!app) throw NotFound("crew application", id);
       if (app.status !== "pending") throw BadRequest("анкета уже обработана");
+      const photo = await downloadTelegramFile(app.photo_file_id);
+      if (!photo || !photo.contentType.startsWith("image/")) {
+        throw BadRequest("не удалось загрузить фото из анкеты; попробуйте принять её ещё раз");
+      }
+      const photoUrl = `data:${photo.contentType};base64,${photo.bytes.toString("base64")}`;
       const created = await this.create({
         displayName: [app.first_name, app.last_name, app.patronymic].filter(Boolean).join(" "),
         firstName: app.first_name,
@@ -734,7 +740,7 @@ export function createPeopleService(db: Sql, bus: EventBus): People.PeopleServic
         languages: app.languages,
         about: app.about,
         source: app.source,
-        photoUrl: `telegram-file:${app.photo_file_id}`,
+        photoUrl,
         usePhotoAsAvatar: true,
         birthDate: typeof app.birth_date === "string" ? app.birth_date : app.birth_date.toISOString().slice(0, 10),
       });
