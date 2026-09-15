@@ -579,32 +579,62 @@ export function createEquipmentService(
     async createModel(input) {
       const selectedType = await one<TypeRow>(db,`SELECT * FROM equipment.types WHERE id=$1`,[input.typeId]);
       if (!selectedType) throw NotFound("type", input.typeId);
+      if (input.initialUnits && selectedType.tracking_mode !== "serial") {
+        throw BadRequest("единицы с инвентарными номерами можно создать только для модели с серийным учётом");
+      }
       const defaultCategoryName=input.requiredComponentModelIds?.length?"Комплекты":selectedType.tracking_mode==="cable"?"Кабели":selectedType.tracking_mode==="quantity"?"Комплектующие":"Оборудование";
       const categoryId=input.categoryId??(await one<{id:string}>(db,`SELECT id FROM equipment.categories WHERE name=$1 AND active=true`,[defaultCategoryName]))?.id??null;
-      await query(
-        db,
-        `INSERT INTO equipment.models
-           (type_id, category_id, name, manufacturer, image_url, unit_cost_eur, daily_price_eur, attrs, required_component_model_ids, reservation_assignment_mode)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [
-          input.typeId,
-          categoryId,
-          input.name,
-          input.manufacturer ?? null,
-          input.imageUrl ?? null,
-          input.unitCostEUR,
-          input.dailyPriceEUR,
-          input.attrs ? JSON.stringify(input.attrs) : null,
-          input.requiredComponentModelIds ?? [],
-          selectedType.reservation_assignment_mode ? null : input.reservationAssignmentMode ?? null,
-        ]
-      );
-      const row = await one<ModelRow>(
-        db,
-        `${MODEL_SELECT} WHERE m.type_id=$1 AND m.name=$2 ORDER BY m.created_at DESC LIMIT 1`,
-        [input.typeId, input.name]
-      );
-      return modelDTO(row!);
+      return tx(async (client) => {
+        const initialAssetTags = input.initialUnits
+          ? Array.from(
+              { length: input.initialUnits.count },
+              (_, index) => `${input.initialUnits!.assetTagPrefix}-${String(index + 1).padStart(3, "0")}`
+            )
+          : [];
+        if (initialAssetTags.length > 0) {
+          const existing = await query<{ asset_tag: string }>(
+            client,
+            `SELECT asset_tag FROM equipment.units WHERE asset_tag=ANY($1::text[]) ORDER BY asset_tag`,
+            [initialAssetTags]
+          );
+          if (existing.length > 0) throw BadRequest(`инвентарный номер уже используется: ${existing[0]!.asset_tag}`);
+        }
+
+        const inserted = await one<{ id: string }>(
+          client,
+          `INSERT INTO equipment.models
+             (type_id, category_id, name, manufacturer, image_url, unit_cost_eur, daily_price_eur, attrs, required_component_model_ids, reservation_assignment_mode)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           RETURNING id`,
+          [
+            input.typeId,
+            categoryId,
+            input.name,
+            input.manufacturer ?? null,
+            input.imageUrl ?? null,
+            input.unitCostEUR,
+            input.dailyPriceEUR,
+            input.attrs ? JSON.stringify(input.attrs) : null,
+            input.requiredComponentModelIds ?? [],
+            selectedType.reservation_assignment_mode ? null : input.reservationAssignmentMode ?? null,
+          ]
+        );
+
+        if (initialAssetTags.length > 0) {
+          const warehouseId = await defaultWarehouseId(client);
+          for (const assetTag of initialAssetTags) {
+            const unit = await one<UnitRow>(
+              client,
+              `INSERT INTO equipment.units (model_id, asset_tag, warehouse_id) VALUES ($1,$2,$3) RETURNING *`,
+              [inserted!.id, assetTag, warehouseId]
+            );
+            await appendJournal(client, { unitId: unit!.id, action: "created", toStatus: "in_stock", warehouseId });
+          }
+        }
+
+        const row = await one<ModelRow>(client, `${MODEL_SELECT} WHERE m.id=$1`, [inserted!.id]);
+        return modelDTO(row!);
+      });
     },
     async updateModel(id, input) {
       const existing = await one<ModelRow>(db, `SELECT * FROM equipment.models WHERE id=$1`, [id]);

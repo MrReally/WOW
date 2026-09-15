@@ -56,6 +56,10 @@ const createModelSchema = z.object({
   attrs: modelAttrsSchema.nullable().optional(),
   requiredComponentModelIds: z.array(z.string().uuid()).optional(),
   reservationAssignmentMode: z.enum(["planning", "operations"]).nullable().optional(),
+  initialUnits: z.object({
+    count: z.number().int().min(1).max(999),
+    assetTagPrefix: z.string().trim().min(1).max(80).transform((value) => value.replace(/-+$/, "")).pipe(z.string().min(1)),
+  }).optional(),
 });
 const updateModelSchema = z.object({
   typeId: z.string().uuid().optional(),

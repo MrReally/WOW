@@ -41,6 +41,8 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
   const [sideBConnector, setSideBConnector] = useState("");
   const [serialExtension, setSerialExtension] = useState(false);
   const [modelReservationMode, setModelReservationMode] = useState<Equipment.ReservationAssignmentMode | "">("");
+  const [initialUnitCount, setInitialUnitCount] = useState("0");
+  const [assetTagPrefix, setAssetTagPrefix] = useState("");
 
   // unit form
   const [modelId, setModelId] = useState("");
@@ -54,6 +56,10 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
   const effTypeId = typeId || types[0]?.id || "";
   const effModelId = modelId;
   const selectedType = types.find((t) => t.id === effTypeId);
+  const parsedInitialUnitCount = Number(initialUnitCount);
+  const initialUnitCountValid = initialUnitCount.trim() !== "" && Number.isInteger(parsedInitialUnitCount) && parsedInitialUnitCount >= 0 && parsedInitialUnitCount <= 999;
+  const normalizedInitialUnitCount = initialUnitCountValid ? parsedInitialUnitCount : 0;
+  const normalizedAssetTagPrefix = assetTagPrefix.trim().replace(/-+$/, "");
   const hasExtensionAttrs = selectedType?.trackingMode === "cable" || (selectedType?.trackingMode === "serial" && serialExtension);
   const connectorOptions = cableSettings.data?.connectors ?? [];
   const typeNameById = new Map(types.map((t) => [t.id, t.name]));
@@ -231,9 +237,26 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
               <Input type="number" value={dailyPrice} onChange={(e) => setDailyPrice(e.target.value)} />
             </Field>
           </div>
+          {selectedType?.trackingMode === "serial" && (
+            <>
+              <div className="row">
+                <Field label="Сразу добавить единиц">
+                  <Input type="number" min="0" max="999" value={initialUnitCount} onChange={(e) => setInitialUnitCount(e.target.value)} />
+                </Field>
+                <Field label="Короткая маркировка">
+                  <Input value={assetTagPrefix} onChange={(e) => setAssetTagPrefix(e.target.value)} placeholder="MP" disabled={normalizedInitialUnitCount === 0} />
+                </Field>
+              </div>
+              {normalizedInitialUnitCount > 0 && normalizedAssetTagPrefix && (
+                <p className="card__subtitle">
+                  Будут созданы: {normalizedAssetTagPrefix}-001{normalizedInitialUnitCount > 1 ? ` … ${normalizedAssetTagPrefix}-${String(normalizedInitialUnitCount).padStart(3, "0")}` : ""}
+                </p>
+              )}
+            </>
+          )}
           <Button
             block
-            disabled={(!modelName.trim() && selectedType?.trackingMode !== "cable" && !serialExtension) || !effTypeId || createModel.isPending}
+            disabled={(!modelName.trim() && selectedType?.trackingMode !== "cable" && !serialExtension) || !effTypeId || createModel.isPending || (selectedType?.trackingMode === "serial" && (!initialUnitCountValid || (normalizedInitialUnitCount > 0 && !normalizedAssetTagPrefix)))}
             onClick={() =>
               createModel.mutate(
                 {
@@ -244,8 +267,11 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
                   dailyPriceEUR: Number(dailyPrice),
                   attrs: hasExtensionAttrs ? cableAttrs : undefined,
                   reservationAssignmentMode: selectedType?.reservationAssignmentMode ? null : modelReservationMode || null,
+                  initialUnits: selectedType?.trackingMode === "serial" && normalizedInitialUnitCount > 0
+                    ? { count: normalizedInitialUnitCount, assetTagPrefix: normalizedAssetTagPrefix }
+                    : undefined,
                 },
-                { onSuccess: () => { setModelName(""); setCableType(""); setLengthM(""); setSideAConnector(""); setSideBConnector(""); } }
+                { onSuccess: () => { setModelName(""); setCableType(""); setLengthM(""); setSideAConnector(""); setSideBConnector(""); setInitialUnitCount("0"); setAssetTagPrefix(""); } }
               )
             }
           >

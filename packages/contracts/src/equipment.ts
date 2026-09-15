@@ -495,6 +495,11 @@ export interface CreateModelInput {
   attrs?: CableAttrs | Record<string, unknown> | null;
   requiredComponentModelIds?: ID[];
   reservationAssignmentMode?: ReservationAssignmentMode | null;
+  /** Optionally create the first serial-tracked units together with the model. */
+  initialUnits?: {
+    count: number;
+    assetTagPrefix: string;
+  };
 }
 
 export interface UpdateModelInput {

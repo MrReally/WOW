@@ -43,6 +43,35 @@ afterAll(async () => {
 });
 
 describe("Tech pickup/return → некомплект", () => {
+  it("creates numbered serial units together with a model atomically", async () => {
+    const suffix = randomUUID().slice(0, 8).toUpperCase();
+    const prefix = `BATCH-${suffix}`;
+    const type = await wiring.equipment.service.createType({ name: `Batch type ${suffix}`, trackingMode: "serial" });
+    const model = await wiring.equipment.service.createModel({
+      typeId: type.id,
+      name: `Batch model ${suffix}`,
+      unitCostEUR: 100,
+      dailyPriceEUR: 10,
+      initialUnits: { count: 3, assetTagPrefix: prefix },
+    });
+
+    const units = await wiring.equipment.service.listUnits({ modelId: model.id });
+    expect(units.map((unit) => unit.assetTag)).toEqual([`${prefix}-001`, `${prefix}-002`, `${prefix}-003`]);
+    await expect(Promise.all(units.map((unit) => wiring.equipment.service.getUnitJournal(unit.id)))).resolves.toEqual(
+      units.map(() => [expect.objectContaining({ action: "created", toStatus: "in_stock" })])
+    );
+
+    const failedName = `Conflicting batch ${suffix}`;
+    await expect(wiring.equipment.service.createModel({
+      typeId: type.id,
+      name: failedName,
+      unitCostEUR: 100,
+      dailyPriceEUR: 10,
+      initialUnits: { count: 1, assetTagPrefix: prefix },
+    })).rejects.toThrow(`инвентарный номер уже используется: ${prefix}-001`);
+    expect((await wiring.equipment.service.listModels(type.id)).some((candidate) => candidate.name === failedName)).toBe(false);
+  });
+
   it("keeps the stable Telegram chat link when an admin edits the username", async () => {
     const username = `nathy_${Date.now()}`;
     const chatId = String(Date.now());
