@@ -19,6 +19,7 @@ describe("stage plan calculations and abuse cases", () => {
     const extension = model("Удлинитель", { cableType: "Power", lengthM: 10, sideAConnector: "Schuko plug", sideAQty: 1, sideBConnector: "Schuko socket", sideBQty: 4 }, "serial");
     expect(formatExtensionModel(extension, ["length-[length]m-[outlets]s"])).toBe("length-10m-4s");
     expect(formatCableModel(extension, ["[type]", "cable", "[length]"])).toBe("Power cable 10m");
+    expect(formatCableModel(extension, ["[sideA]-[sideB]-[length]"])).toBe("Schuko plug-4x Schuko socket-10m");
   });
 
   it("detects overlapping DMX ranges only inside the same universe", () => {
