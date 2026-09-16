@@ -3,6 +3,26 @@ import type { Equipment } from "@sever/contracts";
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+export function nameFormatForInput(format: string[], separator: " " | ""): string {
+  return format.join(separator);
+}
+
+export function nameFormatFromInput(value: string): string[] {
+  const template = value.trim();
+  return template ? [template] : [];
+}
+
+export function extensionConnectorDefault(connectors: string[], side: "A" | "B"): string {
+  const name = side === "A" ? "Schuko plug male" : "Schuko socket female";
+  return connectors.find((connector) => connector.trim().toLowerCase() === name.toLowerCase()) ?? "";
+}
+
+export function extensionAssetTagPrefix(name: string, lengthM: number, outlets: number): string {
+  const compactName = name.trim();
+  if (compactName.length <= 24 && /^[\p{L}\p{N}._-]+$/u.test(compactName)) return compactName;
+  return lengthM > 0 ? `E${lengthM}m${outlets}s` : "";
+}
+
 export function cableAttrs(model: Equipment.EquipmentModelDTO): Equipment.CableAttrs | null {
   // `cable` controls stock counting; serial-tracked extensions can carry the
   // same physical characteristics in attrs.

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Equipment } from "@sever/contracts";
 import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
-import { formatCableModel, formatExtensionModel } from "../cables.ts";
+import { extensionAssetTagPrefix, extensionConnectorDefault, formatCableModel, formatExtensionModel } from "../cables.ts";
 import { useCableSettings, useCategories, useCreateModel, useCreateType, useCreateUnit, useModelStockAtWarehouse, useSetModelStock, useWarehouses } from "../hooks.ts";
 
 interface Props {
@@ -40,6 +40,9 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
   const [sideBQty, setSideBQty] = useState("1");
   const [sideBConnector, setSideBConnector] = useState("");
   const [serialExtension, setSerialExtension] = useState(false);
+  const [autoExtensionName, setAutoExtensionName] = useState(false);
+  const [autoAssetTagPrefix, setAutoAssetTagPrefix] = useState(false);
+  const [prefillExtensionConnectors, setPrefillExtensionConnectors] = useState(false);
   const [modelReservationMode, setModelReservationMode] = useState<Equipment.ReservationAssignmentMode | "">("");
   const [initialUnitCount, setInitialUnitCount] = useState("0");
   const [assetTagPrefix, setAssetTagPrefix] = useState("");
@@ -114,9 +117,45 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
     cableSettings.data?.nameFormat
   );
   const extensionPreview = formatExtensionModel(
-    { id: "preview", typeId: effTypeId, trackingMode: "serial", name: modelName.trim(), manufacturer: null, imageUrl: null, unitCostEUR: 0, dailyPriceEUR: 0, attrs: cableAttrs, requiredComponentModelIds: [], createdAt: "" },
+    { id: "preview", typeId: effTypeId, trackingMode: "serial", name: "Удлинитель", manufacturer: null, imageUrl: null, unitCostEUR: 0, dailyPriceEUR: 0, attrs: cableAttrs, requiredComponentModelIds: [], createdAt: "" },
     cableSettings.data?.extensionNameFormat
   );
+  const isSerialExtension = selectedType?.trackingMode === "serial" && serialExtension;
+  const usesAutoName = (selectedType?.trackingMode === "cable" && !modelName.trim()) || (isSerialExtension && autoExtensionName);
+  const autoName = selectedType?.trackingMode === "cable" ? cablePreview : extensionPreview;
+  const shortExtensionName = extensionAssetTagPrefix(modelName, cableAttrs.lengthM, cableAttrs.sideBQty);
+
+  useEffect(() => {
+    if (!isSerialExtension || !autoExtensionName || !cableSettings.data) return;
+    setModelName((current) => current === extensionPreview ? current : extensionPreview);
+  }, [isSerialExtension, autoExtensionName, cableSettings.data, extensionPreview]);
+
+  useEffect(() => {
+    if (!isSerialExtension || !autoAssetTagPrefix) return;
+    setAssetTagPrefix((current) => current === shortExtensionName ? current : shortExtensionName);
+  }, [isSerialExtension, autoAssetTagPrefix, shortExtensionName]);
+
+  useEffect(() => {
+    if (!isSerialExtension || !prefillExtensionConnectors || !cableSettings.data) return;
+    setSideAConnector((current) => current || extensionConnectorDefault(cableSettings.data!.connectors, "A"));
+    setSideBConnector((current) => current || extensionConnectorDefault(cableSettings.data!.connectors, "B"));
+    setPrefillExtensionConnectors(false);
+  }, [isSerialExtension, prefillExtensionConnectors, cableSettings.data]);
+
+  const toggleSerialExtension = (checked: boolean) => {
+    setSerialExtension(checked);
+    setPrefillExtensionConnectors(checked);
+    if (checked) {
+      setCableType("Power");
+      setAutoExtensionName(true);
+      setAutoAssetTagPrefix(true);
+    } else {
+      if (autoExtensionName) setModelName("");
+      if (autoAssetTagPrefix) setAssetTagPrefix("");
+      setAutoExtensionName(false);
+      setAutoAssetTagPrefix(false);
+    }
+  };
 
   const pickModelBySearch = (value: string) => {
     setModelSearch(value);
@@ -175,15 +214,18 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
       {tab === "model" && (
         <>
           <Field label="Тип">
-            <Select value={effTypeId} onChange={(e) => setTypeId(e.target.value)} options={types.map((t) => ({ value: t.id, label: t.name }))} />
+            <Select value={effTypeId} onChange={(e) => { setTypeId(e.target.value); if (types.find((type) => type.id === e.target.value)?.trackingMode !== "serial" && serialExtension) toggleSerialExtension(false); }} options={types.map((t) => ({ value: t.id, label: t.name }))} />
           </Field>
           <Field label="Категория"><Select value={categoryId} onChange={e=>setCategoryId(e.target.value)} options={[{value:"",label:"Без категории"},...(categories.data??[]).map(category=>({value:category.id,label:category.name}))]}/></Field>
           <Field label="Название модели">
-            <Input value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder={selectedType?.trackingMode === "cable" ? cablePreview : serialExtension ? extensionPreview : "Robe MegaPointe"} />
+            <Input value={modelName} onChange={(e) => { setModelName(e.target.value); if (isSerialExtension) setAutoExtensionName(false); }} placeholder={selectedType?.trackingMode === "cable" ? cablePreview : "Robe MegaPointe"} />
           </Field>
+          {isSerialExtension && !autoExtensionName && <Button variant="secondary" onClick={() => setAutoExtensionName(true)}>Подставить имя по шаблону</Button>}
+          {selectedType?.trackingMode === "cable" && <p className="card__subtitle">Оставьте пустым для имени по сохранённому шаблону.</p>}
+          {usesAutoName && cableSettings.isError && <p className="card__subtitle">Не удалось загрузить шаблон имени. Повторите загрузку настроек.</p>}
           {selectedType?.trackingMode === "serial" && (
             <label className="chip chip--neutral" style={{ marginBottom: 10 }}>
-              <input type="checkbox" checked={serialExtension} onChange={(e) => setSerialExtension(e.target.checked)} />
+              <input type="checkbox" checked={serialExtension} onChange={(e) => toggleSerialExtension(e.target.checked)} />
               Это удлинитель: хранить длину и розетки
             </label>
           )}
@@ -244,7 +286,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
                   <Input type="number" min="0" max="999" value={initialUnitCount} onChange={(e) => setInitialUnitCount(e.target.value)} />
                 </Field>
                 <Field label="Короткая маркировка">
-                  <Input value={assetTagPrefix} onChange={(e) => setAssetTagPrefix(e.target.value)} placeholder="MP" disabled={normalizedInitialUnitCount === 0} />
+                  <Input value={assetTagPrefix} onChange={(e) => { setAssetTagPrefix(e.target.value); if (isSerialExtension) setAutoAssetTagPrefix(false); }} placeholder="MP" disabled={normalizedInitialUnitCount === 0} />
                 </Field>
               </div>
               {normalizedInitialUnitCount > 0 && normalizedAssetTagPrefix && (
@@ -256,13 +298,13 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
           )}
           <Button
             block
-            disabled={(!modelName.trim() && selectedType?.trackingMode !== "cable" && !serialExtension) || !effTypeId || createModel.isPending || (selectedType?.trackingMode === "serial" && (!initialUnitCountValid || (normalizedInitialUnitCount > 0 && !normalizedAssetTagPrefix)))}
+            disabled={(!modelName.trim() && selectedType?.trackingMode !== "cable") || (usesAutoName && (!cableSettings.data || !autoName.trim())) || !effTypeId || createModel.isPending || (selectedType?.trackingMode === "serial" && (!initialUnitCountValid || (normalizedInitialUnitCount > 0 && !normalizedAssetTagPrefix)))}
             onClick={() =>
               createModel.mutate(
                 {
                   typeId: effTypeId,
                   categoryId: categoryId || null,
-                  name: modelName.trim() || (selectedType?.trackingMode === "cable" ? cablePreview : serialExtension ? extensionPreview : ""),
+                  name: isSerialExtension && autoExtensionName ? extensionPreview : modelName.trim() || (selectedType?.trackingMode === "cable" ? cablePreview : ""),
                   unitCostEUR: Number(unitCost),
                   dailyPriceEUR: Number(dailyPrice),
                   attrs: hasExtensionAttrs ? cableAttrs : undefined,
@@ -271,7 +313,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
                     ? { count: normalizedInitialUnitCount, assetTagPrefix: normalizedAssetTagPrefix }
                     : undefined,
                 },
-                { onSuccess: () => { setModelName(""); setCableType(""); setLengthM(""); setSideAConnector(""); setSideBConnector(""); setInitialUnitCount("0"); setAssetTagPrefix(""); } }
+                { onSuccess: () => { setModelName(""); setCableType(""); setLengthM(""); setSideAConnector(""); setSideBConnector(""); setSideAQty("1"); setSideBQty("1"); setSerialExtension(false); setAutoExtensionName(false); setAutoAssetTagPrefix(false); setPrefillExtensionConnectors(false); setInitialUnitCount("0"); setAssetTagPrefix(""); } }
               )
             }
           >

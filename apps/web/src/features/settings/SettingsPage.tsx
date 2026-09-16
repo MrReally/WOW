@@ -7,6 +7,7 @@ import { useSession } from "../../app/session.ts";
 import { useAllCalendarFeed, useCreateDressCodeOption, useDateTimeSettings, useDressCodeOptions, useFxRates, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetTelegramInboxSettings, useTelegramInboxSettings, useUpdateDressCodeOption } from "./hooks.ts";
 import { RoleEditor } from "./components/RoleEditor.tsx";
 import { useCableSettings, useSetCableSettings } from "../warehouse/hooks.ts";
+import { nameFormatForInput, nameFormatFromInput } from "../warehouse/cables.ts";
 import { BackupManager } from "./components/BackupManager.tsx";
 import { FleetManager } from "./components/FleetManager.tsx";
 
@@ -39,8 +40,8 @@ export function SettingsPage() {
   useEffect(() => {
     if (!cableSettings.data) return;
     setConnectors(cableSettings.data.connectors.join("\n"));
-    setNameFormat(cableSettings.data.nameFormat.join(" "));
-    setExtensionNameFormat((cableSettings.data.extensionNameFormat ?? ["E[length]m[outlets]s"]).join(" "));
+    setNameFormat(nameFormatForInput(cableSettings.data.nameFormat, " "));
+    setExtensionNameFormat(nameFormatForInput(cableSettings.data.extensionNameFormat ?? ["E[length]m[outlets]s"], ""));
   }, [cableSettings.data]);
 
   return (
@@ -138,8 +139,8 @@ export function SettingsPage() {
                 onClick={() =>
                   setCableSettings.mutate({
                     connectors: connectors.split("\n").map((x) => x.trim()).filter(Boolean),
-                    nameFormat: nameFormat.split(/\s+/).map((x) => x.trim()).filter(Boolean),
-                    extensionNameFormat: extensionNameFormat.split(/\s+/).map((x) => x.trim()).filter(Boolean),
+                    nameFormat: nameFormatFromInput(nameFormat),
+                    extensionNameFormat: nameFormatFromInput(extensionNameFormat),
                   })
                 }
               >

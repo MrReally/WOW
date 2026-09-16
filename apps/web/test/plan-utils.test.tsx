@@ -3,7 +3,7 @@ import { render } from "@testing-library/react";
 import type { Equipment, Plans } from "@sever/contracts";
 import { StageCanvas } from "../src/features/plans/StageCanvas.tsx";
 import { calculatePower, findDmxConflicts, isCableCompatible, stageSymbol } from "../src/features/plans/planUtils.ts";
-import { formatCableModel, formatExtensionModel } from "../src/features/warehouse/cables.ts";
+import { extensionAssetTagPrefix, formatCableModel, formatExtensionModel, nameFormatForInput, nameFormatFromInput } from "../src/features/warehouse/cables.ts";
 
 const now = "2026-07-17T00:00:00.000Z";
 const model = (id: string, attrs: Record<string, unknown>, trackingMode: Equipment.TrackingMode = "serial"): Equipment.EquipmentModelDTO => ({ id, typeId: "type", trackingMode, name: id, manufacturer: null, imageUrl: null, unitCostEUR: 0, dailyPriceEUR: 0, attrs, requiredComponentModelIds: [], createdAt: now });
@@ -20,6 +20,19 @@ describe("stage plan calculations and abuse cases", () => {
     expect(formatExtensionModel(extension, ["length-[length]m-[outlets]s"])).toBe("length-10m-4s");
     expect(formatCableModel(extension, ["[type]", "cable", "[length]"])).toBe("Power cable 10m");
     expect(formatCableModel(extension, ["[sideA]-[sideB]-[length]"])).toBe("Schuko plug-4x Schuko socket-10m");
+  });
+
+  it("preserves literal spaces when saving a new template and opens legacy fragments correctly", () => {
+    const template = "Удлинитель [length] м / [outlets] розетки";
+    expect(nameFormatFromInput(template)).toEqual([template]);
+    expect(nameFormatForInput(nameFormatFromInput(template), "")).toBe(template);
+    expect(nameFormatForInput(["E", "[length]", "m", "[outlets]", "s"], "")).toBe("E[length]m[outlets]s");
+    expect(nameFormatForInput(["[sideA]", "[arrow]", "[sideB]", "[length]"], " ")).toBe("[sideA] [arrow] [sideB] [length]");
+  });
+
+  it("uses a compact extension name for unit tags and a short fallback for descriptive names", () => {
+    expect(extensionAssetTagPrefix("E10m4s", 10, 4)).toBe("E10m4s");
+    expect(extensionAssetTagPrefix("Удлинитель 10 м / 4 розетки", 10, 4)).toBe("E10m4s");
   });
 
   it("detects overlapping DMX ranges only inside the same universe", () => {

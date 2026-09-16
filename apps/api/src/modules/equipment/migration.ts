@@ -30,25 +30,28 @@ CREATE TABLE IF NOT EXISTS equipment.settings (
 ALTER TABLE equipment.settings ALTER COLUMN cable_name_format SET DEFAULT ARRAY['[sideA]','[arrow]','[sideB]','[length]'];
 ALTER TABLE equipment.settings ADD COLUMN IF NOT EXISTS extension_name_format text[] NOT NULL DEFAULT ARRAY['E[length]m[outlets]s'];
 ALTER TABLE equipment.settings ALTER COLUMN extension_name_format SET DEFAULT ARRAY['E[length]m[outlets]s'];
+ALTER TABLE equipment.settings ADD COLUMN IF NOT EXISTS name_format_syntax_version integer NOT NULL DEFAULT 1;
 INSERT INTO equipment.settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 UPDATE equipment.settings
-SET cable_name_format = ARRAY(
+SET cable_name_format = CASE WHEN cardinality(cable_name_format) <= 1 OR position('[' in array_to_string(cable_name_format, '')) > 0
+  THEN cable_name_format ELSE ARRAY(
   SELECT CASE token
     WHEN 'sideA' THEN '[sideA]' WHEN 'arrow' THEN '[arrow]' WHEN 'sideB' THEN '[sideB]'
     WHEN 'length' THEN '[length]' WHEN 'type' THEN '[type]' WHEN 'name' THEN '[name]'
     ELSE token END
   FROM unnest(cable_name_format) WITH ORDINALITY AS item(token, position)
   ORDER BY position
-);
-UPDATE equipment.settings
-SET extension_name_format = ARRAY(
+  ) END, extension_name_format = CASE WHEN cardinality(extension_name_format) <= 1 OR position('[' in array_to_string(extension_name_format, '')) > 0
+  THEN extension_name_format ELSE ARRAY(
   SELECT CASE token
     WHEN 'length' THEN '[length]' WHEN 'outlets' THEN '[outlets]'
     WHEN 'type' THEN '[type]' WHEN 'name' THEN '[name]'
     ELSE token END
   FROM unnest(extension_name_format) WITH ORDINALITY AS item(token, position)
   ORDER BY position
-);
+  ) END, name_format_syntax_version = 2
+WHERE name_format_syntax_version < 2;
+ALTER TABLE equipment.settings ALTER COLUMN name_format_syntax_version SET DEFAULT 2;
 
 CREATE TABLE IF NOT EXISTS equipment.models (
   id                           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
