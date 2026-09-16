@@ -437,6 +437,47 @@ describe("Tech pickup/return → некомплект", () => {
     expect(after.some((p) => p.kind === "reservation_conflict")).toBe(true);
   });
 
+  it("releases cancelled bookings and recalculates peak demand when project dates change", async () => {
+    const { projects, equipment } = wiring;
+    const suffix = randomUUID().slice(0, 8);
+    const type = await equipment.service.createType({ name: `Availability ${suffix}`, trackingMode: "serial" });
+    const model = await equipment.service.createModel({
+      typeId: type.id, name: `LED bar ${suffix}`, unitCostEUR: 1, dailyPriceEUR: 1,
+      initialUnits: { count: 9, assetTagPrefix: `LED-${suffix}` },
+    });
+    const client = await projects.service.createClient({ name: `Availability ${suffix}` });
+    const from = "2026-09-18T00:00:00.000Z";
+    const to = "2026-09-19T00:00:00.000Z";
+    const main = await projects.service.createProject({ name: "Main", clientId: client.id, startsAt: from, endsAt: to });
+    const cancelled = await projects.service.createProject({ name: "Cancel me", clientId: client.id, startsAt: from, endsAt: to });
+    await projects.service.createReservation({ projectId: main.id, modelId: model.id, qty: 4 });
+    const oldBooking = await projects.service.createReservation({ projectId: cancelled.id, modelId: model.id, qty: 6 });
+    expect(await projects.service.reservationAvailability(model.id, from, to)).toMatchObject({ total: 9, booked: 10, free: 0, shortage: 1 });
+
+    await projects.service.setStatus(cancelled.id, "cancelled");
+    expect(await projects.service.reservationAvailability(model.id, from, to)).toMatchObject({ total: 9, booked: 4, free: 5, shortage: 0 });
+    expect((await projects.service.findOverlapping(model.id, from, to)).map((r) => r.id)).not.toContain(oldBooking.id);
+    expect((await projects.service.listProblems()).filter((p) => p.kind === "reservation_conflict" && !p.resolved && p.refs.projectId === main.id)).toHaveLength(0);
+
+    await projects.service.setStatus(cancelled.id, "draft");
+    expect(await projects.service.reservationAvailability(model.id, from, to)).toMatchObject({ booked: 10, shortage: 1 });
+    await projects.service.updateProject(cancelled.id, { startsAt: "2026-09-20T00:00:00.000Z", endsAt: "2026-09-21T00:00:00.000Z" });
+    expect(await projects.service.reservationAvailability(model.id, from, to)).toMatchObject({ booked: 4, shortage: 0 });
+    await projects.service.updateProject(cancelled.id, { startsAt: null, endsAt: null });
+    expect((await projects.service.listReservations(cancelled.id))[0]).toMatchObject({ startsAt: null, endsAt: null });
+    expect((await projects.service.listProblems()).filter((p) => p.kind === "reservation_conflict" && !p.resolved && p.refs.projectId === cancelled.id)).toHaveLength(0);
+
+    const morning = await projects.service.createProject({ name: "Morning", clientId: client.id, startsAt: from, endsAt: "2026-09-18T12:00:00.000Z" });
+    const evening = await projects.service.createProject({ name: "Evening", clientId: client.id, startsAt: "2026-09-18T12:00:00.000Z", endsAt: to });
+    await projects.service.createReservation({ projectId: morning.id, modelId: model.id, qty: 5 });
+    await projects.service.createReservation({ projectId: evening.id, modelId: model.id, qty: 5 });
+    expect(await projects.service.reservationAvailability(model.id, from, to)).toMatchObject({ total: 9, booked: 9, free: 0, shortage: 0 });
+    const [unit] = await equipment.service.listUnits({ modelId: model.id });
+    if (!unit) throw new Error("Expected an equipment unit");
+    await equipment.service.updateUnit(unit.id, { archived: true });
+    expect(await projects.service.reservationAvailability(model.id, from, to)).toMatchObject({ total: 8, booked: 9, free: 0, shortage: 1 });
+  });
+
   it("only loss problems can be manually hidden from Apex", async () => {
     const { equipment } = wiring;
     const tech = await makeTech("Loss Tech");

@@ -1556,7 +1556,7 @@ function ReservationAvailabilityLine({
   return (
     <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: compact ? 6 : 10 }}>
       <Chip label={`свободно ${free}`} tone={shortage ? "warn" : "ok"} />
-      <Chip label={`забронировано ${availability.booked}`} tone="neutral" />
+      <Chip label={`макс. одновременно ${availability.booked}`} tone="neutral" />
       <Chip label={`всего ${availability.total}`} tone="neutral" />
       {shortage > 0 && <Chip label={`не хватает ${shortage}`} tone="warn" />}
     </div>

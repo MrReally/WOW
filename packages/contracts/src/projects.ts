@@ -118,6 +118,7 @@ export interface ReservationAvailabilityDTO {
   startsAt: ISODateTime;
   endsAt: ISODateTime;
   total: number;
+  /** Maximum number of units reserved at the same instant in this interval. */
   booked: number;
   free: number;
   shortage: number;

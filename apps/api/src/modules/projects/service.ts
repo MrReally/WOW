@@ -1,6 +1,7 @@
 import { PROJECT_CHECKLIST_GROUPS, type Equipment, type Projects, type Problem, type ISODateTime, type ID } from "@sever/contracts";
 import { one, query, tx, type Sql } from "../../core/db.js";
 import { NotFound, BadRequest, Conflict } from "../../core/errors.js";
+import { peakBookedQuantity } from "./reservationAvailability.js";
 
 function assertRange(startsAt: string | null, endsAt: string | null) {
   if (startsAt === null && endsAt === null) return;
@@ -391,28 +392,32 @@ export function createProjectsService(
           db,
           `SELECT COUNT(*)::text AS total
            FROM equipment.units
-           WHERE model_id=$1 AND status IN ('in_stock','reserved','on_project')`,
+           WHERE model_id=$1 AND archived_at IS NULL
+             AND status IN ('in_stock','reserved','on_project')`,
           [modelId]
         );
-    const bookedRow = await one<{ booked: string }>(
+    const bookingRows = await query<{ starts_at: Date; ends_at: Date; qty: number }>(
       db,
-      `SELECT COALESCE(SUM(qty),0)::text AS booked
-       FROM projects.reservations
-       WHERE model_id=$1 AND starts_at < $3 AND ends_at > $2`,
+      `SELECT r.starts_at, r.ends_at, r.qty
+       FROM projects.reservations r
+       JOIN projects.projects p ON p.id=r.project_id
+       WHERE r.model_id=$1 AND r.starts_at < $3 AND r.ends_at > $2
+         AND p.status <> 'cancelled'`,
       [modelId, from, to]
     );
     const total = Number(totalRow?.total ?? 0);
-    const booked = Number(bookedRow?.booked ?? 0);
+    const booked = peakBookedQuantity(bookingRows);
     const shortage = Math.max(0, booked - total);
     return { modelId, startsAt: from, endsAt: to, total, booked, free: Math.max(0, total - booked), shortage };
   }
 
   async function syncReservationAvailabilityProblems(modelId: ID, from: ISODateTime, to: ISODateTime) {
-    const reservations = await query<ReservationRow>(
+    const reservations = await query<ReservationRow & { project_status: Projects.ProjectStatus }>(
       db,
-      `SELECT * FROM projects.reservations
-       WHERE model_id=$1 AND starts_at < $3 AND ends_at > $2
-       ORDER BY starts_at`,
+      `SELECT r.*, p.status AS project_status FROM projects.reservations r
+       JOIN projects.projects p ON p.id=r.project_id
+       WHERE r.model_id=$1 AND r.starts_at < $3 AND r.ends_at > $2
+       ORDER BY r.starts_at`,
       [modelId, from, to]
     );
     for (const reservation of reservations) {
@@ -425,8 +430,8 @@ export function createProjectsService(
          LIMIT 1`,
         [reservation.id]
       );
-      if (availability.shortage > 0) {
-        const detail = `Забронировано ${availability.booked} из ${availability.total}: не хватает ${availability.shortage}`;
+      if (reservation.project_status !== "cancelled" && availability.shortage > 0) {
+        const detail = `Одновременно забронировано до ${availability.booked} из ${availability.total}: не хватает ${availability.shortage}`;
         if (existing) {
           await query(
             db,
@@ -689,7 +694,7 @@ export function createProjectsService(
             input.financeTracked === undefined ? existing.financeTracked : input.financeTracked,
             input.note === undefined ? existing.note : input.note?.trim() || null]
         );
-        if ((startsAt !== existing.startsAt || endsAt !== existing.endsAt) && startsAt && endsAt) {
+        if (startsAt !== existing.startsAt || endsAt !== existing.endsAt) {
           await query(client,
             `UPDATE projects.reservations SET starts_at=$2, ends_at=$3 WHERE project_id=$1`,
             [id, startsAt, endsAt]
@@ -698,6 +703,21 @@ export function createProjectsService(
         return updated;
       });
       const updated = projectDTO(row!);
+      if (startsAt !== existing.startsAt || endsAt !== existing.endsAt) {
+        const affected = await query<Pick<ReservationRow, "model_id">>(db, `SELECT DISTINCT model_id FROM projects.reservations WHERE project_id=$1`, [id]);
+        for (const { model_id } of affected) {
+          if (existing.startsAt && existing.endsAt) await syncReservationAvailabilityProblems(model_id, existing.startsAt, existing.endsAt);
+          if (startsAt && endsAt) await syncReservationAvailabilityProblems(model_id, startsAt, endsAt);
+        }
+        if (!startsAt || !endsAt) {
+          await query(db,
+            `UPDATE projects.problems SET resolved=true, resolved_at=now()
+             WHERE kind='reservation_conflict' AND resolved=false
+               AND refs->>'reservationId' IN (SELECT id::text FROM projects.reservations WHERE project_id=$1)`,
+            [id]
+          );
+        }
+      }
       if (existing.dressCodeLabel !== updated.dressCodeLabel || existing.dressCodeUniform !== updated.dressCodeUniform) {
         await bus.publish({ type: "project.dress_code.changed", projectId: id, roleId: null, at: new Date().toISOString() });
       }
@@ -726,6 +746,16 @@ export function createProjectsService(
       if (!row) throw NotFound("project", id);
       await publishCancelled(cancelled, "project_cancelled");
       if (existing.status === status) return projectDTO(row);
+      if (status === "cancelled" || existing.status === "cancelled") {
+        const affected = await query<Pick<ReservationRow, "model_id" | "starts_at" | "ends_at">>(
+          db, `SELECT DISTINCT model_id, starts_at, ends_at FROM projects.reservations WHERE project_id=$1`, [id]
+        );
+        for (const reservation of affected) {
+          if (reservation.starts_at && reservation.ends_at) {
+            await syncReservationAvailabilityProblems(reservation.model_id, reservation.starts_at.toISOString(), reservation.ends_at.toISOString());
+          }
+        }
+      }
       if (status === "confirmed") {
         await bus.publish({ type: "project.confirmed", projectId: id, at: new Date().toISOString() });
       }
@@ -914,9 +944,11 @@ export function createProjectsService(
     async findOverlapping(modelId, from, to) {
       const rows = await query<ReservationRow>(
         db,
-        `SELECT * FROM projects.reservations
-         WHERE model_id=$1 AND starts_at < $3 AND ends_at > $2
-         ORDER BY starts_at`,
+        `SELECT r.* FROM projects.reservations r
+         JOIN projects.projects p ON p.id=r.project_id
+         WHERE r.model_id=$1 AND r.starts_at < $3 AND r.ends_at > $2
+           AND p.status <> 'cancelled'
+         ORDER BY r.starts_at`,
         [modelId, from, to]
       );
       return rows.map(reservationDTO);
@@ -969,8 +1001,10 @@ export function createProjectsService(
       if (unitIds.length > 0) {
         const clash = await one<ReservationRow>(
           db,
-          `SELECT * FROM projects.reservations
-           WHERE id <> $1 AND starts_at < $3 AND ends_at > $2 AND resolved_unit_ids && $4::uuid[]
+          `SELECT r.* FROM projects.reservations r
+           JOIN projects.projects p ON p.id=r.project_id
+           WHERE r.id <> $1 AND r.starts_at < $3 AND r.ends_at > $2
+             AND r.resolved_unit_ids && $4::uuid[] AND p.status <> 'cancelled'
            LIMIT 1`,
           [id, res.starts_at, res.ends_at, unitIds]
         );
