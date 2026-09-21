@@ -3,6 +3,16 @@
 Read this before changing code. The whole value of this codebase is that any
 module or screen can be rewritten without touching the rest — keep it that way.
 
+## Integration API documentation
+
+`docs/site-order-api.md` is the maintained reference for site-to-SEVER order
+integration. Any agent changing a route, DTO, authentication rule, permission,
+project/client/reservation/estimate behavior, or integration mechanism described
+there MUST update that document in the same change. Check its current-state
+claims and examples against the implementation; distinguish shipped endpoints
+from proposed ones. A change to this mechanism is incomplete while the document
+is stale.
+
 ## Layout
 
 - `packages/contracts` — the ONLY shared surface between modules and between
