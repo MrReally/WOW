@@ -1007,7 +1007,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
           deleteReminderPending={deleteReminder.isPending}
         />
       )}
-      <PassListSheet open={passListOpen} onClose={() => setPassListOpen(false)} projectId={p.id} crew={projectPeople} locale={locale} />
+      <PassListSheet open={passListOpen} onClose={() => setPassListOpen(false)} projectId={p.id} crew={projectPeople} locale={locale} contractorIds={[...new Set((contractorItems.data ?? []).map(item => item.contractorId))]} />
         </>
       )}
 

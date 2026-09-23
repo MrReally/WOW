@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Equipment, Projects } from "@sever/contracts";
+import type { Contractors, Equipment, Projects } from "@sever/contracts";
 import { api } from "../../lib/api.ts";
 
 export function useContractors() {
@@ -26,6 +26,49 @@ export function useUpdateContractor() {
     meta: { successMessage: "Подрядчик обновлён" },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["equipment", "contractors"] }),
   });
+}
+
+export function useContractorPeople(enabled = true) {
+  return useQuery({
+    enabled,
+    queryKey: ["contractors", "people"],
+    queryFn: () => api.get<Contractors.ContractorPersonDTO[]>("/api/contractors/people"),
+  });
+}
+
+export function useCreateContractorPerson() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Contractors.CreateContractorPersonInput) => api.post<Contractors.ContractorPersonDTO>("/api/contractors/people", input),
+    meta: { successMessage: "Сотрудник подрядчика сохранён" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["contractors", "people"] }),
+  });
+}
+
+export function useContractorVehicles(enabled = true) {
+  return useQuery({
+    enabled,
+    queryKey: ["contractors", "vehicles"],
+    queryFn: () => api.get<Contractors.ContractorVehicleDTO[]>("/api/contractors/vehicles"),
+  });
+}
+
+export function useCreateContractorVehicle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Contractors.CreateContractorVehicleInput) => api.post<Contractors.ContractorVehicleDTO>("/api/contractors/vehicles", input),
+    meta: { successMessage: "Машина подрядчика сохранена" },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["contractors", "vehicles"] }),
+  });
+}
+
+export function useContractorEquipmentDirectory(enabled = true) {
+  return useQuery({ enabled, queryKey:["contractors", "equipment"], queryFn:() => api.get<Contractors.ContractorEquipmentDTO[]>("/api/contractors/equipment") });
+}
+
+export function useCreateContractorEquipment() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn:(input:Contractors.CreateContractorEquipmentInput) => api.post<Contractors.ContractorEquipmentDTO>("/api/contractors/equipment", input), onSuccess:() => qc.invalidateQueries({ queryKey:["contractors", "equipment"] }) });
 }
 
 export function useContractorHistory(contractorId: string) {

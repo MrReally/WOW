@@ -763,6 +763,17 @@ describe("Tech pickup/return → некомплект", () => {
     expect(journal).toEqual(expect.arrayContaining(["sent_to_repair", "back_from_repair", "sent_to_contractor", "back_from_contractor"]));
   });
 
+  it("keeps contractor people, vehicles, and equipment as separate directory entities", async () => {
+    const contractor = await wiring.equipment.service.createContractor({ name: `Directory ${Date.now()}` });
+    const person = await wiring.contractors.service.createPerson({ contractorId:contractor.id, firstName:"Aleksandr", lastName:"Kravtsov", phone:"+381600000000", telegram:"@crew", documentNumber:"000065632", photoUrl:"https://example.test/photo.jpg" });
+    const vehicle = await wiring.contractors.service.createVehicle({ contractorId:contractor.id, make:"Mini", model:"Cooper", color:"Blue", plateNumber:"BG 1125 GV" });
+    const equipment = await wiring.contractors.service.createEquipment({ contractorId:contractor.id, name:"GrandMA3 Light", availableQty:2, defaultCostEUR:250 });
+
+    expect((await wiring.contractors.service.listPeople(contractor.id)).find(item => item.id===person.id)?.documentNumber).toBe("000065632");
+    expect((await wiring.contractors.service.listVehicles(contractor.id)).find(item => item.id===vehicle.id)?.plateNumber).toBe("BG 1125 GV");
+    expect((await wiring.contractors.service.listEquipment(contractor.id)).find(item => item.id===equipment.id)?.availableQty).toBe(2);
+  });
+
   it("technical plans: versioning clones elements and tracks the current version", async () => {
     const { plans, projects } = wiring;
     const client = await projects.service.createClient({ name: `Plan Client ${Date.now()}` });

@@ -12,7 +12,8 @@
     "./finance": "./src/finance.ts",
     "./people": "./src/people.ts",
     "./common": "./src/common.ts",
-    "./app-settings": "./src/appSettings.ts"
+    "./app-settings": "./src/appSettings.ts",
+    "./contractors": "./src/contractors.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",

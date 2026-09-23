@@ -18,11 +18,23 @@ import {
   useContractors,
   useContractorHistory,
   useCreateContractor,
+  useContractorPeople,
+  useContractorVehicles,
+  useCreateContractorPerson,
+  useCreateContractorVehicle,
+  useContractorEquipmentDirectory,
+  useCreateContractorEquipment,
   useOpenContractorItems,
   useProjects,
   useReturnContractorItem,
   useUpdateContractor,
 } from "./hooks.ts";
+
+const directoryCopy = {
+  ru: { directory:"Справочник подрядчика", people:"Сотрудники", vehicles:"Машины", equipment:"Оборудование", firstName:"Имя", lastName:"Фамилия", patronymic:"Отчество", phone:"Телефон", telegram:"Telegram", document:"Номер документа", photo:"Фото (URL)", make:"Марка", model:"Модель", color:"Цвет", plate:"Гос. номер", itemName:"Название", qty:"Количество", cost:"Обычная цена, €", note:"Примечание", noPeople:"Сотрудников пока нет", noVehicles:"Машин пока нет", noEquipment:"Оборудования пока нет" },
+  en: { directory:"Contractor directory", people:"People", vehicles:"Vehicles", equipment:"Equipment", firstName:"First name", lastName:"Last name", patronymic:"Middle name", phone:"Phone", telegram:"Telegram", document:"Document number", photo:"Photo (URL)", make:"Make", model:"Model", color:"Color", plate:"Plate number", itemName:"Name", qty:"Quantity", cost:"Default price, €", note:"Note", noPeople:"No people yet", noVehicles:"No vehicles yet", noEquipment:"No equipment yet" },
+  sr: { directory:"Imenik izvođača", people:"Ljudi", vehicles:"Vozila", equipment:"Oprema", firstName:"Ime", lastName:"Prezime", patronymic:"Srednje ime", phone:"Telefon", telegram:"Telegram", document:"Broj dokumenta", photo:"Fotografija (URL)", make:"Marka", model:"Model", color:"Boja", plate:"Registarski broj", itemName:"Naziv", qty:"Količina", cost:"Uobičajena cena, €", note:"Napomena", noPeople:"Još nema ljudi", noVehicles:"Još nema vozila", noEquipment:"Još nema opreme" },
+} as const;
 
 const totalClient = (item: Projects.ContractorItemDTO) => item.priceEUR * item.qty;
 const totalCost = (item: Projects.ContractorItemDTO) => item.costEUR * item.qty;
@@ -33,8 +45,15 @@ export function ContractorsPage() {
   const openItems = useOpenContractorItems();
   const create = useCreateContractor();
   const update = useUpdateContractor();
+  const contractorPeople = useContractorPeople();
+  const contractorVehicles = useContractorVehicles();
+  const createPerson = useCreateContractorPerson();
+  const createVehicle = useCreateContractorVehicle();
+  const contractorEquipment = useContractorEquipmentDirectory();
+  const createEquipment = useCreateContractorEquipment();
   const markReturned = useReturnContractorItem();
-  const { t, eur } = useI18n();
+  const { t, eur, locale } = useI18n();
+  const directoryLabels = directoryCopy[locale];
 
   const [selectedId, setSelectedId] = useState("");
   const [name, setName] = useState("");
@@ -43,6 +62,21 @@ export function ContractorsPage() {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editContacts, setEditContacts] = useState("");
+  const [personFirstName, setPersonFirstName] = useState("");
+  const [personLastName, setPersonLastName] = useState("");
+  const [personPatronymic, setPersonPatronymic] = useState("");
+  const [personPhone, setPersonPhone] = useState("");
+  const [personTelegram, setPersonTelegram] = useState("");
+  const [personDocument, setPersonDocument] = useState("");
+  const [personPhoto, setPersonPhoto] = useState("");
+  const [vehicleMake, setVehicleMake] = useState("");
+  const [vehicleModel, setVehicleModel] = useState("");
+  const [vehicleColor, setVehicleColor] = useState("");
+  const [vehiclePlate, setVehiclePlate] = useState("");
+  const [equipmentName, setEquipmentName] = useState("");
+  const [equipmentQty, setEquipmentQty] = useState("1");
+  const [equipmentCost, setEquipmentCost] = useState("");
+  const [equipmentNote, setEquipmentNote] = useState("");
 
   const list = contractors.data ?? [];
   const open = openItems.data ?? [];
@@ -177,6 +211,42 @@ export function ContractorsPage() {
                 </Button>
               </div>
             )}
+          </Card>
+
+          <SectionTitle>{directoryLabels.directory}</SectionTitle>
+          <Card>
+            <p className="card__title">{directoryLabels.people}</p>
+            <div className="row" style={{ marginTop: 10, flexWrap:"wrap" }}>
+              <Field label={directoryLabels.lastName}><Input value={personLastName} onChange={(event) => setPersonLastName(event.target.value)} /></Field>
+              <Field label={directoryLabels.firstName}><Input value={personFirstName} onChange={(event) => setPersonFirstName(event.target.value)} /></Field>
+              <Field label={directoryLabels.patronymic}><Input value={personPatronymic} onChange={(event) => setPersonPatronymic(event.target.value)} /></Field>
+              <Field label={directoryLabels.phone}><Input value={personPhone} onChange={(event) => setPersonPhone(event.target.value)} /></Field>
+              <Field label={directoryLabels.telegram}><Input value={personTelegram} onChange={(event) => setPersonTelegram(event.target.value)} /></Field>
+              <Field label={directoryLabels.document}><Input value={personDocument} onChange={(event) => setPersonDocument(event.target.value)} /></Field>
+              <Field label={directoryLabels.photo}><Input value={personPhoto} onChange={(event) => setPersonPhoto(event.target.value)} /></Field>
+              <Button disabled={!personFirstName.trim() || !personLastName.trim() || createPerson.isPending} onClick={() => createPerson.mutate({ contractorId:selected.id, firstName:personFirstName.trim(), lastName:personLastName.trim(), patronymic:personPatronymic.trim() || null, phone:personPhone.trim() || null, telegram:personTelegram.trim() || null, documentNumber:personDocument.trim() || null, photoUrl:personPhoto.trim() || null }, { onSuccess:() => { setPersonFirstName(""); setPersonLastName(""); setPersonPatronymic(""); setPersonPhone(""); setPersonTelegram(""); setPersonDocument(""); setPersonPhoto(""); } })}>+</Button>
+            </div>
+            {(contractorPeople.data ?? []).filter((person) => person.contractorId === selected.id).length === 0
+              ? <p className="card__subtitle">{directoryLabels.noPeople}</p>
+              : <div className="stack" style={{ gap: 6, marginTop: 10 }}>{(contractorPeople.data ?? []).filter((person) => person.contractorId === selected.id).map((person) => <div key={person.id} className="row row--between"><div className="row">{person.photoUrl && <img src={person.photoUrl} alt="" className="crew-photo" />}<span>{[person.lastName, person.firstName, person.patronymic].filter(Boolean).join(" ")}</span></div><span className="card__subtitle">{[person.phone, person.telegram, person.documentNumber ? `ID ${person.documentNumber}` : null].filter(Boolean).join(" · ") || "—"}</span></div>)}</div>}
+          </Card>
+          <Card>
+            <p className="card__title">{directoryLabels.vehicles}</p>
+            <div className="row" style={{ marginTop: 10 }}>
+              <Field label={directoryLabels.make}><Input value={vehicleMake} onChange={(event) => setVehicleMake(event.target.value)} /></Field>
+              <Field label={directoryLabels.model}><Input value={vehicleModel} onChange={(event) => setVehicleModel(event.target.value)} /></Field>
+              <Field label={directoryLabels.color}><Input value={vehicleColor} onChange={(event) => setVehicleColor(event.target.value)} /></Field>
+              <Field label={directoryLabels.plate}><Input value={vehiclePlate} onChange={(event) => setVehiclePlate(event.target.value)} /></Field>
+              <Button disabled={!vehicleMake.trim() || !vehicleModel.trim() || !vehiclePlate.trim() || createVehicle.isPending} onClick={() => createVehicle.mutate({ contractorId:selected.id, make:vehicleMake.trim(), model:vehicleModel.trim(), color:vehicleColor.trim() || null, plateNumber:vehiclePlate.trim() }, { onSuccess:() => { setVehicleMake(""); setVehicleModel(""); setVehicleColor(""); setVehiclePlate(""); } })}>+</Button>
+            </div>
+            {(contractorVehicles.data ?? []).filter((vehicle) => vehicle.contractorId === selected.id).length === 0
+              ? <p className="card__subtitle">{directoryLabels.noVehicles}</p>
+              : <div className="stack" style={{ gap: 6, marginTop: 10 }}>{(contractorVehicles.data ?? []).filter((vehicle) => vehicle.contractorId === selected.id).map((vehicle) => <div key={vehicle.id} className="row row--between"><span>{vehicle.make} {vehicle.model}{vehicle.color ? ` · ${vehicle.color}` : ""}</span><span className="card__subtitle">{vehicle.plateNumber}</span></div>)}</div>}
+          </Card>
+          <Card>
+            <p className="card__title">{directoryLabels.equipment}</p>
+            <div className="row" style={{ marginTop:10, flexWrap:"wrap" }}><Field label={directoryLabels.itemName}><Input value={equipmentName} onChange={event => setEquipmentName(event.target.value)} /></Field><Field label={directoryLabels.qty}><Input type="number" min="0" value={equipmentQty} onChange={event => setEquipmentQty(event.target.value)} /></Field><Field label={directoryLabels.cost}><Input type="number" min="0" step="0.01" value={equipmentCost} onChange={event => setEquipmentCost(event.target.value)} /></Field><Field label={directoryLabels.note}><Input value={equipmentNote} onChange={event => setEquipmentNote(event.target.value)} /></Field><Button disabled={!equipmentName.trim() || createEquipment.isPending} onClick={() => createEquipment.mutate({ contractorId:selected.id, name:equipmentName.trim(), availableQty:Math.max(0, Number(equipmentQty) || 0), defaultCostEUR:equipmentCost ? Number(equipmentCost) : null, note:equipmentNote.trim() || null }, { onSuccess:() => { setEquipmentName(""); setEquipmentQty("1"); setEquipmentCost(""); setEquipmentNote(""); } })}>+</Button></div>
+            {(contractorEquipment.data ?? []).filter(item => item.contractorId === selected.id).length === 0 ? <p className="card__subtitle">{directoryLabels.noEquipment}</p> : <div className="stack" style={{ gap:6, marginTop:10 }}>{(contractorEquipment.data ?? []).filter(item => item.contractorId === selected.id).map(item => <div key={item.id} className="row row--between"><span>{item.name} × {item.availableQty}</span><span className="card__subtitle">{item.defaultCostEUR == null ? item.note || "—" : eur(item.defaultCostEUR)}</span></div>)}</div>}
           </Card>
 
           <SectionTitle>{t("contractors.needReturn")}</SectionTitle>
