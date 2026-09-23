@@ -62,6 +62,7 @@ import { isUnitVisibleForProject } from "./reservationUnitAvailability.ts";
 import { ISSUED_RESERVATION_DELETE_ERROR, issuedUnitsForReservation } from "./reservationIssuedUnits.ts";
 import { type InvoiceMessageLang } from "./invoiceMessage.ts";
 import { useInvoiceMessageCopy } from "./useInvoiceMessageCopy.ts";
+import { PassListSheet } from "./components/PassListSheet.tsx";
 
 const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "ok" | "info" | "warn" | "neutral" }> = {
   added: { label: "в команде", tone: "ok" },
@@ -144,7 +145,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { can } = useSession();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const canManage = can("projects.manage");
   const canReserve = can("projects.reservation.manage");
   const canTiming = can("projects.timing.manage");
@@ -233,6 +234,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [resolving, setResolving] = useState<Projects.ReservationDTO | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [passListOpen, setPassListOpen] = useState(false);
   const [invoiceVersions, setInvoiceVersions] = useState<StoredInvoiceVersion[]>([]);
   const [estimateDrafts, setEstimateDrafts] = useState<FinanceDraftLine[]>([]);
   const [estimateSeeded, setEstimateSeeded] = useState(false);
@@ -743,7 +745,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
           crew without people.view never get a section full of raw ids. */}
       {currentTab === "team" && canViewPeople && (
         <>
-      <SectionTitle>Команда</SectionTitle>
+      <div className="row row--between"><SectionTitle>Команда</SectionTitle><Button variant="secondary" onClick={() => setPassListOpen(true)}>{locale === "ru" ? "Пропуска" : locale === "sr" ? "Propusnice" : "Passes"}</Button></div>
       {(projectRoles.data ?? []).length === 0 && (assignments.data ?? []).length === 0 ? (
         <EmptyState title="Ролей пока нет" />
       ) : (
@@ -1005,6 +1007,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
           deleteReminderPending={deleteReminder.isPending}
         />
       )}
+      <PassListSheet open={passListOpen} onClose={() => setPassListOpen(false)} projectId={p.id} crew={projectPeople} locale={locale} />
         </>
       )}
 
