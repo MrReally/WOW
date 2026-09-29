@@ -58,6 +58,19 @@ describe("Telegram file download", () => {
     ]);
   });
 
+  it("recognizes a Telegram photo when the file endpoint uses a generic content type", async () => {
+    env.auth.telegramBotToken = "test-token";
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ ok: true, result: { file_path: "photos/portrait.jpg" } }))
+      .mockResolvedValueOnce(new Response(Buffer.from([0xff, 0xd8, 0xff, 0xe0]), {
+        headers: { "Content-Type": "application/octet-stream" },
+      }));
+
+    const file = await downloadTelegramFile("portrait");
+
+    expect(file?.contentType).toBe("image/jpeg");
+  });
+
   it("returns null when Telegram cannot provide the file", async () => {
     env.auth.telegramBotToken = "test-token";
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
