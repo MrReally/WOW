@@ -350,7 +350,7 @@ export function CrewPage() {
     canReviewApplications || canManagePeople ? activeTab : "people";
 
   return (
-    <div className="stack">
+    <div className={`stack ${(canReviewApplications || canManagePeople) ? "page-with-tabbar" : ""}`}>
       <SectionHead label="Crew" meta={pendingApplications.length > 0 ? `${list.length} · ${pendingApplications.length} анкет` : `${list.length}`} />
       {currentTab === "applications" ? (
         <>

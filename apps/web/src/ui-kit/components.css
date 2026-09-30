@@ -564,6 +564,7 @@ h1,
 }
 
 /* ── Project mobile ergonomics ─────────────────────────────────────── */
+.page-with-tabbar,
 .project-mobile-page {
   padding-bottom: calc(94px + env(safe-area-inset-bottom));
 }
