@@ -2,6 +2,7 @@ import type { Transport } from "@sever/contracts";
 import { one, query, type Sql } from "../../core/db.js";
 import { BadRequest, NotFound } from "../../core/errors.js";
 import { env } from "../../env.js";
+import { getBenzinkoFuelPrice } from "./benzinko.js";
 
 interface VehicleRow {
   id: string;
@@ -10,6 +11,7 @@ interface VehicleRow {
   required_license_category: string;
   fuel_type: Transport.FuelType;
   consumption_l_per_100_km: string;
+  depreciation_eur_per_km: string;
   active: boolean;
   created_at: Date;
 }
@@ -21,9 +23,22 @@ const dto = (row: VehicleRow): Transport.VehicleDTO => ({
   requiredLicenseCategory: row.required_license_category,
   fuelType: row.fuel_type,
   consumptionLPer100Km: Number(row.consumption_l_per_100_km),
+  depreciationEURPerKm: Number(row.depreciation_eur_per_km),
   active: row.active,
   createdAt: row.created_at.toISOString(),
 });
+
+export function calculateDeliveryCosts(distanceKm: number, consumptionLPer100Km: number, fuelPriceEURPerL: number, depreciationEURPerKm: number) {
+  const fuelLitres = Math.round(distanceKm * consumptionLPer100Km) / 100;
+  const fuelCostEUR = Math.round(fuelLitres * fuelPriceEURPerL * 100) / 100;
+  const depreciationCostEUR = Math.round(distanceKm * depreciationEURPerKm * 100) / 100;
+  return {
+    fuelLitres: Math.round(fuelLitres * 100) / 100,
+    fuelCostEUR,
+    depreciationCostEUR,
+    totalCostEUR: Math.round((fuelCostEUR + depreciationCostEUR) * 100) / 100,
+  };
+}
 
 export function createTransportService(db: Sql): Transport.TransportService {
   const get = async (id: string) => {
@@ -38,15 +53,15 @@ export function createTransportService(db: Sql): Transport.TransportService {
     },
     async createVehicle(input) {
       const row = await one<VehicleRow>(db, `INSERT INTO transport.vehicles
-        (plate_number,model,required_license_category,fuel_type,consumption_l_per_100_km)
-        VALUES ($1,$2,$3,$4,$5) RETURNING *`, [input.plateNumber.toUpperCase(), input.model, input.requiredLicenseCategory.toUpperCase(), input.fuelType, input.consumptionLPer100Km]);
+        (plate_number,model,required_license_category,fuel_type,consumption_l_per_100_km,depreciation_eur_per_km)
+        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`, [input.plateNumber.toUpperCase(), input.model, input.requiredLicenseCategory.toUpperCase(), input.fuelType, input.consumptionLPer100Km, input.depreciationEURPerKm ?? 0]);
       return dto(row!);
     },
     async updateVehicle(id, input) {
       const current = await get(id);
       const row = await one<VehicleRow>(db, `UPDATE transport.vehicles SET
-        plate_number=$2,model=$3,required_license_category=$4,fuel_type=$5,consumption_l_per_100_km=$6,active=$7
-        WHERE id=$1 RETURNING *`, [id, input.plateNumber?.toUpperCase() ?? current.plate_number, input.model ?? current.model, input.requiredLicenseCategory?.toUpperCase() ?? current.required_license_category, input.fuelType ?? current.fuel_type, input.consumptionLPer100Km ?? Number(current.consumption_l_per_100_km), input.active ?? current.active]);
+        plate_number=$2,model=$3,required_license_category=$4,fuel_type=$5,consumption_l_per_100_km=$6,active=$7,depreciation_eur_per_km=$8
+        WHERE id=$1 RETURNING *`, [id, input.plateNumber?.toUpperCase() ?? current.plate_number, input.model ?? current.model, input.requiredLicenseCategory?.toUpperCase() ?? current.required_license_category, input.fuelType ?? current.fuel_type, input.consumptionLPer100Km ?? Number(current.consumption_l_per_100_km), input.active ?? current.active, input.depreciationEURPerKm ?? Number(current.depreciation_eur_per_km)]);
       return dto(row!);
     },
     async quoteRoute(input) {
@@ -79,9 +94,21 @@ export function createTransportService(db: Sql): Transport.TransportService {
       const multiplier = input.roundTrip === false ? 1 : 2;
       distanceKm = Math.round(distanceKm * multiplier * 10) / 10;
       if (durationMinutes != null) durationMinutes *= multiplier;
-      const fuelLitres = Math.round(distanceKm * vehicle.consumptionLPer100Km) / 100;
-      const fuelCostEUR = Math.round(fuelLitres * input.fuelPriceEURPerL * 100) / 100;
-      return { vehicleId: vehicle.id, distanceKm, durationMinutes, roundTrip: multiplier === 2, fuelLitres: Math.round(fuelLitres * 100) / 100, fuelCostEUR, source };
+      let fuelPriceEURPerL = input.fuelPriceEURPerL;
+      let fuelPriceSource: Transport.RouteQuoteDTO["fuelPriceSource"] = "manual";
+      if (vehicle.fuelType === "electric") {
+        fuelPriceEURPerL = 0;
+        fuelPriceSource = "not_applicable";
+      } else if (fuelPriceEURPerL == null) {
+        try {
+          fuelPriceEURPerL = await getBenzinkoFuelPrice(vehicle.fuelType);
+          fuelPriceSource = "benzinko";
+        } catch {
+          throw BadRequest("Не удалось получить актуальную цену с Benzinko — укажите цену топлива вручную");
+        }
+      }
+      const costs = calculateDeliveryCosts(distanceKm, vehicle.consumptionLPer100Km, fuelPriceEURPerL, vehicle.depreciationEURPerKm);
+      return { vehicleId: vehicle.id, distanceKm, durationMinutes, roundTrip: multiplier === 2, ...costs, fuelPriceEURPerL, fuelPriceSource, depreciationEURPerKm: vehicle.depreciationEURPerKm, source };
     },
   };
 }

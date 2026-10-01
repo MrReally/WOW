@@ -6,8 +6,8 @@ import { requirePermission } from "../../core/auth.js";
 import { env } from "../../env.js";
 
 const fuelType = z.enum(["petrol", "diesel", "electric", "hybrid"]);
-const vehicle = z.object({ plateNumber: z.string().trim().min(1), model: z.string().trim().min(1), requiredLicenseCategory: z.string().trim().min(1).max(4), fuelType, consumptionLPer100Km: z.number().nonnegative().max(100) });
-const quote = z.object({ originAddress: z.string().trim().min(1), destinationAddress: z.string().trim().min(1), vehicleId: z.string().uuid(), fuelPriceEURPerL: z.number().nonnegative(), roundTrip: z.boolean().optional(), distanceKmOverride: z.number().positive().nullable().optional() });
+const vehicle = z.object({ plateNumber: z.string().trim().min(1), model: z.string().trim().min(1), requiredLicenseCategory: z.string().trim().min(1).max(4), fuelType, consumptionLPer100Km: z.number().nonnegative().max(100), depreciationEURPerKm: z.number().nonnegative().max(100).optional() });
+const quote = z.object({ originAddress: z.string().trim().min(1), destinationAddress: z.string().trim().min(1), vehicleId: z.string().uuid(), fuelPriceEURPerL: z.number().nonnegative().optional(), roundTrip: z.boolean().optional(), distanceKmOverride: z.number().positive().nullable().optional() });
 
 export function registerTransportRoutes(app: FastifyInstance, ctx: RouteContext, service: Transport.TransportService) {
   app.get("/api/transport/config", async (req) => { await ctx.auth(req); return { googleMapsConfigured: !!env.googleMapsApiKey }; });

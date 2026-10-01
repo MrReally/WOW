@@ -1038,10 +1038,10 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
         return (
           <>
             <SectionTitle>Экономика проекта · €</SectionTitle>
-            {canManageFinance && <DeliveryCalculator venueId={p.venueId} people={projectPeople} onApply={(quote, vehicle) => setEstimateDrafts((rows) => {
-              const next = { id: `manual-delivery-${Date.now()}`, source: "manual" as const, sourceRefId: null, section: "Доставка", name: `Доставка · ${vehicle.model} ${vehicle.plateNumber}`, qty: "1", priceEUR: String(quote.fuelCostEUR), costEUR: String(quote.fuelCostEUR), discountType: "percent" as const, discountValue: "0", comment: `${quote.distanceKm} км · ${quote.fuelLitres} л${quote.roundTrip ? " · туда и обратно" : ""}`, hidden: false };
-              const index = rows.findIndex((line) => line.id.startsWith("manual-delivery-") || (line.source === "manual" && line.section.toLowerCase() === "доставка"));
-              return index < 0 ? [...rows, next] : rows.map((line, i) => i === index ? { ...next, id: line.id } : line);
+            {canManageFinance && <DeliveryCalculator venueId={p.venueId} people={projectPeople} onApply={(quote, vehicle, amountEUR) => setEstimateDrafts((rows) => {
+              const calculation = quote ? ` · ${quote.distanceKm} км · топливо ${eur(quote.fuelCostEUR)} · амортизация ${eur(quote.depreciationCostEUR)}${quote.roundTrip ? " · туда и обратно" : ""}` : "";
+              const next = { id: `manual-delivery-${Date.now()}-${vehicle.id}`, source: "manual" as const, sourceRefId: null, section: "Доставка", name: "Доставка", qty: "1", priceEUR: String(amountEUR), costEUR: String(amountEUR), discountType: "percent" as const, discountValue: "0", comment: `${vehicle.model} ${vehicle.plateNumber}${calculation}`, hidden: false };
+              return [...rows, next];
             })} />}
             <Card>
               <div className="row row--between">
@@ -1259,28 +1259,36 @@ function DiscountControl({ type, value, resultEUR, disabled, onType, onValue }: 
   );
 }
 
-function DeliveryCalculator({ venueId, people, onApply }: { venueId: string | null; people: People.UserDTO[]; onApply: (quote: Transport.RouteQuoteDTO, vehicle: Transport.VehicleDTO) => void }) {
+function DeliveryCalculator({ venueId, people, onApply }: { venueId: string | null; people: People.UserDTO[]; onApply: (quote: Transport.RouteQuoteDTO | null, vehicle: Transport.VehicleDTO, amountEUR: number) => void }) {
   const venues = useVenues(), warehouses = useWarehouses(), vehicles = useVehicles(), config = useTransportConfig(), quote = useRouteQuote();
   const venue = (venues.data ?? []).find((item) => item.id === venueId);
   const [warehouseId, setWarehouseId] = useState("");
   const [vehicleId, setVehicleId] = useState("");
-  const [fuelPrice, setFuelPrice] = useState("1.6");
+  const [fuelPrice, setFuelPrice] = useState("");
   const [distance, setDistance] = useState("");
   const [roundTrip, setRoundTrip] = useState(true);
+  const [manualAmount, setManualAmount] = useState("");
+  const [outputCost, setOutputCost] = useState("");
+  const [manualMode, setManualMode] = useState(false);
   const selectedWarehouse = (warehouses.data ?? []).find((item) => item.id === (warehouseId || warehouses.data?.find((item) => item.isDefault)?.id));
   const selectedVehicle = (vehicles.data ?? []).find((item) => item.id === (vehicleId || vehicles.data?.[0]?.id));
   const compatibleDrivers = selectedVehicle ? people.filter((person) => person.drivingLicenseCategories.includes(selectedVehicle.requiredLicenseCategory)) : [];
   const calculate = () => {
     if (!selectedWarehouse?.address || !venue?.address || !selectedVehicle) return;
-    quote.mutate({ originAddress: selectedWarehouse.address, destinationAddress: venue.address, vehicleId: selectedVehicle.id, fuelPriceEURPerL: Number(fuelPrice) || 0, roundTrip, distanceKmOverride: distance ? Number(distance) : null });
+    quote.mutate(
+      { originAddress: selectedWarehouse.address, destinationAddress: venue.address, vehicleId: selectedVehicle.id, fuelPriceEURPerL: fuelPrice.trim() ? Number(fuelPrice) : undefined, roundTrip, distanceKmOverride: distance ? Number(distance) : null },
+      { onSuccess: (result) => setOutputCost(String(result.totalCostEUR)) },
+    );
   };
   return <Card><div className="row row--between"><div><p className="card__title">Доставка</p><p className="card__subtitle">Маршрут, километраж и топливо по автомобилю</p></div>{config.data && <Chip label={config.data.googleMapsConfigured ? "Google Maps" : "ручной км"} tone={config.data.googleMapsConfigured ? "ok" : "warn"} />}</div>
+    <div className="discount-switch" role="group" aria-label="Способ расчёта доставки" style={{ marginTop: 10 }}><button type="button" className={!manualMode ? "is-active" : ""} onClick={() => setManualMode(false)}>По маршруту</button><button type="button" className={manualMode ? "is-active" : ""} onClick={() => setManualMode(true)}>Сумма вручную</button></div>
+    {manualMode ? <><div className="row"><Field label="Автомобиль"><Select value={vehicleId || selectedVehicle?.id || ""} onChange={e => setVehicleId(e.target.value)} options={(vehicles.data ?? []).map(item => ({ value: item.id, label: `${item.plateNumber} · ${item.model}` }))} /></Field><Field label="Сумма доставки, €"><Input type="number" min="0" step="0.01" value={manualAmount} onChange={e => setManualAmount(e.target.value)} placeholder="50" /></Field></div><Button block disabled={!selectedVehicle || !(Number(manualAmount) > 0)} onClick={() => selectedVehicle && onApply(null, selectedVehicle, Number(manualAmount))}>Добавить в €</Button></> : <>
     <div className="row" style={{ marginTop: 10 }}><Field label="Откуда"><Select value={warehouseId || selectedWarehouse?.id || ""} onChange={e => setWarehouseId(e.target.value)} options={(warehouses.data ?? []).map(item => ({ value: item.id, label: item.name }))} /></Field><Field label="Куда"><Input disabled value={venue?.address ?? "Укажите адрес площадки"} /></Field></div>
-    <div className="row"><Field label="Автомобиль"><Select value={vehicleId || selectedVehicle?.id || ""} onChange={e => setVehicleId(e.target.value)} options={(vehicles.data ?? []).map(item => ({ value: item.id, label: `${item.plateNumber} · ${item.model} · права ${item.requiredLicenseCategory}` }))} /></Field><Field label="Топливо, €/л"><Input type="number" step="0.01" value={fuelPrice} onChange={e => setFuelPrice(e.target.value)} /></Field>{!config.data?.googleMapsConfigured && <Field label="Км в одну сторону"><Input type="number" step="0.1" value={distance} onChange={e => setDistance(e.target.value)} placeholder="25" /></Field>}</div>
+    <div className="row"><Field label="Автомобиль"><Select value={vehicleId || selectedVehicle?.id || ""} onChange={e => setVehicleId(e.target.value)} options={(vehicles.data ?? []).map(item => ({ value: item.id, label: `${item.plateNumber} · ${item.model} · права ${item.requiredLicenseCategory}` }))} /></Field><Field label="Топливо, €/л (необязательно)"><Input type="number" min="0" step="0.001" value={fuelPrice} onChange={e => setFuelPrice(e.target.value)} placeholder="Автоматически с Benzinko" /></Field>{!config.data?.googleMapsConfigured && <Field label="Км в одну сторону"><Input type="number" step="0.1" value={distance} onChange={e => setDistance(e.target.value)} placeholder="25" /></Field>}</div>
     {selectedVehicle && <p className="card__subtitle" style={{ marginBottom: 8 }}>Совместимые водители в команде: {compatibleDrivers.length ? compatibleDrivers.map(person => personName(person)).join(", ") : `нет людей с категорией ${selectedVehicle.requiredLicenseCategory}`}</p>}
     <label className="row" style={{ marginBottom: 10 }}><input type="checkbox" checked={roundTrip} onChange={e => setRoundTrip(e.target.checked)} /> Туда и обратно</label>
     <Button block disabled={!selectedWarehouse?.address || !venue?.address || !selectedVehicle || (!config.data?.googleMapsConfigured && !(Number(distance) > 0)) || quote.isPending} onClick={calculate}>Рассчитать доставку</Button>
-    {quote.data && <div className="row row--between" style={{ marginTop: 10 }}><span>{quote.data.distanceKm} км · {quote.data.fuelLitres} л · СС {eur(quote.data.fuelCostEUR)}</span><Button variant="secondary" onClick={() => onApply(quote.data!, selectedVehicle!)}>Добавить в €</Button></div>}
+    {quote.data && <div className="stack" style={{ marginTop: 10 }}><span>{quote.data.distanceKm} км · {quote.data.fuelLitres} л × {quote.data.fuelPriceEURPerL} €/л ({quote.data.fuelPriceSource === "benzinko" ? "Benzinko" : quote.data.fuelPriceSource === "manual" ? "вручную" : "без топлива"}) · топливо {eur(quote.data.fuelCostEUR)} + амортизация {eur(quote.data.depreciationCostEUR)} = расчёт {eur(quote.data.totalCostEUR)}</span><div className="row row--between"><Field label="Итоговая себестоимость, €"><Input type="number" min="0" step="0.01" value={outputCost} onChange={e => setOutputCost(e.target.value)} /></Field><Button variant="secondary" disabled={!selectedVehicle || !(Number(outputCost) >= 0)} onClick={() => { onApply(quote.data!, selectedVehicle!, Number(outputCost)); setOutputCost(""); quote.reset(); }}>Добавить строку «Доставка»</Button></div></div>}</>}
   </Card>;
 }
 

@@ -1,6 +1,6 @@
 # Заявки с сайта → SEVER App: состояние API и контракт интеграции
 
-Проверено по коду 21.09.2026. **Этот документ обязателен к обновлению при каждом изменении описанных здесь маршрутов, DTO, прав, авторизации или логики заказа.** Правило также закреплено в корневом `AGENTS.md`. Примеры ниже относятся к текущему коду, а не к обещанному публичному API.
+Проверено по коду 01.10.2026. **Этот документ обязателен к обновлению при каждом изменении описанных здесь маршрутов, DTO, прав, авторизации или логики заказа.** Правило также закреплено в корневом `AGENTS.md`. Примеры ниже относятся к текущему коду, а не к обещанному публичному API.
 
 ## Что работает сейчас
 
@@ -16,8 +16,11 @@ SEVER хранит клиента, проект (заказ в операцио�
 | Проверить доступность | `GET /api/reservations/availability?modelId=…&startsAt=…&endsAt=…` | `{total, booked, free, shortage, …}` | одно из `projects.reservation.manage`, `warehouse.issue`, `apex.view` |
 | Заменить строки сметы | `PUT /api/projects/:id/estimate-lines` | `{lines: SaveProjectEstimateLineInput[]}` → строки сметы | `finance.manage` |
 | Установить общую скидку | `PUT /api/projects/:id/estimate-settings` | `{totalDiscountType: "percent", totalDiscountValue: 14}` → настройки | `finance.manage` |
+| Рассчитать доставку | `POST /api/transport/route-quote` | адреса, `vehicleId`, необязательная ручная цена топлива и километраж → топливо, амортизация и `totalCostEUR` | одно из `finance.view`, `projects.view` |
 
-Источники истины: `apps/api/src/modules/projects/routes.ts`, `apps/api/src/modules/projects/service.ts`, `apps/api/src/modules/finance/routes.ts`, `apps/api/src/modules/finance/service.ts`, `apps/api/src/core/auth.ts`, `packages/contracts/src/projects.ts`, `packages/contracts/src/finance.ts`.
+Источники истины: `apps/api/src/modules/projects/routes.ts`, `apps/api/src/modules/projects/service.ts`, `apps/api/src/modules/finance/routes.ts`, `apps/api/src/modules/finance/service.ts`, `apps/api/src/modules/transport/routes.ts`, `apps/api/src/modules/transport/service.ts`, `apps/api/src/core/auth.ts`, `packages/contracts/src/projects.ts`, `packages/contracts/src/finance.ts`, `packages/contracts/src/transport.ts`.
+
+Расчёт доставки берёт цену стандартного бензина BMB 95 или Evro Dizel с Benzinko на момент расчёта, если цена не передана вручную. Итоговая себестоимость — стоимость топлива плюс настроенная для автомобиля амортизация за километр. В экономике проекта каждый добавленный автомобиль сохраняется отдельной ручной строкой `Доставка`; итоговую себестоимость строки можно скорректировать перед добавлением. Это внутренний авторизованный маршрут приложения и не является приёмником заказа с сайта.
 
 `CreateProjectInput`: обязательны `name` и существующий `clientId` (UUID). Необязательны `startsAt`, `endsAt` (ISO 8601 с часовым поясом), `venueId`, `note`, `financeTracked` и поля дресс-кода. Период может отсутствовать для заявки на подбор. `ProjectDTO` возвращает `id`, `status`, `startsAt`, `endsAt` и прочие поля. `contacts` клиента — одна текстовая строка: отдельных полей телефона, Instagram и предпочтительного канала связи пока нет. У проекта нет полей для адреса доставки, времени выдачи и возврата отдельно от периода, исходного ID заявки или итоговой цены сайта. `note` может временно хранить эти сведения, но это не структурированный контракт.
 
