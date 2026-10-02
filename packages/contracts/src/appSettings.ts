@@ -44,9 +44,18 @@ export interface DressCodeOptionDTO {
   sortOrder: number;
 }
 
+export interface ProjectProblemNotificationSettingsDTO {
+  /** Notification thresholds before project start, in minutes. */
+  intervalsMinutes: number[];
+}
+
 export interface AppSettingsService {
   getDateTimeSettings(): Promise<DateTimeSettingsDTO>;
   updateDateTimeSettings(input: UpdateDateTimeSettingsInput): Promise<DateTimeSettingsDTO>;
+  getProjectProblemNotificationSettings(): Promise<ProjectProblemNotificationSettingsDTO>;
+  updateProjectProblemNotificationSettings(input: ProjectProblemNotificationSettingsDTO): Promise<ProjectProblemNotificationSettingsDTO>;
+  /** Atomically reserves one project/threshold occurrence for delivery. */
+  claimProjectProblemNotification(projectId: string, projectStartsAt: string, intervalMinutes: number): Promise<boolean>;
   listDressCodeOptions(includeArchived?: boolean): Promise<DressCodeOptionDTO[]>;
   createDressCodeOption(input: { label: string }): Promise<DressCodeOptionDTO>;
   updateDressCodeOption(id: string, input: { label?: string; active?: boolean; sortOrder?: number }): Promise<DressCodeOptionDTO>;

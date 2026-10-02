@@ -4,7 +4,7 @@ import { CURRENCIES, DATE_FORMATS, formatDateValue, formatTimeValue } from "@sev
 import { Card, Button, SectionTitle, Input, Select, Loading } from "../../ui-kit/index.ts";
 import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
-import { useAllCalendarFeed, useCreateDressCodeOption, useDateTimeSettings, useDressCodeOptions, useFxRates, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetTelegramInboxSettings, useTelegramInboxSettings, useUpdateDressCodeOption } from "./hooks.ts";
+import { useAllCalendarFeed, useCreateDressCodeOption, useDateTimeSettings, useDressCodeOptions, useFxRates, useProjectProblemNotificationSettings, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetProjectProblemNotificationSettings, useSetTelegramInboxSettings, useTelegramInboxSettings, useUpdateDressCodeOption } from "./hooks.ts";
 import { RoleEditor } from "./components/RoleEditor.tsx";
 import { useCableSettings, useSetCableSettings } from "../warehouse/hooks.ts";
 import { nameFormatForInput, nameFormatFromInput } from "../warehouse/cables.ts";
@@ -55,6 +55,8 @@ export function SettingsPage() {
       </Card>
 
       {can("roles.manage") && <DateTimeFormatSettings />}
+
+      {can("roles.manage") && <ProjectProblemNotificationSettings />}
 
       {can("roles.manage") && <RoleEditor />}
 
@@ -259,6 +261,27 @@ function DateTimeFormatSettings() {
       </Card>
     </>
   );
+}
+
+function ProjectProblemNotificationSettings() {
+  const settings = useProjectProblemNotificationSettings();
+  const save = useSetProjectProblemNotificationSettings();
+  const [values, setValues] = useState<number[]>([]);
+  const [amount, setAmount] = useState("1");
+  const [unit, setUnit] = useState("days");
+  useEffect(() => { if (settings.data) setValues(settings.data.intervalsMinutes); }, [settings.data]);
+  const label = (minutes: number) => minutes % 1440 === 0 ? `${minutes / 1440} дн.` : minutes % 60 === 0 ? `${minutes / 60} ч.` : `${minutes} мин.`;
+  const add = () => {
+    const multiplier = unit === "days" ? 1440 : unit === "hours" ? 60 : 1;
+    const minutes = Math.round(Number(amount) * multiplier);
+    if (minutes >= 5) setValues(current => [...new Set([...current, minutes])].sort((a, b) => b - a));
+  };
+  return <><SectionTitle>Сводки о проблемах проектов</SectionTitle><Card><div className="stack" style={{ gap: 10 }}>
+    <p className="card__subtitle">Общие интервалы до начала проекта. Сводка отправляется в Telegram людям с отдельным правом Apex.</p>
+    <div className="row" style={{ flexWrap: "wrap" }}>{values.map(value => <button key={value} type="button" className="chip chip--neutral" onClick={() => setValues(current => current.filter(item => item !== value))}>{label(value)} ×</button>)}</div>
+    <div className="row"><Input type="number" min="1" value={amount} onChange={event => setAmount(event.target.value)} /><Select value={unit} onChange={event => setUnit(event.target.value)} options={[{ value: "days", label: "дней" }, { value: "hours", label: "часов" }, { value: "minutes", label: "минут" }]} /><Button variant="secondary" onClick={add}>Добавить</Button></div>
+    <Button variant="secondary" disabled={save.isPending || settings.isLoading} onClick={() => save.mutate({ intervalsMinutes: values })}>Сохранить</Button>
+  </div></Card></>;
 }
 
 function FxRow({ currency, rate, onSave, disabled }: { currency: string; rate: number; onSave: (v: number) => void; disabled?: boolean }) {

@@ -9,6 +9,7 @@ const schema = z.object({
   timeFormat: z.enum(["24h", "12h"]),
 });
 const dressCodeSchema = z.object({ label: z.string().trim().min(1) });
+const problemNotificationSchema = z.object({ intervalsMinutes: z.array(z.number().int().min(5).max(525600)).max(24) });
 
 export function registerAppSettingsRoutes(app: FastifyInstance, ctx: RouteContext, service: AppSettings.AppSettingsService) {
   app.get("/api/app-settings/date-time", async () => service.getDateTimeSettings());
@@ -16,6 +17,14 @@ export function registerAppSettingsRoutes(app: FastifyInstance, ctx: RouteContex
     const auth = await ctx.auth(req);
     requirePermission(auth, "roles.manage");
     return service.updateDateTimeSettings(schema.parse(req.body));
+  });
+  app.get("/api/app-settings/project-problem-notifications", async (req) => {
+    const auth = await ctx.auth(req); requirePermission(auth, "roles.manage");
+    return service.getProjectProblemNotificationSettings();
+  });
+  app.put("/api/app-settings/project-problem-notifications", async (req) => {
+    const auth = await ctx.auth(req); requirePermission(auth, "roles.manage");
+    return service.updateProjectProblemNotificationSettings(problemNotificationSchema.parse(req.body));
   });
   app.get<{ Querystring: { includeArchived?: string } }>("/api/app-settings/dress-codes", async (req) => service.listDressCodeOptions(req.query.includeArchived === "true"));
   app.post("/api/app-settings/dress-codes", async (req) => {

@@ -29,6 +29,19 @@ export function createAppSettingsService(db: Sql): AppSettings.AppSettingsServic
       );
       return dto(row!);
     },
+    async getProjectProblemNotificationSettings() {
+      const row = await one<{ intervals_minutes: number[] }>(db, `SELECT intervals_minutes FROM app_settings.project_problem_notifications WHERE id=1`);
+      return { intervalsMinutes: row?.intervals_minutes.map(Number) ?? [10080, 4320, 1440, 720] };
+    },
+    async updateProjectProblemNotificationSettings(input) {
+      const intervals = [...new Set(input.intervalsMinutes)].sort((a, b) => b - a);
+      const row = await one<{ intervals_minutes: number[] }>(db, `INSERT INTO app_settings.project_problem_notifications(id,intervals_minutes,updated_at) VALUES(1,$1,now()) ON CONFLICT(id) DO UPDATE SET intervals_minutes=EXCLUDED.intervals_minutes,updated_at=now() RETURNING intervals_minutes`, [intervals]);
+      return { intervalsMinutes: row!.intervals_minutes.map(Number) };
+    },
+    async claimProjectProblemNotification(projectId, projectStartsAt, intervalMinutes) {
+      const row = await one<{ project_id: string }>(db, `INSERT INTO app_settings.project_problem_notification_deliveries(project_id,project_starts_at,interval_minutes) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING project_id`, [projectId, projectStartsAt, intervalMinutes]);
+      return !!row;
+    },
     async listDressCodeOptions(includeArchived = false) {
       return (await query<DressCodeRow>(db, `SELECT id,label,active,sort_order FROM app_settings.dress_code_options ${includeArchived ? "" : "WHERE active"} ORDER BY sort_order,label`)).map(dressCodeDTO);
     },

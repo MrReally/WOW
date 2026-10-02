@@ -21,6 +21,7 @@ export const ROLES: Role[] = ["admin", "warehouse", "tech"];
 export type Permission =
   | "backoffice.access"
   | "apex.view"
+  | "apex.projectProblems.notify"
   | "operations.view"
   | "operations.stage.back"
   | "operations.stage.back.after.warehouse.turnover"
@@ -75,6 +76,7 @@ export interface PermissionMeta {
 export const PERMISSIONS: PermissionMeta[] = [
   { key: "backoffice.access", group: "Backoffice", label: "Вход в desktop/backoffice ERP-режим" },
   { key: "apex.view", group: "Apex (управление)", label: "Видеть Apex — прокаты, проблемы, долги" },
+  { key: "apex.projectProblems.notify", group: "Apex (управление)", label: "Получать сводки о проблемах проектов" },
   { key: "operations.view", group: "Operations (бригада)", label: "Видеть Operations — рабочее окно бригады" },
   { key: "operations.stage.back", group: "Operations (бригада)", label: "Возвращать проект на предыдущий этап" },
   { key: "operations.stage.back.after.warehouse.turnover", group: "Operations (бригада)", label: "Возвращать проект назад после завершения складского оборота" },

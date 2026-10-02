@@ -26,7 +26,7 @@ import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
 import { editTelegramMessage, sendTelegramDocument, sendTelegramMessage, sendTelegramPhoto, setTelegramMessageLogger } from "./core/telegram.js";
-import { formatDateTimeValue, formatDateValue, type Notifications, type People } from "@sever/contracts";
+import { formatDateTimeValue, formatDateValue, type Notifications, type People, type Projects } from "@sever/contracts";
 import type { DomainEvent } from "./core/eventBus.js";
 
 export function createModules(bus: EventBus = new EventBus()) {
@@ -697,9 +697,93 @@ export function createModules(bus: EventBus = new EventBus()) {
     return setInterval(() => void dispatchDueReminders(), 60_000);
   }
 
+  const intervalLabel = (minutes: number) => minutes % 1440 === 0
+    ? `${minutes / 1440} дн.`
+    : minutes % 60 === 0 ? `${minutes / 60} ч.` : `${minutes} мин.`;
+
+  async function projectProblemLines(project: Projects.ProjectDTO, allProjects: Projects.ProjectDTO[], projectProblems: import("@sever/contracts").Problem[]) {
+    const [roles, assignments, reservations, timings, contractorItems] = await Promise.all([
+      projects.service.listProjectRoles(project.id),
+      projects.service.listAssignments(project.id),
+      projects.service.listReservations(project.id),
+      projects.service.listTimings(project.id),
+      projects.service.listContractorItems(project.id),
+    ]);
+    const lines: string[] = [];
+    const activeAssignments = assignments.filter(item => item.status === "added" || item.status === "accepted");
+    const missingRoles = roles.map(role => ({ role, missing: Math.max(0, role.requiredCount - activeAssignments.filter(item => item.roleId === role.id).length) })).filter(item => item.missing > 0);
+    if (missingRoles.length) lines.push(`Люди: ${missingRoles.map(item => `${item.role.title} — ${item.missing}`).join(", ")}`);
+
+    const unbooked = contractorItems.filter(item => item.kind === "equipment" && !item.booked);
+    if (unbooked.length) lines.push(`Не забронировано: ${unbooked.map(item => `${item.name} × ${item.qty}`).join(", ")}`);
+
+    const modelEntries = await Promise.all([...new Set(reservations.map(item => item.modelId))].map(async id => [id, await equipment.service.getModel(id)] as const));
+    const modelById = new Map(modelEntries);
+    const unallocated = reservations.filter(item => {
+      const model = modelById.get(item.modelId);
+      return model?.trackingMode === "serial" && (model.effectiveReservationAssignmentMode ?? "planning") === "planning" && item.resolvedUnitIds.length < item.qty;
+    });
+    if (unallocated.length) lines.push(`Не распределено: ${unallocated.map(item => `${modelById.get(item.modelId)?.name ?? item.modelId} — ${item.qty - item.resolvedUnitIds.length}`).join(", ")}`);
+    if (!timings.length) lines.push("Полностью отсутствует тайминг");
+
+    const conflictLines = new Set<string>();
+    for (const reservation of reservations) {
+      if (!reservation.startsAt || !reservation.endsAt) continue;
+      const overlaps = await projects.service.findOverlapping(reservation.modelId, reservation.startsAt, reservation.endsAt);
+      for (const other of overlaps.filter(item => item.id !== reservation.id && item.projectId !== project.id)) {
+        const otherProject = allProjects.find(item => item.id === other.projectId);
+        const shared = reservation.resolvedUnitIds.filter(id => other.resolvedUnitIds.includes(id));
+        if (shared.length) {
+          const tags = await Promise.all(shared.map(async id => (await equipment.service.getUnit(id))?.assetTag ?? id));
+          conflictLines.add(`${tags.join(", ")} — «${project.name}» / «${otherProject?.name ?? other.projectId}»`);
+        }
+      }
+    }
+    const shortageProblems = projectProblems.filter(problem => problem.kind === "reservation_conflict" && problem.refs.projectId === project.id);
+    for (const problem of shortageProblems) {
+      const model = problem.refs.modelId ? modelById.get(problem.refs.modelId) ?? await equipment.service.getModel(problem.refs.modelId) : null;
+      conflictLines.add(`${model?.name ?? "Оборудование"}: ${problem.detail}`);
+    }
+    if (conflictLines.size) lines.push(`Пересечения броней: ${[...conflictLines].join("; ")}`);
+    return lines;
+  }
+
+  async function dispatchProjectProblemNotifications() {
+    const now = Date.now();
+    const [{ intervalsMinutes }, allProjects, recipients, projectProblems] = await Promise.all([
+      appSettings.service.getProjectProblemNotificationSettings(),
+      projects.service.listProjects(),
+      people.service.listWithPermission("apex.projectProblems.notify"),
+      projects.service.listProblems(),
+    ]);
+    if (!recipients.length || !intervalsMinutes.length) return;
+    const upcoming = allProjects.filter(project => project.startsAt && !["completed", "cancelled"].includes(project.status) && Date.parse(project.startsAt) > now);
+    for (const project of upcoming) {
+      const remainingMinutes = (Date.parse(project.startsAt!) - now) / 60_000;
+      // Pick the nearest crossed threshold. This catches up after downtime
+      // without sending every older interval as a burst on startup.
+      const intervalMinutes = intervalsMinutes.filter(value => value >= remainingMinutes).sort((a, b) => a - b)[0];
+      if (intervalMinutes == null) continue;
+      const lines = await projectProblemLines(project, allProjects, projectProblems);
+      if (!lines.length) continue;
+      if (!(await appSettings.service.claimProjectProblemNotification(project.id, project.startsAt!, intervalMinutes))) continue;
+      const title = `Проблемы проекта за ${intervalLabel(intervalMinutes)}`;
+      const body = `«${project.name}»\n${lines.map(line => `• ${line}`).join("\n")}`;
+      for (const user of recipients) {
+        await notifications.service.create({ userId: user.id, kind: "problem", title, body, link: `/projects/${project.id}`, sourceKey: `project-problems:${project.id}:${project.startsAt}:${intervalMinutes}` });
+        await sendTelegramMessage(user.telegramId, `<b>${escapeHtml(title)}</b>\n${escapeHtml(body)}`);
+      }
+    }
+  }
+
+  function startProjectProblemScheduler() {
+    void dispatchProjectProblemNotifications();
+    return setInterval(() => void dispatchProjectProblemNotifications(), 60_000);
+  }
+
   const modules = [appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, operations, transport, audit];
 
-  return { bus, appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, operations, transport, audit, apex, billing, modules, handleTelegramCallback, startReminderScheduler };
+  return { bus, appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, operations, transport, audit, apex, billing, modules, handleTelegramCallback, startReminderScheduler, startProjectProblemScheduler };
 }
 
 export type Wiring = ReturnType<typeof createModules>;

@@ -56,6 +56,17 @@ export function useSetDateTimeSettings() {
     onSuccess: (settings) => qc.setQueryData(["app-settings", "date-time"], settings),
   });
 }
+export function useProjectProblemNotificationSettings() {
+  return useQuery({ queryKey: ["app-settings", "project-problem-notifications"], queryFn: () => api.get<AppSettings.ProjectProblemNotificationSettingsDTO>("/api/app-settings/project-problem-notifications") });
+}
+export function useSetProjectProblemNotificationSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AppSettings.ProjectProblemNotificationSettingsDTO) => api.put<AppSettings.ProjectProblemNotificationSettingsDTO>("/api/app-settings/project-problem-notifications", input),
+    meta: { successMessage: "Интервалы уведомлений сохранены" },
+    onSuccess: data => qc.setQueryData(["app-settings", "project-problem-notifications"], data),
+  });
+}
 export function useDressCodeOptions(includeArchived = false) {
   return useQuery({ queryKey: ["app-settings", "dress-codes", includeArchived], queryFn: () => api.get<AppSettings.DressCodeOptionDTO[]>(`/api/app-settings/dress-codes${includeArchived ? "?includeArchived=true" : ""}`) });
 }
