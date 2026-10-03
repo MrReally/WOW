@@ -98,7 +98,7 @@ const TIMING_REMINDER_OPTIONS = [
 ];
 
 type ProjectTab = "overview" | "reservations" | "timing" | "team" | "contractors" | "finance";
-type ProjectTabIcon = ProjectTab | "plan" | "invoice" | "back" | "close";
+type ProjectTabIcon = ProjectTab | "plan" | "operations" | "back" | "close";
 
 const PROJECT_TABS: { id: ProjectTab; label: string; shortLabel: string; count?: "reservations" | "timing" | "team" | "contractors"; tone?: "accent" | "warn" | "info" | "ok" }[] = [
   { id: "overview", label: "Обзор", shortLabel: "Обзор", tone: "accent" },
@@ -154,6 +154,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const canFinance = can("finance.view");
   const canManageFinance = can("finance.manage");
   const canPlans = can("plans.view", "plans.manage");
+  const canOpenOperations = can("operations.view");
   const canViewNote = can("projects.note.view");
 
   const project = useProject(id);
@@ -457,8 +458,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
           {canPlans && (
             <ProjectActionButton icon="plan" label="План сцены" meta="схема" onClick={() => navigate(`/projects/${p.id}/plan`)} />
           )}
-          {canFinance && invoice.data && (
-            <ProjectActionButton icon="invoice" label="Счёт" meta="PDF" onClick={() => navigate(`/projects/${p.id}/invoice`)} />
+          {canOpenOperations && (
+            <ProjectActionButton icon="operations" label="Operations" meta="проект" onClick={() => navigate(`/operations/projects/${p.id}`)} />
           )}
         </div>
       )}
@@ -1780,8 +1781,8 @@ function ProjectGlyph({ type }: { type: ProjectTabIcon }) {
       return <svg viewBox="0 0 24 24"><path d="M7 8.2h8.8M7 12h7M7 15.8h8.8" {...p} /><path d="M18 5.5c-1.2-.9-2.6-1.3-4.2-1.3-4.2 0-7.3 3.3-7.3 7.8s3.1 7.8 7.3 7.8c1.6 0 3-.4 4.2-1.3" {...p} /></svg>;
     case "plan":
       return <svg viewBox="0 0 24 24"><path d="M4.5 18.5h15M6 16l4-8 3 5 2-3 3 6" {...p} /><circle cx="10" cy="8" r="1.3" fill="currentColor" stroke="none" /></svg>;
-    case "invoice":
-      return <svg viewBox="0 0 24 24"><path d="M7 4.5h8l3 3v12H7z" {...p} /><path d="M15 4.5v3h3M9.5 12h5M9.5 15.5h5" {...p} /></svg>;
+    case "operations":
+      return <svg viewBox="0 0 24 24"><path d="M5 7.5h14v11H5z" {...p} /><path d="M8.5 7.5V5.8A1.8 1.8 0 0110.3 4h3.4a1.8 1.8 0 011.8 1.8v1.7M5 12h14M9.5 12v2h5v-2" {...p} /></svg>;
     case "close":
       return <svg viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" {...p} /></svg>;
     default:

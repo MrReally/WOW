@@ -123,6 +123,8 @@ export function OperationsProjectPage() {
   );
   const canListPeople = can("people.view", "operations.payroll.view", "operations.payroll.manage");
   const canViewProjectNote = can("projects.note.view");
+  const canOpenPlan = can("plans.view", "plans.manage");
+  const canOpenProject = can("projects.view");
   const people = usePeople(canListPeople);
   const [activeTab, setActiveTab] = useState<OperationsTab>("turnover");
 
@@ -157,7 +159,12 @@ export function OperationsProjectPage() {
       {activeTab === "turnover" && <>
         <SectionHead label="Сейчас" />
         {activeTiming ? <Card><p className="card__title">{activeTiming.title}</p><p className="card__subtitle">{dateTime(activeTiming.startsAt)} → {dateTime(activeTiming.endsAt)}</p></Card> : <EmptyState title="Сейчас нет назначенного события" />}
-        <div className="row"><Button block variant="secondary" onClick={() => navigate(`/projects/${id}/plan`)}>Схема</Button><Button block variant="secondary" onClick={() => navigate(`/projects/${id}`)}>Проект</Button></div>
+        {(canOpenPlan || canOpenProject) && (
+          <div className="row">
+            {canOpenPlan && <Button block variant="secondary" onClick={() => navigate(`/projects/${id}/plan`)}>Схема</Button>}
+            {canOpenProject && <Button block variant="secondary" onClick={() => navigate(`/projects/${id}`)}>Проект</Button>}
+          </div>
+        )}
         {!project.data.warehouseTurnoverCompletedAt && <StageEquipmentPanel projectId={id} venueId={project.data.venueId} stage={activeStage} />}
         <TaskBoard projectId={id} canManage={canManage} canListPeople={canListPeople} currentUser={user ?? null} />
         <SectionHead label="Этап" />
