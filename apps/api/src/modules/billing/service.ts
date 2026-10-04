@@ -52,7 +52,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
         refId: r.id,
         section: (m && typeName.get(m.typeId)) || "Equipment",
         label: m?.name ?? r.modelId,
-        detail: `${projectDays} day${projectDays === 1 ? "" : "s"} × ${price} €/day`,
+        detail: "",
         qty: r.qty,
         unitEUR: price,
         periods: projectDays,
@@ -60,13 +60,11 @@ export function createBillingService(deps: BillingDeps): BillingService {
         costEUR: 0,
       };
     });
-    const contractorKindDetail = (it: { kind: string; note: string | null }) =>
-      [it.kind === "delivery" ? "delivery" : it.kind === "setup" ? "setup" : "subrent", it.note].filter(Boolean).join(" · ");
     const contractorLines: Finance.InvoiceLineDTO[] = contractorItems.map((it) => ({
       refId: it.id,
       section: it.kind === "delivery" ? "Delivery" : it.kind === "setup" ? "Setup" : "Equipment",
       label: it.name,
-      detail: contractorKindDetail(it),
+      detail: it.note?.trim() ?? "",
       qty: it.qty,
       unitEUR: it.priceEUR,
       periods: 1,

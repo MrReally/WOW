@@ -32,12 +32,17 @@ import type { DomainEvent } from "./core/eventBus.js";
 export function createModules(bus: EventBus = new EventBus()) {
   const people = createPeopleModule(pool, bus);
   const equipment = createEquipmentModule(pool, bus);
+  const appSettings = createAppSettingsModule(pool, bus);
+  const venues = createVenuesModule(pool);
   const projects = createProjectsModule(
     pool,
     bus,
     (unitIds) => Promise.all(unitIds.map((unitId) => equipment.service.getUnit(unitId))),
-    (modelIds) => Promise.all(modelIds.map((modelId) => equipment.service.getModel(modelId)))
+    (modelIds) => Promise.all(modelIds.map((modelId) => equipment.service.getModel(modelId))),
+    appSettings.service,
+    async (venueId) => venueId ? (await venues.service.get(venueId))?.name ?? null : null,
   );
+  bus.on("app_settings.project_name_template.updated", async () => projects.service.refreshProjectNames());
   const finance = createFinanceModule(pool, bus);
   bus.on("reservation.deleted", async (event) => {
     await finance.service.removeProjectEstimateLinesBySourceRef(event.reservationId);
@@ -45,7 +50,6 @@ export function createModules(bus: EventBus = new EventBus()) {
   bus.on("project.duplicated", async (event) => {
     await finance.service.copyProjectEstimateLines(event.sourceProjectId, event.projectId, event.sourceRefMap);
   });
-  const venues = createVenuesModule(pool);
   const plans = createPlansModule(pool);
   bus.on("project.duplicated", async (event) => {
     await plans.service.copyCurrentPlan(event.sourceProjectId, event.projectId);
@@ -55,7 +59,6 @@ export function createModules(bus: EventBus = new EventBus()) {
   const operations = createOperationsModule(pool, equipment.service, projects.service, venues.service);
   const audit = createAuditModule(pool);
   const transport = createTransportModule(pool);
-  const appSettings = createAppSettingsModule(pool);
   const contractors = createContractorsModule(pool);
 
   setTelegramMessageLogger(async (message) => {

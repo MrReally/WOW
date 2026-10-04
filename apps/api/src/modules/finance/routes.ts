@@ -42,6 +42,7 @@ const invoiceCompanySchema = z.object({
   phone: z.string(),
   email: z.string(),
   telegram: z.string(),
+  logoDataUrl: z.string().max(3_000_000).regex(/^data:image\/(?:png|jpeg);base64,/).nullable().optional().default(null),
 });
 const invoiceVersionLineSchema = z.object({
   id: z.string(),

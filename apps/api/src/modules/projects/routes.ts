@@ -46,6 +46,25 @@ const duplicateProjectSchema = z.object({
   startsAt: z.string().datetime(),
   endsAt: z.string().datetime(),
 });
+const projectSeriesScheduleSchema = z.object({
+  frequency: z.enum(["daily", "weekly", "monthly"]),
+  interval: z.number().int().positive(),
+  weekdays: z.array(z.number().int().min(1).max(7)).default([]),
+  endMode: z.enum(["never", "until", "count"]),
+  until: z.string().datetime().nullable(),
+  occurrenceCount: z.number().int().positive().nullable(),
+  timeZone: z.string().min(1),
+});
+const createProjectSeriesSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  schedule: projectSeriesScheduleSchema,
+  generateThrough: z.string().datetime().optional(),
+});
+const updateProjectSeriesSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  schedule: projectSeriesScheduleSchema.optional(),
+  active: z.boolean().optional(),
+});
 const reservationSchema = z.object({
   projectId: z.string().uuid(),
   modelId: z.string().uuid(),
@@ -196,6 +215,54 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.manage");
     return service.duplicateProject(req.params.id, duplicateProjectSchema.parse(req.body));
+  });
+  app.post<{ Params: { id: string } }>("/api/projects/:id/series", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.manage");
+    return service.createProjectSeries(req.params.id, createProjectSeriesSchema.parse(req.body) as Projects.CreateProjectSeriesInput);
+  });
+  app.post<{ Params: { id: string } }>("/api/projects/:id/detach-from-series", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.manage");
+    return service.detachProjectFromSeries(req.params.id);
+  });
+  app.get<{ Params: { id: string } }>("/api/project-series/:id", async (req) => {
+    await ctx.auth(req);
+    return service.getProjectSeries(req.params.id);
+  });
+  app.get<{ Params: { id: string } }>("/api/project-series/:id/projects", async (req) => {
+    await ctx.auth(req);
+    return service.listProjectSeriesOccurrences(req.params.id);
+  });
+  app.patch<{ Params: { id: string } }>("/api/project-series/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.manage");
+    return service.updateProjectSeries(req.params.id, updateProjectSeriesSchema.parse(req.body) as Projects.UpdateProjectSeriesInput);
+  });
+  app.post<{ Params: { id: string }; Querystring: { through?: string } }>("/api/project-series/:id/generate", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.manage");
+    const through = req.query.through ? z.string().datetime().parse(req.query.through) : undefined;
+    return service.generateProjectSeries(req.params.id, through);
+  });
+  app.post<{ Params: { id: string } }>("/api/project-series/:id/change-preview", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.manage");
+    const body = z.object({
+      sourceProjectId: z.string().uuid(),
+      scope: z.enum(["this_and_future", "all"]),
+      projectPatch: updateProjectSchema,
+    }).parse(req.body);
+    return service.previewProjectSeriesChange(req.params.id, body as Projects.PreviewProjectSeriesChangeInput);
+  });
+  app.post<{ Params: { id: string } }>("/api/project-series/:id/apply-change", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.manage");
+    const body = z.object({
+      changeSetId: z.string().uuid(),
+      resolutions: z.record(z.enum(["keep_local", "use_series"])).optional(),
+    }).parse(req.body);
+    return service.applyProjectSeriesChange(req.params.id, body as Projects.ApplyProjectSeriesChangeInput);
   });
   app.patch<{ Params: { id: string } }>("/api/projects/:id/status", async (req) => {
     const auth = await ctx.auth(req);

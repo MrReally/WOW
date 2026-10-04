@@ -29,7 +29,7 @@ interface Line {
   hidden: boolean;
 }
 
-interface Company { name: string; requisites: string; phone: string; email: string; telegram: string; }
+interface Company { name: string; requisites: string; phone: string; email: string; telegram: string; logoDataUrl: string | null; }
 interface StoredInvoiceVersion {
   id: string;
   projectId: string;
@@ -58,7 +58,7 @@ const cleanText = (value: string) => value.trim().replace(/\s+/g, " ");
 
 const DOC_LABELS: Record<InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; discount: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
   EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", discount: "DISCOUNT:", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
-  RU: { title: "Смета", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", discount: "СКИДКА:", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
+  RU: { title: "Коммерческое предложение", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", discount: "СКИДКА:", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
   RS: { title: "Ponuda", date: "Datum", place: "Mesto", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", discount: "POPUST:", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
 };
 
@@ -73,12 +73,13 @@ function loadCompany(): Company {
         phone: parsed.phone ?? "+381 62 852 5240",
         email: parsed.email ?? "sever.beo.contact@gmail.com",
         telegram: parsed.telegram ?? "@sever_contact",
+        logoDataUrl: parsed.logoDataUrl ?? null,
       };
     }
   } catch {
     /* ignore */
   }
-  return { name: "SEVER", requisites: "", phone: "+381 62 852 5240", email: "sever.beo.contact@gmail.com", telegram: "@sever_contact" };
+  return { name: "SEVER", requisites: "", phone: "+381 62 852 5240", email: "sever.beo.contact@gmail.com", telegram: "@sever_contact", logoDataUrl: null };
 }
 
 export function InvoicePage() {
@@ -622,7 +623,7 @@ function PrintableInvoice({ labels, formattedDate, place, sections, convert, sub
           <div className="estimate-field"><div>{labels.date}</div><strong>{formattedDate}</strong></div>
           <div className="estimate-field estimate-field--tall"><div>{labels.place}</div><strong>{place.trim() || "—"}</strong></div>
         </div>
-        <div className="estimate-logo"><BrandLogo size={170} color="#000" /></div>
+        <div className="estimate-logo">{company.logoDataUrl ? <img src={company.logoDataUrl} alt="SEVER" /> : <BrandLogo size={170} color="#000" />}</div>
       </div>
       <table className="estimate-table">
         <thead><tr><th>{labels.name}</th><th className="num">{labels.count}</th><th className="num">{labels.price}</th><th>{labels.comment}</th></tr></thead>

@@ -249,6 +249,7 @@ export interface EstimatePdfRequestDTO {
     phone: string;
     email: string;
     telegram: string;
+    logoDataUrl: string | null;
   };
   lang: InvoiceLang;
   currency: Currency;
@@ -265,6 +266,8 @@ export interface InvoiceCompanySettingsDTO {
   phone: string;
   email: string;
   telegram: string;
+  /** PNG or JPEG data URL used in commercial proposals. */
+  logoDataUrl: string | null;
 }
 
 export interface InvoiceVersionDTO {

@@ -2,7 +2,7 @@ import type { Transport } from "@sever/contracts";
 import { one, query, type Sql } from "../../core/db.js";
 import { BadRequest, NotFound } from "../../core/errors.js";
 import { env } from "../../env.js";
-import { getBenzinkoFuelPrice } from "./benzinko.js";
+import { getOfficialSerbiaFuelPrice } from "./fuelPrices.js";
 
 interface VehicleRow {
   id: string;
@@ -96,19 +96,25 @@ export function createTransportService(db: Sql): Transport.TransportService {
       if (durationMinutes != null) durationMinutes *= multiplier;
       let fuelPriceEURPerL = input.fuelPriceEURPerL;
       let fuelPriceSource: Transport.RouteQuoteDTO["fuelPriceSource"] = "manual";
+      let fuelPriceRSDPerL: number | null = null;
+      let fuelPriceSourceUrl: string | null = null;
       if (vehicle.fuelType === "electric") {
         fuelPriceEURPerL = 0;
         fuelPriceSource = "not_applicable";
       } else if (fuelPriceEURPerL == null) {
+        if (!input.rsdRateToEUR) throw BadRequest("Для автоматической цены топлива настройте курс RSD в финансах");
         try {
-          fuelPriceEURPerL = await getBenzinkoFuelPrice(vehicle.fuelType);
-          fuelPriceSource = "benzinko";
+          const officialPrice = await getOfficialSerbiaFuelPrice(vehicle.fuelType);
+          fuelPriceRSDPerL = officialPrice.priceRSDPerL;
+          fuelPriceSourceUrl = officialPrice.sourceUrl;
+          fuelPriceEURPerL = Math.round(fuelPriceRSDPerL * input.rsdRateToEUR * 1_000) / 1_000;
+          fuelPriceSource = "serbia_ministry";
         } catch {
-          throw BadRequest("Не удалось получить актуальную цену с Benzinko — укажите цену топлива вручную");
+          throw BadRequest("Не удалось получить актуальную официальную цену топлива — укажите цену вручную");
         }
       }
       const costs = calculateDeliveryCosts(distanceKm, vehicle.consumptionLPer100Km, fuelPriceEURPerL, vehicle.depreciationEURPerKm);
-      return { vehicleId: vehicle.id, distanceKm, durationMinutes, roundTrip: multiplier === 2, ...costs, fuelPriceEURPerL, fuelPriceSource, depreciationEURPerKm: vehicle.depreciationEURPerKm, source };
+      return { vehicleId: vehicle.id, distanceKm, durationMinutes, roundTrip: multiplier === 2, ...costs, fuelPriceEURPerL, fuelPriceRSDPerL, fuelPriceSource, fuelPriceSourceUrl, depreciationEURPerKm: vehicle.depreciationEURPerKm, source };
     },
   };
 }

@@ -45,6 +45,8 @@ export const PROJECT_WORKFLOW_STATUSES: ProjectStatus[] = [
 export interface ProjectDTO {
   id: ID;
   name: string;
+  /** Unformatted name entered by the user; `name` is rendered from the global template. */
+  baseName: string;
   clientId: ID;
   status: ProjectStatus;
   operationStage: ProjectChecklistGroup;
@@ -60,6 +62,10 @@ export interface ProjectDTO {
   note: string | null;
   startsAt: ISODateTime | null;
   endsAt: ISODateTime | null;
+  /** Recurrence metadata. Every occurrence remains an independent project. */
+  seriesId: ID | null;
+  seriesOccurrenceKey: string | null;
+  seriesTemplateVersion: number | null;
   createdAt: ISODateTime;
 }
 
@@ -93,6 +99,89 @@ export interface DuplicateProjectInput {
   name: string;
   startsAt: ISODateTime;
   endsAt: ISODateTime;
+}
+
+// ── Recurring project series ────────────────────────────────────────────────
+
+export type ProjectSeriesFrequency = "daily" | "weekly" | "monthly";
+export type ProjectSeriesEndMode = "never" | "until" | "count";
+
+export interface ProjectSeriesSchedule {
+  frequency: ProjectSeriesFrequency;
+  /** Every N days/weeks/months. */
+  interval: number;
+  /** ISO weekday numbers (1 = Monday, 7 = Sunday); used for weekly series. */
+  weekdays: number[];
+  endMode: ProjectSeriesEndMode;
+  until: ISODateTime | null;
+  occurrenceCount: number | null;
+  timeZone: string;
+}
+
+export interface ProjectSeriesDTO {
+  id: ID;
+  name: string;
+  templateProjectId: ID;
+  schedule: ProjectSeriesSchedule;
+  active: boolean;
+  templateVersion: number;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+export interface CreateProjectSeriesInput {
+  name?: string;
+  schedule: ProjectSeriesSchedule;
+  /** Materialize occurrences through this instant; defaults to twelve weeks. */
+  generateThrough?: ISODateTime;
+}
+
+export interface UpdateProjectSeriesInput {
+  name?: string;
+  schedule?: ProjectSeriesSchedule;
+  active?: boolean;
+}
+
+export type ProjectSeriesChangeScope = "this_and_future" | "all";
+export type ProjectSeriesConflictResolution = "keep_local" | "use_series";
+
+export interface PreviewProjectSeriesChangeInput {
+  sourceProjectId: ID;
+  scope: ProjectSeriesChangeScope;
+  projectPatch: UpdateProjectInput;
+}
+
+export interface ProjectSeriesFieldConflictDTO {
+  field: keyof UpdateProjectInput;
+  baselineValue: unknown;
+  localValue: unknown;
+  seriesValue: unknown;
+}
+
+export interface ProjectSeriesProjectChangeDTO {
+  projectId: ID;
+  projectName: string;
+  startsAt: ISODateTime | null;
+  automaticFields: (keyof UpdateProjectInput)[];
+  conflicts: ProjectSeriesFieldConflictDTO[];
+  protectedReasons: string[];
+  /** Values observed when the preview was made; apply rejects a stale preview. */
+  expectedValues: Partial<Record<keyof UpdateProjectInput, unknown>>;
+}
+
+export interface ProjectSeriesChangePreviewDTO {
+  changeSetId: ID;
+  seriesId: ID;
+  sourceProjectId: ID;
+  scope: ProjectSeriesChangeScope;
+  projects: ProjectSeriesProjectChangeDTO[];
+  createdAt: ISODateTime;
+}
+
+export interface ApplyProjectSeriesChangeInput {
+  changeSetId: ID;
+  /** Default is keep_local. Keys are `${projectId}:${field}`. */
+  resolutions?: Record<string, ProjectSeriesConflictResolution>;
 }
 
 // ── Hourly reservations ──────────────────────────────────────────────────────
@@ -478,6 +567,8 @@ export interface ContractorDebtDTO {
 // ── Public service contract ──────────────────────────────────────────────────
 
 export interface ProjectsService {
+  /** Re-renders stored display names after the global naming template changes. */
+  refreshProjectNames(): Promise<void>;
   // Clients
   listClients(): Promise<ClientDTO[]>;
   createClient(input: CreateClientInput): Promise<ClientDTO>;
@@ -487,6 +578,14 @@ export interface ProjectsService {
   getProject(id: ID): Promise<ProjectDTO | null>;
   createProject(input: CreateProjectInput): Promise<ProjectDTO>;
   duplicateProject(id: ID, input: DuplicateProjectInput): Promise<ProjectDTO>;
+  createProjectSeries(projectId: ID, input: CreateProjectSeriesInput): Promise<ProjectSeriesDTO>;
+  getProjectSeries(id: ID): Promise<ProjectSeriesDTO | null>;
+  updateProjectSeries(id: ID, input: UpdateProjectSeriesInput): Promise<ProjectSeriesDTO>;
+  listProjectSeriesOccurrences(id: ID): Promise<ProjectDTO[]>;
+  generateProjectSeries(id: ID, through?: ISODateTime): Promise<ProjectDTO[]>;
+  previewProjectSeriesChange(id: ID, input: PreviewProjectSeriesChangeInput): Promise<ProjectSeriesChangePreviewDTO>;
+  applyProjectSeriesChange(id: ID, input: ApplyProjectSeriesChangeInput): Promise<ProjectDTO[]>;
+  detachProjectFromSeries(projectId: ID): Promise<ProjectDTO>;
   updateProject(id: ID, input: UpdateProjectInput): Promise<ProjectDTO>;
   setStatus(id: ID, status: ProjectStatus, actorId?: ID | null): Promise<ProjectDTO>;
   announceStatusToPersonnel(id: ID, actorId?: ID | null): Promise<ProjectDTO>;

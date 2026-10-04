@@ -1,5 +1,6 @@
 import type { AppSettings } from "@sever/contracts";
 import { one, query, type Sql } from "../../core/db.js";
+import type { EventBus } from "../../core/eventBus.js";
 
 interface DateTimeSettingsRow {
   date_format: AppSettings.DateFormat;
@@ -13,7 +14,7 @@ const dto = (row: DateTimeSettingsRow): AppSettings.DateTimeSettingsDTO => ({
   timeFormat: row.time_format,
 });
 
-export function createAppSettingsService(db: Sql): AppSettings.AppSettingsService {
+export function createAppSettingsService(db: Sql, bus: EventBus): AppSettings.AppSettingsService {
   return {
     async getDateTimeSettings() {
       const row = await one<DateTimeSettingsRow>(db, `SELECT date_format, time_format FROM app_settings.date_time WHERE id=1`);
@@ -27,7 +28,17 @@ export function createAppSettingsService(db: Sql): AppSettings.AppSettingsServic
          RETURNING date_format, time_format`,
         [input.dateFormat, input.timeFormat]
       );
+      await bus.publish({ type: "app_settings.project_name_template.updated", at: new Date().toISOString() });
       return dto(row!);
+    },
+    async getProjectNameTemplateSettings() {
+      const row = await one<{ template: string }>(db, `SELECT template FROM app_settings.project_name_template WHERE id=1`);
+      return { template: row?.template ?? "[name]" };
+    },
+    async updateProjectNameTemplateSettings(input) {
+      const row = await one<{ template: string }>(db, `INSERT INTO app_settings.project_name_template (id,template,updated_at) VALUES (1,$1,now()) ON CONFLICT(id) DO UPDATE SET template=EXCLUDED.template,updated_at=now() RETURNING template`, [input.template]);
+      await bus.publish({ type: "app_settings.project_name_template.updated", at: new Date().toISOString() });
+      return row!;
     },
     async getProjectProblemNotificationSettings() {
       const row = await one<{ intervals_minutes: number[] }>(db, `SELECT intervals_minutes FROM app_settings.project_problem_notifications WHERE id=1`);

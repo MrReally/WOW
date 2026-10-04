@@ -56,6 +56,17 @@ export function useSetDateTimeSettings() {
     onSuccess: (settings) => qc.setQueryData(["app-settings", "date-time"], settings),
   });
 }
+export function useProjectNameTemplateSettings() {
+  return useQuery({ queryKey: ["app-settings", "project-name-template"], queryFn: () => api.get<AppSettings.ProjectNameTemplateSettingsDTO>("/api/app-settings/project-name-template") });
+}
+export function useSetProjectNameTemplateSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AppSettings.ProjectNameTemplateSettingsDTO) => api.put<AppSettings.ProjectNameTemplateSettingsDTO>("/api/app-settings/project-name-template", input),
+    meta: { successMessage: "Шаблон названия проекта сохранён" },
+    onSuccess: data => qc.setQueryData(["app-settings", "project-name-template"], data),
+  });
+}
 export function useProjectProblemNotificationSettings() {
   return useQuery({ queryKey: ["app-settings", "project-problem-notifications"], queryFn: () => api.get<AppSettings.ProjectProblemNotificationSettingsDTO>("/api/app-settings/project-problem-notifications") });
 }

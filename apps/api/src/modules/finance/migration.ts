@@ -59,9 +59,11 @@ CREATE TABLE IF NOT EXISTS finance.invoice_company_settings (
   phone      text NOT NULL DEFAULT '+381 62 852 5240',
   email      text NOT NULL DEFAULT 'sever.beo.contact@gmail.com',
   telegram   text NOT NULL DEFAULT '@sever_contact',
+  logo_data_url text,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 INSERT INTO finance.invoice_company_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+ALTER TABLE finance.invoice_company_settings ADD COLUMN IF NOT EXISTS logo_data_url text;
 
 CREATE TABLE IF NOT EXISTS finance.invoice_versions (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -98,6 +100,16 @@ CREATE INDEX IF NOT EXISTS project_estimate_lines_project_idx ON finance.project
 ALTER TABLE finance.project_estimate_lines ADD COLUMN IF NOT EXISTS is_hidden boolean NOT NULL DEFAULT false;
 ALTER TABLE finance.project_estimate_lines ADD COLUMN IF NOT EXISTS discount_type text NOT NULL DEFAULT 'percent' CHECK (discount_type IN ('percent','fixed_rsd'));
 ALTER TABLE finance.project_estimate_lines ADD COLUMN IF NOT EXISTS discount_value numeric(14,2) NOT NULL DEFAULT 0 CHECK (discount_value >= 0);
+
+-- Remove comments that older billing code generated automatically. Keep any
+-- real contractor note that followed the legacy "subrent ·" prefix.
+UPDATE finance.project_estimate_lines
+SET comment = ''
+WHERE source = 'equipment'
+  AND comment ~ '^[0-9]+ days? × [-+]?[0-9]+([.][0-9]+)? €/day$';
+UPDATE finance.project_estimate_lines
+SET comment = CASE WHEN comment = 'subrent' THEN '' ELSE regexp_replace(comment, '^subrent · ', '') END
+WHERE source = 'contractor' AND (comment = 'subrent' OR comment LIKE 'subrent · %');
 
 CREATE TABLE IF NOT EXISTS finance.project_estimate_settings (
   project_id           uuid PRIMARY KEY,

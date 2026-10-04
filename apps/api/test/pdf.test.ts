@@ -8,7 +8,7 @@ describe("estimate PDF", () => {
       date: "2026-08-01",
       place: "Klub Gore",
       clientName: "Клиент",
-      company: { name: "SEVER", requisites: "", phone: "+381 00", email: "mail@example.com", telegram: "@sever" },
+      company: { name: "SEVER", requisites: "", phone: "+381 00", email: "mail@example.com", telegram: "@sever", logoDataUrl: null },
       lang: "RS",
       currency: "EUR",
       rateToEUR: 1,

@@ -30,12 +30,62 @@ ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_option_id uuid
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_label text;
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_uniform boolean NOT NULL DEFAULT false;
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS note text;
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS base_name text;
+UPDATE projects.projects SET base_name=name WHERE base_name IS NULL;
+ALTER TABLE projects.projects ALTER COLUMN base_name SET NOT NULL;
 ALTER TABLE projects.projects ALTER COLUMN starts_at DROP NOT NULL;
 ALTER TABLE projects.projects ALTER COLUMN ends_at DROP NOT NULL;
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS series_id uuid;
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS series_occurrence_key text;
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS series_template_version integer;
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS series_baseline jsonb;
 ALTER TABLE projects.projects DROP CONSTRAINT IF EXISTS projects_status_check;
 ALTER TABLE projects.projects ADD CONSTRAINT projects_status_check CHECK (status IN ('draft','confirmed','in_progress','awaiting_payment','completed','cancelled'));
 ALTER TABLE projects.projects DROP CONSTRAINT IF EXISTS projects_operation_stage_check;
 ALTER TABLE projects.projects ADD CONSTRAINT projects_operation_stage_check CHECK (operation_stage IN ('prep','pickup','delivery','mount','show','dismantle','return'));
+
+CREATE TABLE IF NOT EXISTS projects.project_series (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name                text NOT NULL,
+  template_project_id uuid NOT NULL REFERENCES projects.projects(id),
+  frequency           text NOT NULL CHECK (frequency IN ('daily','weekly','monthly')),
+  interval_count      integer NOT NULL DEFAULT 1 CHECK (interval_count > 0),
+  weekdays            integer[] NOT NULL DEFAULT '{}',
+  end_mode            text NOT NULL DEFAULT 'never' CHECK (end_mode IN ('never','until','count')),
+  until_at            timestamptz,
+  occurrence_count    integer,
+  time_zone           text NOT NULL DEFAULT 'Europe/Belgrade',
+  active              boolean NOT NULL DEFAULT true,
+  template_version    integer NOT NULL DEFAULT 1,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now(),
+  CHECK ((end_mode <> 'until') OR until_at IS NOT NULL),
+  CHECK ((end_mode <> 'count') OR occurrence_count > 0)
+);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname='projects_series_fk'
+  ) THEN
+    ALTER TABLE projects.projects ADD CONSTRAINT projects_series_fk
+      FOREIGN KEY (series_id) REFERENCES projects.project_series(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS projects_series_occurrence_unique
+  ON projects.projects(series_id, series_occurrence_key) WHERE series_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS projects_series_idx ON projects.projects(series_id, starts_at);
+
+CREATE TABLE IF NOT EXISTS projects.series_change_sets (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  series_id         uuid NOT NULL REFERENCES projects.project_series(id) ON DELETE CASCADE,
+  source_project_id uuid NOT NULL REFERENCES projects.projects(id),
+  scope             text NOT NULL CHECK (scope IN ('this_and_future','all')),
+  project_patch     jsonb NOT NULL,
+  preview           jsonb NOT NULL,
+  status            text NOT NULL DEFAULT 'preview' CHECK (status IN ('preview','applied','stale')),
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  applied_at        timestamptz
+);
+CREATE INDEX IF NOT EXISTS series_change_sets_series_idx ON projects.series_change_sets(series_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS projects.operation_events (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),

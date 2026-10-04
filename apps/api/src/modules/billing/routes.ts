@@ -18,6 +18,7 @@ const invoicePdfSchema = z.object({
     phone: z.string(),
     email: z.string(),
     telegram: z.string(),
+    logoDataUrl: z.string().max(3_000_000).regex(/^data:image\/(?:png|jpeg);base64,/).nullable().optional().default(null),
   }),
   lang: z.enum(["EN", "RU", "RS"]),
   currency: z.enum(CURRENCIES as [string, ...string[]]),

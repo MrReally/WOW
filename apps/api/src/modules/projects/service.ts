@@ -1,4 +1,4 @@
-import { PROJECT_CHECKLIST_GROUPS, type Equipment, type Projects, type Problem, type ISODateTime, type ID } from "@sever/contracts";
+import { DEFAULT_DATE_TIME_SETTINGS, DEFAULT_PROJECT_NAME_TEMPLATE, PROJECT_CHECKLIST_GROUPS, formatProjectName, type AppSettings, type Equipment, type Projects, type Problem, type ISODateTime, type ID } from "@sever/contracts";
 import { one, query, tx, type Sql } from "../../core/db.js";
 import { NotFound, BadRequest, Conflict } from "../../core/errors.js";
 import { peakBookedQuantity } from "./reservationAvailability.js";
@@ -21,6 +21,7 @@ interface ClientRow {
 interface ProjectRow {
   id: string;
   name: string;
+  base_name: string;
   client_id: string;
   status: Projects.ProjectStatus;
   operation_stage: Projects.ProjectChecklistGroup;
@@ -33,7 +34,27 @@ interface ProjectRow {
   note: string | null;
   starts_at: Date | null;
   ends_at: Date | null;
+  series_id: string | null;
+  series_occurrence_key: string | null;
+  series_template_version: number | null;
+  series_baseline: Record<string, unknown> | null;
   created_at: Date;
+}
+interface ProjectSeriesRow {
+  id: string;
+  name: string;
+  template_project_id: string;
+  frequency: Projects.ProjectSeriesFrequency;
+  interval_count: number;
+  weekdays: number[];
+  end_mode: Projects.ProjectSeriesEndMode;
+  until_at: Date | null;
+  occurrence_count: number | null;
+  time_zone: string;
+  active: boolean;
+  template_version: number;
+  created_at: Date;
+  updated_at: Date;
 }
 interface ReservationRow {
   id: string;
@@ -183,6 +204,7 @@ const clientDTO = (r: ClientRow): Projects.ClientDTO => ({
 const projectDTO = (r: ProjectRow): Projects.ProjectDTO => ({
   id: r.id,
   name: r.name,
+  baseName: r.base_name ?? r.name,
   clientId: r.client_id,
   status: r.status,
   operationStage: r.operation_stage ?? "prep",
@@ -195,7 +217,28 @@ const projectDTO = (r: ProjectRow): Projects.ProjectDTO => ({
   note: r.note,
   startsAt: r.starts_at?.toISOString() ?? null,
   endsAt: r.ends_at?.toISOString() ?? null,
+  seriesId: r.series_id ?? null,
+  seriesOccurrenceKey: r.series_occurrence_key ?? null,
+  seriesTemplateVersion: r.series_template_version ?? null,
   createdAt: r.created_at.toISOString(),
+});
+const projectSeriesDTO = (r: ProjectSeriesRow): Projects.ProjectSeriesDTO => ({
+  id: r.id,
+  name: r.name,
+  templateProjectId: r.template_project_id,
+  schedule: {
+    frequency: r.frequency,
+    interval: r.interval_count,
+    weekdays: r.weekdays,
+    endMode: r.end_mode,
+    until: r.until_at?.toISOString() ?? null,
+    occurrenceCount: r.occurrence_count,
+    timeZone: r.time_zone,
+  },
+  active: r.active,
+  templateVersion: r.template_version,
+  createdAt: r.created_at.toISOString(),
+  updatedAt: r.updated_at.toISOString(),
 });
 const reservationDTO = (r: ReservationRow): Projects.ReservationDTO => ({
   id: r.id,
@@ -357,12 +400,62 @@ const stageRequiredMarks: Partial<Record<Projects.ProjectChecklistGroup, Project
   return: [["returned"]],
 };
 
+const seriesProjectFields: (keyof Projects.UpdateProjectInput)[] = [
+  "name", "clientId", "startsAt", "endsAt", "venueId", "dressCodeOptionId",
+  "dressCodeLabel", "dressCodeUniform", "note", "financeTracked",
+];
+
+function projectBaseline(project: Projects.ProjectDTO): Record<string, unknown> {
+  return Object.fromEntries(seriesProjectFields.map((field) => [field, project[field]]));
+}
+
+function assertSeriesSchedule(schedule: Projects.ProjectSeriesSchedule): void {
+  if (!Number.isInteger(schedule.interval) || schedule.interval < 1) throw BadRequest("интервал серии должен быть положительным целым числом");
+  if (schedule.frequency === "weekly" && (schedule.weekdays.length < 1 || schedule.weekdays.some((day) => !Number.isInteger(day) || day < 1 || day > 7))) {
+    throw BadRequest("для еженедельной серии выберите дни недели");
+  }
+  if (schedule.endMode === "until" && !schedule.until) throw BadRequest("укажите дату окончания серии");
+  if (schedule.endMode === "count" && (!schedule.occurrenceCount || schedule.occurrenceCount < 1)) throw BadRequest("укажите количество повторений");
+  try { new Intl.DateTimeFormat("en", { timeZone: schedule.timeZone }).format(); } catch { throw BadRequest("неизвестный часовой пояс"); }
+}
+
+function occurrenceKey(value: Date): string {
+  return value.toISOString();
+}
+
+function nextSeriesStart(current: Date, series: ProjectSeriesRow): Date {
+  if (series.frequency === "monthly") {
+    const next = new Date(current);
+    next.setUTCMonth(next.getUTCMonth() + series.interval_count);
+    return next;
+  }
+  if (series.frequency === "daily") return new Date(current.getTime() + series.interval_count * 86_400_000);
+  const allowed = new Set(series.weekdays.length ? series.weekdays : [current.getUTCDay() || 7]);
+  for (let days = 1; days <= 7 * series.interval_count; days += 1) {
+    const candidate = new Date(current.getTime() + days * 86_400_000);
+    const weekday = candidate.getUTCDay() || 7;
+    const week = Math.floor((days - 1) / 7) + 1;
+    if (allowed.has(weekday) && (series.interval_count === 1 || week === series.interval_count)) return candidate;
+  }
+  return new Date(current.getTime() + 7 * series.interval_count * 86_400_000);
+}
+
 export function createProjectsService(
   db: Sql,
   bus: EventBus,
   loadEquipmentUnits: (unitIds: string[]) => Promise<(Equipment.EquipmentUnitDTO | null)[]>,
-  loadEquipmentModels: (modelIds: string[]) => Promise<(Equipment.EquipmentModelDTO | null)[]>
+  loadEquipmentModels: (modelIds: string[]) => Promise<(Equipment.EquipmentModelDTO | null)[]>,
+  appSettings?: AppSettings.AppSettingsService,
+  loadVenueName: (venueId: string | null) => Promise<string | null> = async () => null,
 ): Projects.ProjectsService {
+  async function renderedProjectName(baseName: string, clientName: string, venueId: string | null, startsAt: string | null, endsAt: string | null) {
+    const [template, dateTime, location] = await Promise.all([
+      appSettings?.getProjectNameTemplateSettings() ?? Promise.resolve({ template: DEFAULT_PROJECT_NAME_TEMPLATE }),
+      appSettings?.getDateTimeSettings() ?? Promise.resolve(DEFAULT_DATE_TIME_SETTINGS),
+      loadVenueName(venueId),
+    ]);
+    return formatProjectName(template.template, { name: baseName, client: clientName, location, startsAt, endsAt }, dateTime);
+  }
   async function activateDueProjects(): Promise<void> {
     await query(
       db,
@@ -541,7 +634,15 @@ export function createProjectsService(
     }
   }
 
-  return {
+  const service: Projects.ProjectsService = {
+    async refreshProjectNames() {
+      const rows = await query<ProjectRow>(db, `SELECT * FROM projects.projects`);
+      for (const row of rows) {
+        const client = await one<ClientRow>(db, `SELECT * FROM projects.clients WHERE id=$1`, [row.client_id]);
+        const name = await renderedProjectName(row.base_name ?? row.name, client?.name ?? "", row.venue_id, row.starts_at?.toISOString() ?? null, row.ends_at?.toISOString() ?? null);
+        await query(db, `UPDATE projects.projects SET name=$2 WHERE id=$1`, [row.id, name]);
+      }
+    },
     // ── Clients ──
     async listClients() {
       const rows = await query<ClientRow>(db, `SELECT * FROM projects.clients ORDER BY name`);
@@ -559,6 +660,8 @@ export function createProjectsService(
     // ── Projects ──
     async listProjects(filter) {
       await activateDueProjects();
+      const recurring = await query<{ id: string }>(db, `SELECT id FROM projects.project_series WHERE active=true`);
+      for (const item of recurring) await this.generateProjectSeries(item.id);
       const rows = filter?.status
         ? await query<ProjectRow>(db, `SELECT * FROM projects.projects WHERE status=$1 ORDER BY starts_at`, [filter.status])
         : await query<ProjectRow>(db, `SELECT * FROM projects.projects ORDER BY starts_at`);
@@ -575,11 +678,13 @@ export function createProjectsService(
       assertRange(startsAt, endsAt);
       const client = await one<ClientRow>(db, `SELECT * FROM projects.clients WHERE id=$1`, [input.clientId]);
       if (!client) throw NotFound("client", input.clientId);
+      const baseName = input.name.trim();
+      const name = await renderedProjectName(baseName, client.name, input.venueId ?? null, startsAt, endsAt);
       const row = await one<ProjectRow>(
         db,
-        `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, note)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-        [input.name, input.clientId, input.venueId ?? null, startsAt, endsAt, input.dressCodeOptionId ?? null, input.dressCodeLabel ?? null, input.dressCodeUniform ?? false, input.financeTracked ?? true, input.note?.trim() || null]
+        `INSERT INTO projects.projects (name, base_name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, note)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+        [name, baseName, input.clientId, input.venueId ?? null, startsAt, endsAt, input.dressCodeOptionId ?? null, input.dressCodeLabel ?? null, input.dressCodeUniform ?? false, input.financeTracked ?? true, input.note?.trim() || null]
       );
       return projectDTO(row!);
     },
@@ -587,13 +692,16 @@ export function createProjectsService(
       assertRange(input.startsAt, input.endsAt);
       const source = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
       if (!source) throw NotFound("project", id);
+      const sourceClient = await one<ClientRow>(db, `SELECT * FROM projects.clients WHERE id=$1`, [source.client_id]);
+      const baseName = input.name.trim();
+      const name = await renderedProjectName(baseName, sourceClient?.name ?? "", source.venue_id, input.startsAt, input.endsAt);
       let created: ProjectRow | null = null;
       const sourceRefMap: Record<string, string> = {};
       await tx(async (client) => {
         created = await one<ProjectRow>(client,
-          `INSERT INTO projects.projects (name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, note)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9) RETURNING *`,
-          [input.name, source.client_id, source.venue_id, input.startsAt, input.endsAt, source.dress_code_option_id, source.dress_code_label, source.dress_code_uniform, source.note]
+          `INSERT INTO projects.projects (name, base_name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, note)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10) RETURNING *`,
+          [name, baseName, source.client_id, source.venue_id, input.startsAt, input.endsAt, source.dress_code_option_id, source.dress_code_label, source.dress_code_uniform, source.note]
         );
         const newId = created!.id;
         const sourceRoles = await query<ProjectRoleRow>(client, `SELECT * FROM projects.project_roles WHERE project_id=$1 ORDER BY created_at`, [id]);
@@ -662,6 +770,178 @@ export function createProjectsService(
       await bus.publish({ type: "project.duplicated", sourceProjectId: id, projectId: created!.id, sourceRefMap, at: new Date().toISOString() });
       return projectDTO(created!);
     },
+    async createProjectSeries(projectId, input) {
+      assertSeriesSchedule(input.schedule);
+      const project = await this.getProject(projectId);
+      if (!project) throw NotFound("project", projectId);
+      if (!project.startsAt || !project.endsAt) throw BadRequest("для регулярного проекта укажите начало и окончание");
+      if (project.seriesId) throw Conflict("проект уже входит в серию");
+      const row = await one<ProjectSeriesRow>(db,
+        `INSERT INTO projects.project_series
+           (name, template_project_id, frequency, interval_count, weekdays, end_mode, until_at, occurrence_count, time_zone)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [input.name?.trim() || project.name, projectId, input.schedule.frequency, input.schedule.interval,
+          input.schedule.weekdays, input.schedule.endMode, input.schedule.until, input.schedule.occurrenceCount, input.schedule.timeZone]
+      );
+      await query(db,
+        `UPDATE projects.projects SET series_id=$2, series_occurrence_key=$3, series_template_version=1, series_baseline=$4 WHERE id=$1`,
+        [projectId, row!.id, occurrenceKey(new Date(project.startsAt)), JSON.stringify(projectBaseline({ ...project, seriesId: row!.id }))]
+      );
+      await this.generateProjectSeries(row!.id, input.generateThrough);
+      return projectSeriesDTO(row!);
+    },
+    async getProjectSeries(id) {
+      const row = await one<ProjectSeriesRow>(db, `SELECT * FROM projects.project_series WHERE id=$1`, [id]);
+      return row ? projectSeriesDTO(row) : null;
+    },
+    async updateProjectSeries(id, input) {
+      const current = await one<ProjectSeriesRow>(db, `SELECT * FROM projects.project_series WHERE id=$1`, [id]);
+      if (!current) throw NotFound("project series", id);
+      const schedule = input.schedule ?? projectSeriesDTO(current).schedule;
+      assertSeriesSchedule(schedule);
+      const row = await one<ProjectSeriesRow>(db,
+        `UPDATE projects.project_series SET
+           name=COALESCE($2,name), frequency=$3, interval_count=$4, weekdays=$5, end_mode=$6,
+           until_at=$7, occurrence_count=$8, time_zone=$9, active=COALESCE($10,active),
+           template_version=template_version+1, updated_at=now()
+         WHERE id=$1 RETURNING *`,
+        [id, input.name?.trim() || null, schedule.frequency, schedule.interval, schedule.weekdays,
+          schedule.endMode, schedule.until, schedule.occurrenceCount, schedule.timeZone, input.active ?? null]
+      );
+      return projectSeriesDTO(row!);
+    },
+    async listProjectSeriesOccurrences(id) {
+      const rows = await query<ProjectRow>(db, `SELECT * FROM projects.projects WHERE series_id=$1 ORDER BY starts_at, created_at`, [id]);
+      return rows.map(projectDTO);
+    },
+    async generateProjectSeries(id, through) {
+      const series = await one<ProjectSeriesRow>(db, `SELECT * FROM projects.project_series WHERE id=$1`, [id]);
+      if (!series) throw NotFound("project series", id);
+      if (!series.active) return this.listProjectSeriesOccurrences(id);
+      const template = await this.getProject(series.template_project_id);
+      if (!template?.startsAt || !template.endsAt) throw BadRequest("у шаблона серии нет периода");
+      const horizon = new Date(through ?? Date.now() + 12 * 7 * 86_400_000);
+      const duration = Date.parse(template.endsAt) - Date.parse(template.startsAt);
+      const existing = await this.listProjectSeriesOccurrences(id);
+      const keys = new Set(existing.map((project) => project.seriesOccurrenceKey).filter(Boolean));
+      let cursor = new Date(template.startsAt);
+      let ordinal = 1;
+      while (cursor <= horizon && ordinal <= 500) {
+        if (series.end_mode === "until" && series.until_at && cursor > series.until_at) break;
+        if (series.end_mode === "count" && series.occurrence_count && ordinal > series.occurrence_count) break;
+        const key = occurrenceKey(cursor);
+        if (!keys.has(key)) {
+          const copy = await this.duplicateProject(series.template_project_id, {
+            name: `${series.name} · ${new Intl.DateTimeFormat("ru-RU", { timeZone: series.time_zone, day: "numeric", month: "long" }).format(cursor)}`,
+            startsAt: cursor.toISOString(),
+            endsAt: new Date(cursor.getTime() + duration).toISOString(),
+          });
+          const attached = await one<ProjectRow>(db,
+            `UPDATE projects.projects SET series_id=$2, series_occurrence_key=$3,
+               series_template_version=$4, series_baseline=$5 WHERE id=$1 RETURNING *`,
+            [copy.id, id, key, series.template_version, JSON.stringify(projectBaseline({ ...copy, seriesId: id, seriesOccurrenceKey: key }))]
+          );
+          existing.push(projectDTO(attached!));
+          keys.add(key);
+        }
+        cursor = nextSeriesStart(cursor, series);
+        ordinal += 1;
+      }
+      return existing.sort((a, b) => (a.startsAt ?? "").localeCompare(b.startsAt ?? ""));
+    },
+    async previewProjectSeriesChange(id, input) {
+      const series = await this.getProjectSeries(id);
+      if (!series) throw NotFound("project series", id);
+      const source = await this.getProject(input.sourceProjectId);
+      if (!source || source.seriesId !== id) throw BadRequest("исходный проект не входит в эту серию");
+      const rows = await query<ProjectRow>(db,
+        input.scope === "all"
+          ? `SELECT * FROM projects.projects WHERE series_id=$1 ORDER BY starts_at`
+          : `SELECT * FROM projects.projects WHERE series_id=$1 AND starts_at >= $2 ORDER BY starts_at`,
+        [id, source.startsAt]
+      );
+      const sourceRow = rows.find((row) => row.id === source.id) ?? await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [source.id]);
+      const sourceBaseline = sourceRow?.series_baseline ?? projectBaseline(source);
+      const dateDelta = input.projectPatch.startsAt && source.startsAt ? Date.parse(input.projectPatch.startsAt) - Date.parse(source.startsAt) : null;
+      const endDelta = input.projectPatch.endsAt && source.endsAt ? Date.parse(input.projectPatch.endsAt) - Date.parse(source.endsAt) : dateDelta;
+      const projects: Projects.ProjectSeriesProjectChangeDTO[] = rows.map((row) => {
+        const project = projectDTO(row);
+        const baseline = row.series_baseline ?? projectBaseline(project);
+        const automaticFields: (keyof Projects.UpdateProjectInput)[] = [];
+        const conflicts: Projects.ProjectSeriesFieldConflictDTO[] = [];
+        for (const field of seriesProjectFields) {
+          if (!(field in input.projectPatch)) continue;
+          const seriesValue = field === "startsAt" && dateDelta !== null && baseline.startsAt
+            ? new Date(Date.parse(String(baseline.startsAt)) + dateDelta).toISOString()
+            : field === "endsAt" && endDelta !== null && baseline.endsAt
+              ? new Date(Date.parse(String(baseline.endsAt)) + endDelta).toISOString()
+              : input.projectPatch[field];
+          const baselineValue = baseline[field];
+          const localValue = project[field];
+          if (Object.is(localValue, baselineValue) || Object.is(localValue, seriesValue)) automaticFields.push(field);
+          else conflicts.push({ field, baselineValue, localValue, seriesValue });
+        }
+        const protectedReasons = project.status === "in_progress" || project.status === "completed"
+          ? ["Проект уже начат или завершён; операционные и финансовые факты не изменяются"] : [];
+        return { projectId: project.id, projectName: project.name, startsAt: project.startsAt, automaticFields, conflicts, protectedReasons, expectedValues: projectBaseline(project) };
+      });
+      const preview: Omit<Projects.ProjectSeriesChangePreviewDTO, "changeSetId" | "createdAt"> = {
+        seriesId: id, sourceProjectId: source.id, scope: input.scope, projects,
+      };
+      const saved = await one<{ id: string; created_at: Date }>(db,
+        `INSERT INTO projects.series_change_sets (series_id, source_project_id, scope, project_patch, preview)
+         VALUES ($1,$2,$3,$4,$5) RETURNING id, created_at`,
+        [id, source.id, input.scope, JSON.stringify(input.projectPatch), JSON.stringify(preview)]
+      );
+      return { ...preview, changeSetId: saved!.id, createdAt: saved!.created_at.toISOString() };
+    },
+    async applyProjectSeriesChange(id, input) {
+      const change = await one<{ id: string; series_id: string; project_patch: Projects.UpdateProjectInput; preview: Projects.ProjectSeriesChangePreviewDTO; status: string }>(db,
+        `SELECT * FROM projects.series_change_sets WHERE id=$1 AND series_id=$2`, [input.changeSetId, id]);
+      if (!change) throw NotFound("series change set", input.changeSetId);
+      if (change.status === "applied") return this.listProjectSeriesOccurrences(id);
+      const source = await this.getProject(change.preview.sourceProjectId);
+      if (!source) throw NotFound("project", change.preview.sourceProjectId);
+      const dateDelta = change.project_patch.startsAt && source.startsAt ? Date.parse(change.project_patch.startsAt) - Date.parse(source.startsAt) : null;
+      const endDelta = change.project_patch.endsAt && source.endsAt ? Date.parse(change.project_patch.endsAt) - Date.parse(source.endsAt) : dateDelta;
+      for (const planned of change.preview.projects) {
+        const row = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1 AND series_id=$2`, [planned.projectId, id]);
+        if (!row) continue;
+        const project = projectDTO(row);
+        for (const [field, expected] of Object.entries(planned.expectedValues)) {
+          if (!Object.is(project[field as keyof Projects.ProjectDTO], expected)) {
+            await query(db, `UPDATE projects.series_change_sets SET status='stale' WHERE id=$1`, [change.id]);
+            throw Conflict("один из проектов изменился после предпросмотра; обновите предпросмотр", { projectId: project.id, field });
+          }
+        }
+        const patch: Projects.UpdateProjectInput = {};
+        const nextBaseline = { ...(row.series_baseline ?? projectBaseline(project)) };
+        for (const field of seriesProjectFields) {
+          if (!(field in change.project_patch)) continue;
+          const value = field === "startsAt" && dateDelta !== null && nextBaseline.startsAt
+            ? new Date(Date.parse(String(nextBaseline.startsAt)) + dateDelta).toISOString()
+            : field === "endsAt" && endDelta !== null && nextBaseline.endsAt
+              ? new Date(Date.parse(String(nextBaseline.endsAt)) + endDelta).toISOString()
+              : change.project_patch[field];
+          nextBaseline[field] = value;
+          const isConflict = planned.conflicts.some((conflict) => conflict.field === field);
+          const resolution = input.resolutions?.[`${project.id}:${field}`] ?? "keep_local";
+          if (!isConflict || resolution === "use_series") (patch as Record<string, unknown>)[field] = value;
+        }
+        if (Object.keys(patch).length) await this.updateProject(project.id, patch);
+        await query(db, `UPDATE projects.projects SET series_baseline=$2, series_template_version=series_template_version+1 WHERE id=$1`, [project.id, JSON.stringify(nextBaseline)]);
+      }
+      await query(db, `UPDATE projects.series_change_sets SET status='applied', applied_at=now() WHERE id=$1`, [change.id]);
+      await query(db, `UPDATE projects.project_series SET template_version=template_version+1, updated_at=now() WHERE id=$1`, [id]);
+      return this.listProjectSeriesOccurrences(id);
+    },
+    async detachProjectFromSeries(projectId) {
+      const row = await one<ProjectRow>(db,
+        `UPDATE projects.projects SET series_id=NULL, series_occurrence_key=NULL,
+           series_template_version=NULL, series_baseline=NULL WHERE id=$1 RETURNING *`, [projectId]);
+      if (!row) throw NotFound("project", projectId);
+      return projectDTO(row);
+    },
     async updateProject(id, input) {
       const existing = await this.getProject(id);
       if (!existing) throw NotFound("project", id);
@@ -672,22 +952,21 @@ export function createProjectsService(
         const client = await one<ClientRow>(db, `SELECT id FROM projects.clients WHERE id=$1`, [input.clientId]);
         if (!client) throw NotFound("client", input.clientId);
       }
+      const clientId = input.clientId ?? existing.clientId;
+      const venueId = input.venueId === undefined ? existing.venueId : input.venueId;
+      const client = await one<ClientRow>(db, `SELECT * FROM projects.clients WHERE id=$1`, [clientId]);
+      const baseName = (input.name ?? existing.baseName).trim();
+      const name = await renderedProjectName(baseName, client?.name ?? "", venueId, startsAt, endsAt);
       const row = await tx(async (client) => {
         const updated = await one<ProjectRow>(
           client,
           `UPDATE projects.projects SET
-             name      = COALESCE($2, name),
-             client_id = COALESCE($3, client_id),
-             venue_id  = $4,
-             starts_at = $5,
-             ends_at   = $6,
-             dress_code_option_id=$7,
-             dress_code_label=$8,
-             dress_code_uniform=$9,
-             finance_tracked=$10,
-             note=$11
+             name=$2, base_name=$3, client_id=$4, venue_id=$5,
+             starts_at=$6, ends_at=$7, dress_code_option_id=$8,
+             dress_code_label=$9, dress_code_uniform=$10,
+             finance_tracked=$11, note=$12
            WHERE id=$1 RETURNING *`,
-          [id, input.name ?? null, input.clientId ?? null, input.venueId === undefined ? existing.venueId : input.venueId, startsAt, endsAt,
+          [id, name, baseName, clientId, venueId, startsAt, endsAt,
             input.dressCodeOptionId === undefined ? existing.dressCodeOptionId : input.dressCodeOptionId,
             input.dressCodeLabel === undefined ? existing.dressCodeLabel : input.dressCodeLabel,
             input.dressCodeUniform === undefined ? existing.dressCodeUniform : input.dressCodeUniform,
@@ -1701,6 +1980,7 @@ export function createProjectsService(
       await query(db, `UPDATE projects.problems SET resolved=true, resolved_at=now() WHERE id=$1`, [id]);
     },
   };
+  return service;
 }
 
 // Re-exported so the seed/tests can build ISO ranges consistently.

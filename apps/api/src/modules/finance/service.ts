@@ -57,6 +57,7 @@ interface InvoiceCompanySettingsRow {
   phone: string;
   email: string;
   telegram: string;
+  logo_data_url: string | null;
 }
 interface InvoiceVersionRow {
   id: string;
@@ -137,6 +138,7 @@ const invoiceCompanyDTO = (r: InvoiceCompanySettingsRow): Finance.InvoiceCompany
   phone: r.phone,
   email: r.email,
   telegram: r.telegram,
+  logoDataUrl: r.logo_data_url,
 });
 const invoiceVersionDTO = (r: InvoiceVersionRow): Finance.InvoiceVersionDTO => ({
   id: r.id,
@@ -474,7 +476,7 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
     async getInvoiceCompanySettings() {
       const row = await one<InvoiceCompanySettingsRow>(db, `SELECT * FROM finance.invoice_company_settings WHERE id=1`);
       if (!row) {
-        return { name: "SEVER", requisites: "", phone: "+381 62 852 5240", email: "sever.beo.contact@gmail.com", telegram: "@sever_contact" };
+        return { name: "SEVER", requisites: "", phone: "+381 62 852 5240", email: "sever.beo.contact@gmail.com", telegram: "@sever_contact", logoDataUrl: null };
       }
       return invoiceCompanyDTO(row);
     },
@@ -482,17 +484,18 @@ export function createFinanceService(db: Sql, bus: EventBus): Finance.FinanceSer
     async setInvoiceCompanySettings(input) {
       const row = await one<InvoiceCompanySettingsRow>(
         db,
-        `INSERT INTO finance.invoice_company_settings (id, name, requisites, phone, email, telegram, updated_at)
-         VALUES (1,$1,$2,$3,$4,$5,now())
+        `INSERT INTO finance.invoice_company_settings (id, name, requisites, phone, email, telegram, logo_data_url, updated_at)
+         VALUES (1,$1,$2,$3,$4,$5,$6,now())
          ON CONFLICT (id) DO UPDATE SET
            name=$1,
            requisites=$2,
            phone=$3,
            email=$4,
            telegram=$5,
+           logo_data_url=$6,
            updated_at=now()
          RETURNING *`,
-        [input.name, input.requisites, input.phone, input.email, input.telegram]
+        [input.name, input.requisites, input.phone, input.email, input.telegram, input.logoDataUrl]
       );
       return invoiceCompanyDTO(row!);
     },

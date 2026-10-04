@@ -37,6 +37,20 @@ export interface DateTimeSettingsDTO {
 
 export type UpdateDateTimeSettingsInput = DateTimeSettingsDTO;
 
+export interface ProjectNameTemplateSettingsDTO {
+  template: string;
+}
+
+export const DEFAULT_PROJECT_NAME_TEMPLATE = "[name]";
+
+export interface ProjectNameTemplateValues {
+  name: string;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  location?: string | null;
+  client?: string | null;
+}
+
 export interface DressCodeOptionDTO {
   id: string;
   label: string;
@@ -52,6 +66,8 @@ export interface ProjectProblemNotificationSettingsDTO {
 export interface AppSettingsService {
   getDateTimeSettings(): Promise<DateTimeSettingsDTO>;
   updateDateTimeSettings(input: UpdateDateTimeSettingsInput): Promise<DateTimeSettingsDTO>;
+  getProjectNameTemplateSettings(): Promise<ProjectNameTemplateSettingsDTO>;
+  updateProjectNameTemplateSettings(input: ProjectNameTemplateSettingsDTO): Promise<ProjectNameTemplateSettingsDTO>;
   getProjectProblemNotificationSettings(): Promise<ProjectProblemNotificationSettingsDTO>;
   updateProjectProblemNotificationSettings(input: ProjectProblemNotificationSettingsDTO): Promise<ProjectProblemNotificationSettingsDTO>;
   /** Atomically reserves one project/threshold occurrence for delivery. */
@@ -61,10 +77,42 @@ export interface AppSettingsService {
   updateDressCodeOption(id: string, input: { label?: string; active?: boolean; sortOrder?: number }): Promise<DressCodeOptionDTO>;
 }
 
+export interface ProjectNameTemplateUpdatedEvent {
+  type: "app_settings.project_name_template.updated";
+  at: string;
+}
+export type AppSettingsEvent = ProjectNameTemplateUpdatedEvent;
+
 export const DEFAULT_DATE_TIME_SETTINGS: DateTimeSettingsDTO = {
   dateFormat: "DD.MM.YYYY",
   timeFormat: "24h",
 };
+
+export function formatProjectName(
+  template: string,
+  values: ProjectNameTemplateValues,
+  settings: DateTimeSettingsDTO = DEFAULT_DATE_TIME_SETTINGS,
+  locale = "ru-RU",
+): string {
+  const startDate = values.startsAt ? formatDateValue(values.startsAt, settings, locale) : "";
+  const endDate = values.endsAt ? formatDateValue(values.endsAt, settings, locale) : "";
+  const replacements: Record<string, string> = {
+    name: values.name.trim(),
+    dates: startDate && endDate ? (startDate === endDate ? startDate : `${startDate}–${endDate}`) : startDate || endDate,
+    "start.date": startDate,
+    "start.time": values.startsAt ? formatTimeValue(values.startsAt, settings) : "",
+    "end.date": endDate,
+    "end.time": values.endsAt ? formatTimeValue(values.endsAt, settings) : "",
+    location: values.location?.trim() ?? "",
+    client: values.client?.trim() ?? "",
+  };
+  const rendered = template.replace(/\[([a-z.]+)\]/gi, (token, key: string) => replacements[key.toLowerCase()] ?? token);
+  return rendered
+    .replace(/\s+/g, " ")
+    .replace(/\s*([-–—|·,:;/])(?:\s*[-–—|·,:;/])+\s*/g, " $1 ")
+    .replace(/^\s*[-–—|·,:;/]+\s*|\s*[-–—|·,:;/]+\s*$/g, "")
+    .trim() || values.name.trim();
+}
 
 const pad = (value: number) => String(value).padStart(2, "0");
 

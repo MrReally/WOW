@@ -38,6 +38,9 @@
   font-family: "Arial Narrow", Arial, Helvetica, sans-serif;
   font-size: 30px;
   font-weight: 800;
+  padding: 0 12px;
+  text-align: center;
+  line-height: 1.05;
 }
 .estimate-field {
   display: grid;
@@ -68,6 +71,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.estimate-logo img {
+  width: 170px;
+  height: 170px;
+  object-fit: contain;
 }
 
 .estimate-table {
@@ -124,6 +132,8 @@
 .estimate-table tfoot td {
   border-color: #000;
   height: 30px;
+  vertical-align: middle;
+  line-height: 1.15;
 }
 .estimate-table .total-label,
 .estimate-table .total-amount,
@@ -133,12 +143,13 @@
   font-weight: 800;
 }
 .estimate-table .total-label {
-  text-align: left;
-  padding-left: 18px;
+  text-align: center;
+  padding-left: 4px;
+  padding-right: 4px;
 }
 .estimate-table .total-currency {
   font-weight: 500;
-  text-align: left;
+  text-align: center;
 }
 .estimate-note {
   margin-top: 14px;

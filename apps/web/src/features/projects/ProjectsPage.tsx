@@ -25,6 +25,7 @@ function ProjectCard({ project, clientName, onOpen, canViewNote }: ProjectCardPr
         <div>
           <p className="card__title">{project.name}</p>
           <p className="card__subtitle">{clientName(project.clientId)}</p>
+          {project.seriesId && <p className="card__subtitle">↻ Регулярный проект</p>}
         </div>
         <StatusBadge tone={projectStatusTone[project.status]}>{projectStatusLabel[project.status]}</StatusBadge>
       </div>
@@ -139,7 +140,7 @@ export function ProjectsPage() {
             <tbody>
               {mobileProjects.active.map((p) => (
                 <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
-                  <td><strong>{p.name}</strong><small>{canViewNote && p.note ? `📝 ${p.note}` : `#${p.id.slice(0, 8)}`}</small></td>
+                  <td><strong>{p.name}</strong><small>{p.seriesId ? `↻ Регулярный · #${p.id.slice(0, 8)}` : canViewNote && p.note ? `📝 ${p.note}` : `#${p.id.slice(0, 8)}`}</small></td>
                   <td>{clientName(p.clientId)}</td>
                   <td className="data-table__mono">{p.startsAt ? configuredDate(p.startsAt) : "—"}</td>
                   <td className="data-table__mono">{p.endsAt ? configuredDate(p.endsAt) : "—"}</td>

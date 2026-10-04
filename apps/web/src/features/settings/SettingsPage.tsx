@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import type { AppSettings, Currency } from "@sever/contracts";
-import { CURRENCIES, DATE_FORMATS, formatDateValue, formatTimeValue } from "@sever/contracts";
+import { CURRENCIES, DATE_FORMATS, formatDateValue, formatProjectName, formatTimeValue } from "@sever/contracts";
 import { Card, Button, SectionTitle, Input, Select, Loading } from "../../ui-kit/index.ts";
 import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
-import { useAllCalendarFeed, useCreateDressCodeOption, useDateTimeSettings, useDressCodeOptions, useFxRates, useProjectProblemNotificationSettings, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetProjectProblemNotificationSettings, useSetTelegramInboxSettings, useTelegramInboxSettings, useUpdateDressCodeOption } from "./hooks.ts";
+import { useAllCalendarFeed, useCreateDressCodeOption, useDateTimeSettings, useDressCodeOptions, useFxRates, useProjectNameTemplateSettings, useProjectProblemNotificationSettings, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetProjectNameTemplateSettings, useSetProjectProblemNotificationSettings, useSetTelegramInboxSettings, useTelegramInboxSettings, useUpdateDressCodeOption } from "./hooks.ts";
 import { RoleEditor } from "./components/RoleEditor.tsx";
 import { useCableSettings, useSetCableSettings } from "../warehouse/hooks.ts";
 import { nameFormatForInput, nameFormatFromInput } from "../warehouse/cables.ts";
@@ -61,6 +61,8 @@ export function SettingsPage() {
       {can("roles.manage") && <RoleEditor />}
 
       {can("projects.manage") && <DressCodeSettings />}
+
+      {can("projects.manage") && <ProjectNameTemplateSettings />}
 
       {canViewAllCalendar && (
         <>
@@ -200,6 +202,25 @@ export function SettingsPage() {
       )}
     </div>
   );
+}
+
+function ProjectNameTemplateSettings() {
+  const settings = useProjectNameTemplateSettings();
+  const dateTime = useDateTimeSettings();
+  const save = useSetProjectNameTemplateSettings();
+  const [template, setTemplate] = useState("[name]");
+  useEffect(() => { if (settings.data) setTemplate(settings.data.template); }, [settings.data]);
+  const preview = formatProjectName(template, {
+    name: "Конференция", client: "Acme", location: "Белый зал",
+    startsAt: "2026-10-03T16:00:00.000Z", endsAt: "2026-10-04T20:00:00.000Z",
+  }, dateTime.data);
+  return <><SectionTitle>Название проекта</SectionTitle><Card><div className="stack" style={{ gap: 10 }}>
+    <Input value={template} onChange={event => setTemplate(event.target.value)} placeholder="[name] — [dates]" />
+    <p className="card__subtitle">Переменные: [name], [dates], [start.date], [start.time], [end.date], [end.time], [location], [client]</p>
+    <p className="card__subtitle">Пример: {preview}</p>
+    {!template.includes("[name]") && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Добавьте обязательную переменную [name].</p>}
+    <Button variant="secondary" disabled={save.isPending || !template.trim() || !template.includes("[name]")} onClick={() => save.mutate({ template: template.trim() })}>Сохранить</Button>
+  </div></Card></>;
 }
 
 function DressCodeSettings() {

@@ -4,9 +4,10 @@ import type { SeverModule } from "../../core/module.js";
 import { appSettingsMigration } from "./migration.js";
 import { registerAppSettingsRoutes } from "./routes.js";
 import { createAppSettingsService } from "./service.js";
+import type { EventBus } from "../../core/eventBus.js";
 
-export function createAppSettingsModule(db: Sql): SeverModule<AppSettings.AppSettingsService> {
-  const service = createAppSettingsService(db);
+export function createAppSettingsModule(db: Sql, bus: EventBus): SeverModule<AppSettings.AppSettingsService> {
+  const service = createAppSettingsService(db, bus);
   return {
     name: "app-settings",
     migration: appSettingsMigration,

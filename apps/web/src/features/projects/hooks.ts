@@ -89,6 +89,47 @@ export function useCreateProject() {
   });
 }
 
+export function useCreateProjectSeries() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, input }: { projectId: string; input: Projects.CreateProjectSeriesInput }) =>
+      api.post<Projects.ProjectSeriesDTO>(`/api/projects/${projectId}/series`, input),
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
+export function useProjectSeries(seriesId: string | null) {
+  return useQuery({
+    enabled: !!seriesId,
+    queryKey: ["project-series", seriesId],
+    queryFn: () => api.get<Projects.ProjectSeriesDTO>(`/api/project-series/${seriesId}`),
+  });
+}
+
+export function useProjectSeriesOccurrences(seriesId: string | null) {
+  return useQuery({
+    enabled: !!seriesId,
+    queryKey: ["project-series", seriesId, "projects"],
+    queryFn: () => api.get<Projects.ProjectDTO[]>(`/api/project-series/${seriesId}/projects`),
+  });
+}
+
+export function usePreviewProjectSeriesChange() {
+  return useMutation({
+    mutationFn: ({ seriesId, input }: { seriesId: string; input: Projects.PreviewProjectSeriesChangeInput }) =>
+      api.post<Projects.ProjectSeriesChangePreviewDTO>(`/api/project-series/${seriesId}/change-preview`, input),
+  });
+}
+
+export function useApplyProjectSeriesChange() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ seriesId, input }: { seriesId: string; input: Projects.ApplyProjectSeriesChangeInput }) =>
+      api.post<Projects.ProjectDTO[]>(`/api/project-series/${seriesId}/apply-change`, input),
+    onSuccess: () => { invalidateProjects(qc); qc.invalidateQueries({ queryKey: ["project-series"] }); },
+  });
+}
+
 export function useDuplicateProject() {
   const qc = useQueryClient();
   return useMutation({

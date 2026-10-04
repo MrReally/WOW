@@ -29,8 +29,10 @@ export interface RouteQuoteInput {
   originAddress: string;
   destinationAddress: string;
   vehicleId: ID;
-  /** Manual fallback/override. When omitted, the current Benzinko price is used. */
+  /** Manual fallback/override. When omitted, the current official Serbian price is used. */
   fuelPriceEURPerL?: number;
+  /** Current configured SEVER rate: 1 RSD = rateToEUR EUR. */
+  rsdRateToEUR?: number;
   roundTrip?: boolean;
   /** Allows calculation before Google is configured or for a manually corrected route. */
   distanceKmOverride?: number | null;
@@ -43,7 +45,9 @@ export interface RouteQuoteDTO {
   roundTrip: boolean;
   fuelLitres: number;
   fuelPriceEURPerL: number;
-  fuelPriceSource: "benzinko" | "manual" | "not_applicable";
+  fuelPriceRSDPerL: number | null;
+  fuelPriceSource: "serbia_ministry" | "manual" | "not_applicable";
+  fuelPriceSourceUrl: string | null;
   fuelCostEUR: number;
   depreciationEURPerKm: number;
   depreciationCostEUR: number;

@@ -1,4 +1,5 @@
-import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
 import { DEFAULT_DATE_TIME_SETTINGS, formatDateValue, type AppSettings, type Finance } from "@sever/contracts";
 
@@ -10,21 +11,8 @@ const PAGE_H = 792;
 const MARGIN_X = 78 * SCALE;
 const MARGIN_TOP = 92 * SCALE;
 const CONTENT_W = PAGE_W - MARGIN_X * 2;
-const require = createRequire(import.meta.url);
-const FONTS = {
-  latin: {
-    regular: require.resolve("@fontsource/roboto-condensed/files/roboto-condensed-latin-400-normal.woff"),
-    bold: require.resolve("@fontsource/roboto-condensed/files/roboto-condensed-latin-700-normal.woff"),
-  },
-  latinExt: {
-    regular: require.resolve("@fontsource/roboto-condensed/files/roboto-condensed-latin-ext-400-normal.woff"),
-    bold: require.resolve("@fontsource/roboto-condensed/files/roboto-condensed-latin-ext-700-normal.woff"),
-  },
-  cyrillic: {
-    regular: require.resolve("@fontsource/roboto-condensed/files/roboto-condensed-cyrillic-400-normal.woff"),
-    bold: require.resolve("@fontsource/roboto-condensed/files/roboto-condensed-cyrillic-700-normal.woff"),
-  },
-};
+const UNIVERSAL_FONT = fileURLToPath(new URL("../../../../web/public/fonts/Unbounded-Variable.ttf", import.meta.url));
+const DEFAULT_LOGO = fileURLToPath(new URL("../../../../web/public/sever-logo.png", import.meta.url));
 
 const CARD = "M 0 -100 L 17 -17 L 100 0 L 17 17 L 0 100 L -17 17 L -100 0 L -17 -17 Z";
 const DIAG = "M 39.6 -39.6 L 16 0 L 39.6 39.6 L 0 16 L -39.6 39.6 L -16 0 L -39.6 -39.6 L 0 -16 Z";
@@ -32,7 +20,7 @@ const HOLE = "M 0 -15 L 2.8 -2.8 L 15 0 L 2.8 2.8 L 0 15 L -2.8 2.8 L -15 0 L -2
 
 const labels: Record<Finance.InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; discount: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
   EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", discount: "DISCOUNT:", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
-  RU: { title: "Смета", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", discount: "СКИДКА:", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
+  RU: { title: "Коммерческое предложение", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", discount: "СКИДКА:", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
   RS: { title: "Ponuda", date: "Datum", place: "Mesto", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", discount: "POPUST:", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
 };
 
@@ -44,34 +32,16 @@ const money = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDig
 
 type Align = "left" | "center" | "right";
 
-type FontFamily = keyof typeof FONTS;
-
-function familyFor(value: string): FontFamily {
-  if (/[\u0400-\u04ff]/.test(value)) return "cyrillic";
-  if (/[\u0100-\u024f]/.test(value)) return "latinExt";
-  return "latin";
-}
-
 function setFont(doc: PDFKit.PDFDocument, value: string, size: number, bold = false): void {
-  const family = FONTS[familyFor(value)];
-  doc.font(bold ? family.bold : family.regular).fontSize(size);
+  void value;
+  void bold;
+  doc.font(UNIVERSAL_FONT).fontSize(size);
 }
 
 function textHeight(doc: PDFKit.PDFDocument, value: string, width: number, size: number): number {
   if (!value) return 0;
   setFont(doc, value, size);
   return doc.heightOfString(value, { width, lineGap: 0 });
-}
-
-function textRuns(value: string): { value: string; family: FontFamily }[] {
-  const result: { value: string; family: FontFamily }[] = [];
-  for (const char of value) {
-    const family = familyFor(char);
-    const last = result[result.length - 1];
-    if (last?.family === family) last.value += char;
-    else result.push({ value: char, family });
-  }
-  return result;
 }
 
 function drawText(
@@ -81,38 +51,26 @@ function drawText(
   y: number,
   width: number,
   height: number,
-  options: { size: number; bold?: boolean; align?: Align; color?: string; padding?: number },
+  options: { size: number; bold?: boolean; align?: Align; color?: string; padding?: number; singleLine?: boolean },
 ): void {
   const padding = options.padding ?? 6;
   const innerW = Math.max(1, width - padding * 2);
   if (!value) return;
   const text = value;
-  setFont(doc, text, options.size, options.bold);
-  const h = doc.heightOfString(text, { width: innerW, lineGap: 0 });
+  let fontSize = options.size;
+  setFont(doc, text, fontSize, options.bold);
+  const doesNotFit = () => options.singleLine
+    ? doc.widthOfString(text) > innerW || doc.currentLineHeight() > height - 2
+    : doc.heightOfString(text, { width: innerW, lineGap: 0 }) > height - 2;
+  while (fontSize > 7 && doesNotFit()) {
+    fontSize -= 0.5;
+    setFont(doc, text, fontSize, options.bold);
+  }
+  const h = options.singleLine ? doc.currentLineHeight() : doc.heightOfString(text, { width: innerW, lineGap: 0 });
   const tx = x + padding;
   const ty = y + Math.max(0, (height - h) / 2);
-  const config = { width: innerW, height: Math.max(h, height), align: options.align ?? "center", lineGap: 0, ellipsis: true } as const;
+  const config = { width: innerW, height: Math.max(h, height), align: options.align ?? "center", lineGap: 0, ellipsis: true, lineBreak: !options.singleLine } as const;
 
-  const runs = textRuns(text);
-  if (runs.length > 1 && !text.includes("\n")) {
-    const widths = runs.map((run) => {
-      const family = FONTS[run.family];
-      doc.font(options.bold ? family.bold : family.regular).fontSize(options.size);
-      return doc.widthOfString(run.value);
-    });
-    const totalWidth = widths.reduce((sum, width) => sum + width, 0);
-    if (totalWidth <= innerW) {
-      const align = options.align ?? "center";
-      let cursor = align === "left" ? tx : align === "right" ? tx + innerW - totalWidth : tx + (innerW - totalWidth) / 2;
-      doc.fillColor(options.color ?? "#111111");
-      runs.forEach((run, index) => {
-        const family = FONTS[run.family];
-        doc.font(options.bold ? family.bold : family.regular).fontSize(options.size).text(run.value, cursor, ty, { lineBreak: false });
-        cursor += widths[index]!;
-      });
-      return;
-    }
-  }
   doc.fillColor(options.color ?? "#111111").text(text, tx, ty, config);
 }
 
@@ -146,6 +104,14 @@ function drawStar(doc: PDFKit.PDFDocument, x: number, y: number, size: number): 
   doc.restore();
 }
 
+function logoBuffer(dataUrl: string | null): Buffer {
+  if (dataUrl) {
+    const match = /^data:image\/(?:png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+    if (match) return Buffer.from(match[1]!, "base64");
+  }
+  return readFileSync(DEFAULT_LOGO);
+}
+
 function drawHeader(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO, dateTimeSettings: AppSettings.DateTimeSettingsDTO): number {
   const l = labels[req.lang];
   const leftW = 355 * SCALE;
@@ -166,7 +132,7 @@ function drawHeader(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO,
   cell(doc, x + labelW, y + titleH, valueW, dateH, { borderWidth: 1.5 });
   drawText(doc, l.date, x, y + titleH, labelW, dateH, { size: 15, bold: true });
   const locale = req.lang === "EN" ? "en-US" : req.lang === "RS" ? "sr-RS" : "ru-RU";
-  drawText(doc, formatDateValue(req.date, dateTimeSettings, locale), x + labelW, y + titleH, valueW, dateH, { size: 13.5, bold: true, padding: 3 });
+  drawText(doc, formatDateValue(req.date, dateTimeSettings, locale), x + labelW, y + titleH, valueW, dateH, { size: 10.5, bold: true, padding: 3 });
 
   cell(doc, x, y + titleH + dateH, labelW, placeH, { borderWidth: 1.5 });
   cell(doc, x + labelW, y + titleH + dateH, valueW, placeH, { borderWidth: 1.5 });
@@ -175,7 +141,13 @@ function drawHeader(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO,
 
   cell(doc, x + leftW, y, rightW, headH, { border: "#d2d2d2", borderWidth: 0.75 });
   const logoSize = 170 * SCALE;
-  drawStar(doc, x + leftW + (rightW - logoSize) / 2, y + (headH - logoSize) / 2, logoSize);
+  const logoX = x + leftW + (rightW - logoSize) / 2;
+  const logoY = y + (headH - logoSize) / 2;
+  try {
+    doc.image(logoBuffer(req.company.logoDataUrl), logoX, logoY, { fit: [logoSize, logoSize], align: "center", valign: "center" });
+  } catch {
+    drawStar(doc, logoX, logoY, logoSize);
+  }
   return y + headH;
 }
 
@@ -236,7 +208,7 @@ function drawTable(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO, 
     }
   }
 
-  const totalH = 30 * SCALE;
+  const totalH = 34 * SCALE;
   const subtotalEUR = req.lines.reduce((sum, line) => sum + line.priceEUR, 0);
   const total = currencyAmount(Math.max(0, subtotalEUR - req.totalDiscountEUR), req);
   if (req.totalDiscountEUR > 0) {
@@ -246,7 +218,7 @@ function drawTable(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO, 
     [l.discount, `−${money(currencyAmount(req.totalDiscountEUR, req))}`, req.currency].forEach((value, index) => {
       const width = cols[index + 1]!;
       cell(doc, discountX, y, width, totalH);
-      drawText(doc, value, discountX, y, width, totalH, { size: index === 2 ? 12 : 13.5, bold: index !== 2, align: "left", padding: index === 0 ? 13.5 : 7 });
+      drawText(doc, value, discountX, y, width, totalH, { size: index === 2 ? 11 : 11.5, bold: index !== 2, align: "center", padding: 3, singleLine: true });
       discountX += width;
     });
     y += totalH;
@@ -257,7 +229,7 @@ function drawTable(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO, 
   [l.total, money(total), req.currency].forEach((value, index) => {
     const width = cols[index + 1]!;
     cell(doc, cx, y, width, totalH, { fill: "#000000" });
-    drawText(doc, value, cx, y, width, totalH, { size: index === 2 ? 12 : 13.5, bold: index !== 2, align: "left", color: "#ffffff", padding: index === 0 ? 13.5 : 7 });
+    drawText(doc, value, cx, y, width, totalH, { size: index === 2 ? 11 : 11.5, bold: index !== 2, align: "center", color: "#ffffff", padding: 3, singleLine: true });
     cx += width;
   });
   return y + totalH;

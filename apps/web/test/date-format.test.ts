@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { formatDateRangeValue, formatDateTimeValue, formatDateValue, formatTimeValue, type AppSettings } from "@sever/contracts";
+import { formatDateRangeValue, formatDateTimeValue, formatDateValue, formatProjectName, formatTimeValue, type AppSettings } from "@sever/contracts";
 
 // 17:30 UTC is 18:30 in Belgrade in January.
 const at = new Date("2026-01-31T17:30:00.000Z");
@@ -58,5 +58,17 @@ describe("global date and time formatting", () => {
       settings,
       "ru-RU",
     )).toBe("31.08.2026 21:45 → 01.09.2026 04:00");
+  });
+
+  it("renders a project name template with dates, times, location and client", () => {
+    expect(formatProjectName(
+      "[name] · [start.date] [start.time]–[end.time] · [location] · [client]",
+      { name: "Концерт", startsAt: "2026-01-31T17:30:00.000Z", endsAt: "2026-01-31T20:00:00.000Z", location: "Зал 1", client: "Acme" },
+    )).toBe("Концерт · 31.01.2026 18:30–21:00 · Зал 1 · Acme");
+  });
+
+  it("removes empty edge separators and falls back to the base name", () => {
+    expect(formatProjectName("[name] - [dates] - [location]", { name: "Монтаж" })).toBe("Монтаж");
+    expect(formatProjectName("[location]", { name: "Монтаж" })).toBe("Монтаж");
   });
 });

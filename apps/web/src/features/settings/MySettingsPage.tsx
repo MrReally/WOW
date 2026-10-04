@@ -16,6 +16,7 @@ interface InvoiceCompanySettings {
   phone: string;
   email: string;
   telegram: string;
+  logoDataUrl: string | null;
 }
 
 function loadInvoiceCompany(): InvoiceCompanySettings {
@@ -29,12 +30,13 @@ function loadInvoiceCompany(): InvoiceCompanySettings {
         phone: parsed.phone ?? "+381 62 852 5240",
         email: parsed.email ?? "sever.beo.contact@gmail.com",
         telegram: parsed.telegram ?? "@sever_contact",
+        logoDataUrl: parsed.logoDataUrl ?? null,
       };
     }
   } catch {
     /* ignore */
   }
-  return { name: "SEVER", requisites: "", phone: "+381 62 852 5240", email: "sever.beo.contact@gmail.com", telegram: "@sever_contact" };
+  return { name: "SEVER", requisites: "", phone: "+381 62 852 5240", email: "sever.beo.contact@gmail.com", telegram: "@sever_contact", logoDataUrl: null };
 }
 
 // Personal mini-settings — available to every signed-in user (not the admin
@@ -70,6 +72,17 @@ export function MySettingsPage() {
     setInvoiceCompanyTouched(true);
     setInvoiceCompany(next);
     setServerInvoiceCompany.mutate(next);
+  };
+
+  const uploadInvoiceLogo = (file: File | undefined) => {
+    if (!file) return;
+    if (!/^image\/(png|jpeg)$/.test(file.type) || file.size > 2_000_000) {
+      window.alert("Нужен PNG или JPEG размером не более 2 МБ");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => saveInvoiceCompany({ logoDataUrl: String(reader.result) });
+    reader.readAsDataURL(file);
   };
 
   const togglePref = (kind: Notifications.NotificationKind) => {
@@ -181,6 +194,14 @@ export function MySettingsPage() {
             <Field label="Telegram">
               <Input value={invoiceCompany.telegram} onChange={(e) => saveInvoiceCompany({ telegram: e.target.value })} />
             </Field>
+            <Field label="Логотип для коммерческого предложения">
+              <input type="file" accept="image/png,image/jpeg" onChange={(e) => uploadInvoiceLogo(e.target.files?.[0])} />
+            </Field>
+            <p className="card__subtitle">PNG или JPEG, квадратный, рекомендуемый размер 1200 × 1200 px, максимум 2 МБ. В документе логотип выводится в области 170 × 170 px без обрезки.</p>
+            <div className="row" style={{ marginTop: 10 }}>
+              <img src={invoiceCompany.logoDataUrl ?? "/sever-logo.png"} alt="Логотип для КП" width={96} height={96} style={{ objectFit: "contain", background: "#fff", border: "1px solid var(--bdr)" }} />
+              {invoiceCompany.logoDataUrl && <Button variant="secondary" onClick={() => saveInvoiceCompany({ logoDataUrl: null })}>Вернуть текущий логотип</Button>}
+            </div>
           </Card>
         </>
       )}

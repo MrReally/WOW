@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Projects } from "@sever/contracts";
 import { Sheet, Field, Input, Select, Button, Textarea } from "../../../ui-kit/index.ts";
-import { useUpdateProject } from "../hooks.ts";
+import { useApplyProjectSeriesChange, usePreviewProjectSeriesChange, useUpdateProject } from "../hooks.ts";
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
 import { isoFromLocal, toLocalInput } from "../../../lib/datetime.ts";
@@ -20,10 +20,12 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
   const { can } = useSession();
   const canViewNote = can("projects.note.view");
   const update = useUpdateProject();
+  const previewSeriesChange = usePreviewProjectSeriesChange();
+  const applySeriesChange = useApplyProjectSeriesChange();
   const venues = useVenues();
   const createVenue = useCreateVenue();
   const dressCodes = useDressCodeOptions();
-  const [name, setName] = useState(project.name);
+  const [name, setName] = useState(project.baseName);
   const [clientId, setClientId] = useState(project.clientId);
   const [venueId, setVenueId] = useState(project.venueId ?? "");
   const [venueFormOpen, setVenueFormOpen] = useState(false);
@@ -34,11 +36,14 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
   const [dressCodeOptionId, setDressCodeOptionId] = useState(project.dressCodeOptionId ?? "");
   const [dressCodeUniform, setDressCodeUniform] = useState(project.dressCodeUniform);
   const [note, setNote] = useState(project.note ?? "");
+  const [scope, setScope] = useState<"only_this" | Projects.ProjectSeriesChangeScope>("only_this");
+  const [preview, setPreview] = useState<Projects.ProjectSeriesChangePreviewDTO | null>(null);
+  const [resolutions, setResolutions] = useState<Record<string, Projects.ProjectSeriesConflictResolution>>({});
 
   // Re-sync when opening on a different project / after external changes.
   useEffect(() => {
     if (open) {
-      setName(project.name);
+      setName(project.baseName);
       setClientId(project.clientId);
       setVenueId(project.venueId ?? "");
       setStarts(toLocalInput(project.startsAt));
@@ -46,6 +51,9 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
       setDressCodeOptionId(project.dressCodeOptionId ?? "");
       setDressCodeUniform(project.dressCodeUniform);
       setNote(project.note ?? "");
+      setScope("only_this");
+      setPreview(null);
+      setResolutions({});
     }
   }, [open, project.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -53,10 +61,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
   const datesValid = (!starts && !ends) || validRange;
 
   const submit = () => {
-    update.mutate(
-      {
-        id: project.id,
-        input: {
+    const input: Projects.UpdateProjectInput = {
           name,
           clientId,
           venueId: venueId || null,
@@ -66,11 +71,45 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
           dressCodeLabel: dressCodes.data?.find(x => x.id === dressCodeOptionId)?.label ?? null,
           dressCodeUniform,
           ...(canViewNote ? { note: note.trim() || null } : {}),
-        },
-      },
-      { onSuccess: onClose }
-    );
+    };
+    if (!project.seriesId || scope === "only_this") {
+      update.mutate({ id: project.id, input }, { onSuccess: onClose });
+      return;
+    }
+    previewSeriesChange.mutate({ seriesId: project.seriesId, input: { sourceProjectId: project.id, scope, projectPatch: input } }, {
+      onSuccess: (result) => { setPreview(result); setResolutions({}); },
+    });
   };
+
+  if (preview && project.seriesId) {
+    const conflictCount = preview.projects.reduce((sum, item) => sum + item.conflicts.length, 0);
+    return <Sheet open={open} onClose={() => setPreview(null)} title="Проверка изменений серии">
+      <p>Будут проверены и обновлены {preview.projects.length} проектов. Транзакции, оплаты и фактические операции не затрагиваются.</p>
+      <p className="card__subtitle">Автоматические изменения применяются только к значениям, которые не менялись локально. Конфликтов: {conflictCount}.</p>
+      <div className="stack">
+        {preview.projects.map((item) => <details key={item.projectId} open={item.conflicts.length > 0}>
+          <summary><strong>{item.projectName}</strong> · автоматически: {item.automaticFields.length} · конфликтов: {item.conflicts.length}</summary>
+          {item.protectedReasons.map((reason) => <p key={reason} className="card__subtitle">⚠ {reason}</p>)}
+          {item.conflicts.map((conflict) => {
+            const key = `${item.projectId}:${conflict.field}`;
+            const useSeries = resolutions[key] === "use_series";
+            return <div key={key} className="row row--between" style={{ padding: "8px 0" }}>
+              <span>{String(conflict.field)}: локальное значение будет сохранено</span>
+              <Button variant={useSeries ? "primary" : "secondary"} onClick={() => setResolutions((current) => ({ ...current, [key]: useSeries ? "keep_local" : "use_series" }))}>
+                {useSeries ? "Применить значение серии" : "Оставить локальное"}
+              </Button>
+            </div>;
+          })}
+        </details>)}
+      </div>
+      <div className="row">
+        <Button variant="secondary" onClick={() => setPreview(null)}>Назад</Button>
+        <Button disabled={applySeriesChange.isPending} onClick={() => applySeriesChange.mutate({ seriesId: project.seriesId!, input: { changeSetId: preview.changeSetId, resolutions } }, { onSuccess: onClose })}>
+          Применить изменения
+        </Button>
+      </div>
+    </Sheet>;
+  }
 
   return (
     <Sheet open={open} onClose={onClose} title="Редактировать проект">
@@ -137,7 +176,14 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
       {canViewNote && <Field label="Общая заметка по проекту">
         <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Важная информация для команды и планирования" />
       </Field>}
-      <Button block disabled={!name || !datesValid || update.isPending} onClick={submit}>
+      {project.seriesId && <Field label="Область изменения">
+        <Select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} options={[
+          { value: "only_this", label: "Только этот проект" },
+          { value: "this_and_future", label: "Этот и все будущие" },
+          { value: "all", label: "Вся серия" },
+        ]} />
+      </Field>}
+      <Button block disabled={!name || !datesValid || update.isPending || previewSeriesChange.isPending} onClick={submit}>
         Сохранить
       </Button>
     </Sheet>

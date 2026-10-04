@@ -9,6 +9,13 @@ CREATE TABLE IF NOT EXISTS app_settings.date_time (
 );
 INSERT INTO app_settings.date_time (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
+CREATE TABLE IF NOT EXISTS app_settings.project_name_template (
+  id integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  template text NOT NULL DEFAULT '[name]',
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO app_settings.project_name_template (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS app_settings.project_problem_notifications (
   id integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   intervals_minutes integer[] NOT NULL DEFAULT ARRAY[10080,4320,1440,720],

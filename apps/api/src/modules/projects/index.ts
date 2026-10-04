@@ -1,4 +1,4 @@
-import type { Equipment, Projects } from "@sever/contracts";
+import type { AppSettings, Equipment, Projects } from "@sever/contracts";
 import type { Sql } from "../../core/db.js";
 import type { EventBus } from "../../core/eventBus.js";
 import type { SeverModule } from "../../core/module.js";
@@ -10,9 +10,11 @@ export function createProjectsModule(
   db: Sql,
   bus: EventBus,
   loadEquipmentUnits: (unitIds: string[]) => Promise<(Equipment.EquipmentUnitDTO | null)[]>,
-  loadEquipmentModels: (modelIds: string[]) => Promise<(Equipment.EquipmentModelDTO | null)[]>
+  loadEquipmentModels: (modelIds: string[]) => Promise<(Equipment.EquipmentModelDTO | null)[]>,
+  appSettings: AppSettings.AppSettingsService,
+  loadVenueName: (venueId: string | null) => Promise<string | null>,
 ): SeverModule<Projects.ProjectsService> {
-  const service = createProjectsService(db, bus, loadEquipmentUnits, loadEquipmentModels);
+  const service = createProjectsService(db, bus, loadEquipmentUnits, loadEquipmentModels, appSettings, loadVenueName);
   return {
     name: "projects",
     migration: projectsMigration,

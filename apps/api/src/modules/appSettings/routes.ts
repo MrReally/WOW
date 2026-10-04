@@ -10,6 +10,7 @@ const schema = z.object({
 });
 const dressCodeSchema = z.object({ label: z.string().trim().min(1) });
 const problemNotificationSchema = z.object({ intervalsMinutes: z.array(z.number().int().min(5).max(525600)).max(24) });
+const projectNameTemplateSchema = z.object({ template: z.string().trim().min(1).max(240).refine(value => value.includes("[name]"), "шаблон должен содержать [name]") });
 
 export function registerAppSettingsRoutes(app: FastifyInstance, ctx: RouteContext, service: AppSettings.AppSettingsService) {
   app.get("/api/app-settings/date-time", async () => service.getDateTimeSettings());
@@ -17,6 +18,11 @@ export function registerAppSettingsRoutes(app: FastifyInstance, ctx: RouteContex
     const auth = await ctx.auth(req);
     requirePermission(auth, "roles.manage");
     return service.updateDateTimeSettings(schema.parse(req.body));
+  });
+  app.get("/api/app-settings/project-name-template", async () => service.getProjectNameTemplateSettings());
+  app.put("/api/app-settings/project-name-template", async (req) => {
+    const auth = await ctx.auth(req); requirePermission(auth, "projects.manage");
+    return service.updateProjectNameTemplateSettings(projectNameTemplateSchema.parse(req.body));
   });
   app.get("/api/app-settings/project-problem-notifications", async (req) => {
     const auth = await ctx.auth(req); requirePermission(auth, "roles.manage");

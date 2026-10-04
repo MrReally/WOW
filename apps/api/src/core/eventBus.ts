@@ -6,6 +6,7 @@
 // publishers and subscribers keep the same call shape.
 
 import type {
+  AppSettings,
   Equipment,
   Finance,
   People,
@@ -13,6 +14,7 @@ import type {
 } from "@sever/contracts";
 
 export type DomainEvent =
+  | AppSettings.AppSettingsEvent
   | Equipment.EquipmentEvent
   | Projects.ProjectsEvent
   | Finance.FinanceEvent
