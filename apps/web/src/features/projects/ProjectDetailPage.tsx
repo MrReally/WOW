@@ -1269,9 +1269,10 @@ function DiscountControl({ type, value, resultEUR, disabled, onType, onValue }: 
     <div className="discount-control">
       <div className="discount-switch" role="group" aria-label="Тип скидки">
         <button type="button" className={type === "percent" ? "is-active" : ""} aria-pressed={type === "percent"} disabled={disabled} onClick={() => onType("percent")}>%</button>
-        <button type="button" className={type === "fixed_rsd" ? "is-active" : ""} aria-pressed={type === "fixed_rsd"} disabled={disabled} onClick={() => onType("fixed_rsd")}>дин.</button>
+        <button type="button" className={type === "fixed_rsd" ? "is-active" : ""} aria-pressed={type === "fixed_rsd"} disabled={disabled} onClick={() => onType("fixed_rsd")}>DIN</button>
+        <button type="button" className={type === "fixed_eur" ? "is-active" : ""} aria-pressed={type === "fixed_eur"} disabled={disabled} onClick={() => onType("fixed_eur")}>EUR</button>
       </div>
-      <Input disabled={disabled} type="number" min="0" max={type === "percent" ? "100" : undefined} step="0.01" value={value} onChange={(event) => onValue(event.target.value)} aria-label={type === "percent" ? "Скидка в процентах" : "Скидка в динарах"} />
+      <Input disabled={disabled} type="number" min="0" max={type === "percent" ? "100" : undefined} step="0.01" value={value} onChange={(event) => onValue(event.target.value)} aria-label={type === "percent" ? "Скидка в процентах" : type === "fixed_rsd" ? "Скидка в динарах" : "Скидка в евро"} />
       {Number(value) > 0 && <span className="discount-result">После скидки {eur(resultEUR)}</span>}
     </div>
   );

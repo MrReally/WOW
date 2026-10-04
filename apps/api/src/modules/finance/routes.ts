@@ -62,7 +62,7 @@ const invoiceVersionSchema = z.object({
   currency: z.enum(CURRENCIES as [string, ...string[]]),
   lang: z.enum(["EN", "RU", "RS"]),
   lines: z.array(invoiceVersionLineSchema),
-  totalDiscountType: z.enum(["percent", "fixed_rsd"]),
+  totalDiscountType: z.enum(["percent", "fixed_rsd", "fixed_eur"]),
   totalDiscountValue: z.number().nonnegative(),
   note: z.string().optional(),
 });
@@ -75,7 +75,7 @@ const estimateLineSchema = z.object({
   qty: z.number().positive(),
   priceEUR: z.number(),
   costEUR: z.number(),
-  discountType: z.enum(["percent", "fixed_rsd"]).optional(),
+  discountType: z.enum(["percent", "fixed_rsd", "fixed_eur"]).optional(),
   discountValue: z.number().nonnegative().optional(),
   comment: z.string().optional(),
   hidden: z.boolean().optional(),
@@ -84,7 +84,7 @@ const estimateLineSchema = z.object({
   path: ["discountValue"],
 });
 const estimateSettingsSchema = z.object({
-  totalDiscountType: z.enum(["percent", "fixed_rsd"]),
+  totalDiscountType: z.enum(["percent", "fixed_rsd", "fixed_eur"]),
   totalDiscountValue: z.number().nonnegative(),
 }).refine((value) => value.totalDiscountType !== "percent" || value.totalDiscountValue <= 100, {
   message: "percentage discount cannot exceed 100",

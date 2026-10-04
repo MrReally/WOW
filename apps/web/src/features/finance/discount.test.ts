@@ -12,8 +12,14 @@ describe("estimate discounts", () => {
     expect(amountAfterDiscountEUR(250, "fixed_rsd", 1_000, 0.0085)).toBe(241.5);
   });
 
+  it("applies a fixed euro discount without conversion", () => {
+    expect(discountAmountEUR(250, "fixed_eur", 40, 0.0085)).toBe(40);
+    expect(amountAfterDiscountEUR(250, "fixed_eur", 40, 0.0085)).toBe(210);
+  });
+
   it("never discounts below zero", () => {
     expect(amountAfterDiscountEUR(25, "percent", 150, 0.0085)).toBe(0);
     expect(amountAfterDiscountEUR(25, "fixed_rsd", 10_000, 0.0085)).toBe(0);
+    expect(amountAfterDiscountEUR(25, "fixed_eur", 100, 0.0085)).toBe(0);
   });
 });

@@ -1385,8 +1385,7 @@ h1,
 }
 
 .discount-switch {
-  display: inline-grid;
-  grid-template-columns: 1fr 1fr;
+  display: inline-flex;
   padding: 2px;
   border: 1px solid var(--bdr);
   border-radius: 9px;

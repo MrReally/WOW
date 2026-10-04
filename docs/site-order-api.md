@@ -1,6 +1,6 @@
 # Заявки с сайта → SEVER App: состояние API и контракт интеграции
 
-Проверено по коду 02.10.2026. **Этот документ обязателен к обновлению при каждом изменении описанных здесь маршрутов, DTO, прав, авторизации или логики заказа.** Правило также закреплено в корневом `AGENTS.md`. Примеры ниже относятся к текущему коду, а не к обещанному публичному API.
+Проверено по коду 04.10.2026. **Этот документ обязателен к обновлению при каждом изменении описанных здесь маршрутов, DTO, прав, авторизации или логики заказа.** Правило также закреплено в корневом `AGENTS.md`. Примеры ниже относятся к текущему коду, а не к обещанному публичному API.
 
 ## Что работает сейчас
 
@@ -19,7 +19,7 @@ SEVER хранит клиента, проект (заказ в операцио�
 | Добавить резервацию | `POST /api/reservations` | `{projectId, modelId, qty, isReserve?, startsAt?, endsAt?}` → `ReservationDTO` | `projects.reservation.manage` |
 | Проверить доступность | `GET /api/reservations/availability?modelId=…&startsAt=…&endsAt=…` | `{total, booked, free, shortage, …}` | одно из `projects.reservation.manage`, `warehouse.issue`, `apex.view` |
 | Заменить строки сметы | `PUT /api/projects/:id/estimate-lines` | `{lines: SaveProjectEstimateLineInput[]}` → строки сметы | `finance.manage` |
-| Установить общую скидку | `PUT /api/projects/:id/estimate-settings` | `{totalDiscountType: "percent", totalDiscountValue: 14}` → настройки | `finance.manage` |
+| Установить общую скидку | `PUT /api/projects/:id/estimate-settings` | `{totalDiscountType: "percent", totalDiscountValue: 14}` → настройки; тип: `percent`, `fixed_rsd` или `fixed_eur` | `finance.manage` |
 | Рассчитать доставку | `POST /api/transport/route-quote` | адреса, `vehicleId`, необязательная ручная цена топлива и километраж → топливо, амортизация и `totalCostEUR` | одно из `finance.view`, `projects.view` |
 
 Источники истины: `apps/api/src/modules/projects/routes.ts`, `apps/api/src/modules/projects/service.ts`, `apps/api/src/modules/finance/routes.ts`, `apps/api/src/modules/finance/service.ts`, `apps/api/src/modules/transport/routes.ts`, `apps/api/src/modules/transport/service.ts`, `apps/api/src/core/auth.ts`, `packages/contracts/src/projects.ts`, `packages/contracts/src/finance.ts`, `packages/contracts/src/transport.ts`.

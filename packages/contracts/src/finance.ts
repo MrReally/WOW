@@ -109,12 +109,16 @@ export interface ProjectFinanceDTO {
 }
 
 export type ProjectEstimateLineSource = "equipment" | "contractor" | "labor" | "manual";
-export type DiscountType = "percent" | "fixed_rsd";
+export type DiscountType = "percent" | "fixed_rsd" | "fixed_eur";
 
 export function discountAmountEUR(amountEUR: number, type: DiscountType, value: number, rsdRateToEUR: number): number {
   const base = Math.max(0, amountEUR);
   const safeValue = Math.max(0, value);
-  const raw = type === "percent" ? base * Math.min(100, safeValue) / 100 : safeValue * Math.max(0, rsdRateToEUR);
+  const raw = type === "percent"
+    ? base * Math.min(100, safeValue) / 100
+    : type === "fixed_rsd"
+      ? safeValue * Math.max(0, rsdRateToEUR)
+      : safeValue;
   return Math.round(Math.min(base, raw) * 100) / 100;
 }
 
@@ -135,7 +139,7 @@ export interface ProjectEstimateLineDTO {
   priceEUR: number;
   costEUR: number;
   discountType: DiscountType;
-  /** Percentage points or a fixed amount in Serbian dinars. */
+  /** Percentage points or a fixed amount in Serbian dinars/euros. */
   discountValue: number;
   comment: string;
   /** Retained source row that must not be rendered after combining positions. */
@@ -163,7 +167,7 @@ export interface SaveProjectEstimateLineInput {
 export interface ProjectEstimateSettingsDTO {
   projectId: ID;
   totalDiscountType: DiscountType;
-  /** Percentage points or a fixed amount in Serbian dinars. */
+  /** Percentage points or a fixed amount in Serbian dinars/euros. */
   totalDiscountValue: number;
 }
 
