@@ -53,6 +53,20 @@ export function createAppSettingsService(db: Sql, bus: EventBus): AppSettings.Ap
       const row = await one<{ project_id: string }>(db, `INSERT INTO app_settings.project_problem_notification_deliveries(project_id,project_starts_at,interval_minutes) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING project_id`, [projectId, projectStartsAt, intervalMinutes]);
       return !!row;
     },
+    async getClientFollowupNotificationSettings() {
+      const row = await one<{ draft_intervals_minutes: number[]; confirmed_intervals_minutes: number[] }>(db, `SELECT draft_intervals_minutes,confirmed_intervals_minutes FROM app_settings.client_followup_notifications WHERE id=1`);
+      return { draftIntervalsMinutes: row?.draft_intervals_minutes.map(Number) ?? [43200, 10080, 4320], confirmedIntervalsMinutes: row?.confirmed_intervals_minutes.map(Number) ?? [1440] };
+    },
+    async updateClientFollowupNotificationSettings(input) {
+      const drafts = [...new Set(input.draftIntervalsMinutes)].sort((a, b) => b - a);
+      const confirmed = [...new Set(input.confirmedIntervalsMinutes)].sort((a, b) => b - a);
+      const row = await one<{ draft_intervals_minutes: number[]; confirmed_intervals_minutes: number[] }>(db, `INSERT INTO app_settings.client_followup_notifications(id,draft_intervals_minutes,confirmed_intervals_minutes,updated_at) VALUES(1,$1,$2,now()) ON CONFLICT(id) DO UPDATE SET draft_intervals_minutes=EXCLUDED.draft_intervals_minutes,confirmed_intervals_minutes=EXCLUDED.confirmed_intervals_minutes,updated_at=now() RETURNING draft_intervals_minutes,confirmed_intervals_minutes`, [drafts, confirmed]);
+      return { draftIntervalsMinutes: row!.draft_intervals_minutes.map(Number), confirmedIntervalsMinutes: row!.confirmed_intervals_minutes.map(Number) };
+    },
+    async claimClientFollowupNotification(projectId, projectStartsAt, triggerKind, intervalMinutes) {
+      const row = await one<{ project_id: string }>(db, `INSERT INTO app_settings.client_followup_notification_deliveries(project_id,project_starts_at,trigger_kind,interval_minutes) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING project_id`, [projectId, projectStartsAt, triggerKind, intervalMinutes]);
+      return !!row;
+    },
     async listDressCodeOptions(includeArchived = false) {
       return (await query<DressCodeRow>(db, `SELECT id,label,active,sort_order FROM app_settings.dress_code_options ${includeArchived ? "" : "WHERE active"} ORDER BY sort_order,label`)).map(dressCodeDTO);
     },

@@ -30,6 +30,23 @@ CREATE TABLE IF NOT EXISTS app_settings.project_problem_notification_deliveries 
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (project_id, project_starts_at, interval_minutes)
 );
+
+CREATE TABLE IF NOT EXISTS app_settings.client_followup_notifications (
+  id integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  draft_intervals_minutes integer[] NOT NULL DEFAULT ARRAY[43200,10080,4320],
+  confirmed_intervals_minutes integer[] NOT NULL DEFAULT ARRAY[1440],
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO app_settings.client_followup_notifications (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS app_settings.client_followup_notification_deliveries (
+  project_id uuid NOT NULL,
+  project_starts_at timestamptz NOT NULL,
+  trigger_kind text NOT NULL CHECK (trigger_kind IN ('draft','confirmed')),
+  interval_minutes integer NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (project_id, project_starts_at, trigger_kind, interval_minutes)
+);
 ALTER TABLE app_settings.date_time DROP CONSTRAINT IF EXISTS date_time_date_format_check;
 ALTER TABLE app_settings.date_time ADD CONSTRAINT date_time_date_format_check CHECK (
   date_format IN ('DD.MM.YYYY','DD.MM.YY','DD/MM/YYYY','DD/MM/YY','DD-MM-YYYY','DD-MM-YY','DD MMM YYYY','DD MMM YY','D MMM YYYY','D MMM YY','DD MMMM YYYY','D MMMM YYYY','MM/DD/YYYY','MM/DD/YY','MMM DD, YYYY','MMMM DD, YYYY','YYYY-MM-DD','YYYY/MM/DD','YYYY.MM.DD')

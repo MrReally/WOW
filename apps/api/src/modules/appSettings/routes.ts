@@ -10,6 +10,7 @@ const schema = z.object({
 });
 const dressCodeSchema = z.object({ label: z.string().trim().min(1) });
 const problemNotificationSchema = z.object({ intervalsMinutes: z.array(z.number().int().min(5).max(525600)).max(24) });
+const clientFollowupNotificationSchema = z.object({ draftIntervalsMinutes: z.array(z.number().int().min(5).max(525600)).max(24), confirmedIntervalsMinutes: z.array(z.number().int().min(5).max(525600)).max(24) });
 const projectNameTemplateSchema = z.object({ template: z.string().trim().min(1).max(240).refine(value => value.includes("[name]"), "шаблон должен содержать [name]") });
 
 export function registerAppSettingsRoutes(app: FastifyInstance, ctx: RouteContext, service: AppSettings.AppSettingsService) {
@@ -31,6 +32,14 @@ export function registerAppSettingsRoutes(app: FastifyInstance, ctx: RouteContex
   app.put("/api/app-settings/project-problem-notifications", async (req) => {
     const auth = await ctx.auth(req); requirePermission(auth, "roles.manage");
     return service.updateProjectProblemNotificationSettings(problemNotificationSchema.parse(req.body));
+  });
+  app.get("/api/app-settings/client-followup-notifications", async (req) => {
+    const auth = await ctx.auth(req); requirePermission(auth, "roles.manage");
+    return service.getClientFollowupNotificationSettings();
+  });
+  app.put("/api/app-settings/client-followup-notifications", async (req) => {
+    const auth = await ctx.auth(req); requirePermission(auth, "roles.manage");
+    return service.updateClientFollowupNotificationSettings(clientFollowupNotificationSchema.parse(req.body));
   });
   app.get<{ Querystring: { includeArchived?: string } }>("/api/app-settings/dress-codes", async (req) => service.listDressCodeOptions(req.query.includeArchived === "true"));
   app.post("/api/app-settings/dress-codes", async (req) => {

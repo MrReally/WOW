@@ -784,9 +784,64 @@ export function createModules(bus: EventBus = new EventBus()) {
     return setInterval(() => void dispatchProjectProblemNotifications(), 60_000);
   }
 
+  const remainingDaysLabel = (startsAt: string, now: number) => {
+    const days = Math.max(1, Math.ceil((Date.parse(startsAt) - now) / 86_400_000));
+    const suffix = days % 10 === 1 && days % 100 !== 11 ? "день" : [2, 3, 4].includes(days % 10) && ![12, 13, 14].includes(days % 100) ? "дня" : "дней";
+    return `${days} ${suffix}`;
+  };
+
+  async function dispatchClientFollowupNotifications() {
+    const now = Date.now();
+    const [{ draftIntervalsMinutes, confirmedIntervalsMinutes }, allProjects, recipients, dateTimeSettings] = await Promise.all([
+      appSettings.service.getClientFollowupNotificationSettings(),
+      projects.service.listProjects(),
+      people.service.listWithPermission("apex.clientFollowups.notify"),
+      appSettings.service.getDateTimeSettings(),
+    ]);
+    if (!recipients.length || (!draftIntervalsMinutes.length && !confirmedIntervalsMinutes.length)) return;
+    const upcoming = allProjects.filter(project => project.startsAt && Date.parse(project.startsAt) > now && (project.status === "draft" || project.status === "confirmed"));
+    const triggered: Array<{ project: Projects.ProjectDTO; kind: "draft" | "confirmed"; intervalMinutes: number }> = [];
+    for (const project of upcoming) {
+      const kind = project.status === "draft" ? "draft" : "confirmed";
+      const intervals = kind === "draft" ? draftIntervalsMinutes : confirmedIntervalsMinutes;
+      const remainingMinutes = (Date.parse(project.startsAt!) - now) / 60_000;
+      const intervalMinutes = intervals.filter(value => value >= remainingMinutes).sort((a, b) => a - b)[0];
+      if (intervalMinutes == null) continue;
+      if (await appSettings.service.claimClientFollowupNotification(project.id, project.startsAt!, kind, intervalMinutes)) {
+        triggered.push({ project, kind, intervalMinutes });
+      }
+    }
+    if (!triggered.length) return;
+
+    const draftWindowMinutes = Math.max(0, ...draftIntervalsMinutes);
+    const draftsInWindow = upcoming
+      .filter(project => project.status === "draft" && (Date.parse(project.startsAt!) - now) / 60_000 <= draftWindowMinutes)
+      .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!));
+    const projectLine = (project: Projects.ProjectDTO) => `• «${project.name}» — ${remainingDaysLabel(project.startsAt!, now)}, ${formatDateValue(project.startsAt!, dateTimeSettings, "ru-RU")}`;
+    const dueDrafts = triggered.filter(item => item.kind === "draft");
+    const dueConfirmed = triggered.filter(item => item.kind === "confirmed");
+    const sections: string[] = [];
+    if (dueDrafts.length) sections.push(["Подошёл срок для черновиков", ...dueDrafts.map(item => `${projectLine(item.project)}, статус: Черновик`)].join("\n"));
+    if (dueConfirmed.length) sections.push(["Связаться с клиентом и подтвердить, что всё в силе", ...dueConfirmed.map(item => `${projectLine(item.project)}, статус: Подтверждён`)].join("\n"));
+    const windowLabel = intervalLabel(draftWindowMinutes);
+    sections.push([`Все черновики в ближайшие ${windowLabel}`, ...(draftsInWindow.length ? draftsInWindow.map(projectLine) : ["• Нет мероприятий"])].join("\n"));
+    const title = `Работа с клиентами · ${formatDateValue(new Date(now), dateTimeSettings, "ru-RU")}`;
+    const plainBody = sections.join("\n\n");
+    const sourceKey = `client-followups:${triggered.map(item => `${item.kind}:${item.project.id}:${item.intervalMinutes}`).sort().join("|")}`;
+    for (const user of recipients) {
+      await notifications.service.create({ userId: user.id, kind: "info", title, body: plainBody, link: "/projects", sourceKey });
+      await sendTelegramMessage(user.telegramId, `<b>${escapeHtml(title)}</b>\n${escapeHtml(plainBody)}`);
+    }
+  }
+
+  function startClientFollowupScheduler() {
+    void dispatchClientFollowupNotifications();
+    return setInterval(() => void dispatchClientFollowupNotifications(), 60_000);
+  }
+
   const modules = [appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, operations, transport, audit];
 
-  return { bus, appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, operations, transport, audit, apex, billing, modules, handleTelegramCallback, startReminderScheduler, startProjectProblemScheduler };
+  return { bus, appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, operations, transport, audit, apex, billing, modules, handleTelegramCallback, startReminderScheduler, startProjectProblemScheduler, startClientFollowupScheduler };
 }
 
 export type Wiring = ReturnType<typeof createModules>;

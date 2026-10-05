@@ -63,6 +63,13 @@ export interface ProjectProblemNotificationSettingsDTO {
   intervalsMinutes: number[];
 }
 
+export interface ClientFollowupNotificationSettingsDTO {
+  /** Draft-project checkpoints before project start, in minutes. */
+  draftIntervalsMinutes: number[];
+  /** Confirmed-project client reconfirmation checkpoints, in minutes. */
+  confirmedIntervalsMinutes: number[];
+}
+
 export interface AppSettingsService {
   getDateTimeSettings(): Promise<DateTimeSettingsDTO>;
   updateDateTimeSettings(input: UpdateDateTimeSettingsInput): Promise<DateTimeSettingsDTO>;
@@ -72,6 +79,9 @@ export interface AppSettingsService {
   updateProjectProblemNotificationSettings(input: ProjectProblemNotificationSettingsDTO): Promise<ProjectProblemNotificationSettingsDTO>;
   /** Atomically reserves one project/threshold occurrence for delivery. */
   claimProjectProblemNotification(projectId: string, projectStartsAt: string, intervalMinutes: number): Promise<boolean>;
+  getClientFollowupNotificationSettings(): Promise<ClientFollowupNotificationSettingsDTO>;
+  updateClientFollowupNotificationSettings(input: ClientFollowupNotificationSettingsDTO): Promise<ClientFollowupNotificationSettingsDTO>;
+  claimClientFollowupNotification(projectId: string, projectStartsAt: string, triggerKind: "draft" | "confirmed", intervalMinutes: number): Promise<boolean>;
   listDressCodeOptions(includeArchived?: boolean): Promise<DressCodeOptionDTO[]>;
   createDressCodeOption(input: { label: string }): Promise<DressCodeOptionDTO>;
   updateDressCodeOption(id: string, input: { label?: string; active?: boolean; sortOrder?: number }): Promise<DressCodeOptionDTO>;

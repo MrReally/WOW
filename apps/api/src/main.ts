@@ -37,6 +37,7 @@ async function main() {
   startTelegramBot({ people: wiring.people.service, appSettings: wiring.appSettings.service, onCallback: wiring.handleTelegramCallback });
   wiring.startReminderScheduler();
   wiring.startProjectProblemScheduler();
+  wiring.startClientFollowupScheduler();
 
   const shutdown = async () => {
     await app.close();

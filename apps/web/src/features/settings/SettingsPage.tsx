@@ -4,7 +4,7 @@ import { CURRENCIES, DATE_FORMATS, formatDateValue, formatProjectName, formatTim
 import { Card, Button, SectionTitle, Input, Select, Loading } from "../../ui-kit/index.ts";
 import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
-import { useAllCalendarFeed, useCreateDressCodeOption, useDateTimeSettings, useDressCodeOptions, useFxRates, useProjectNameTemplateSettings, useProjectProblemNotificationSettings, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetProjectNameTemplateSettings, useSetProjectProblemNotificationSettings, useSetTelegramInboxSettings, useTelegramInboxSettings, useUpdateDressCodeOption } from "./hooks.ts";
+import { useAllCalendarFeed, useClientFollowupNotificationSettings, useCreateDressCodeOption, useDateTimeSettings, useDressCodeOptions, useFxRates, useProjectNameTemplateSettings, useProjectProblemNotificationSettings, useSetClientFollowupNotificationSettings, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetProjectNameTemplateSettings, useSetProjectProblemNotificationSettings, useSetTelegramInboxSettings, useTelegramInboxSettings, useUpdateDressCodeOption } from "./hooks.ts";
 import { RoleEditor } from "./components/RoleEditor.tsx";
 import { useCableSettings, useSetCableSettings } from "../warehouse/hooks.ts";
 import { nameFormatForInput, nameFormatFromInput } from "../warehouse/cables.ts";
@@ -57,6 +57,8 @@ export function SettingsPage() {
       {can("roles.manage") && <DateTimeFormatSettings />}
 
       {can("roles.manage") && <ProjectProblemNotificationSettings />}
+
+      {can("roles.manage") && <ClientFollowupNotificationSettings />}
 
       {can("roles.manage") && <RoleEditor />}
 
@@ -303,6 +305,36 @@ function ProjectProblemNotificationSettings() {
     <div className="row"><Input type="number" min="1" value={amount} onChange={event => setAmount(event.target.value)} /><Select value={unit} onChange={event => setUnit(event.target.value)} options={[{ value: "days", label: "дней" }, { value: "hours", label: "часов" }, { value: "minutes", label: "минут" }]} /><Button variant="secondary" onClick={add}>Добавить</Button></div>
     <Button variant="secondary" disabled={save.isPending || settings.isLoading} onClick={() => save.mutate({ intervalsMinutes: values })}>Сохранить</Button>
   </div></Card></>;
+}
+
+function ClientFollowupNotificationSettings() {
+  const settings = useClientFollowupNotificationSettings();
+  const save = useSetClientFollowupNotificationSettings();
+  const [drafts, setDrafts] = useState<number[]>([]);
+  const [confirmed, setConfirmed] = useState<number[]>([]);
+  useEffect(() => {
+    if (!settings.data) return;
+    setDrafts(settings.data.draftIntervalsMinutes);
+    setConfirmed(settings.data.confirmedIntervalsMinutes);
+  }, [settings.data]);
+  return <><SectionTitle>Сводки по работе с клиентами</SectionTitle><Card><div className="stack" style={{ gap: 14 }}>
+    <p className="card__subtitle">Отдельное право Apex определяет получателей. Максимальный срок черновиков также задаёт окно общего списка неподтверждённых мероприятий.</p>
+    <IntervalEditor title="Черновики" values={drafts} onChange={setDrafts} />
+    <IntervalEditor title="Подтверждённые — связаться с клиентом" values={confirmed} onChange={setConfirmed} />
+    <Button variant="secondary" disabled={save.isPending || settings.isLoading} onClick={() => save.mutate({ draftIntervalsMinutes: drafts, confirmedIntervalsMinutes: confirmed })}>Сохранить</Button>
+  </div></Card></>;
+}
+
+function IntervalEditor({ title, values, onChange }: { title: string; values: number[]; onChange: (values: number[]) => void }) {
+  const [amount, setAmount] = useState("1");
+  const [unit, setUnit] = useState("days");
+  const label = (minutes: number) => minutes % 1440 === 0 ? `${minutes / 1440} дн.` : minutes % 60 === 0 ? `${minutes / 60} ч.` : `${minutes} мин.`;
+  const add = () => {
+    const multiplier = unit === "days" ? 1440 : unit === "hours" ? 60 : 1;
+    const minutes = Math.round(Number(amount) * multiplier);
+    if (minutes >= 5) onChange([...new Set([...values, minutes])].sort((a, b) => b - a));
+  };
+  return <div className="stack" style={{ gap: 8 }}><p className="card__title">{title}</p><div className="row" style={{ flexWrap: "wrap" }}>{values.map(value => <button key={value} type="button" className="chip chip--neutral" onClick={() => onChange(values.filter(item => item !== value))}>{label(value)} ×</button>)}</div><div className="row"><Input type="number" min="1" value={amount} onChange={event => setAmount(event.target.value)} /><Select value={unit} onChange={event => setUnit(event.target.value)} options={[{ value: "days", label: "дней" }, { value: "hours", label: "часов" }, { value: "minutes", label: "минут" }]} /><Button variant="secondary" onClick={add}>Добавить</Button></div></div>;
 }
 
 function FxRow({ currency, rate, onSave, disabled }: { currency: string; rate: number; onSave: (v: number) => void; disabled?: boolean }) {
