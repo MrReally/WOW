@@ -29,6 +29,8 @@ const clean = (s: string) => s.trim().replace(/\s+/g, " ");
 const currencyAmount = (eur: number, req: Finance.EstimatePdfRequestDTO) =>
   req.currency === "EUR" || !req.rateToEUR ? eur : eur / req.rateToEUR;
 const money = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(n));
+const invoiceDate = (value: string, settings: AppSettings.DateTimeSettingsDTO, locale: string) =>
+  /^\d{2}\.\d{2}-\d{2}\.\d{2}$/.test(value) ? value : formatDateValue(value, settings, locale);
 
 type Align = "left" | "center" | "right";
 
@@ -132,7 +134,7 @@ function drawHeader(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO,
   cell(doc, x + labelW, y + titleH, valueW, dateH, { borderWidth: 1.5 });
   drawText(doc, l.date, x, y + titleH, labelW, dateH, { size: 15, bold: true });
   const locale = req.lang === "EN" ? "en-US" : req.lang === "RS" ? "sr-RS" : "ru-RU";
-  drawText(doc, formatDateValue(req.date, dateTimeSettings, locale), x + labelW, y + titleH, valueW, dateH, { size: 10.5, bold: true, padding: 3 });
+  drawText(doc, invoiceDate(req.date, dateTimeSettings, locale), x + labelW, y + titleH, valueW, dateH, { size: 10.5, bold: true, padding: 3 });
 
   cell(doc, x, y + titleH + dateH, labelW, placeH, { borderWidth: 1.5 });
   cell(doc, x + labelW, y + titleH + dateH, valueW, placeH, { borderWidth: 1.5 });

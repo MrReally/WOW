@@ -12,6 +12,7 @@ import { useCreateInvoiceVersion, useFxRates, useInvoiceCompanySettings, useInvo
 import "./invoice.css";
 import { useDateFormatSettings } from "../../app/dateFormat.tsx";
 import { ConfiguredDateInput } from "../../app/ConfiguredDateTimeInput.tsx";
+import { isInvoiceDateRange, projectInvoiceDate } from "./invoiceDate.ts";
 
 interface Line {
   id: string;
@@ -111,6 +112,7 @@ export function InvoicePage() {
   const [lang, setLang] = useState<InvoiceLang>("EN");
   const [number, setNumber] = useState("");
   const [dateStr, setDateStr] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateTouched, setDateTouched] = useState(false);
   const [clientName, setClientName] = useState("");
   const [place, setPlace] = useState("");
   const [placeTouched, setPlaceTouched] = useState(false);
@@ -124,9 +126,16 @@ export function InvoicePage() {
 
   useEffect(() => {
     setSeeded(false);
+    setDateTouched(false);
     setSelectedLineIds([]);
     setMergeOpen(false);
   }, [id]);
+
+  useEffect(() => {
+    if (!project.data || dateTouched) return;
+    const eventDate = projectInvoiceDate(project.data.startsAt, project.data.endsAt);
+    if (eventDate) setDateStr(eventDate);
+  }, [project.data, dateTouched]);
 
   useEffect(() => {
     try {
@@ -281,6 +290,7 @@ export function InvoicePage() {
   const restoreVersion = (v: StoredInvoiceVersion) => {
     setNumber(v.number);
     setDateStr(v.date);
+    setDateTouched(true);
     setPlace(v.place);
     setPlaceTouched(true);
     setClientName(v.clientName);
@@ -382,7 +392,7 @@ export function InvoicePage() {
         />
         {!canConvert && <p className="card__subtitle no-print" style={{ color: "var(--warn)" }}>Для {currency} не задан курс в Settings.</p>}
         {pdfError && <p className="card__subtitle no-print" style={{ color: "var(--alert)" }}>{pdfError}</p>}
-        <PrintableInvoice labels={labels} formattedDate={formatDateValue(dateStr, dateTimeSettings, lang === "EN" ? "en-US" : lang === "RS" ? "sr-RS" : "ru-RU")} place={place} sections={sections} convert={convert} subtotal={subtotal} totalDiscountEUR={totalDiscountEUR} total={total} currency={currency} note={note} company={company} />
+        <PrintableInvoice labels={labels} formattedDate={isInvoiceDateRange(dateStr) ? dateStr : formatDateValue(dateStr, dateTimeSettings, lang === "EN" ? "en-US" : lang === "RS" ? "sr-RS" : "ru-RU")} place={place} sections={sections} convert={convert} subtotal={subtotal} totalDiscountEUR={totalDiscountEUR} total={total} currency={currency} note={note} company={company} />
       </div>
     );
   }
@@ -420,7 +430,11 @@ export function InvoicePage() {
         <Card>
           <div className="row">
             <Field label="Номер"><Input value={number} onChange={(e) => setNumber(e.target.value)} /></Field>
-            <Field label="Дата"><ConfiguredDateInput value={dateStr} onChange={setDateStr} /></Field>
+            <Field label="Дата">
+              {isInvoiceDateRange(dateStr)
+                ? <Input value={dateStr} onChange={(e) => { setDateTouched(true); setDateStr(e.target.value); }} />
+                : <ConfiguredDateInput value={dateStr} onChange={(value) => { setDateTouched(true); setDateStr(value); }} />}
+            </Field>
           </div>
           <div className="row">
             <Field label="Язык"><Select value={lang} onChange={(e) => setLang(e.target.value as InvoiceLang)} options={langOptions} /></Field>
