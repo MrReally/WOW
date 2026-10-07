@@ -27,6 +27,7 @@ import {
   useUpdateProjectTask,
 } from "./hooks.ts";
 import { isUnitVisibleForProject } from "../projects/reservationUnitAvailability.ts";
+import { MapRouteButton } from "./components/MapRouteButton.tsx";
 
 const stageOrder = PROJECT_STAGE_ORDER;
 
@@ -150,7 +151,7 @@ export function OperationsProjectPage() {
           <div style={{ minWidth: 0 }}>
             <p className="card__title">{project.data.name}</p>
             <p className="card__subtitle">{dateRange(project.data.startsAt, project.data.endsAt)}</p>
-            {venue && <p className="card__subtitle">📍 {[venue.name, venue.address].filter(Boolean).join(" · ")}</p>}
+            {venue && <div className="row" style={{ gap: 6 }}><p className="card__subtitle" style={{ minWidth: 0 }}>📍 {[venue.name, venue.address].filter(Boolean).join(" · ")}</p><MapRouteButton venue={venue} /></div>}
             {(project.data.dressCodeLabel || project.data.dressCodeUniform) && <p className="card__subtitle">👔 {[project.data.dressCodeLabel, project.data.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}</p>}
             {canViewProjectNote && project.data.note && <p className="project-note">📝 {project.data.note}</p>}
           </div>

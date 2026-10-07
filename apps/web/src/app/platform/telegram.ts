@@ -33,7 +33,7 @@ export interface Platform {
   initData: string;
   colorScheme: "dark" | "light";
   haptic: (style?: "light" | "medium" | "heavy") => void;
-  /** Opens a real HTTPS URL through the Telegram host; false in a regular browser. */
+  /** Opens a real HTTPS URL through the current host. */
   openExternalUrl: (url: string) => boolean;
   /** Native Telegram back button; no-op in PWA. Returns an unsubscribe fn. */
   backButton: (visible: boolean, onClick?: () => void) => () => void;
@@ -81,7 +81,10 @@ export function detectPlatform(): Platform {
     initData: "",
     colorScheme: "dark",
     haptic: () => {},
-    openExternalUrl: () => false,
+    openExternalUrl: (url) => {
+      window.open(url, "_blank", "noopener,noreferrer");
+      return true;
+    },
     backButton: () => () => {},
   };
 }

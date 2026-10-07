@@ -4,6 +4,7 @@ import { Card, SectionHead, Chip, Dot, VenueTrace, Loading, ErrorState, EmptySta
 import { dateRange, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
 import { useProjectSearch } from "../../lib/useProjectSearch.ts";
 import { useMyProjects, useOperationVenues } from "./hooks.ts";
+import { MapRouteButton } from "./components/MapRouteButton.tsx";
 
 function isLive(p: Projects.ProjectDTO): boolean {
   const now = Date.now();
@@ -50,7 +51,7 @@ export function OperationsPage() {
             {lead ? lead.name : "Нет назначенных операций"}
           </div>
           {lead && <div className="t-mono" style={{ fontSize: 12, color: "var(--text3)", marginTop: 6 }}>{dateRange(lead.startsAt, lead.endsAt)}</div>}
-          {leadVenue && <div className="t-mono" style={{ fontSize: 12, color: "var(--text2)", marginTop: 6 }}>📍 {[leadVenue.name, leadVenue.address].filter(Boolean).join(" · ")}</div>}
+          {leadVenue && <div className="row" style={{ gap: 6, marginTop: 4 }}><div className="t-mono" style={{ minWidth: 0, fontSize: 12, color: "var(--text2)" }}>📍 {[leadVenue.name, leadVenue.address].filter(Boolean).join(" · ")}</div><MapRouteButton venue={leadVenue} /></div>}
         </div>
       </div>
 
@@ -66,7 +67,7 @@ export function OperationsPage() {
                 <div style={{ minWidth: 0 }}>
                   <p className="card__title">{p.name}</p>
                   <p className="card__subtitle">{dateRange(p.startsAt, p.endsAt)}</p>
-                  {p.venueId && venueById.get(p.venueId) && <p className="card__subtitle">📍 {[venueById.get(p.venueId)?.name, venueById.get(p.venueId)?.address].filter(Boolean).join(" · ")}</p>}
+                  {p.venueId && venueById.get(p.venueId) && <div className="row" style={{ gap: 6 }}><p className="card__subtitle" style={{ minWidth: 0 }}>📍 {[venueById.get(p.venueId)?.name, venueById.get(p.venueId)?.address].filter(Boolean).join(" · ")}</p><MapRouteButton venue={venueById.get(p.venueId)!} /></div>}
                 </div>
                 <Chip label={projectStatusLabel[p.status]} tone={projectStatusTone[p.status]} />
               </div>
