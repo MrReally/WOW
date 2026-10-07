@@ -109,6 +109,7 @@ export function OperationsProjectPage() {
   const navigate = useNavigate();
   const { can, user } = useSession();
   const project = useProject(id);
+  const venues = useProjectVenues();
   const timings = useProjectTimings(id);
   const events = useOperationEvents(id);
   const setStage = useSetOperationStage(id);
@@ -138,6 +139,7 @@ export function OperationsProjectPage() {
   const seesWholeTiming = !!user?.operationsShowAllProjects || can("projects.timing.viewAll", "projects.timing.manage");
   const visibleTimings = seesWholeTiming ? (timings.data ?? []) : (timings.data ?? []).filter(timing => !!user && timing.assigneeIds.includes(user.id));
   const activeTiming = currentTiming(visibleTimings);
+  const venue = project.data.venueId ? (venues.data ?? []).find((item) => item.id === project.data?.venueId) : null;
 
   return (
     <div className="stack" style={{ paddingBottom: 92 }}>
@@ -148,6 +150,7 @@ export function OperationsProjectPage() {
           <div style={{ minWidth: 0 }}>
             <p className="card__title">{project.data.name}</p>
             <p className="card__subtitle">{dateRange(project.data.startsAt, project.data.endsAt)}</p>
+            {venue && <p className="card__subtitle">📍 {[venue.name, venue.address].filter(Boolean).join(" · ")}</p>}
             {(project.data.dressCodeLabel || project.data.dressCodeUniform) && <p className="card__subtitle">👔 {[project.data.dressCodeLabel, project.data.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}</p>}
             {canViewProjectNote && project.data.note && <p className="project-note">📝 {project.data.note}</p>}
           </div>

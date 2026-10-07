@@ -34,6 +34,8 @@ export function OperationsPage() {
   const current = allProjects.find(isLive) ?? null;
   const upcoming = allProjects.filter((p) => !!p.startsAt && Date.parse(p.startsAt) > Date.now() && p.status !== "completed");
   const lead = current ?? upcoming[0] ?? null;
+  const venueById = new Map((venues.data ?? []).map((venue) => [venue.id, venue]));
+  const leadVenue = lead?.venueId ? venueById.get(lead.venueId) : null;
 
   return (
     <div>
@@ -48,6 +50,7 @@ export function OperationsPage() {
             {lead ? lead.name : "Нет назначенных операций"}
           </div>
           {lead && <div className="t-mono" style={{ fontSize: 12, color: "var(--text3)", marginTop: 6 }}>{dateRange(lead.startsAt, lead.endsAt)}</div>}
+          {leadVenue && <div className="t-mono" style={{ fontSize: 12, color: "var(--text2)", marginTop: 6 }}>📍 {[leadVenue.name, leadVenue.address].filter(Boolean).join(" · ")}</div>}
         </div>
       </div>
 
@@ -63,6 +66,7 @@ export function OperationsPage() {
                 <div style={{ minWidth: 0 }}>
                   <p className="card__title">{p.name}</p>
                   <p className="card__subtitle">{dateRange(p.startsAt, p.endsAt)}</p>
+                  {p.venueId && venueById.get(p.venueId) && <p className="card__subtitle">📍 {[venueById.get(p.venueId)?.name, venueById.get(p.venueId)?.address].filter(Boolean).join(" · ")}</p>}
                 </div>
                 <Chip label={projectStatusLabel[p.status]} tone={projectStatusTone[p.status]} />
               </div>
