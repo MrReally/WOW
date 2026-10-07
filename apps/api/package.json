@@ -10,6 +10,7 @@
     "start": "node dist/main.js",
     "build": "tsc -p tsconfig.build.json",
     "migrate": "tsx src/core/migrate.ts",
+    "finance:audit": "tsx src/core/auditFinance.ts",
     "seed": "tsx src/seed.ts",
     "test": "tsx src/core/prepareTestDb.ts && DATABASE_URL=${TEST_DATABASE_URL:-postgres://sever:sever@localhost:5432/sever_test} vitest run",
     "test:watch": "tsx src/core/prepareTestDb.ts && DATABASE_URL=${TEST_DATABASE_URL:-postgres://sever:sever@localhost:5432/sever_test} vitest",

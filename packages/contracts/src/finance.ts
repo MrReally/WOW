@@ -37,6 +37,8 @@ export type TxCategory =
 
 export interface TransactionDTO {
   id: ID;
+  /** Original operation replaced by this correction; null for ordinary entries. */
+  replacesTransactionId?: ID | null;
   accountId: ID;
   projectId: ID | null;
   /** When attributing revenue to a unit's payback. */
@@ -62,6 +64,8 @@ export interface TransactionDTO {
 }
 
 export interface CreateTransactionInput {
+  /** Stable UUID reused when retrying the same payment after a network failure. */
+  requestKey?: ID;
   accountId: ID;
   projectId?: ID | null;
   unitId?: ID | null;
@@ -282,6 +286,8 @@ export interface InvoiceVersionDTO {
   place: string;
   clientName: string;
   totalEUR: number;
+  rateToEUR?: number | null;
+  company?: InvoiceCompanySettingsDTO | null;
   currency: Currency;
   lang: InvoiceLang;
   lines: EstimatePdfLineDTO[];
@@ -298,6 +304,8 @@ export interface CreateInvoiceVersionInput {
   place: string;
   clientName: string;
   totalEUR: number;
+  rateToEUR?: number | null;
+  company?: InvoiceCompanySettingsDTO | null;
   currency: Currency;
   lang: InvoiceLang;
   lines: EstimatePdfLineDTO[];
@@ -332,7 +340,7 @@ export interface FinanceService {
 
   // Editable project economics (€ tab is the only writer).
   listProjectEstimateLines(projectId: ID): Promise<ProjectEstimateLineDTO[]>;
-  replaceProjectEstimateLines(projectId: ID, lines: SaveProjectEstimateLineInput[]): Promise<ProjectEstimateLineDTO[]>;
+  replaceProjectEstimateLines(projectId: ID, lines: SaveProjectEstimateLineInput[], settings?: SaveProjectEstimateSettingsInput): Promise<ProjectEstimateLineDTO[]>;
   removeProjectEstimateLinesBySourceRef(sourceRefId: ID): Promise<void>;
   copyProjectEstimateLines(sourceProjectId: ID, projectId: ID, sourceRefMap?: Record<ID, ID>): Promise<ProjectEstimateLineDTO[]>;
   getProjectEstimateSettings(projectId: ID): Promise<ProjectEstimateSettingsDTO>;

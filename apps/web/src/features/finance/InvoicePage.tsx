@@ -39,6 +39,8 @@ interface StoredInvoiceVersion {
   place: string;
   clientName: string;
   totalEUR: number;
+  rateToEUR?: number | null;
+  company?: Company | null;
   currency: Currency;
   lang: InvoiceLang;
   createdAt: string;
@@ -118,6 +120,7 @@ export function InvoicePage() {
   const [placeTouched, setPlaceTouched] = useState(false);
   const [note, setNote] = useState("");
   const [versions, setVersions] = useState<StoredInvoiceVersion[]>([]);
+  const [restoredVersion, setRestoredVersion] = useState<StoredInvoiceVersion | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState("");
   const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
@@ -126,6 +129,7 @@ export function InvoicePage() {
 
   useEffect(() => {
     setSeeded(false);
+    setRestoredVersion(null);
     setDateTouched(false);
     setSelectedLineIds([]);
     setMergeOpen(false);
@@ -158,7 +162,7 @@ export function InvoicePage() {
   useEffect(() => {
     if (!seeded && invoice.data && estimateLines.data) {
       const saved = estimateLines.data;
-      const invoiceSource = saved.length > 0 ? invoice.data.rentalLines : [...invoice.data.rentalLines, ...invoice.data.laborLines];
+      const invoiceSource = invoice.data.rentalLines;
       const visible = invoiceSource.map((l) => {
         const stored = saved.find((line) => line.id === l.refId || line.sourceRefId === l.refId);
         return {
@@ -200,11 +204,11 @@ export function InvoicePage() {
     localStorage.setItem("sever.invoice.company", JSON.stringify(company));
   }, [company]);
 
-  const fxRateToEUR = currency === "EUR" ? 1 : (fx.data ?? []).find((r) => r.currency === currency)?.rateToEUR ?? null;
+  const fxRateToEUR = currency === "EUR" ? 1 : restoredVersion?.currency === currency ? restoredVersion.rateToEUR ?? null : (fx.data ?? []).find((r) => r.currency === currency)?.rateToEUR ?? null;
   const convert = (valueEUR: number) => (fxRateToEUR ? round2(valueEUR / fxRateToEUR) : valueEUR);
   const visibleLines = useMemo(() => lines.filter((line) => !line.hidden), [lines]);
   const subtotal = useMemo(() => round2(visibleLines.reduce((s, l) => s + l.price, 0)), [visibleLines]);
-  const totalDiscountEUR = Math.min(subtotal, invoice.data?.discountEUR ?? 0);
+  const totalDiscountEUR = Math.min(subtotal, restoredVersion ? Math.max(0, round2(restoredVersion.lines.reduce((sum, line) => sum + line.price, 0) - restoredVersion.totalEUR)) : invoice.data?.discountEUR ?? 0);
   const total = round2(subtotal - totalDiscountEUR);
   const costTotal = useMemo(() => round2(visibleLines.reduce((s, l) => s + l.cost, 0)), [visibleLines]);
   const margin = round2(total - costTotal);
@@ -248,23 +252,25 @@ export function InvoicePage() {
       place: place.trim(),
       clientName: clientName.trim(),
       totalEUR: total,
+      rateToEUR: fxRateToEUR,
+      company,
       currency,
       lang,
       createdAt: new Date().toISOString(),
       lines: normalizedLines,
-      totalDiscountType: estimateSettings.data?.totalDiscountType ?? "percent",
-      totalDiscountValue: estimateSettings.data?.totalDiscountValue ?? 0,
+      totalDiscountType: restoredVersion?.totalDiscountType ?? estimateSettings.data?.totalDiscountType ?? "percent",
+      totalDiscountValue: restoredVersion?.totalDiscountValue ?? estimateSettings.data?.totalDiscountValue ?? 0,
       note,
     };
-    const next = [version, ...versions].slice(0, 20);
-    setVersions(next);
-    localStorage.setItem(`sever.invoice.versions.${id}`, JSON.stringify(next));
-    createVersion.mutate({
+    if (!canManageFinance) return version;
+    const saved = await createVersion.mutateAsync({
       number: version.number,
       date: version.date,
       place: version.place,
       clientName: version.clientName,
       totalEUR: version.totalEUR,
+      rateToEUR: version.rateToEUR,
+      company: version.company,
       currency: version.currency,
       lang: version.lang,
       lines: normalizedLines.map((l) => ({
@@ -280,14 +286,20 @@ export function InvoicePage() {
       totalDiscountValue: version.totalDiscountValue,
       note: version.note ?? "",
     });
+    const next = [versionFromDTO(saved), ...versions].slice(0, 20);
+    setVersions(next);
+    localStorage.setItem(`sever.invoice.versions.${id}`, JSON.stringify(next));
     return version;
   };
   const preview = async () => {
-    setLines(normalizedLines);
-    await saveVersion();
-    setMode("preview");
+    setPdfError("");
+    if (fxRateToEUR === null) { setPdfError(`Для ${currency} нет курса. Выберите EUR или задайте курс для нового документа.`); return; }
+    try { await saveVersion(); setMode("preview"); }
+    catch (error) { setPdfError(error instanceof Error ? error.message : "Не удалось сохранить версию"); }
   };
   const restoreVersion = (v: StoredInvoiceVersion) => {
+    setRestoredVersion(v);
+    if (v.company) { setCompany(v.company); setCompanyTouched(true); }
     setNumber(v.number);
     setDateStr(v.date);
     setDateTouched(true);
@@ -399,6 +411,9 @@ export function InvoicePage() {
 
   return (
     <div className="stack invoice-workspace">
+      {pdfError && <p role="alert">{pdfError}</p>}
+      {restoredVersion && <Card><p>Открыта сохранённая версия. Итог, курс и реквизиты взяты из неё.</p><Button variant="ghost" onClick={() => { setRestoredVersion(null); setSeeded(false); setCompanyTouched(false); }}>Вернуться к текущей смете</Button></Card>}
+      {fxRateToEUR === null && <p role="alert">Для выбранной валюты нет сохранённого курса. Просмотр и экспорт доступны в EUR.</p>}
       <button className="icon-text-action" onClick={() => navigate(`/projects/${id}`)} aria-label="К проекту">
         <span>←</span><span>Проект</span>
       </button>
@@ -409,7 +424,7 @@ export function InvoicePage() {
             <p className="card__title">Смета</p>
             <p className="card__subtitle">{clientName || "Клиент"} · {place || "Place"}</p>
           </div>
-          <Chip label={money(convert(total), currency)} tone="accent" />
+          <Chip label={fxRateToEUR === null ? "Курс не задан" : money(convert(total), currency)} tone="accent" />
         </div>
         <div className="invoice-mini-metrics">
           <Metric label="Строк" value={String(visibleLines.length)} />
@@ -453,7 +468,7 @@ export function InvoicePage() {
       {panel === "lines" && (
         <>
           <p className="card__subtitle">Цены и себестоимость редактируются в «€». Здесь можно объединить несколько строк и задать клиентское название.</p>
-          {canManageFinance && <Card>
+          {canManageFinance && !restoredVersion && <Card>
             <div className="invoice-merge-toolbar">
               <div>
                 <p className="card__title">Объединить позиции</p>
@@ -479,7 +494,7 @@ export function InvoicePage() {
               <div className="stack" style={{ marginTop: 10 }}>
                 {sec.items.map((line) => (
                   <div className="row row--between" key={line.id} style={{ gap: 10, padding: "7px 0", borderBottom: "1px solid var(--bdr)" }}>
-                    {canManageFinance && <input type="checkbox" checked={selectedLineIds.includes(line.id)} aria-label={`Выбрать ${line.name}`} onChange={(e) => setSelectedLineIds((ids) => e.target.checked ? [...ids, line.id] : ids.filter((id) => id !== line.id))} />}
+                    {canManageFinance && !restoredVersion && <input type="checkbox" checked={selectedLineIds.includes(line.id)} aria-label={`Выбрать ${line.name}`} onChange={(e) => setSelectedLineIds((ids) => e.target.checked ? [...ids, line.id] : ids.filter((id) => id !== line.id))} />}
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div>{line.name || "—"} · К {line.count}</div>
                       {line.comment && <div className="card__subtitle">{line.comment}</div>}
@@ -523,7 +538,7 @@ export function InvoicePage() {
       )}
 
       <div className="invoice-bottom-actions">
-        <Button block variant="secondary" disabled={visibleLines.length === 0} onClick={() => void preview()}>Preview</Button>
+        <Button block variant="secondary" disabled={visibleLines.length === 0 || createVersion.isPending} onClick={() => void preview()}>Preview</Button>
         <Button block disabled={visibleLines.length === 0 || pdfBusy || fxRateToEUR === null} onClick={downloadPdf}>{pdfBusy ? "PDF…" : "PDF"}</Button>
       </div>
     </div>
@@ -542,6 +557,8 @@ function versionFromDTO(v: Finance.InvoiceVersionDTO): StoredInvoiceVersion {
     place: v.place,
     clientName: v.clientName,
     totalEUR: v.totalEUR,
+    rateToEUR: v.rateToEUR,
+    company: v.company,
     currency: v.currency,
     lang: v.lang,
     createdAt: v.createdAt,

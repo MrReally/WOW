@@ -42,6 +42,10 @@ ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS updated_by uuid;
 ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS voided_by uuid;
 ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS voided_at timestamptz;
+ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS replaces_transaction_id uuid REFERENCES finance.transactions(id);
+ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS request_key uuid;
+CREATE UNIQUE INDEX IF NOT EXISTS tx_request_key_idx ON finance.transactions(request_key) WHERE request_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS tx_replacement_idx ON finance.transactions(replaces_transaction_id) WHERE replaces_transaction_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS tx_assignment_idx ON finance.transactions(assignment_id);
 CREATE INDEX IF NOT EXISTS tx_contractor_idx ON finance.transactions(contractor_id);
 
@@ -80,6 +84,8 @@ CREATE TABLE IF NOT EXISTS finance.invoice_versions (
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS invoice_versions_project_idx ON finance.invoice_versions(project_id, created_at DESC);
+ALTER TABLE finance.invoice_versions ADD COLUMN IF NOT EXISTS rate_to_eur numeric(18,8);
+ALTER TABLE finance.invoice_versions ADD COLUMN IF NOT EXISTS company jsonb;
 
 CREATE TABLE IF NOT EXISTS finance.project_estimate_lines (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),

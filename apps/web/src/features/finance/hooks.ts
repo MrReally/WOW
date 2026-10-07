@@ -1,6 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Finance, Projects, People, Equipment } from "@sever/contracts";
 import { api } from "../../lib/api.ts";
+import { useMemo, useRef, useState } from "react";
+
+export function useFinanceJournal(rows: Finance.TransactionDTO[]) {
+  const [search, setSearch] = useState("");
+  const [accountId, setAccountId] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [includeVoided, setIncludeVoided] = useState(false);
+  const [limit, setLimit] = useState(30);
+  const filtered = useMemo(() => rows.filter(row => {
+    const day = new Date(row.createdAt);
+    const localDay = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+    return (includeVoided || !row.voidedAt) && (!accountId || row.accountId === accountId)
+      && (!from || localDay >= from) && (!to || localDay <= to)
+      && (!search || `${row.note ?? ""} ${row.amount} ${row.currency} ${row.category}`.toLowerCase().includes(search.toLowerCase()));
+  }), [rows, search, accountId, from, to, includeVoided]);
+  const totals = filtered.reduce((sum, row) => {
+    if (!row.voidedAt && row.category !== "rental_revenue") sum[row.kind] += row.amountEUR;
+    return sum;
+  }, { income: 0, expense: 0 });
+  return { rows: filtered.slice(0, limit), count: filtered.length, totals, search, setSearch, accountId, setAccountId, from, setFrom, to, setTo, includeVoided, setIncludeVoided, showMore: () => setLimit(value => value + 30) };
+}
 
 export function useContractorDebts() {
   return useQuery({ queryKey: ["projects", "contractor-debts"], queryFn: () => api.get<Projects.ContractorDebtDTO[]>("/api/contractor-debts") });
@@ -78,10 +100,11 @@ export function useSetProjectEstimateSettings(projectId: string) {
 export function useReplaceProjectEstimateLines(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (lines: Finance.SaveProjectEstimateLineInput[]) =>
-      api.put<Finance.ProjectEstimateLineDTO[]>(`/api/projects/${projectId}/estimate-lines`, { lines }),
+    mutationFn: (input: Finance.SaveProjectEstimateLineInput[] | { lines: Finance.SaveProjectEstimateLineInput[]; settings: Finance.SaveProjectEstimateSettingsInput }) =>
+      api.put<Finance.ProjectEstimateLineDTO[]>(`/api/projects/${projectId}/estimate-lines`, Array.isArray(input) ? { lines: input } : input),
     meta: { successMessage: "Экономика проекта сохранена" },
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects", "estimate-settings", projectId] });
       qc.invalidateQueries({ queryKey: ["projects", "estimate-lines", projectId] });
       qc.invalidateQueries({ queryKey: ["projects", "invoice", projectId] });
       qc.invalidateQueries({ queryKey: ["finance"] });
@@ -116,6 +139,7 @@ export function useProjectsForFinance() {
 }
 
 function invalidate(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["bo"] });
   qc.invalidateQueries({ queryKey: ["finance"] });
   qc.invalidateQueries({ queryKey: ["apex"] });
   qc.invalidateQueries({ queryKey: ["projects", "assignments"] });
@@ -152,9 +176,14 @@ export function useSetFxRate() {
 
 export function useCreateTransaction() {
   const qc = useQueryClient();
+  const attempt = useRef<{ fingerprint: string; requestKey: string } | null>(null);
   return useMutation({
-    mutationFn: (input: Finance.CreateTransactionInput) => api.post("/api/finance/transactions", input),
-    onSuccess: () => invalidate(qc),
+    mutationFn: (input: Finance.CreateTransactionInput) => {
+      const fingerprint = JSON.stringify(input);
+      if (attempt.current?.fingerprint !== fingerprint) attempt.current = { fingerprint, requestKey: crypto.randomUUID() };
+      return api.post("/api/finance/transactions", { ...input, requestKey: input.requestKey ?? attempt.current.requestKey });
+    },
+    onSuccess: () => { attempt.current = null; invalidate(qc); },
   });
 }
 

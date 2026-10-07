@@ -251,12 +251,80 @@ describe("Tech pickup/return → некомплект", () => {
     expect(accounts.find(account => account.id === first.id)?.balance).toBe(0);
     expect(accounts.find(account => account.id === second.id)?.balance).toBe(-25);
 
-    const voided = await finance.service.voidTransaction(payment.id, actor.id);
+    expect(edited.id).not.toBe(payment.id);
+    expect(edited.replacesTransactionId).toBe(payment.id);
+    const original = (await finance.service.listTransactions({ includeVoided: true })).find(t => t.id === payment.id)!;
+    expect(original.amount).toBe(40);
+    expect(original.amountEUR).toBe(40);
+    const voided = await finance.service.voidTransaction(edited.id, actor.id);
     expect(voided.voidedByUserId).toBe(actor.id);
     expect((await finance.service.listTransactions()).some(transaction => transaction.id === payment.id)).toBe(false);
     expect((await finance.service.listTransactions({ includeVoided: true })).find(transaction => transaction.id === payment.id)?.voidedAt).not.toBeNull();
     accounts = await finance.service.listAccounts();
     expect(accounts.find(account => account.id === second.id)?.balance).toBe(0);
+  });
+
+  it("rejects invalid money and currency without changing balances", async () => {
+    const service = wiring.finance.service;
+    const account = await service.createAccount({ name: "Currency validation", currency: "EUR" });
+    const input = { accountId: account.id, kind: "income" as const, category: "prepayment" as const, amount: 10, currency: "EUR" as const };
+    await expect(service.createTransaction({ ...input, currency: "RSD" })).rejects.toThrow("валюта");
+    for (const amount of [0, -1, NaN, Infinity, 1.001]) await expect(service.createTransaction({ ...input, amount })).rejects.toThrow("сумма");
+    await expect(service.createTransaction({ ...input, kind: "expense" })).rejects.toThrow("категория");
+    await expect(service.createTransaction({ ...input, projectId: randomUUID() })).rejects.toThrow("not found");
+    expect((await service.listAccounts()).find(a => a.id === account.id)?.balance).toBe(0);
+  });
+
+  it("preserves original FX through corrections and repeated cancellation", async () => {
+    const service = wiring.finance.service;
+    const actor = await makeTech("FX correction");
+    const account = await service.createAccount({ name: "FX correction", currency: "RSD" });
+    await service.setFxRate("RSD", 0.01);
+    const original = await service.createTransaction({ accountId: account.id, kind: "income", category: "prepayment", amount: 100, currency: "RSD" });
+    await service.setFxRate("RSD", 0.02);
+    const corrected = await service.updateTransaction(original.id, { accountId: account.id, amount: 200 }, actor.id);
+    expect(corrected.amountEUR).toBe(2);
+    expect(corrected.fxRateToEUR).toBe(0.01);
+    const history = await service.listTransactions({ includeVoided: true });
+    expect(history.find(t => t.id === original.id)).toMatchObject({ amount: 100, amountEUR: 1 });
+    await expect(service.updateTransaction(original.id, { accountId: account.id, amount: 500 }, actor.id)).rejects.toThrow("отменённую");
+    await Promise.all([service.voidTransaction(corrected.id, actor.id), service.voidTransaction(corrected.id, actor.id)]);
+    expect((await service.listAccounts()).find(a => a.id === account.id)?.balance).toBe(0);
+  });
+
+  it("concurrent retries of one payment move cash exactly once", async () => {
+    const service = wiring.finance.service;
+    const account = await service.createAccount({ name: "Idempotency", currency: "EUR" });
+    const input = { requestKey: randomUUID(), accountId: account.id, kind: "income" as const, category: "prepayment" as const, amount: 100, currency: "EUR" as const };
+    const results = await Promise.all([service.createTransaction(input), service.createTransaction(input)]);
+    expect(results[0]!.id).toBe(results[1]!.id);
+    expect((await service.listAccounts()).find(a => a.id === account.id)?.balance).toBe(100);
+    await expect(service.createTransaction({ ...input, amount: 200 })).rejects.toThrow("другими данными");
+  });
+
+  it("rounds FX half-cents with decimal arithmetic", async () => {
+    const service = wiring.finance.service;
+    const account = await service.createAccount({ name: "Decimal FX", currency: "RSD" });
+    await service.setFxRate("RSD", 0.005);
+    const payment = await service.createTransaction({ accountId: account.id, kind: "income", category: "prepayment", amount: 201, currency: "RSD" });
+    expect(payment.amountEUR).toBe(1.01);
+  });
+
+  it("stores estimate rows and discount atomically and freezes document settings", async () => {
+    const service = wiring.finance.service;
+    const client = await wiring.projects.service.createClient({ name: "Atomic estimate" });
+    const project = await wiring.projects.service.createProject({ name: "Atomic estimate", clientId: client.id });
+    const lines = [{ id: randomUUID(), source: "manual" as const, section: "Services", name: "Show", qty: 1, priceEUR: 100, costEUR: 40 }];
+    await service.replaceProjectEstimateLines(project.id, lines, { totalDiscountType: "fixed_eur", totalDiscountValue: 10 });
+    await expect(service.replaceProjectEstimateLines(project.id, [lines[0]!, lines[0]!], { totalDiscountType: "fixed_eur", totalDiscountValue: 50 })).rejects.toThrow();
+    expect(await service.listProjectEstimateLines(project.id)).toHaveLength(1);
+    expect((await service.getProjectEstimateSettings(project.id)).totalDiscountValue).toBe(10);
+    await service.setFxRate("RSD", 0.01);
+    const company = { name: "Snapshot", requisites: "Original", phone: "", email: "", telegram: "", logoDataUrl: null };
+    const saved = await service.createInvoiceVersion({ projectId: project.id, number: "TEST", date: "2026-10-06", place: "Belgrade", clientName: "Client", totalEUR: 90, currency: "RSD", lang: "RU", lines: [{ id: "line", section: "Services", name: "Show", count: "1", priceEUR: 100, costEUR: 40, comment: "" }], totalDiscountType: "fixed_eur", totalDiscountValue: 10, company });
+    await service.setFxRate("RSD", 0.02);
+    const restored = (await service.listInvoiceVersions(project.id)).find(v => v.id === saved.id)!;
+    expect(restored).toMatchObject({ totalEUR: 90, rateToEUR: 0.01, company });
   });
 
   it("tracks cables by quantity (no serials) through issue/return", async () => {
@@ -1018,22 +1086,22 @@ describe("Tech pickup/return → некомплект", () => {
 
     const inv = await billing.projectInvoice(project.id);
     expect(inv.days).toBe(2);
-    expect(inv.rentalEUR).toBe(400); // 100 €/сут × 2 шт × 2 сут
-    expect(inv.rentalLines).toHaveLength(1); // reserve gear is prepared but not billed
-    expect(inv.invoiceEUR).toBe(400);
+    expect(inv.rentalEUR).toBe(550); // 100 €/сут × 2 шт × 2 сут + crew 150
+    expect(inv.rentalLines).toHaveLength(2); // equipment + crew; reserve gear is not billed
+    expect(inv.invoiceEUR).toBe(550);
     expect(inv.laborEUR).toBe(150);
     expect(inv.costEUR).toBe(150);
-    expect(inv.profitEUR).toBe(250);
-    expect(inv.dueEUR).toBe(400); // nothing paid yet
+    expect(inv.profitEUR).toBe(400);
+    expect(inv.dueEUR).toBe(550); // nothing paid yet
 
     // Add contractor (subrent) gear: billed to the client, costs us money owed.
     const contractor = await equipment.service.createContractor({ name: `Sub ${Date.now()}` });
     const contractorItem = await projects.service.addContractorItem({ projectId: project.id, contractorId: contractor.id, name: "Sub MH", qty: 2, priceEUR: 80, costEUR: 50 });
     const inv2 = await billing.projectInvoice(project.id);
-    expect(inv2.rentalEUR).toBe(560); // 400 + 80×2 contractor
+    expect(inv2.rentalEUR).toBe(710); // 400 + 150 crew + 80×2 contractor
     expect(inv2.contractorCostEUR).toBe(100); // 50×2
     expect(inv2.costEUR).toBe(250); // 150 labor + 100 contractor
-    expect(inv2.profitEUR).toBe(310); // 560 − 250
+    expect(inv2.profitEUR).toBe(460); // 710 − 250
     const owed = await projects.service.contractorDebts();
     expect(owed.find((d) => d.contractorId === contractor.id)?.debtEUR).toBe(100);
     expect((await projects.service.setContractorItemsBooked(project.id, contractor.id, true))[0]?.booked).toBe(true);

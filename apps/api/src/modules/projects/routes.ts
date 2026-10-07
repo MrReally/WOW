@@ -4,6 +4,7 @@ import type { Projects } from "@sever/contracts";
 import { OPERATION_UNIT_MARK_STATUSES, PROJECT_CHECKLIST_GROUPS, PROJECT_STATUSES, PROJECT_TASK_STATUSES } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
 import { requirePermission } from "../../core/auth.js";
+import { BadRequest } from "../../core/errors.js";
 
 const clientSchema = z.object({
   name: z.string().min(1),
@@ -510,7 +511,7 @@ export function registerProjectsRoutes(
   app.patch<{ Params: { id: string } }>("/api/assignments/:id", async (req) => {
     const auth = await ctx.auth(req);
     const body = z.object({ dressCodeEnabled: z.boolean().optional(), paidEUR: z.number().nonnegative().optional() }).parse(req.body);
-    if (body.paidEUR !== undefined) requirePermission(auth, "operations.payroll.manage");
+    if (body.paidEUR !== undefined) throw BadRequest("Выплаты проводятся через финансовые транзакции с указанием счёта");
     else requirePermission(auth, "projects.assignment.manage");
     return service.updateAssignment(req.params.id, body);
   });
@@ -590,7 +591,7 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.manage");
     const body = contractorPaidSchema.parse(req.body);
-    return service.setContractorItemsPaid(body.projectId, body.contractorId, body.paid);
+    throw BadRequest(`Оплату подрядчику ${body.contractorId} проводите через финансовые транзакции с указанием счёта`);
   });
   app.delete<{ Params: { id: string } }>("/api/contractor-items/:id", async (req) => {
     const auth = await ctx.auth(req);
@@ -602,11 +603,6 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.reservation.manage");
     return service.returnContractorItem(req.params.id);
-  });
-  app.get("/api/contractor-debts", async (req) => {
-    const auth = await ctx.auth(req);
-    requirePermission(auth, "finance.view", "finance.manage");
-    return service.contractorDebts();
   });
 
   // ── Problems ──

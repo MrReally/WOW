@@ -26,8 +26,9 @@ import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
 import { editTelegramMessage, sendTelegramDocument, sendTelegramMessage, sendTelegramPhoto, setTelegramMessageLogger } from "./core/telegram.js";
-import { formatDateTimeValue, formatDateValue, type Notifications, type People, type Projects } from "@sever/contracts";
+import { formatDateTimeValue, formatDateValue, type AuthContext, type Notifications, type People, type Projects } from "@sever/contracts";
 import type { DomainEvent } from "./core/eventBus.js";
+import { BadRequest, Forbidden, NotFound } from "./core/errors.js";
 
 export function createModules(bus: EventBus = new EventBus()) {
   const people = createPeopleModule(pool, bus);
@@ -43,7 +44,18 @@ export function createModules(bus: EventBus = new EventBus()) {
     async (venueId) => venueId ? (await venues.service.get(venueId))?.name ?? null : null,
   );
   bus.on("app_settings.project_name_template.updated", async () => projects.service.refreshProjectNames());
-  const finance = createFinanceModule(pool, bus);
+  const authorizeFinanceProject = async (auth: AuthContext, projectId: string) => {
+    if (!await projects.service.getProject(projectId)) throw NotFound("project", projectId);
+    if (auth.permissions.some(p => p === "finance.view" || p === "finance.manage" || p === "projects.manage") || auth.operationsShowAllProjects) return;
+    const assignments = await projects.service.listAssignments(projectId);
+    if (!assignments.some(a => a.userId === auth.userId && (a.status === "added" || a.status === "accepted"))) throw Forbidden("Нет доступа к финансам этого проекта");
+  };
+  const finance = createFinanceModule(pool, bus, async (input) => {
+    if (input.projectId && !await projects.service.getProject(input.projectId)) throw NotFound("project", input.projectId);
+    if (input.unitId && !await equipment.service.getUnit(input.unitId)) throw NotFound("unit", input.unitId);
+    if (input.assignmentId && !(await projects.service.listAssignments(input.projectId!)).some(a => a.id === input.assignmentId)) throw BadRequest("назначение не принадлежит проекту");
+    if (input.contractorId && !(await projects.service.listContractorItems(input.projectId!)).some(item => item.contractorId === input.contractorId)) throw BadRequest("подрядчик не имеет позиций в проекте");
+  }, authorizeFinanceProject);
   bus.on("reservation.deleted", async (event) => {
     await finance.service.removeProjectEstimateLinesBySourceRef(event.reservationId);
   });
@@ -65,19 +77,31 @@ export function createModules(bus: EventBus = new EventBus()) {
     await people.service.logTelegramDialogMessage(message);
   });
 
-  const apex = createApexService({
-    equipment: equipment.service,
-    projects: projects.service,
-    finance: finance.service,
-    people: people.service,
-  });
-
   const billing = createBillingService({
     equipment: equipment.service,
     projects: projects.service,
     finance: finance.service,
     people: people.service,
   });
+  const apex = createApexService({
+    equipment: equipment.service,
+    projects: { ...projects.service, contractorDebts: () => billing.contractorDebts() },
+    finance: {
+      ...finance.service,
+      outstandingDebts: () => billing.outstandingClientDebts(),
+      projectFinance: async (projectId) => {
+        const invoice = await billing.projectInvoice(projectId);
+        return { projectId, revenueEUR: invoice.invoiceEUR, prepaidEUR: invoice.paidEUR, costEUR: invoice.costEUR, debtEUR: invoice.dueEUR };
+      },
+    },
+    people: people.service,
+  });
+  // Keep legacy aggregate endpoints on the same economics as billing and Apex.
+  finance.service.outstandingDebts = () => billing.outstandingClientDebts();
+  finance.service.projectFinance = async (projectId) => {
+    const invoice = await billing.projectInvoice(projectId);
+    return { projectId, revenueEUR: invoice.invoiceEUR, prepaidEUR: invoice.paidEUR, costEUR: invoice.costEUR, debtEUR: invoice.dueEUR };
+  };
   const completeProjectWhenSettled = async (projectId: string, actorId: string | null = null) => {
     const project = await projects.service.getProject(projectId);
     if (!project?.warehouseTurnoverCompletedAt || project.status === "completed") return;
@@ -119,8 +143,8 @@ export function createModules(bus: EventBus = new EventBus()) {
   };
   bus.on("project.warehouse_turnover.completed", event => completeProjectWhenSettled(event.projectId, event.actorId));
   bus.on("project.assignment.payment.updated", event => completeProjectWhenSettled(event.projectId));
-  bus.on("finance.transaction.created", event => event.projectId ? completeProjectWhenSettled(event.projectId) : undefined);
   bus.on("finance.transaction.created", syncProjectPayment);
+  bus.on("finance.transaction.created", event => event.projectId ? completeProjectWhenSettled(event.projectId) : undefined);
   bus.on("finance.transaction.changed", syncProjectPayment);
   bus.on("finance.transaction.changed", event => event.projectId ? completeProjectWhenSettled(event.projectId) : undefined);
 
@@ -841,7 +865,7 @@ export function createModules(bus: EventBus = new EventBus()) {
 
   const modules = [appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, operations, transport, audit];
 
-  return { bus, appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, operations, transport, audit, apex, billing, modules, handleTelegramCallback, startReminderScheduler, startProjectProblemScheduler, startClientFollowupScheduler };
+  return { bus, appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, operations, transport, audit, apex, billing, modules, authorizeFinanceProject, handleTelegramCallback, startReminderScheduler, startProjectProblemScheduler, startClientFollowupScheduler };
 }
 
 export type Wiring = ReturnType<typeof createModules>;
@@ -853,7 +877,7 @@ export function registerAllRoutes(
 ): void {
   for (const m of wiring.modules) m.registerRoutes(app, ctx);
   registerApexRoutes(app, ctx, wiring.apex);
-  registerBillingRoutes(app, ctx, wiring.billing, wiring.appSettings.service, sendTelegramDocument);
+  registerBillingRoutes(app, ctx, wiring.billing, wiring.appSettings.service, sendTelegramDocument, wiring.authorizeFinanceProject);
 }
 
 /** Used by the migration runner — collects each module's DDL. */

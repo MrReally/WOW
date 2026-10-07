@@ -285,7 +285,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       hidden: false,
     }));
     const reconciledSaved = saved.map((line) => staleIds.has(line.id) ? { ...line, hidden: true } : line);
-    const source = saved.length > 0 ? [...reconciledSaved, ...missingDerived] : [...invoice.data.rentalLines, ...invoice.data.laborLines].map((line) => ({
+    const source = saved.length > 0 ? [...reconciledSaved, ...missingDerived] : invoice.data.rentalLines.map((line) => ({
       id: line.refId,
       source: line.section === "Crew" ? "labor" as const : "equipment" as const,
       sourceRefId: line.refId,
@@ -1074,7 +1074,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   <div className="invoice-line" key={line.id}>
                     <div className="row" style={{ gap: 6 }}>
                       <Input disabled={!canManageFinance} value={line.name} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, name: e.target.value } : row))} placeholder="Наименование" />
-                      {canManageFinance && <button className="icon-btn icon-btn--danger" onClick={() => setEstimateDrafts((rows) => rows.filter((_, i) => i !== index))} aria-label="Удалить позицию">×</button>}
+                      {canManageFinance && <button className="icon-btn icon-btn--danger" onClick={() => setEstimateDrafts((rows) => rows.flatMap((row, i) => i !== index ? [row] : row.source === "manual" ? [] : [{ ...row, hidden: true }]))} aria-label="Удалить позицию">×</button>}
                     </div>
                     <div className="invoice-line-grid">
                       <Input disabled={!canManageFinance} value={line.section} list="project-estimate-sections" autoComplete="on" onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, section: e.target.value } : row))} placeholder="Категория" />
@@ -1104,12 +1104,12 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                 <div className="row row--between"><span className="card__title">Итого клиенту</span><span className="card__title">{eur(draftTotalEUR)}</span></div>
               </div>
               {!rsdRateToEUR && (totalDiscountType === "fixed_rsd" || estimateDrafts.some((line) => line.discountType === "fixed_rsd")) && <p className="card__subtitle discount-rate-warning">Чтобы применить скидку в динарах, задайте курс RSD в настройках.</p>}
-              {canManageFinance && <Button block disabled={replaceEstimateLines.isPending || setEstimateSettings.isPending || estimateDrafts.some((line) => !line.name.trim() || !(Number(line.qty) > 0) || (line.discountType === "percent" && Number(line.discountValue) > 100)) || (totalDiscountType === "percent" && Number(totalDiscountValue) > 100)} onClick={() => void Promise.all([
-                replaceEstimateLines.mutateAsync(estimateDrafts.map((line) => ({
+              {canManageFinance && <Button block disabled={replaceEstimateLines.isPending || setEstimateSettings.isPending || estimateDrafts.some((line) => !line.name.trim() || !(Number(line.qty) > 0) || Number(line.priceEUR) < 0 || Number(line.costEUR) < 0 || (line.discountType === "percent" && Number(line.discountValue) > 100)) || (totalDiscountType === "percent" && Number(totalDiscountValue) > 100)} onClick={() => replaceEstimateLines.mutate({
+                lines: estimateDrafts.map((line) => ({
                   ...(line.id.startsWith("manual-") ? {} : { id: line.id }), source: line.source, sourceRefId: line.sourceRefId, section: line.section.trim(), name: line.name.trim(), qty: Number(line.qty), priceEUR: Number(line.priceEUR) || 0, costEUR: Number(line.costEUR) || 0, discountType: line.discountType, discountValue: Math.max(0, Number(line.discountValue) || 0), comment: line.comment, hidden: line.hidden,
-                }))),
-                setEstimateSettings.mutateAsync({ totalDiscountType, totalDiscountValue: Math.max(0, Number(totalDiscountValue) || 0) }),
-              ])}>Сохранить €</Button>}
+                })),
+                settings: { totalDiscountType, totalDiscountValue: Math.max(0, Number(totalDiscountValue) || 0) },
+              })}>Сохранить €</Button>}
             </Card>
             <Card>
               <p className="card__title">Деньги по проекту</p>

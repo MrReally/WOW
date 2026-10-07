@@ -17,6 +17,7 @@ export interface BillingDeps {
 export interface BillingService {
   projectInvoice(projectId: ID): Promise<Finance.ProjectInvoiceDTO>;
   outstandingClientDebts(): Promise<Finance.ProjectFinanceDTO[]>;
+  contractorDebts(): Promise<Projects.ContractorDebtDTO[]>;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -131,7 +132,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
       amountEUR: amountAfterDiscountEUR(line.priceEUR, line.discountType, line.discountValue, rsdRateToEUR),
       costEUR: line.costEUR,
     }));
-    const rentalLines: Finance.InvoiceLineDTO[] = estimateLines.length > 0 ? [...effectiveDerived, ...manualLines] : derivedRentalLines;
+    const rentalLines: Finance.InvoiceLineDTO[] = [...effectiveDerived, ...manualLines];
     const subtotalEUR = round2(rentalLines.reduce((sum, line) => sum + line.amountEUR, 0));
     const discountEUR = discountAmountEUR(subtotalEUR, estimateSettings.totalDiscountType, estimateSettings.totalDiscountValue, rsdRateToEUR);
     const rentalEUR = round2(subtotalEUR - discountEUR);
@@ -142,7 +143,8 @@ export function createBillingService(deps: BillingDeps): BillingService {
     for (const t of txs) {
       if (t.kind === "income" && (t.category === "prepayment" || t.category === "debt_settlement")) paidEUR += t.amountEUR;
       else if (t.kind === "income" && t.category === "rental_revenue") recordedIncomeEUR += t.amountEUR;
-      else if (t.kind === "expense" && t.category !== "salary") recordedExpenseEUR += t.amountEUR;
+      // Paying a planned obligation settles it; it is not a second cost.
+      else if (t.kind === "expense" && !t.assignmentId && !t.contractorId) recordedExpenseEUR += t.amountEUR;
     }
     paidEUR = round2(paidEUR);
     recordedIncomeEUR = round2(recordedIncomeEUR);
@@ -182,7 +184,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
       const projects = await deps.projects.listProjects();
       const rows = await Promise.all(
         projects
-          .filter((p) => p.status === "completed" && p.financeTracked)
+          .filter((p) => (p.status === "completed" || p.status === "awaiting_payment") && p.financeTracked)
           .map(async (p) => ({ project: p, invoice: await projectInvoice(p.id) }))
       );
       return rows
@@ -194,6 +196,23 @@ export function createBillingService(deps: BillingDeps): BillingService {
           costEUR: invoice.costEUR,
           debtEUR: invoice.dueEUR,
         }));
+    },
+    async contractorDebts() {
+      const projects = (await deps.projects.listProjects()).filter(p => p.financeTracked && p.status !== "cancelled");
+      const totals = new Map<string, number>();
+      for (const project of projects) {
+        const [items, transactions] = await Promise.all([deps.projects.listContractorItems(project.id), deps.finance.listTransactions({ projectId: project.id, includeVoided: true })]);
+        for (const contractorId of new Set(items.map(item => item.contractorId))) {
+          const positions = items.filter(item => item.contractorId === contractorId);
+          const payments = transactions.filter(t => t.contractorId === contractorId && t.kind === "expense" && !t.voidedAt);
+          const hasLedger = transactions.some(t => t.contractorId === contractorId && t.kind === "expense");
+          // Legacy paid markers are respected only where no ledger payment exists.
+          const due = positions.reduce((sum, item) => sum + (hasLedger || !item.paidAt ? item.costEUR * item.qty : 0), 0);
+          const paid = payments.reduce((sum, t) => sum + t.amountEUR, 0);
+          totals.set(contractorId, (totals.get(contractorId) ?? 0) + Math.max(0, round2(due - paid)));
+        }
+      }
+      return [...totals].filter(([, debt]) => debt > 0).map(([contractorId, debtEUR]) => ({ contractorId, debtEUR: round2(debtEUR) }));
     },
   };
 }

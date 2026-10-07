@@ -3,25 +3,20 @@ import { CURRENCIES } from "@sever/contracts";
 import type { Finance } from "@sever/contracts";
 import { Card, Button, SectionTitle, Metric, StatusBadge, Loading, ErrorState, EmptyState, Field, Input, Select } from "../../ui-kit/index.ts";
 import { useI18n } from "../../app/i18n.tsx";
-import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreateAccount, useUpdateAccount, usePeopleNames, useContractorDebts, useContractorsList } from "./hooks.ts";
+import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreateAccount, useUpdateAccount, usePeopleNames, useContractorDebts, useContractorsList, useFinanceJournal, useUpdateTransaction, useVoidTransaction } from "./hooks.ts";
 import { AddTransactionSheet } from "./components/AddTransactionSheet.tsx";
 import { useSession } from "../../app/session.ts";
 import { toast } from "../../lib/toastBus.ts";
 import { personName } from "../../lib/people.ts";
-
-const categoryLabel: Record<string, string> = {
-  rental_revenue: "Выручка",
-  prepayment: "Предоплата",
-  debt_settlement: "Погашение",
-  purchase: "Закупка",
-  repair: "Ремонт",
-  salary: "Зарплата",
-  other: "Прочее",
-};
+import { transactionCategoryLabel as categoryLabel } from "../../lib/labels.ts";
+import { TransactionActions } from "./components/TransactionActions.tsx";
 
 export function FinancePage() {
   const accounts = useAccounts();
   const transactions = useTransactions(undefined, true);
+  const journal = useFinanceJournal(transactions.data ?? []);
+  const updateTransaction = useUpdateTransaction();
+  const voidTransaction = useVoidTransaction();
   const debts = useDebts();
   const contractorDebts = useContractorDebts();
   const contractors = useContractorsList();
@@ -140,9 +135,10 @@ export function FinancePage() {
       )}
 
       <SectionTitle>{t("finance.clientDebt")}</SectionTitle>
-      <Card>
+      {debts.error && <ErrorState error={debts.error} onRetry={debts.refetch} />}
+      {debts.isLoading ? <Loading /> : !debts.error && <Card>
         <Metric value={eur(totalDebt)} label={t("finance.clientDebt")} tone={totalDebt ? "danger" : "ok"} />
-      </Card>
+      </Card>}
       {(debts.data ?? []).map((d) => (
         <Card key={d.projectId}>
           <div className="row row--between">
@@ -152,12 +148,13 @@ export function FinancePage() {
           <p className="card__subtitle">{t("finance.revenue")} {eur(d.revenueEUR)} · {t("finance.paid")} {eur(d.prepaidEUR)}</p>
         </Card>
       ))}
-      {(debts.data ?? []).length === 0 && <EmptyState title={t("finance.noClientDebt")} />}
+      {!debts.error && !debts.isLoading && (debts.data ?? []).length === 0 && <EmptyState title={t("finance.noClientDebt")} />}
 
       <SectionTitle>{t("finance.payables")}</SectionTitle>
-      <Card>
+      {contractorDebts.error && <ErrorState error={contractorDebts.error} onRetry={contractorDebts.refetch} />}
+      {contractorDebts.isLoading ? <Loading /> : !contractorDebts.error && <Card>
         <Metric value={eur(totalOwed)} label={t("finance.payables")} tone={totalOwed ? "danger" : "ok"} />
-      </Card>
+      </Card>}
       {(contractorDebts.data ?? []).map((d) => (
         <Card key={d.contractorId}>
           <div className="row row--between">
@@ -167,16 +164,23 @@ export function FinancePage() {
           <p className="card__subtitle">{t("finance.subrentCost")}</p>
         </Card>
       ))}
-      {(contractorDebts.data ?? []).length === 0 && <EmptyState title={t("finance.noPayables")} />}
+      {!contractorDebts.error && !contractorDebts.isLoading && (contractorDebts.data ?? []).length === 0 && <EmptyState title={t("finance.noPayables")} />}
 
       <SectionTitle>{t("finance.transactions")}</SectionTitle>
+      <Card>
+        <Field label="Поиск по комментарию, сумме или валюте"><Input value={journal.search} onChange={e => journal.setSearch(e.target.value)} /></Field>
+        <Field label="Счёт"><Select value={journal.accountId} onChange={e => journal.setAccountId(e.target.value)} options={[{ value: "", label: "Все счета" }, ...(accounts.data ?? []).map(a => ({ value: a.id, label: `${a.name} · ${a.currency}` }))]} /></Field>
+        <div className="row"><Field label="С даты"><Input type="date" value={journal.from} onChange={e => journal.setFrom(e.target.value)} /></Field><Field label="По дату"><Input type="date" value={journal.to} onChange={e => journal.setTo(e.target.value)} /></Field></div>
+        <label><input type="checkbox" checked={journal.includeVoided} onChange={e => journal.setIncludeVoided(e.target.checked)} /> Показывать отменённые и исправленные</label>
+        <p className="card__subtitle">По выбранным операциям: поступления {eur(journal.totals.income)} · расходы {eur(journal.totals.expense)} · денежный результат {eur(journal.totals.income - journal.totals.expense)}. По зафиксированным курсам, без начислений аренды.</p>
+      </Card>
       {transactions.isLoading ? (
         <Loading />
-      ) : (transactions.data ?? []).length === 0 ? (
+      ) : transactions.error ? <ErrorState error={transactions.error} onRetry={transactions.refetch} /> : journal.count === 0 ? (
         <EmptyState title={t("finance.noTransactions")} />
       ) : (
         <div className="stack">
-          {(transactions.data ?? []).slice(0, 30).map((t) => (
+          {journal.rows.map((t) => (
             <Card key={t.id} style={t.voidedAt ? { opacity: 0.55 } : undefined}>
               <div className="row row--between">
                 <div style={{ minWidth: 0 }}>
@@ -193,8 +197,11 @@ export function FinancePage() {
                   {t.currency !== "EUR" && <div className="card__subtitle">{eur(t.amountEUR)} @ {t.fxRateToEUR}</div>}
                 </div>
               </div>
+              {t.replacesTransactionId && <p className="card__subtitle">Исправление операции {t.replacesTransactionId.slice(0, 8)}</p>}
+              {canManage && <TransactionActions transaction={t} accounts={accounts.data ?? []} pending={updateTransaction.isPending || voidTransaction.isPending} onSave={input => updateTransaction.mutateAsync({ id: t.id, input })} onVoid={() => voidTransaction.mutateAsync(t.id)} />}
             </Card>
           ))}
+          {journal.count > journal.rows.length && <Button variant="secondary" onClick={journal.showMore}>Показать ещё · {journal.rows.length} из {journal.count}</Button>}
         </div>
       )}
 

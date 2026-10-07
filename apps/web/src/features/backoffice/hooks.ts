@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApexDashboardDTO, Audit, Catalog, Equipment, Finance, Notifications, Operations, People, Permission, Problem, Projects } from "@sever/contracts";
 import { api } from "../../lib/api.ts";
+import { useCreateTransaction } from "../finance/hooks.ts";
 
 export type BackofficeView = "stylish" | "classic";
 
@@ -80,7 +81,7 @@ export function useBackofficeCommands() {
   const resolveProblem = useMutation({ mutationFn: (id: string) => api.post(`/api/equipment/problems/${id}/resolve`, {}), onSuccess: () => invalidateBackoffice(qc) });
   const createProject = useMutation({ mutationFn: (input: Projects.CreateProjectInput) => api.post<Projects.ProjectDTO>("/api/projects", input), onSuccess: () => invalidateBackoffice(qc) });
   const updateProject = useMutation({ mutationFn: ({ id, input }: { id: string; input: Projects.UpdateProjectInput }) => api.patch(`/api/projects/${id}`, input), onSuccess: () => invalidateBackoffice(qc) });
-  const createTransaction = useMutation({ mutationFn: (input: Omit<Finance.CreateTransactionInput, "createdByUserId">) => api.post("/api/finance/transactions", input), onSuccess: () => invalidateBackoffice(qc) });
+  const createTransaction = useCreateTransaction();
   const updateRole = useMutation({ mutationFn: ({ id, input }: { id: string; input: People.UpdateRoleInput }) => api.patch(`/api/roles/${id}`, input), onSuccess: () => invalidateBackoffice(qc) });
   const createCatalogItem = useMutation({ mutationFn: (input: Catalog.CreateCatalogItemInput) => api.post("/api/catalog/items", input), onSuccess: () => invalidateBackoffice(qc) });
   const createPerson = useMutation({ mutationFn: (input: People.CreateUserInput) => api.post<People.CreatedUserDTO>("/api/people", input), onSuccess: () => invalidateBackoffice(qc) });

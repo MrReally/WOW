@@ -10,11 +10,12 @@ import {
   useUpdateContractorItem,
   useSetContractorItemsBooked,
   useReturnContractorItems,
-  useSetContractorItemsPaid,
   useRemoveContractorItem,
   useReturnContractorItem,
   useCreateContractor,
 } from "../hooks.ts";
+import { useAccounts } from "../../finance/hooks.ts";
+import { AddTransactionSheet } from "../../finance/components/AddTransactionSheet.tsx";
 
 const ITEM_KINDS: Projects.ContractorItemKind[] = ["equipment", "delivery", "setup"];
 
@@ -33,7 +34,8 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
   const update = useUpdateContractorItem();
   const setAllBooked = useSetContractorItemsBooked();
   const returnAll = useReturnContractorItems();
-  const setAllPaid = useSetContractorItemsPaid();
+  const accounts = useAccounts(canManageFinance);
+  const [paymentContractor, setPaymentContractor] = useState<string | null>(null);
   const remove = useRemoveContractorItem();
   const markReturned = useReturnContractorItem();
   const createContractor = useCreateContractor();
@@ -147,7 +149,7 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
             {(canManage || canManageFinance) && <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
               {canManage && <Button variant={allBooked ? "ghost" : "primary"} onClick={() => setAllBooked.mutate({ projectId, contractorId: id, booked: !allBooked })}>{allBooked ? "Снять бронь" : "Забронировать всё"}</Button>}
               {canManage && outstandingEquipment.length > 0 && <Button variant="secondary" onClick={() => returnAll.mutate({ projectId, contractorId: id })}>Вернуть всё оборудование</Button>}
-              {canManageFinance && <Button variant={allPaid ? "ghost" : "secondary"} onClick={() => setAllPaid.mutate({ projectId, contractorId: id, paid: !allPaid })}>{allPaid ? "Отменить оплату" : "Оплачено"}</Button>}
+              {canManageFinance && !allPaid && <Button variant="secondary" onClick={() => setPaymentContractor(id)}>Внести оплату</Button>}
             </div>}
           </Card>
         );
@@ -189,6 +191,7 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
           </div>
         </details>}
       </Card>}
+      {paymentContractor && <AddTransactionSheet open onClose={() => setPaymentContractor(null)} accounts={accounts.data ?? []} projects={[]} canManage={canManageFinance} paymentTarget={{ projectId, contractorId: paymentContractor, name: contractorName(paymentContractor) }} />}
     </div>
   );
 }

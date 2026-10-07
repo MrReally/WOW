@@ -1,9 +1,14 @@
-import type { Equipment, Projects, Role } from "@sever/contracts";
+import type { Equipment, Finance, Projects, Role } from "@sever/contracts";
 import type { BadgeTone } from "../ui-kit/index.ts";
 import { configuredDateTime, configuredDateRange } from "./dateFormat.ts";
 
 // Presentation-only mapping of machine codes to Russian labels + badge tones.
 // Lives in the web layer; the contract keeps stable English codes.
+export const transactionCategoryLabel: Record<Finance.TxCategory, string> = {
+  rental_revenue: "Начисление аренды (без движения денег)",
+  prepayment: "Предоплата", debt_settlement: "Оплата клиента",
+  purchase: "Закупка", repair: "Ремонт", salary: "Зарплата", other: "Прочее",
+};
 
 export const unitStatusLabel: Record<Equipment.UnitStatus, string> = {
   in_stock: "На складе",

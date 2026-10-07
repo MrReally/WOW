@@ -1,4 +1,4 @@
-import type { Finance } from "@sever/contracts";
+import type { AuthContext, Finance } from "@sever/contracts";
 import type { Sql } from "../../core/db.js";
 import type { EventBus } from "../../core/eventBus.js";
 import type { SeverModule } from "../../core/module.js";
@@ -8,13 +8,15 @@ import { registerFinanceRoutes } from "./routes.js";
 
 export function createFinanceModule(
   db: Sql,
-  bus: EventBus
+  bus: EventBus,
+  validateReferences?: (input: Finance.CreateTransactionInput) => Promise<void>,
+  authorizeProject?: (auth: AuthContext, projectId: string) => Promise<void>
 ): SeverModule<Finance.FinanceService> {
-  const service = createFinanceService(db, bus);
+  const service = createFinanceService(db, bus, validateReferences);
   return {
     name: "finance",
     migration: financeMigration,
     service,
-    registerRoutes: (app, ctx) => registerFinanceRoutes(app, ctx, service),
+    registerRoutes: (app, ctx) => registerFinanceRoutes(app, ctx, service, authorizeProject),
   };
 }

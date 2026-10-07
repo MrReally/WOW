@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { CURRENCIES, type AppSettings, type Finance } from "@sever/contracts";
+import { CURRENCIES, type AppSettings, type AuthContext, type Finance } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
 import { requirePermission } from "../../core/auth.js";
 import { AppError, BadRequest } from "../../core/errors.js";
@@ -53,11 +53,13 @@ export function registerBillingRoutes(
   ctx: RouteContext,
   service: BillingService,
   appSettings: AppSettings.AppSettingsService,
-  sendTelegramDocument: SendTelegramDocument
+  sendTelegramDocument: SendTelegramDocument,
+  authorizeProject?: (auth: AuthContext, projectId: string) => Promise<void>
 ): void {
   app.get<{ Params: { id: string } }>("/api/projects/:id/invoice", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.view", "finance.manage", "operations.finance.view", "operations.finance.manage");
+    await authorizeProject?.(auth, req.params.id);
     return service.projectInvoice(req.params.id);
   });
   app.post<{ Params: { id: string } }>("/api/projects/:id/invoice/pdf", async (req, reply) => {
@@ -85,5 +87,10 @@ export function registerBillingRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.view", "finance.manage");
     return service.outstandingClientDebts();
+  });
+  app.get("/api/contractor-debts", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.view", "finance.manage");
+    return service.contractorDebts();
   });
 }

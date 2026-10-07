@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import type { Finance, Projects } from "@sever/contracts";
-import { CURRENCIES } from "@sever/contracts";
 import { Sheet, Field, Input, Textarea, Select, Button } from "../../../ui-kit/index.ts";
 import { useCreateTransaction } from "../hooks.ts";
 import { ApiError } from "../../../lib/api.ts";
@@ -12,10 +11,11 @@ interface Props {
   projects: Projects.ProjectDTO[];
   currentUserId?: string | null;
   canManage: boolean;
+  paymentTarget?: { projectId: string; contractorId: string; name: string };
 }
 
 const CATEGORIES: { value: Finance.TxCategory; label: string; kind: Finance.TxKind }[] = [
-  { value: "rental_revenue", label: "Выручка (аренда)", kind: "income" },
+  { value: "rental_revenue", label: "Начисление аренды (без движения денег)", kind: "income" },
   { value: "prepayment", label: "Предоплата", kind: "income" },
   { value: "debt_settlement", label: "Погашение долга", kind: "income" },
   { value: "purchase", label: "Закупка", kind: "expense" },
@@ -35,17 +35,17 @@ function transactionErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Не удалось создать транзакцию.";
 }
 
-export function AddTransactionSheet({ open, onClose, accounts, projects, currentUserId, canManage }: Props) {
+export function AddTransactionSheet({ open, onClose, accounts, projects, currentUserId, canManage, paymentTarget }: Props) {
   const create = useCreateTransaction();
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
-  const [category, setCategory] = useState<Finance.TxCategory>("rental_revenue");
+  const [category, setCategory] = useState<Finance.TxCategory>("prepayment");
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState<Finance.FxRateDTO["currency"]>("EUR");
+  const currency = accounts.find(account => account.id === accountId)?.currency ?? "EUR";
   const [projectId, setProjectId] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
 
-  const kind = CATEGORIES.find((c) => c.value === category)?.kind ?? "income";
+  const kind = paymentTarget ? "expense" : CATEGORIES.find((c) => c.value === category)?.kind ?? "income";
   useEffect(() => {
     if (!accountId && accounts[0]) setAccountId(accounts[0].id);
   }, [accountId, accounts]);
@@ -68,12 +68,13 @@ export function AddTransactionSheet({ open, onClose, accounts, projects, current
     create.mutate(
       {
         accountId,
-        projectId: projectId || null,
+        projectId: paymentTarget?.projectId ?? (projectId || null),
+        contractorId: paymentTarget?.contractorId ?? null,
         kind,
-        category,
+        category: paymentTarget ? "other" : category,
         amount: amountNum,
         currency,
-        note: note.trim() || null,
+        note: note.trim() || (paymentTarget ? `Оплата подрядчику ${paymentTarget.name}` : null),
         createdByUserId: currentUserId ?? null,
       },
       {
@@ -84,28 +85,28 @@ export function AddTransactionSheet({ open, onClose, accounts, projects, current
   };
 
   return (
-    <Sheet open={open} onClose={onClose} title="Новая транзакция">
+    <Sheet open={open} onClose={onClose} title={paymentTarget ? `Оплата: ${paymentTarget.name}` : "Новая транзакция"}>
       <Field label="Счёт">
         <Select value={accountId} onChange={(e) => setAccountId(e.target.value)} options={accounts.map((a) => ({ value: a.id, label: `${a.name} (${a.currency})` }))} />
       </Field>
-      <Field label="Категория">
+      {!paymentTarget && <Field label="Категория">
         <Select value={category} onChange={(e) => setCategory(e.target.value as Finance.TxCategory)} options={CATEGORIES.map((c) => ({ value: c.value, label: c.label }))} />
-      </Field>
+      </Field>}
       <div className="row">
         <Field label="Сумма">
           <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         <Field label="Валюта">
-          <Select value={currency} onChange={(e) => setCurrency(e.target.value as Finance.FxRateDTO["currency"])} options={CURRENCIES.map((c) => ({ value: c, label: c }))} />
+          <Input value={currency} readOnly />
         </Field>
       </div>
-      <Field label="Проект (необязательно)">
+      {!paymentTarget && <Field label="Проект (необязательно)">
         <Select
           value={projectId}
           onChange={(e) => setProjectId(e.target.value)}
           options={[{ value: "", label: "— без проекта —" }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
         />
-      </Field>
+      </Field>}
       <Field label="Назначение / комментарий">
         <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Напр. «3 кабеля DMX 10 м» — что именно" />
       </Field>

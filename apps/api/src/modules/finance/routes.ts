@@ -1,21 +1,35 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { Finance } from "@sever/contracts";
+import type { AuthContext, Finance } from "@sever/contracts";
 import { CURRENCIES } from "@sever/contracts";
 import type { RouteContext } from "../../core/module.js";
 import { requirePermission } from "../../core/auth.js";
-import { NotFound } from "../../core/errors.js";
+import { BadRequest, NotFound } from "../../core/errors.js";
+
+const fullRead = (auth: AuthContext) => auth.permissions.some(p => p === "finance.view" || p === "finance.manage");
+function requireTransactionWrite(auth: AuthContext, transaction: Pick<Finance.CreateTransactionInput, "category" | "kind" | "projectId" | "assignmentId" | "contractorId">) {
+  if (auth.permissions.includes("finance.manage")) return;
+  if (!transaction.projectId) throw BadRequest("операция в Operations требует проекта");
+  if (transaction.category === "salary" && transaction.kind === "expense" && transaction.assignmentId) {
+    requirePermission(auth, "operations.payroll.manage");
+  } else if ((transaction.kind === "income" && ["prepayment", "debt_settlement"].includes(transaction.category)) || (transaction.kind === "expense" && !!transaction.contractorId)) {
+    requirePermission(auth, "operations.finance.manage");
+  } else {
+    requirePermission(auth, "finance.manage");
+  }
+}
 
 const fxSchema = z.object({
   currency: z.enum(CURRENCIES as [string, ...string[]]),
   rateToEUR: z.number().positive(),
 });
 const accountSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
   currency: z.enum(CURRENCIES as [string, ...string[]]),
 });
 const accountUpdateSchema = z.object({ name: z.string().trim().min(1) });
 const txSchema = z.object({
+  requestKey: z.string().uuid().optional(),
   accountId: z.string().uuid(),
   projectId: z.string().uuid().nullable().optional(),
   unitId: z.string().uuid().nullable().optional(),
@@ -49,8 +63,8 @@ const invoiceVersionLineSchema = z.object({
   section: z.string(),
   name: z.string(),
   count: z.string(),
-  priceEUR: z.number(),
-  costEUR: z.number(),
+  priceEUR: z.number().nonnegative(),
+  costEUR: z.number().nonnegative(),
   comment: z.string(),
 });
 const invoiceVersionSchema = z.object({
@@ -58,7 +72,9 @@ const invoiceVersionSchema = z.object({
   date: z.string(),
   place: z.string(),
   clientName: z.string(),
-  totalEUR: z.number(),
+  totalEUR: z.number().nonnegative(),
+  rateToEUR: z.number().positive().nullable().optional(),
+  company: invoiceCompanySchema.nullable().optional(),
   currency: z.enum(CURRENCIES as [string, ...string[]]),
   lang: z.enum(["EN", "RU", "RS"]),
   lines: z.array(invoiceVersionLineSchema),
@@ -73,13 +89,13 @@ const estimateLineSchema = z.object({
   section: z.string(),
   name: z.string().trim().min(1),
   qty: z.number().positive(),
-  priceEUR: z.number(),
-  costEUR: z.number(),
+  priceEUR: z.number().nonnegative(),
+  costEUR: z.number().nonnegative(),
   discountType: z.enum(["percent", "fixed_rsd", "fixed_eur"]).optional(),
   discountValue: z.number().nonnegative().optional(),
   comment: z.string().optional(),
   hidden: z.boolean().optional(),
-}).refine((value) => value.discountType !== "percent" || (value.discountValue ?? 0) <= 100, {
+}).refine((value) => (value.discountType ?? "percent") !== "percent" || (value.discountValue ?? 0) <= 100, {
   message: "percentage discount cannot exceed 100",
   path: ["discountValue"],
 });
@@ -94,7 +110,8 @@ const estimateSettingsSchema = z.object({
 export function registerFinanceRoutes(
   app: FastifyInstance,
   ctx: RouteContext,
-  service: Finance.FinanceService
+  service: Finance.FinanceService,
+  authorizeProject?: (auth: AuthContext, projectId: string) => Promise<void>
 ): void {
   // ── FX (admin only) ──
   app.get("/api/finance/fx", async (req) => {
@@ -111,8 +128,10 @@ export function registerFinanceRoutes(
   // ── Accounts ──
   app.get("/api/finance/accounts", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "finance.view", "operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage");
-    return service.listAccounts();
+    requirePermission(auth, "finance.view", "finance.manage", "operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage");
+    const accounts = await service.listAccounts();
+    // Operations needs account identities for payment entry, not treasury balances.
+    return fullRead(auth) ? accounts : accounts.map(account => ({ ...account, balance: 0 }));
   });
   app.post("/api/finance/accounts", async (req) => {
     const auth = await ctx.auth(req);
@@ -121,7 +140,7 @@ export function registerFinanceRoutes(
   });
   app.patch<{ Params: { id: string } }>("/api/finance/accounts/:id", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "finance.manage", "operations.finance.manage");
+    requirePermission(auth, "finance.manage");
     return service.updateAccount(req.params.id, accountUpdateSchema.parse(req.body));
   });
 
@@ -130,42 +149,54 @@ export function registerFinanceRoutes(
     "/api/finance/transactions",
     async (req) => {
       const auth = await ctx.auth(req);
-      requirePermission(auth, "finance.view", "operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage");
-      return service.listTransactions({ projectId: req.query.projectId, unitId: req.query.unitId, includeVoided: req.query.includeVoided === "true" });
+      requirePermission(auth, "finance.view", "finance.manage", "operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage");
+      const filter = z.object({ projectId: z.string().uuid().optional(), unitId: z.string().uuid().optional(), includeVoided: z.enum(["true", "false"]).optional() }).parse(req.query);
+      if (!fullRead(auth) && !filter.projectId) throw BadRequest("для просмотра операций укажите проект");
+      if (filter.projectId) await authorizeProject?.(auth, filter.projectId);
+      const rows = await service.listTransactions({ ...filter, includeVoided: filter.includeVoided === "true" });
+      if (fullRead(auth)) return rows;
+      const payroll = auth.permissions.some(p => p === "operations.payroll.view" || p === "operations.payroll.manage");
+      const client = auth.permissions.some(p => p === "operations.finance.view" || p === "operations.finance.manage");
+      return rows.filter(row => row.category === "salary"
+        ? payroll
+        : client && (["prepayment", "debt_settlement"].includes(row.category) || !!row.contractorId));
     }
   );
   app.post("/api/finance/transactions", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.manage", "operations.finance.manage", "operations.payroll.manage");
     const body = txSchema.parse(req.body);
+    requireTransactionWrite(auth, body);
+    if (body.projectId) await authorizeProject?.(auth, body.projectId);
     return service.createTransaction({ ...body, createdByUserId: auth.userId } as Finance.CreateTransactionInput);
   });
   app.patch<{ Params: { id: string } }>("/api/finance/transactions/:id", async (req) => {
     const auth = await ctx.auth(req);
     const transaction = (await service.listTransactions({ includeVoided: true })).find(item => item.id === req.params.id);
     if (!transaction) throw NotFound("transaction", req.params.id);
-    if (transaction.category === "salary") requirePermission(auth, "finance.manage", "operations.payroll.manage");
-    else requirePermission(auth, "finance.manage", "operations.finance.manage");
+    requireTransactionWrite(auth, transaction);
+    if (transaction.projectId) await authorizeProject?.(auth, transaction.projectId);
     return service.updateTransaction(req.params.id, txUpdateSchema.parse(req.body), auth.userId);
   });
   app.post<{ Params: { id: string } }>("/api/finance/transactions/:id/void", async (req) => {
     const auth = await ctx.auth(req);
     const transaction = (await service.listTransactions({ includeVoided: true })).find(item => item.id === req.params.id);
     if (!transaction) throw NotFound("transaction", req.params.id);
-    if (transaction.category === "salary") requirePermission(auth, "finance.manage", "operations.payroll.manage");
-    else requirePermission(auth, "finance.manage", "operations.finance.manage");
+    requireTransactionWrite(auth, transaction);
+    if (transaction.projectId) await authorizeProject?.(auth, transaction.projectId);
     return service.voidTransaction(req.params.id, auth.userId);
   });
 
   // ── Aggregates ──
   app.get<{ Params: { id: string } }>("/api/finance/projects/:id", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "finance.view", "operations.finance.view", "operations.finance.manage");
+    requirePermission(auth, "finance.view", "finance.manage", "operations.finance.view", "operations.finance.manage");
+    await authorizeProject?.(auth, req.params.id);
     return service.projectFinance(req.params.id);
   });
   app.get("/api/finance/debts", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "finance.view");
+    requirePermission(auth, "finance.view", "finance.manage");
     return service.outstandingDebts();
   });
   app.get<{ Params: { id: string } }>("/api/projects/:id/estimate-lines", async (req) => {
@@ -176,8 +207,9 @@ export function registerFinanceRoutes(
   app.put<{ Params: { id: string } }>("/api/projects/:id/estimate-lines", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.manage");
-    const body = z.object({ lines: z.array(estimateLineSchema) }).parse(req.body);
-    return service.replaceProjectEstimateLines(req.params.id, body.lines as Finance.SaveProjectEstimateLineInput[]);
+    await authorizeProject?.(auth, req.params.id);
+    const body = z.object({ lines: z.array(estimateLineSchema), settings: estimateSettingsSchema.optional() }).parse(req.body);
+    return service.replaceProjectEstimateLines(req.params.id, body.lines as Finance.SaveProjectEstimateLineInput[], body.settings);
   });
   app.get<{ Params: { id: string } }>("/api/projects/:id/estimate-settings", async (req) => {
     const auth = await ctx.auth(req);
@@ -187,6 +219,7 @@ export function registerFinanceRoutes(
   app.put<{ Params: { id: string } }>("/api/projects/:id/estimate-settings", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.manage");
+    await authorizeProject?.(auth, req.params.id);
     return service.setProjectEstimateSettings(req.params.id, estimateSettingsSchema.parse(req.body));
   });
 
@@ -208,6 +241,7 @@ export function registerFinanceRoutes(
   app.post<{ Params: { id: string } }>("/api/projects/:id/invoice/versions", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.manage");
+    await authorizeProject?.(auth, req.params.id);
     const body = invoiceVersionSchema.parse(req.body);
     return service.createInvoiceVersion({ ...body, projectId: req.params.id } as Finance.CreateInvoiceVersionInput);
   });
