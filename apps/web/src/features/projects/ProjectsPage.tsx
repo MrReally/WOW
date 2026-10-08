@@ -10,6 +10,9 @@ import { ProjectWizardSheet } from "./components/ProjectWizardSheet.tsx";
 import { splitMobileProjects } from "./projectList.ts";
 import { useProjectSearch } from "../../lib/useProjectSearch.ts";
 import { configuredDate } from "../../lib/dateFormat.ts";
+import { PlanningAgendaView, PlanningCalendarView } from "./components/PlanningViews.tsx";
+
+type PlanningView = "journal" | "agenda" | "calendar";
 
 type ProjectCardProps = {
   project: NonNullable<ReturnType<typeof useProjects>["data"]>[number];
@@ -48,6 +51,7 @@ export function ProjectsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<Projects.ProjectStatus | "all">("all");
+  const [view, setView] = useState<PlanningView>("journal");
   const allProjects = projects.data ?? [];
   const statusProjects = statusFilter === "all" ? allProjects : allProjects.filter((project) => project.status === statusFilter);
   const search = useProjectSearch(statusProjects, venues.data ?? []);
@@ -76,23 +80,39 @@ export function ProjectsPage() {
         </div>
       )}
 
-      <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
-        {filters.map((status) => (
-          <button
-            key={status}
-            className={`chip ${statusFilter === status ? "chip--accent chip--solid" : "chip--neutral"}`}
-            style={{ border: "none", cursor: "pointer" }}
-            onClick={() => setStatusFilter(status)}
-          >
-            {status === "all" ? "Все" : projectStatusLabel[status]}
-          </button>
-        ))}
+      <div className="planning-controls">
+        <div className="planning-view-switch" aria-label="Вид Planning">
+          {([
+            ["journal", "Журнал"],
+            ["agenda", "Расписание"],
+            ["calendar", "Календарь"],
+          ] as const).map(([value, label]) => (
+            <button key={value} className={view === value ? "is-active" : ""} aria-pressed={view === value} onClick={() => setView(value)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="row planning-status-filters">
+          {filters.map((status) => (
+            <button
+              key={status}
+              className={`chip ${statusFilter === status ? "chip--accent chip--solid" : "chip--neutral"}`}
+              onClick={() => setStatusFilter(status)}
+            >
+              {status === "all" ? "Все" : projectStatusLabel[status]}
+            </button>
+          ))}
+        </div>
       </div>
 
       <ProjectSearch open={search.isOpen} query={search.query} onToggle={search.toggle} onQueryChange={search.setQuery} />
 
       {list.length === 0 ? (
         <EmptyState title={search.query ? "Ничего не найдено" : "Нет проектов"} hint={!search.query && !canCreate ? "Вам пока не назначены проекты" : undefined} />
+      ) : view === "agenda" ? (
+        <PlanningAgendaView projects={list} clientName={clientName} onOpen={(id) => navigate(`/projects/${id}`)} />
+      ) : view === "calendar" ? (
+        <PlanningCalendarView projects={list} clientName={clientName} onOpen={(id) => navigate(`/projects/${id}`)} />
       ) : (
         <>
         <div className="stack mobile-project-list">
