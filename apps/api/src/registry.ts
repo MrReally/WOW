@@ -443,6 +443,7 @@ export function createModules(bus: EventBus = new EventBus()) {
       `<b>Приглашение на проект</b>`,
       `«${project.name}»`,
       `🎚 Роль: ${assignment.roleNote ?? "—"}`,
+      ...(role?.comment ? [`💬 Комментарий: ${escapeHtml(role.comment)}`] : []),
       `🕒 Занятость: ${displayDateTime(engagementStartsAt)} — ${displayDateTime(engagementEndsAt)}`,
       `📍 Локация: ${venue ? `${venue.name}${venue.address ? ` · ${venue.address}` : ""}` : "—"}`,
       ...(assignment.dressCodeEnabled && (project.dressCodeLabel || project.dressCodeUniform) ? [`👔 Дресс-код: ${[project.dressCodeLabel, project.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}`] : []),
@@ -459,6 +460,14 @@ export function createModules(bus: EventBus = new EventBus()) {
     }
   }
   bus.on("project.invited", e => deliverInvitation(e));
+  bus.on("project.role.updated", async e => {
+    const assignments = await projects.service.listAssignments(e.projectId);
+    for (const assignment of assignments) {
+      if (assignment.roleId === e.roleId && assignment.status === "invited") {
+        await deliverInvitation({ projectId: e.projectId, userId: assignment.userId, assignmentId: assignment.id }, true);
+      }
+    }
+  });
   bus.on("project.dress_code.changed", async e => {
     const [project, assignments] = await Promise.all([projects.service.getProject(e.projectId), projects.service.listAssignments(e.projectId)]);
     if (!project || project.status === "cancelled") return;

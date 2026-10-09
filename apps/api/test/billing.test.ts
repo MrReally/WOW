@@ -50,6 +50,34 @@ describe("billing reserve equipment", () => {
     expect(invoice.invoiceEUR).toBe(400);
   });
 
+  it("does not expose an internal project-role comment in the client invoice", async () => {
+    const start = "2026-07-17T10:00:00.000Z";
+    const end = "2026-07-18T10:00:00.000Z";
+    const billing = createBillingService({
+      projects: {
+        getProject: async () => ({ id: "project", startsAt: start, endsAt: end }),
+        listReservations: async () => [],
+        listAssignments: async () => [],
+        listProjectRoles: async () => [{ id: "role", title: "Монтажник", comment: "Позвонить координатору у ворот", requiredCount: 2, rateEUR: 100 }],
+        listContractorItems: async () => [],
+        listProjects: async () => [],
+      },
+      equipment: { listModels: async () => [], listTypes: async () => [] },
+      finance: {
+        listTransactions: async () => [],
+        listProjectEstimateLines: async () => [],
+        getProjectEstimateSettings: async () => ({ projectId: "project", totalDiscountType: "percent", totalDiscountValue: 0 }),
+        listFxRates: async () => [],
+      },
+      people: {},
+    } as unknown as BillingDeps);
+
+    const invoice = await billing.projectInvoice("project");
+
+    expect(invoice.laborLines).toEqual([expect.objectContaining({ label: "Монтажник", detail: "" })]);
+    expect(JSON.stringify(invoice)).not.toContain("Позвонить координатору");
+  });
+
   it("replaces hidden source positions with one combined manual position", async () => {
     const start = "2026-07-17T10:00:00.000Z";
     const end = "2026-07-18T10:00:00.000Z";

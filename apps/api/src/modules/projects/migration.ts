@@ -189,6 +189,7 @@ CREATE TABLE IF NOT EXISTS projects.project_roles (
 );
 ALTER TABLE projects.project_roles ADD COLUMN IF NOT EXISTS starts_at timestamptz;
 ALTER TABLE projects.project_roles ADD COLUMN IF NOT EXISTS ends_at   timestamptz;
+ALTER TABLE projects.project_roles ADD COLUMN IF NOT EXISTS comment   text;
 ALTER TABLE projects.project_roles DROP CONSTRAINT IF EXISTS project_roles_engagement_range_check;
 ALTER TABLE projects.project_roles ADD CONSTRAINT project_roles_engagement_range_check CHECK (
   (starts_at IS NULL AND ends_at IS NULL)

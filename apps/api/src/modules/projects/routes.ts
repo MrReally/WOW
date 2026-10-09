@@ -128,6 +128,7 @@ const projectRoleSchema = z.object({
   dressCodeEnabled: z.boolean().optional(),
   projectId: z.string().uuid(),
   title: z.string().trim().min(1),
+  comment: z.string().trim().max(2000).nullable().optional(),
   requiredCount: z.number().int().positive(),
   rateEUR: z.number().nonnegative().nullable().optional(),
   startsAt: z.string().datetime().nullable().optional(),
@@ -136,6 +137,7 @@ const projectRoleSchema = z.object({
 const updateProjectRoleSchema = z.object({
   dressCodeEnabled: z.boolean().optional(),
   title: z.string().trim().min(1).optional(),
+  comment: z.string().trim().max(2000).nullable().optional(),
   requiredCount: z.number().int().positive().optional(),
   rateEUR: z.number().nonnegative().nullable().optional(),
   startsAt: z.string().datetime().nullable().optional(),

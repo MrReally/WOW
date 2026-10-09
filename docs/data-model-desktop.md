@@ -35,7 +35,7 @@ Desktop Backoffice не создаёт отдельную БД, отдельны
 | projects | timing_assignees | timing_id, user_id | — |
 | projects | project_tasks | id, project_id, title, status, assignee_id, timing_id, created_at, updated_at, completed_at | — |
 | projects | project_checklist | id, project_id, group_key, title, done, done_by_user_id, done_at, created_at | — |
-| projects | project_roles | id, project_id, title, required_count, rate_eur, created_at | — |
+| projects | project_roles | id, project_id, title, comment, required_count, rate_eur, starts_at, ends_at, dress_code_enabled, created_at | — |
 | projects | assignments | id, project_id, user_id, role_note, created_at, status, rate_eur, invited_by, responded_at, telegram_chat_id, telegram_message_id, role_id | — |
 | projects | project_reminders | id, project_id, offset_minutes, recipient_mode, user_ids, note, sent_at, created_by_user_id, created_at, title | — |
 | projects | project_pings | id, project_id, user_id, reminder_id, message, status, responded_at, created_by_user_id, created_at, title | — |

@@ -386,6 +386,8 @@ export interface ProjectRoleDTO {
   id: ID;
   projectId: ID;
   title: string;
+  /** Internal operational comment, also shown in Telegram invitations. */
+  comment: string | null;
   requiredCount: number;
   /** Planned per-person rate in EUR; null = unset / by agreement. */
   rateEUR: number | null;
@@ -399,6 +401,7 @@ export interface CreateProjectRoleInput {
   dressCodeEnabled?: boolean;
   projectId: ID;
   title: string;
+  comment?: string | null;
   requiredCount: number;
   rateEUR?: number | null;
   startsAt?: ISODateTime | null;
@@ -408,6 +411,7 @@ export interface CreateProjectRoleInput {
 export interface UpdateProjectRoleInput {
   dressCodeEnabled?: boolean;
   title?: string;
+  comment?: string | null;
   requiredCount?: number;
   rateEUR?: number | null;
   startsAt?: ISODateTime | null;
@@ -811,8 +815,17 @@ export interface ProjectDressCodeChangedEvent {
   at: ISODateTime;
 }
 
+/** A role detail visible in pending invitations was changed. */
+export interface ProjectRoleUpdatedEvent {
+  type: "project.role.updated";
+  projectId: ID;
+  roleId: ID;
+  at: ISODateTime;
+}
+
 export type ProjectsEvent =
   | ProjectDressCodeChangedEvent
+  | ProjectRoleUpdatedEvent
   | ProjectConfirmedEvent
   | ProjectDuplicatedEvent
   | ReservationConflictEvent

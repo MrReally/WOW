@@ -38,6 +38,7 @@ interface ReservationDraft {
 
 interface CrewDraft {
   title: string;
+  comment: string;
   count: string;
   rate: string;
   startsAt: string | null;
@@ -102,7 +103,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const [starts, setStarts] = useState("");
   const [ends, setEnds] = useState("");
   const [reservationDrafts, setReservationDrafts] = useState<ReservationDraft[]>([{ modelId: "", qty: "1", isReserve: false }]);
-  const [crewDrafts, setCrewDrafts] = useState<CrewDraft[]>([{ title: "", count: "1", rate: "", startsAt: null, endsAt: null }]);
+  const [crewDrafts, setCrewDrafts] = useState<CrewDraft[]>([{ title: "", comment: "", count: "1", rate: "", startsAt: null, endsAt: null }]);
   const [contractorDrafts, setContractorDrafts] = useState<ContractorDraft[]>([{ contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }]);
   const [newContractorName, setNewContractorName] = useState("");
   const [newContractorContacts, setNewContractorContacts] = useState("");
@@ -139,7 +140,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       setStarts("");
       setEnds("");
       setReservationDrafts([{ modelId: "", qty: "1", isReserve: false }]);
-      setCrewDrafts([{ title: "", count: "1", rate: "", startsAt: null, endsAt: null }]);
+      setCrewDrafts([{ title: "", comment: "", count: "1", rate: "", startsAt: null, endsAt: null }]);
       setContractorDrafts([{ contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }]);
       setNewContractorName("");
       setNewContractorContacts("");
@@ -188,6 +189,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
         if (!draft.title.trim()) continue;
         await createRole.mutateAsync({ projectId: created.id, input: {
           title: draft.title.trim(),
+          comment: draft.comment.trim() || null,
           requiredCount: Number(draft.count) || 1,
           rateEUR: draft.rate ? Number(draft.rate) || 0 : null,
           startsAt: draft.startsAt,
@@ -294,6 +296,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
           {crewDrafts.map((draft, idx) => (
             <DraftCard key={idx}>
               <Input value={draft.title} onChange={(e) => patchCrew(idx, { title: e.target.value })} placeholder="Роль" />
+              <Textarea value={draft.comment} maxLength={2000} onChange={(e) => patchCrew(idx, { comment: e.target.value })} placeholder="Комментарий к позиции — только в приложении и Telegram" />
               <div className="row">
                 <Input type="number" value={draft.count} onChange={(e) => patchCrew(idx, { count: e.target.value })} placeholder="Кол-во" />
                 <Input type="number" value={draft.rate} onChange={(e) => patchCrew(idx, { rate: e.target.value })} placeholder="€" />
@@ -307,7 +310,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
               </div>
             </DraftCard>
           ))}
-          <Button variant="secondary" onClick={() => setCrewDrafts((x) => [...x, { title: "", count: "1", rate: "", startsAt: null, endsAt: null }])}>+</Button>
+          <Button variant="secondary" onClick={() => setCrewDrafts((x) => [...x, { title: "", comment: "", count: "1", rate: "", startsAt: null, endsAt: null }])}>+</Button>
         </WizardScreen>
       )}
 

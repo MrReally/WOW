@@ -120,6 +120,7 @@ interface ProjectRoleRow {
   id: string;
   project_id: string;
   title: string;
+  comment: string | null;
   required_count: number;
   rate_eur: string | null;
   starts_at: Date | null;
@@ -304,6 +305,7 @@ const projectRoleDTO = (r: ProjectRoleRow): Projects.ProjectRoleDTO => ({
   id: r.id,
   projectId: r.project_id,
   title: r.title,
+  comment: r.comment,
   requiredCount: r.required_count,
   rateEUR: r.rate_eur === null ? null : Number(r.rate_eur),
   startsAt: r.starts_at ? r.starts_at.toISOString() : null,
@@ -711,9 +713,9 @@ export function createProjectsService(
         };
         for (const role of sourceRoles) {
           const inserted = await one<{ id: string }>(client,
-            `INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur, starts_at, ends_at, dress_code_enabled)
-             VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-            [newId, role.title, role.required_count, role.rate_eur, shiftRoleDate(role.starts_at), shiftRoleDate(role.ends_at), role.dress_code_enabled]
+            `INSERT INTO projects.project_roles (project_id, title, comment, required_count, rate_eur, starts_at, ends_at, dress_code_enabled)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+            [newId, role.title, role.comment, role.required_count, role.rate_eur, shiftRoleDate(role.starts_at), shiftRoleDate(role.ends_at), role.dress_code_enabled]
           );
           sourceRefMap[role.id] = inserted!.id;
         }
@@ -1533,9 +1535,9 @@ export function createProjectsService(
       assertRange(startsAt, endsAt);
       const row = await one<ProjectRoleRow>(
         db,
-        `INSERT INTO projects.project_roles (project_id, title, required_count, rate_eur, starts_at, ends_at, dress_code_enabled)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [input.projectId, input.title.trim(), input.requiredCount, input.rateEUR ?? null, startsAt, endsAt, input.dressCodeEnabled ?? false]
+        `INSERT INTO projects.project_roles (project_id, title, comment, required_count, rate_eur, starts_at, ends_at, dress_code_enabled)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [input.projectId, input.title.trim(), input.comment?.trim() || null, input.requiredCount, input.rateEUR ?? null, startsAt, endsAt, input.dressCodeEnabled ?? false]
       );
       return projectRoleDTO(row!);
     },
@@ -1543,6 +1545,7 @@ export function createProjectsService(
       const existing = await one<ProjectRoleRow>(db, `SELECT * FROM projects.project_roles WHERE id=$1`, [id]);
       if (!existing) throw NotFound("project role", id);
       const nextTitle = input.title === undefined ? existing.title : input.title.trim();
+      const nextComment = input.comment === undefined ? existing.comment : input.comment?.trim() || null;
       const nextRequiredCount = input.requiredCount ?? existing.required_count;
       const nextRateEUR = input.rateEUR === undefined ? existing.rate_eur : input.rateEUR;
       const nextStartsAt = input.startsAt === undefined ? existing.starts_at?.toISOString() ?? null : input.startsAt;
@@ -1554,13 +1557,14 @@ export function createProjectsService(
           client,
           `UPDATE projects.project_roles SET
              title=$2,
-             required_count=$3,
-             rate_eur=$4,
-             starts_at=$5,
-             ends_at=$6,
-             dress_code_enabled=$7
+             comment=$3,
+             required_count=$4,
+             rate_eur=$5,
+             starts_at=$6,
+             ends_at=$7,
+             dress_code_enabled=$8
            WHERE id=$1 RETURNING *`,
-          [id, nextTitle, nextRequiredCount, nextRateEUR, nextStartsAt, nextEndsAt, input.dressCodeEnabled ?? existing.dress_code_enabled]
+          [id, nextTitle, nextComment, nextRequiredCount, nextRateEUR, nextStartsAt, nextEndsAt, input.dressCodeEnabled ?? existing.dress_code_enabled]
         );
         await query(
           client,
@@ -1572,6 +1576,9 @@ export function createProjectsService(
       });
       if (input.dressCodeEnabled !== undefined && input.dressCodeEnabled !== existing.dress_code_enabled) {
         await bus.publish({ type: "project.dress_code.changed", projectId: existing.project_id, roleId: id, at: new Date().toISOString() });
+      }
+      if (input.title !== undefined || input.comment !== undefined || input.rateEUR !== undefined || input.startsAt !== undefined || input.endsAt !== undefined) {
+        await bus.publish({ type: "project.role.updated", projectId: existing.project_id, roleId: id, at: new Date().toISOString() });
       }
       return projectRoleDTO(row!);
     },

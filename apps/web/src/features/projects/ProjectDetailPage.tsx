@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { useLocation, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type { Equipment, Finance, People, Projects, Transport } from "@sever/contracts";
 import { amountAfterDiscountEUR, discountAmountEUR, PROJECT_STATUSES } from "@sever/contracts";
-import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
+import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Textarea, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
 import { projectStatusLabel, projectStatusTone, dateRange, dateTime, eur } from "../../lib/labels.ts";
 import { toast } from "../../lib/toastBus.ts";
 import { useSession } from "../../app/session.ts";
@@ -220,11 +220,12 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [timingEditStart, setTimingEditStart] = useState("");
   const [timingEditEnd, setTimingEditEnd] = useState("");
   const [roleTitle, setRoleTitle] = useState("");
+  const [roleComment, setRoleComment] = useState("");
   const [roleCount, setRoleCount] = useState("1");
   const [roleRate, setRoleRate] = useState("");
   const [roleStartsAt, setRoleStartsAt] = useState<string | null>(null);
   const [roleEndsAt, setRoleEndsAt] = useState<string | null>(null);
-  const [roleDrafts, setRoleDrafts] = useState<Record<string, { title: string; requiredCount: string; rateEUR: string }>>({});
+  const [roleDrafts, setRoleDrafts] = useState<Record<string, { title: string; comment: string; requiredCount: string; rateEUR: string }>>({});
   const [assignCandidates, setAssignCandidates] = useState<Record<string, string[]>>({});
   const [candidateQueries, setCandidateQueries] = useState<Record<string, string>>({});
   const [pingTitle, setPingTitle] = useState("");
@@ -778,6 +779,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             const closed = filled >= role.requiredCount;
             const draft = roleDrafts[role.id] ?? {
               title: role.title,
+              comment: role.comment ?? "",
               requiredCount: String(role.requiredCount),
               rateEUR: role.rateEUR == null ? "" : String(role.rateEUR),
             };
@@ -808,13 +810,14 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             const saveRole = () => {
               const requiredCount = Math.max(1, Number(draft.requiredCount) || 1);
               const rateEUR = draft.rateEUR.trim() ? Number(draft.rateEUR) : null;
-              updateProjectRole.mutate({ id: role.id, input: { title: draft.title.trim(), requiredCount, rateEUR } });
+              updateProjectRole.mutate({ id: role.id, input: { title: draft.title.trim(), comment: draft.comment.trim() || null, requiredCount, rateEUR } });
             };
             return (
               <Card key={role.id}>
                 <div className="row row--between">
                   <div style={{ minWidth: 0 }}>
                     <p className="card__title">{role.title}</p>
+                    {role.comment && <p className="card__subtitle" style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{role.comment}</p>}
                     <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 6 }}>
                       <Chip label={`${filled}/${role.requiredCount}`} tone={closed ? "ok" : "warn"} />
                       {pending > 0 && <Chip label={`ждут ${pending}`} tone="info" />}
@@ -904,6 +907,14 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                         ✓
                       </Button>
                     </div>
+                    <Field label="Комментарий к позиции">
+                      <Textarea
+                        value={draft.comment}
+                        maxLength={2000}
+                        onChange={(e) => setRoleDrafts((prev) => ({ ...prev, [role.id]: { ...draft, comment: e.target.value } }))}
+                        placeholder="Только для приложения и Telegram-приглашения"
+                      />
+                    </Field>
                     {available.length > 0 && (
                       <>
                         <CandidatePicker
@@ -962,34 +973,39 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
         const rateNum = roleRate.trim() ? Number(roleRate) : null;
         return (
           <Card>
-            <div className="row">
-              <Field label="Роль">
-                <Input value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder="Шеф монтажа" />
+            <div className="stack" style={{ gap: 8 }}>
+              <div className="row">
+                <Field label="Роль">
+                  <Input value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder="Шеф монтажа" />
+                </Field>
+                <Field label="Нужно">
+                  <Input type="number" min="1" value={roleCount} onChange={(e) => setRoleCount(e.target.value)} />
+                </Field>
+                <Field label="€">
+                  <Input type="number" min="0" value={roleRate} onChange={(e) => setRoleRate(e.target.value)} placeholder="150" />
+                </Field>
+                <RoleEngagementPicker
+                  startsAt={roleStartsAt}
+                  endsAt={roleEndsAt}
+                  fallbackStartsAt={p.startsAt}
+                  fallbackEndsAt={p.endsAt}
+                  onSave={(startsAt, endsAt) => { setRoleStartsAt(startsAt); setRoleEndsAt(endsAt); }}
+                />
+                <Button
+                  disabled={!roleTitle.trim() || createProjectRole.isPending}
+                  onClick={() =>
+                    createProjectRole.mutate(
+                      { projectId: p.id, input: { title: roleTitle.trim(), comment: roleComment.trim() || null, requiredCount: count, rateEUR: rateNum, startsAt: roleStartsAt, endsAt: roleEndsAt } },
+                      { onSuccess: () => { setRoleTitle(""); setRoleComment(""); setRoleCount("1"); setRoleRate(""); setRoleStartsAt(null); setRoleEndsAt(null); } }
+                    )
+                  }
+                >
+                  +
+                </Button>
+              </div>
+              <Field label="Комментарий">
+                <Textarea value={roleComment} maxLength={2000} onChange={(e) => setRoleComment(e.target.value)} placeholder="Только для приложения и Telegram" />
               </Field>
-              <Field label="Нужно">
-                <Input type="number" min="1" value={roleCount} onChange={(e) => setRoleCount(e.target.value)} />
-              </Field>
-              <Field label="€">
-                <Input type="number" min="0" value={roleRate} onChange={(e) => setRoleRate(e.target.value)} placeholder="150" />
-              </Field>
-              <RoleEngagementPicker
-                startsAt={roleStartsAt}
-                endsAt={roleEndsAt}
-                fallbackStartsAt={p.startsAt}
-                fallbackEndsAt={p.endsAt}
-                onSave={(startsAt, endsAt) => { setRoleStartsAt(startsAt); setRoleEndsAt(endsAt); }}
-              />
-              <Button
-                disabled={!roleTitle.trim() || createProjectRole.isPending}
-                onClick={() =>
-                  createProjectRole.mutate(
-                    { projectId: p.id, input: { title: roleTitle.trim(), requiredCount: count, rateEUR: rateNum, startsAt: roleStartsAt, endsAt: roleEndsAt } },
-                    { onSuccess: () => { setRoleTitle(""); setRoleCount("1"); setRoleRate(""); setRoleStartsAt(null); setRoleEndsAt(null); } }
-                  )
-                }
-              >
-                +
-              </Button>
             </div>
           </Card>
         );
