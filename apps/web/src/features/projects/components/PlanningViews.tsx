@@ -82,19 +82,15 @@ export function PlanningAgendaView({ projects, clientName, onOpen }: PlanningVie
 
 export function PlanningCalendarView({ projects, clientName, onOpen }: PlanningViewProps) {
   const now = new Date();
-  const datedProjects = projects
-    .filter((project): project is Projects.ProjectDTO & { startsAt: string } => Boolean(project.startsAt))
-    .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
-  const anchorProject = datedProjects.find((project) => new Date(project.startsAt) >= now) ?? datedProjects.at(-1);
-  const firstDated = anchorProject?.startsAt;
-  const [calendarAnchor, setCalendarAnchor] = useState(() => firstDated ? new Date(firstDated) : now);
-  const months = planningCalendarMonths(calendarAnchor);
-  const initialDay = firstDated ? projectDayKey(firstDated) : projectDayKey(new Date());
-  const [selectedDay, setSelectedDay] = useState(initialDay);
+  const [calendarAnchor, setCalendarAnchor] = useState(now);
+  const [month] = planningCalendarMonths(calendarAnchor, 1);
+  const [selectedDay, setSelectedDay] = useState(() => projectDayKey(now));
   const selectedProjects = projectsOnCalendarDay(projects, selectedDay);
   const todayKey = projectDayKey(now);
   const moveCalendar = (monthDelta: number) => {
-    setCalendarAnchor((current) => new Date(current.getFullYear(), current.getMonth() + monthDelta, 1, 12));
+    const next = new Date(calendarAnchor.getFullYear(), calendarAnchor.getMonth() + monthDelta, 1, 12);
+    setCalendarAnchor(next);
+    setSelectedDay(projectDayKey(next));
   };
   const showToday = () => {
     setCalendarAnchor(now);
@@ -105,16 +101,15 @@ export function PlanningCalendarView({ projects, clientName, onOpen }: PlanningV
     <div className="planning-calendar-layout">
       <div className="planning-calendar" aria-label="Календарь мероприятий">
         <nav className="planning-calendar__nav" aria-label="Навигация по календарю">
-          <button aria-label="Предыдущие шесть месяцев" onClick={() => moveCalendar(-6)}>‹</button>
+          <button aria-label="Предыдущий месяц" onClick={() => moveCalendar(-1)}>‹</button>
           <button onClick={showToday}>
-            <span>{months[0]?.label} — {months.at(-1)?.label}</span>
+            <span>{month?.label}</span>
             <small>Сегодня</small>
           </button>
-          <button aria-label="Следующие шесть месяцев" onClick={() => moveCalendar(6)}>›</button>
+          <button aria-label="Следующий месяц" onClick={() => moveCalendar(1)}>›</button>
         </nav>
-        {months.map((month) => (
+        {month && (
           <section className="planning-month" key={month.key}>
-            <h2>{month.label}</h2>
             <div className="planning-month__weekdays" aria-hidden="true">
               {WEEKDAYS.map((day) => <span key={day}>{day}</span>)}
             </div>
@@ -137,7 +132,7 @@ export function PlanningCalendarView({ projects, clientName, onOpen }: PlanningV
               })}
             </div>
           </section>
-        ))}
+        )}
       </div>
       <aside className="planning-calendar__selection">
         <header>

@@ -7,7 +7,7 @@ import { useSession } from "../../app/session.ts";
 import { useProjects, useClients, useProjectVenues } from "./hooks.ts";
 import { CreateProjectSheet } from "./components/CreateProjectSheet.tsx";
 import { ProjectWizardSheet } from "./components/ProjectWizardSheet.tsx";
-import { splitMobileProjects } from "./projectList.ts";
+import { filterProjectsByStatuses, splitMobileProjects } from "./projectList.ts";
 import { useProjectSearch } from "../../lib/useProjectSearch.ts";
 import { configuredDate } from "../../lib/dateFormat.ts";
 import { PlanningAgendaView, PlanningCalendarView } from "./components/PlanningViews.tsx";
@@ -50,10 +50,10 @@ export function ProjectsPage() {
   const venues = useProjectVenues();
   const [createOpen, setCreateOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<Projects.ProjectStatus | "all">("all");
+  const [statusFilters, setStatusFilters] = useState<Projects.ProjectStatus[]>([]);
   const [view, setView] = useState<PlanningView>("journal");
   const allProjects = projects.data ?? [];
-  const statusProjects = statusFilter === "all" ? allProjects : allProjects.filter((project) => project.status === statusFilter);
+  const statusProjects = filterProjectsByStatuses(allProjects, statusFilters);
   const search = useProjectSearch(statusProjects, venues.data ?? []);
 
   if (projects.isLoading) return <Loading />;
@@ -62,7 +62,12 @@ export function ProjectsPage() {
   const clientName = (id: string) => (clients.data ?? []).find((c) => c.id === id)?.name ?? "—";
   const list = search.filteredProjects;
   const mobileProjects = splitMobileProjects(list);
-  const filters: (Projects.ProjectStatus | "all")[] = ["all", "draft", "confirmed", "in_progress", "awaiting_payment"];
+  const filters: Projects.ProjectStatus[] = ["draft", "confirmed", "in_progress", "awaiting_payment"];
+  const toggleStatusFilter = (status: Projects.ProjectStatus) => {
+    setStatusFilters((current) => current.includes(status)
+      ? current.filter((selected) => selected !== status)
+      : [...current, status]);
+  };
 
   return (
     <div className="stack">
@@ -93,13 +98,21 @@ export function ProjectsPage() {
           ))}
         </div>
         <div className="row planning-status-filters">
+          <button
+            className={`chip ${statusFilters.length === 0 ? "chip--accent chip--solid" : "chip--neutral"}`}
+            aria-pressed={statusFilters.length === 0}
+            onClick={() => setStatusFilters([])}
+          >
+            Все
+          </button>
           {filters.map((status) => (
             <button
               key={status}
-              className={`chip ${statusFilter === status ? "chip--accent chip--solid" : "chip--neutral"}`}
-              onClick={() => setStatusFilter(status)}
+              className={`chip ${statusFilters.includes(status) ? "chip--accent chip--solid" : "chip--neutral"}`}
+              aria-pressed={statusFilters.includes(status)}
+              onClick={() => toggleStatusFilter(status)}
             >
-              {status === "all" ? "Все" : projectStatusLabel[status]}
+              {projectStatusLabel[status]}
             </button>
           ))}
         </div>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Projects } from "@sever/contracts";
 import {
+  filterProjectsByStatuses,
   groupProjectsByStartDay,
   planningCalendarMonths,
   projectDayKey,
@@ -38,6 +39,17 @@ describe("mobile Planning project lists", () => {
 });
 
 describe("Planning calendar views", () => {
+  it("combines selected statuses and treats an empty selection as all projects", () => {
+    const projects = [
+      project("draft", "draft", null),
+      project("confirmed", "confirmed", null),
+      project("progress", "in_progress", null),
+    ];
+
+    expect(filterProjectsByStatuses(projects, ["confirmed", "in_progress"]).map(({ id }) => id)).toEqual(["confirmed", "progress"]);
+    expect(filterProjectsByStatuses(projects, []).map(({ id }) => id)).toEqual(["draft", "confirmed", "progress"]);
+  });
+
   it("groups the agenda by start day and keeps undated projects last", () => {
     const result = groupProjectsByStartDay([
       project("undated", "draft", null),
@@ -58,6 +70,12 @@ describe("Planning calendar views", () => {
     const multiDay = { startsAt: "2026-10-09T08:00:00.000Z", endsAt: "2026-10-11T18:00:00.000Z" };
     expect(projectsOnCalendarDay([multiDay], projectDayKey("2026-10-10T12:00:00.000Z"))).toEqual([multiDay]);
     expect(projectsOnCalendarDay([multiDay], projectDayKey("2026-10-12T12:00:00.000Z"))).toEqual([]);
+  });
+
+  it("sorts selected-day events chronologically", () => {
+    const later = { startsAt: "2026-10-09T18:00:00.000Z", endsAt: null };
+    const earlier = { startsAt: "2026-10-09T08:00:00.000Z", endsAt: null };
+    expect(projectsOnCalendarDay([later, earlier], projectDayKey(earlier.startsAt))).toEqual([earlier, later]);
   });
 
   it("builds Monday-first month grids", () => {

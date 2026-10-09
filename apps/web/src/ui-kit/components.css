@@ -1373,9 +1373,12 @@ h1,
 .planning-event__meta { align-items: flex-end; gap: 5px; color: var(--text2); font: 11px var(--font-mono); white-space: nowrap; }
 
 .planning-calendar-layout {
+  width: 100%;
+  max-width: 720px;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  margin: 0 auto;
 }
 
 .planning-calendar {
@@ -1490,7 +1493,6 @@ h1,
 }
 
 .planning-calendar__selection {
-  order: -1;
   overflow: hidden;
   border: 1px solid var(--bdr-md);
   border-radius: 14px;
@@ -1549,24 +1551,6 @@ h1,
     max-height: calc(100dvh - 236px);
     overflow: auto;
   }
-
-  .planning-calendar-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
-    align-items: start;
-  }
-
-  .planning-calendar {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    max-height: calc(100dvh - 236px);
-    overflow: auto;
-  }
-
-  .planning-calendar__nav { grid-column: 1 / -1; position: sticky; top: 0; z-index: 2; }
-
-  .planning-month { border-right: 1px solid var(--bdr-md); }
-  .planning-calendar__selection { order: 0; position: sticky; top: 78px; }
 
   .mobile-project-list {
     display: none;

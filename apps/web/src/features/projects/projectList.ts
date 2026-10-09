@@ -18,6 +18,15 @@ export function splitMobileProjects<T extends ProjectListItem>(projects: readonl
   return { active, archived };
 }
 
+export function filterProjectsByStatuses<T extends Pick<Projects.ProjectDTO, "status">>(
+  projects: readonly T[],
+  statuses: readonly Projects.ProjectStatus[],
+) {
+  if (statuses.length === 0) return [...projects];
+  const selected = new Set(statuses);
+  return projects.filter((project) => selected.has(project.status));
+}
+
 export const projectDayKey = (value: string | Date) => {
   const date = typeof value === "string" ? new Date(value) : value;
   const year = date.getFullYear();
@@ -48,12 +57,14 @@ export function groupProjectsByStartDay<T extends Pick<Projects.ProjectDTO, "sta
 }
 
 export function projectsOnCalendarDay<T extends CalendarProject>(projects: readonly T[], dayKey: string) {
-  return projects.filter((project) => {
-    if (!project.startsAt) return false;
-    const startKey = projectDayKey(project.startsAt);
-    const endKey = project.endsAt ? projectDayKey(project.endsAt) : startKey;
-    return dayKey >= startKey && dayKey <= endKey;
-  });
+  return projects
+    .filter((project) => {
+      if (!project.startsAt) return false;
+      const startKey = projectDayKey(project.startsAt);
+      const endKey = project.endsAt ? projectDayKey(project.endsAt) : startKey;
+      return dayKey >= startKey && dayKey <= endKey;
+    })
+    .sort((a, b) => startsAtTime(a) - startsAtTime(b));
 }
 
 export type PlanningCalendarMonth = {
