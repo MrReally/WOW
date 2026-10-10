@@ -57,6 +57,7 @@ const markLabel: Record<Projects.OperationUnitMarkStatus, string> = {
   left: "оставлено",
   delivered: "на месте",
   mounted: "монтаж",
+  held_in_reserve: "оставлено в запасе",
   collected: "собрано",
   broken: "ремонт",
   lost: "утеря",
@@ -356,17 +357,18 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
   const warehouseName = (warehouseId: string | null | undefined) =>
     (warehouses.data ?? []).find((w) => w.id === warehouseId)?.name ?? "Склад ?";
   const reservedRows = (reservations.data ?? []).flatMap((reservation) =>
-    reservation.resolvedUnitIds.map((unitId) => ({ key: `${reservation.id}:${unitId}`, modelId: reservation.modelId, unit: unitById.get(unitId) }))
+    reservation.resolvedUnitIds.map((unitId) => ({ key: `${reservation.id}:${unitId}`, modelId: reservation.modelId, unit: unitById.get(unitId), isReserve: reservation.isReserve }))
   ).filter((row) => !row.unit || isUnitVisibleForProject(row.unit, { venueId }));
   const reservedUnitIds = new Set(reservedRows.map((row) => row.unit?.id).filter(Boolean));
+  const assignedUnitIds = new Set((reservations.data ?? []).flatMap((reservation) => reservation.resolvedUnitIds));
   // Also show units that were issued without being resolved into a reservation.
   // This is what makes legacy rentals such as Space X Wedding returnable again.
-  const issuedExtras = (units.data ?? []).filter((unit) => unit.status === "on_project" && unit.currentProjectId === projectId && !reservedUnitIds.has(unit.id)).map((unit) => ({ key: `issued:${unit.id}`, modelId: unit.modelId, unit }));
+  const issuedExtras = (units.data ?? []).filter((unit) => unit.status === "on_project" && unit.currentProjectId === projectId && !reservedUnitIds.has(unit.id)).map((unit) => ({ key: `issued:${unit.id}`, modelId: unit.modelId, unit, isReserve: false }));
   const resolved = [...reservedRows, ...issuedExtras];
-  const byWarehouse = new Map<string, { warehouseId: string | null; rows: typeof resolved }>();
+  const byWarehouse = new Map<string, { warehouseId: string | null; isReserve: boolean; rows: typeof resolved }>();
   for (const row of resolved) {
-    const key = row.unit?.warehouseId ?? "none";
-    if (!byWarehouse.has(key)) byWarehouse.set(key, { warehouseId: row.unit?.warehouseId ?? null, rows: [] });
+    const key = `${row.isReserve ? "reserve" : "main"}:${row.unit?.warehouseId ?? "none"}`;
+    if (!byWarehouse.has(key)) byWarehouse.set(key, { warehouseId: row.unit?.warehouseId ?? null, isReserve: row.isReserve, rows: [] });
     byWarehouse.get(key)!.rows.push(row);
   }
   const serialModelIds = new Set((models.data ?? []).filter((model) => model.trackingMode === "serial").map((model) => model.id));
@@ -377,10 +379,9 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
   }).length;
   const planningUnresolved = (reservations.data ?? []).filter((reservation) => serialModelIds.has(reservation.modelId) && (modelById.get(reservation.modelId)?.effectiveReservationAssignmentMode ?? "planning") === "planning" && visibleResolvedCount(reservation) < reservation.qty);
   const operationsReservations = (reservations.data ?? []).filter((reservation) => serialModelIds.has(reservation.modelId) && modelById.get(reservation.modelId)?.effectiveReservationAssignmentMode === "operations");
-  const quantityNeeds = [...(reservations.data ?? []).filter((reservation) => !serialModelIds.has(reservation.modelId)).reduce((map, reservation) => {
-    map.set(reservation.modelId, (map.get(reservation.modelId) ?? 0) + reservation.qty);
-    return map;
-  }, new Map<string, number>())].map(([modelId, qty]) => ({ modelId, qty }));
+  const quantityNeeds = (reservations.data ?? [])
+    .filter((reservation) => !serialModelIds.has(reservation.modelId))
+    .sort((a, b) => Number(a.isReserve) - Number(b.isReserve));
   const quantityOutstanding = (modelId: string) => Math.max(0, (journal.data ?? []).filter((entry) => entry.modelId === modelId).reduce((total, entry) =>
     total + (entry.action === "issued" ? entry.qty ?? 0 : entry.action === "returned" || entry.action === "return_incomplete" ? -(entry.qty ?? 0) : 0), 0));
   const title =
@@ -436,14 +437,14 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
           <EmptyState title="Список пуст" />
         ) : (
           <>
-            {[...byWarehouse.values()].map((group) => (
-              <Card key={group.warehouseId ?? "none"}>
+            {[...byWarehouse.entries()].map(([groupKey, group]) => (
+              <Card key={groupKey} className={group.isReserve ? "operations-reserve-card" : undefined}>
                 <div className="row row--between">
-                  <p className="card__title">{warehouseName(group.warehouseId)}</p>
-                  <Chip label={`${group.rows.length}`} tone="neutral" />
+                  <div><p className="card__title">{group.isReserve ? "Эксплуатационный запас" : warehouseName(group.warehouseId)}</p>{group.isReserve && <p className="card__subtitle operations-reserve-card__warning">Не подключать без необходимости · {warehouseName(group.warehouseId)}</p>}</div>
+                  <Chip label={group.isReserve ? `ЗАПАС · ${group.rows.length}` : `${group.rows.length}`} tone={group.isReserve ? "warn" : "neutral"} />
                 </div>
                 <div className="stack" style={{ marginTop: 10 }}>
-                  {group.rows.map(({ key, modelId, unit }) => {
+                  {group.rows.map(({ key, modelId, unit, isReserve }) => {
                     const unitMarks = unit ? (marksByUnit.get(unit.id) ?? []) : [];
                     const alreadyReturned = unitMarks.some((mark) => mark.status === "returned");
                     const unitReturnLocations = alreadyReturned ? activeWarehouseOptions : returnLocationOptions;
@@ -453,8 +454,12 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
                       key={key}
                       unit={unit}
                       modelName={modelName(modelId)}
+                      isReserve={isReserve}
                       marks={unitMarks}
-                      actions={actions}
+                      actions={isReserve && stage === "mount" ? [
+                        { status: "held_in_reserve", label: "○", tone: "warn" },
+                        { status: "mounted", label: "✓", tone: "ok" },
+                      ] : actions}
                       kitComponents={(models.data?.find((model) => model.id === modelId)?.requiredComponentModelIds ?? []).map((componentId) => ({ id: componentId, name: modelName(componentId) }))}
                       disabled={setMark.isPending || clearMark.isPending || changeStatus.isPending || markBroken.isPending || issueUnits.isPending || returnUnits.isPending || relocateReturnedUnit.isPending}
                       onOpen={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
@@ -484,19 +489,20 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
                   <Chip label={`${quantityNeeds.length}`} tone="neutral" />
                 </div>
                 <div className="stack" style={{ marginTop: 10 }}>
-                  {quantityNeeds.map((need) => {
-                    const outstanding = quantityOutstanding(need.modelId);
+                  {quantityNeeds.map((need, needIndex) => {
+                    const precedingQty = quantityNeeds.slice(0, needIndex).filter(item => item.modelId === need.modelId).reduce((sum, item) => sum + item.qty, 0);
+                    const outstanding = Math.max(0, Math.min(need.qty, quantityOutstanding(need.modelId) - precedingQty));
                     const remaining = Math.max(0, need.qty - outstanding);
                     const assignByFact = modelById.get(need.modelId)?.effectiveReservationAssignmentMode === "operations";
-                    const actualQuantity = Math.max(0, Math.trunc(Number(actualQuantityByModel[need.modelId] ?? remaining) || 0));
+                    const actualQuantity = Math.max(0, Math.trunc(Number(actualQuantityByModel[need.id] ?? remaining) || 0));
                     const returnLocation = quantityLocationByModel[need.modelId] || defaultWarehouseId;
                     const issueWarehouseId = issueWarehouseByModel[need.modelId] || defaultWarehouseId;
-                    return <div key={need.modelId} className="row row--between" style={{ flexWrap: "wrap" }}>
+                    return <div key={need.id} className={`row row--between ${need.isReserve ? "operations-reserve-line" : ""}`} style={{ flexWrap: "wrap" }}>
                       <div style={{ minWidth: 0 }}>
                         <p className="card__title" style={{ fontSize: 16 }}>{modelName(need.modelId)} × {need.qty}</p>
-                        <p className="card__subtitle">{outstanding > 0 ? `на проекте ${outstanding}` : assignByFact ? "количество отмечается по факту" : "на складе"}</p>
+                        <p className="card__subtitle">{need.isReserve ? "ЭКСПЛУАТАЦИОННЫЙ ЗАПАС · не подключать" : outstanding > 0 ? `на проекте ${outstanding}` : assignByFact ? "количество отмечается по факту" : "на складе"}</p>
                       </div>
-                      {stage === "pickup" && assignByFact ? <div className="row"><Select value={issueWarehouseId} onChange={event => setIssueWarehouseByModel(current => ({ ...current, [need.modelId]: event.target.value }))} options={(warehouses.data ?? []).map(warehouse => ({ value: warehouse.id, label: warehouse.name }))} /><Input type="number" min="1" value={actualQuantityByModel[need.modelId] ?? String(remaining || 1)} onChange={event => setActualQuantityByModel(current => ({ ...current, [need.modelId]: event.target.value }))} /><Button disabled={issueQuantity.isPending || actualQuantity < 1} onClick={() => issueQuantity.mutate({ projectId, modelId: need.modelId, warehouseId: issueWarehouseId, qty: actualQuantity }, { onSuccess: () => setActualQuantityByModel(current => ({ ...current, [need.modelId]: "" })) })}>Выдать {actualQuantity}</Button></div>
+                      {stage === "pickup" && assignByFact ? <div className="row"><Select value={issueWarehouseId} onChange={event => setIssueWarehouseByModel(current => ({ ...current, [need.modelId]: event.target.value }))} options={(warehouses.data ?? []).map(warehouse => ({ value: warehouse.id, label: warehouse.name }))} /><Input type="number" min="1" max={remaining} value={actualQuantityByModel[need.id] ?? String(remaining || 1)} onChange={event => setActualQuantityByModel(current => ({ ...current, [need.id]: event.target.value }))} /><Button disabled={issueQuantity.isPending || actualQuantity < 1 || actualQuantity > remaining} onClick={() => issueQuantity.mutate({ projectId, modelId: need.modelId, warehouseId: issueWarehouseId, qty: actualQuantity }, { onSuccess: () => setActualQuantityByModel(current => ({ ...current, [need.id]: "" })) })}>Выдать {actualQuantity}</Button></div>
                         : stage === "pickup" && remaining > 0 ? <div className="row"><Select value={issueWarehouseId} onChange={event => setIssueWarehouseByModel(current => ({ ...current, [need.modelId]: event.target.value }))} options={(warehouses.data ?? []).map(warehouse => ({ value: warehouse.id, label: warehouse.name }))} /><Button disabled={issueQuantity.isPending} onClick={() => issueQuantity.mutate({ projectId, modelId: need.modelId, warehouseId: issueWarehouseId, qty: remaining })}>Выдать {remaining}</Button></div>
                         : stage === "return" && outstanding > 0 ? <div className="row"><Select value={returnLocation} onChange={event => setQuantityLocationByModel(current => ({ ...current, [need.modelId]: event.target.value }))} options={returnLocationOptions} /><Button disabled={returnQuantity.isPending || !returnLocation} onClick={() => returnQuantity.mutate({ projectId, modelId: need.modelId, qty: outstanding, ...returnInput(returnLocation) })}>Разместить {outstanding}</Button></div>
                         : <Chip label={outstanding > 0 ? "ВЫДАНО" : "ОЖИДАЕТ"} tone={outstanding > 0 ? "warn" : "neutral"} />}
@@ -514,14 +520,17 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
                 <div className="stack" style={{ marginTop: 10 }}>
                   {operationsReservations.map((reservation) => {
                     const selected = new Set(actualUnitIdsByReservation[reservation.id] ?? []);
-                    const available = (units.data ?? []).filter(unit => unit.modelId === reservation.modelId && (unit.status === "in_stock" || (unit.status === "installed" && !!venueId && unit.installedVenueId === venueId)));
-                    const issuedCount = (units.data ?? []).filter(unit => unit.modelId === reservation.modelId && unit.status === "on_project" && unit.currentProjectId === projectId).length;
+                    const available = (units.data ?? []).filter(unit => unit.modelId === reservation.modelId && (!assignedUnitIds.has(unit.id) || reservation.resolvedUnitIds.includes(unit.id)) && (unit.status === "in_stock" || (unit.status === "installed" && !!venueId && unit.installedVenueId === venueId)));
+                    const issuedCount = reservation.resolvedUnitIds.filter(unitId => {
+                      const unit = unitById.get(unitId);
+                      return unit?.status === "on_project" && unit.currentProjectId === projectId;
+                    }).length;
                     const toggle = (unitId: string) => setActualUnitIdsByReservation(current => ({ ...current, [reservation.id]: selected.has(unitId) ? [...selected].filter(id => id !== unitId) : [...selected, unitId] }));
                     return <div key={reservation.id} className="stack" style={{ gap: 8 }}>
-                      <div className="row row--between"><div><p className="card__title" style={{ fontSize: 16 }}>{modelName(reservation.modelId)}</p><p className="card__subtitle">план {reservation.qty} · уже взято {issuedCount} · выбрано {selected.size}</p></div>{stage !== "pickup" && <Chip label="выбор на заборе" tone="neutral" />}</div>
+                      <div className="row row--between"><div><p className="card__title" style={{ fontSize: 16 }}>{modelName(reservation.modelId)}</p><p className="card__subtitle">{reservation.isReserve ? "ЭКСПЛУАТАЦИОННЫЙ ЗАПАС · " : ""}план {reservation.qty} · уже взято {issuedCount} · выбрано {selected.size}</p></div>{reservation.isReserve ? <Chip label="НЕ ПОДКЛЮЧАТЬ" tone="warn" /> : stage !== "pickup" && <Chip label="выбор на заборе" tone="neutral" />}</div>
                       {stage === "pickup" && <>
                         <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>{available.map(unit => <label key={unit.id} className={`chip ${selected.has(unit.id) ? "chip--info chip--solid" : "chip--neutral"}`}><input type="checkbox" checked={selected.has(unit.id)} onChange={() => toggle(unit.id)} /> {unit.assetTag}{unit.status === "installed" ? " · инсталлировано" : ""}</label>)}</div>
-                        {available.length === 0 ? <p className="card__subtitle">Нет свободных единиц на складе.</p> : <Button disabled={selected.size === 0 || issueUnits.isPending} onClick={() => issueUnits.mutate({ projectId, unitIds: [...selected] }, { onSuccess: () => { for (const unitId of selected) setMark.mutate({ stage: "pickup", unitId, status: "picked" }); setActualUnitIdsByReservation(current => ({ ...current, [reservation.id]: [] })); } })}>Выдать по факту · {selected.size}</Button>}
+                        {available.length === 0 ? <p className="card__subtitle">Нет свободных единиц на складе.</p> : <Button disabled={selected.size === 0 || selected.size + issuedCount > reservation.qty || issueUnits.isPending} onClick={() => issueUnits.mutate({ projectId, unitIds: [...selected], reservationId: reservation.id }, { onSuccess: () => { for (const unitId of selected) setMark.mutate({ stage: "pickup", unitId, status: "picked" }); setActualUnitIdsByReservation(current => ({ ...current, [reservation.id]: [] })); } })}>Выдать по факту · {selected.size}</Button>}
                       </>}
                     </div>;
                   })}
@@ -541,7 +550,7 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
                         <p className="card__title" style={{ fontSize: 16 }}>{modelName(reservation.modelId)}</p>
                         <p className="card__subtitle">{visibleResolvedCount(reservation)}/{reservation.qty}</p>
                       </div>
-                      <Chip label="резерв" tone="warn" />
+                      <Chip label={reservation.isReserve ? "ЗАПАС · не распределено" : "не распределено"} tone="warn" />
                     </div>
                   ))}
                 </div>
@@ -557,6 +566,7 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
 function UnitStageRow({
   unit,
   modelName,
+  isReserve,
   marks,
   actions,
   kitComponents,
@@ -569,6 +579,7 @@ function UnitStageRow({
 }: {
   unit: Equipment.EquipmentUnitDTO | undefined;
   modelName: string;
+  isReserve: boolean;
   marks: Projects.OperationUnitMarkDTO[];
   actions: { status: Projects.OperationUnitMarkStatus; label: string; tone?: "ok" | "warn" | "danger" }[];
   kitComponents: { id: string; name: string }[];
@@ -587,7 +598,7 @@ function UnitStageRow({
   useEffect(() => setMissingIds(missingMark?.note?.split(",").filter(Boolean) ?? []), [missingMark?.note]);
   const activeStatuses = new Set(marks.map((mark) => mark.status));
   const missingNames = kitComponents.filter((item) => missingIds.includes(item.id)).map((item) => item.name);
-  const markText = marks.length > 0 ? marks.map((mark) => mark.status === "missing" && missingNames.length ? `нет: ${missingNames.join(", ")}` : mark.status === "broken" && mark.note ? `ремонт: ${mark.note}` : markLabel[mark.status]).join(" · ") : "не отмечено";
+  const markText = marks.length > 0 ? marks.map((mark) => mark.status === "missing" && missingNames.length ? `нет: ${missingNames.join(", ")}` : mark.status === "broken" && mark.note ? `ремонт: ${mark.note}` : mark.status === "mounted" && isReserve ? "запас использован" : markLabel[mark.status]).join(" · ") : "не отмечено";
   const hasProblem = marks.some((mark) => mark.status === "lost" || mark.status === "broken" || mark.status === "missing" || mark.status === "left");
   return (
     <div className="stack" style={{ gap: 8 }}>
@@ -598,7 +609,7 @@ function UnitStageRow({
           onClick={onOpen}
         >
           <p className="card__title" style={{ fontSize: 16 }}>{unit?.assetTag ?? "Не найдено"}</p>
-          <p className="card__subtitle">{modelName}</p>
+          <p className="card__subtitle">{modelName}{isReserve ? " · ЭКСПЛУАТАЦИОННЫЙ ЗАПАС" : ""}</p>
         </button>
         <Chip label={markText} tone={marks.length > 0 ? (hasProblem ? "warn" : "ok") : "neutral"} />
       </div>
@@ -614,13 +625,15 @@ function UnitStageRow({
               aria-label={active ? `Снять: ${markLabel[action.status]}` : markLabel[action.status]}
               title={active ? `Снять: ${markLabel[action.status]}` : markLabel[action.status]}
               disabled={disabled}
-              onClick={() => action.status === "missing" && kitComponents.length
+              onClick={() => action.status === "mounted" && isReserve && !active && !confirm("Использовать этот прибор из эксплуатационного запаса?")
+                ? undefined
+                : action.status === "missing" && kitComponents.length
                 ? setEditingMissing(!editingMissing)
                 : action.status === "broken" && !active
                   ? setEditingBroken(!editingBroken)
                   : onMark(action.status, active)}
             >
-              {action.label} {markLabel[action.status]}
+              {action.label} {action.status === "mounted" && isReserve ? "использовать запас" : markLabel[action.status]}
             </button>
           );
         })}

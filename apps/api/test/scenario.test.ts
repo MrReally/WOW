@@ -1270,6 +1270,57 @@ describe("Tech pickup/return → некомплект", () => {
     expect((await wiring.equipment.service.modelStock(quantityModel.id)).inStock).toBe(10);
   });
 
+  it("keeps project reserve visible through Operations assignment and mount", async () => {
+    const actor = await makeTech("Reserve Operations");
+    const type = await wiring.equipment.service.createType({ name: `RESERVE-${Date.now()}`, trackingMode: "serial" });
+    const model = await wiring.equipment.service.createModel({ typeId: type.id, name: "Reserve Fixture", unitCostEUR: 100, dailyPriceEUR: 10 });
+    const mainUnit = await wiring.equipment.service.createUnit({ modelId: model.id, assetTag: `RES-MAIN-${Date.now()}` });
+    const spareUnit = await wiring.equipment.service.createUnit({ modelId: model.id, assetTag: `RES-SPARE-${Date.now()}` });
+    const client = await wiring.projects.service.createClient({ name: `Reserve Client ${Date.now()}` });
+    const startsAt = new Date().toISOString();
+    const endsAt = new Date(Date.now() + 86_400_000).toISOString();
+    const project = await wiring.projects.service.createProject({ name: "Reserve Project", clientId: client.id, startsAt, endsAt });
+    const main = await wiring.projects.service.createReservation({ projectId: project.id, modelId: model.id, qty: 1, startsAt, endsAt });
+    const spare = await wiring.projects.service.createReservation({ projectId: project.id, modelId: model.id, qty: 1, isReserve: true, startsAt, endsAt });
+    await wiring.projects.service.resolveReservation(main.id, [mainUnit.id]);
+    await wiring.projects.service.resolveReservation(spare.id, [spareUnit.id]);
+
+    for (const unitId of [mainUnit.id, spareUnit.id]) {
+      await wiring.projects.service.setOperationUnitMark({ projectId: project.id, stage: "prep", unitId, status: "ready", actorId: actor.id });
+      await wiring.projects.service.setOperationUnitMark({ projectId: project.id, stage: "prep", unitId, status: "packed", actorId: actor.id });
+    }
+    await wiring.projects.service.setOperationStage(project.id, "pickup", actor.id);
+    for (const unitId of [mainUnit.id, spareUnit.id]) await wiring.projects.service.setOperationUnitMark({ projectId: project.id, stage: "pickup", unitId, status: "picked", actorId: actor.id });
+    await wiring.projects.service.setOperationStage(project.id, "delivery", actor.id);
+    for (const unitId of [mainUnit.id, spareUnit.id]) await wiring.projects.service.setOperationUnitMark({ projectId: project.id, stage: "delivery", unitId, status: "delivered", actorId: actor.id });
+    await wiring.projects.service.setOperationStage(project.id, "mount", actor.id);
+
+    await expect(wiring.projects.service.setOperationUnitMark({ projectId: project.id, stage: "mount", unitId: mainUnit.id, status: "held_in_reserve", actorId: actor.id })).rejects.toThrow(/не относится к эксплуатационному запасу/);
+    await wiring.projects.service.setOperationUnitMark({ projectId: project.id, stage: "mount", unitId: mainUnit.id, status: "mounted", actorId: actor.id });
+    await wiring.projects.service.setOperationUnitMark({ projectId: project.id, stage: "mount", unitId: spareUnit.id, status: "held_in_reserve", actorId: actor.id });
+    await expect(wiring.projects.service.setOperationStage(project.id, "show", actor.id)).resolves.toMatchObject({ operationStage: "show" });
+  });
+
+  it("persists units selected for an Operations-assigned reserve reservation", async () => {
+    const actor = await makeTech("Reserve Pickup");
+    const type = await wiring.equipment.service.createType({ name: `RESERVE-OPS-${Date.now()}`, trackingMode: "serial", reservationAssignmentMode: "operations" });
+    const model = await wiring.equipment.service.createModel({ typeId: type.id, name: "Reserve Pickup Fixture", unitCostEUR: 100, dailyPriceEUR: 10 });
+    const unit = await wiring.equipment.service.createUnit({ modelId: model.id, assetTag: `RES-OPS-${Date.now()}` });
+    const client = await wiring.projects.service.createClient({ name: `Reserve Pickup Client ${Date.now()}` });
+    const startsAt = new Date().toISOString();
+    const endsAt = new Date(Date.now() + 86_400_000).toISOString();
+    const project = await wiring.projects.service.createProject({ name: "Reserve Pickup Project", clientId: client.id, startsAt, endsAt });
+    const spare = await wiring.projects.service.createReservation({ projectId: project.id, modelId: model.id, qty: 1, isReserve: true, startsAt, endsAt });
+    await wiring.projects.service.setOperationStage(project.id, "pickup", actor.id);
+
+    const issue = await wiring.operations.service.create({ kind: "issue", projectId: project.id, reservationId: spare.id, unitIds: [unit.id] }, actor.id);
+    await wiring.operations.service.post(issue.id, actor.id);
+    expect((await wiring.projects.service.listReservations(project.id)).find(item => item.id === spare.id)?.resolvedUnitIds).toEqual([unit.id]);
+
+    await wiring.operations.service.reverse(issue.id, actor.id);
+    expect((await wiring.projects.service.listReservations(project.id)).find(item => item.id === spare.id)?.resolvedUnitIds).toEqual([]);
+  });
+
   it("returns a unit to another warehouse and keeps venue installations outside warehouse stock", async () => {
     const suffix = Date.now();
     const actor = await makeTech(`Return target ${suffix}`);

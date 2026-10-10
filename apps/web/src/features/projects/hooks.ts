@@ -503,7 +503,7 @@ export function useResolveReservation() {
 export function useIssueResolvedUnits() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { projectId: string; unitIds: string[] }) => api.post("/api/operations/issue", input),
+    mutationFn: (input: { projectId: string; unitIds: string[]; reservationId?: string }) => api.post("/api/operations/issue", input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["equipment"] });

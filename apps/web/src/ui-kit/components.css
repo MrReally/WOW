@@ -137,6 +137,19 @@ h1,
   background: var(--s1);
   box-shadow: none;
 }
+.operations-reserve-card {
+  border: 2px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 9%, var(--card));
+}
+.operations-reserve-card__warning,
+.operations-reserve-line .card__subtitle {
+  color: var(--warn);
+  font-weight: 700;
+}
+.operations-reserve-line {
+  border-inline-start: 4px solid var(--warn);
+  padding-inline-start: var(--space-3);
+}
 .card--tappable {
   cursor: pointer;
   transition: transform 0.08s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;

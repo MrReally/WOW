@@ -1062,6 +1062,7 @@ export function createProjectsService(
           [id]
         );
         const unitIds = [...new Set(reservations.flatMap((r) => r.resolved_unit_ids))];
+        const reserveUnitIds = new Set(reservations.filter((r) => r.is_reserve).flatMap((r) => r.resolved_unit_ids));
         if (requiredGroups.length > 0 && unitIds.length > 0) {
           const marks = await query<OperationUnitMarkRow>(
             db,
@@ -1069,9 +1070,12 @@ export function createProjectsService(
             [id, existing.operation_stage, unitIds]
           );
           const markKey = new Set(marks.map((mark) => `${mark.unit_id}:${mark.status}`));
-          const missing = unitIds.some((unitId) =>
-            requiredGroups.some((allowedStatuses) => !allowedStatuses.some((status) => markKey.has(`${unitId}:${status}`)))
-          );
+          const missing = unitIds.some((unitId) => {
+            if (existing.operation_stage === "mount" && reserveUnitIds.has(unitId)) {
+              return !markKey.has(`${unitId}:held_in_reserve`) && !markKey.has(`${unitId}:mounted`);
+            }
+            return requiredGroups.some((allowedStatuses) => !allowedStatuses.some((status) => markKey.has(`${unitId}:${status}`)));
+          });
           if (missing) {
             throw BadRequest("сначала отметьте приборы текущего этапа");
           }
@@ -1189,6 +1193,23 @@ export function createProjectsService(
     async setOperationUnitMark(input) {
       const project = await this.getProject(input.projectId);
       if (!project) throw NotFound("project", input.projectId);
+      if (input.status === "held_in_reserve") {
+        if (input.stage !== "mount") throw BadRequest("эксплуатационный запас отмечается на этапе «Монтаж»");
+        const reserve = await one<ReservationRow>(
+          db,
+          `SELECT * FROM projects.reservations WHERE project_id=$1 AND is_reserve=true AND $2=ANY(resolved_unit_ids) LIMIT 1`,
+          [input.projectId, input.unitId]
+        );
+        if (!reserve) throw BadRequest("прибор не относится к эксплуатационному запасу проекта");
+      }
+      if (input.stage === "mount" && (input.status === "mounted" || input.status === "held_in_reserve")) {
+        await query(
+          db,
+          `DELETE FROM projects.operation_unit_marks
+           WHERE project_id=$1 AND stage='mount' AND unit_id=$2 AND status=$3`,
+          [input.projectId, input.unitId, input.status === "mounted" ? "held_in_reserve" : "mounted"]
+        );
+      }
       const row = await one<OperationUnitMarkRow>(
         db,
         `INSERT INTO projects.operation_unit_marks (project_id, stage, unit_id, status, actor_id, note)
@@ -1300,6 +1321,25 @@ export function createProjectsService(
         [id, unitIds]
       );
       await syncReservationAvailabilityProblems(res.model_id, res.starts_at.toISOString(), res.ends_at.toISOString());
+      return reservationDTO(row!);
+    },
+    async assignReservationUnits(id, unitIds) {
+      const res = await one<ReservationRow>(db, `SELECT * FROM projects.reservations WHERE id=$1`, [id]);
+      if (!res) throw NotFound("reservation", id);
+      const selectedUnits = await loadEquipmentUnits(unitIds);
+      if (selectedUnits.some((unit) => !unit)) throw BadRequest("часть выбранных единиц не найдена");
+      if (selectedUnits.some((unit) => unit?.modelId !== res.model_id)) throw BadRequest("выбрана единица другой модели");
+      const merged = [...new Set([...res.resolved_unit_ids, ...unitIds])];
+      if (merged.length > res.qty) throw BadRequest("выбрано больше единиц, чем запланировано");
+      const row = await one<ReservationRow>(db, `UPDATE projects.reservations SET resolved_unit_ids=$2 WHERE id=$1 RETURNING *`, [id, merged]);
+      return reservationDTO(row!);
+    },
+    async unassignReservationUnits(id, unitIds) {
+      const res = await one<ReservationRow>(db, `SELECT * FROM projects.reservations WHERE id=$1`, [id]);
+      if (!res) throw NotFound("reservation", id);
+      const removed = new Set(unitIds);
+      const remaining = res.resolved_unit_ids.filter((unitId) => !removed.has(unitId));
+      const row = await one<ReservationRow>(db, `UPDATE projects.reservations SET resolved_unit_ids=$2 WHERE id=$1 RETURNING *`, [id, remaining]);
       return reservationDTO(row!);
     },
     async deleteReservation(id) {

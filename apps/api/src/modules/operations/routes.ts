@@ -5,7 +5,7 @@ import type { RouteContext } from "../../core/module.js";
 import { requirePermission } from "../../core/auth.js";
 const uuid=z.string().uuid();
 const quantityLine=z.object({modelId:uuid,warehouseId:uuid.nullable().optional(),qty:z.number().int().positive()});
-const issuePayload=z.object({kind:z.literal("issue"),projectId:uuid,unitIds:z.array(uuid),quantityLines:z.array(quantityLine).optional(),note:z.string().nullable().optional()});
+const issuePayload=z.object({kind:z.literal("issue"),projectId:uuid,unitIds:z.array(uuid),reservationId:uuid.nullable().optional(),quantityLines:z.array(quantityLine).optional(),note:z.string().nullable().optional()});
 const returnPayload=z.object({kind:z.literal("return"),projectId:uuid,returnedUnitIds:z.array(uuid),expectedUnitIds:z.array(uuid),warehouseId:uuid.nullable().optional(),venueId:uuid.nullable().optional(),quantityLines:z.array(quantityLine).optional(),note:z.string().nullable().optional()});
 const payload=z.discriminatedUnion("kind",[
  issuePayload,

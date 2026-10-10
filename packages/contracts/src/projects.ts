@@ -330,6 +330,7 @@ export type OperationUnitMarkStatus =
   | "left"
   | "delivered"
   | "mounted"
+  | "held_in_reserve"
   | "collected"
   | "broken"
   | "lost"
@@ -343,6 +344,7 @@ export const OPERATION_UNIT_MARK_STATUSES: OperationUnitMarkStatus[] = [
   "left",
   "delivered",
   "mounted",
+  "held_in_reserve",
   "collected",
   "broken",
   "lost",
@@ -604,6 +606,10 @@ export interface ProjectsService {
   listReservations(projectId: ID): Promise<ReservationDTO[]>;
   createReservation(input: CreateReservationInput): Promise<ReservationDTO>;
   resolveReservation(id: ID, unitIds: ID[]): Promise<ReservationDTO>;
+  /** Persist serial units selected at pickup for an Operations-assigned reservation. */
+  assignReservationUnits(id: ID, unitIds: ID[]): Promise<ReservationDTO>;
+  /** Remove serial units from an Operations-assigned reservation after issue reversal. */
+  unassignReservationUnits(id: ID, unitIds: ID[]): Promise<ReservationDTO>;
   deleteReservation(id: ID): Promise<void>;
   /** Reservations overlapping [from,to] for a model — used for conflict checks. */
   findOverlapping(modelId: ID, from: ISODateTime, to: ISODateTime): Promise<ReservationDTO[]>;

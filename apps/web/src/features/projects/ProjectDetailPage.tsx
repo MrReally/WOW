@@ -514,7 +514,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                     {availability?.shortage ? "дефицит" : issued ? "выдано" : resolved ? "распределено" : "по модели"}
                   </StatusBadge>
                 </div>
-                {r.isReserve && <Chip label="Резерв · не в счёт" tone="neutral" />}
+                {r.isReserve && <Chip label="ЭКСПЛУАТАЦИОННЫЙ ЗАПАС · не подключать · не в счёт" tone="warn" />}
                 {(!r.startsAt || !r.endsAt) && (
                   <p className="card__subtitle" style={{ marginTop: 8, color: "var(--warn)" }}>
                     Дата проекта не указана — наличие необходимо будет подтвердить отдельно.

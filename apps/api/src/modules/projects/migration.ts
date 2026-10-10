@@ -115,7 +115,7 @@ ALTER TABLE projects.operation_unit_marks ADD CONSTRAINT operation_unit_marks_pr
 ALTER TABLE projects.operation_unit_marks DROP CONSTRAINT IF EXISTS operation_unit_marks_stage_check;
 ALTER TABLE projects.operation_unit_marks ADD CONSTRAINT operation_unit_marks_stage_check CHECK (stage IN ('prep','pickup','delivery','mount','show','dismantle','return'));
 ALTER TABLE projects.operation_unit_marks DROP CONSTRAINT IF EXISTS operation_unit_marks_status_check;
-ALTER TABLE projects.operation_unit_marks ADD CONSTRAINT operation_unit_marks_status_check CHECK (status IN ('ready','packed','picked','missing','left','delivered','mounted','collected','broken','lost','returned'));
+ALTER TABLE projects.operation_unit_marks ADD CONSTRAINT operation_unit_marks_status_check CHECK (status IN ('ready','packed','picked','missing','left','delivered','mounted','held_in_reserve','collected','broken','lost','returned'));
 CREATE INDEX IF NOT EXISTS operation_unit_marks_project_idx ON projects.operation_unit_marks(project_id, stage, updated_at);
 
 -- Hourly reservations. model_id is an opaque equipment id (no cross-schema FK).
