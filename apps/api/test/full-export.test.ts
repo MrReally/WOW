@@ -47,18 +47,19 @@ describe("full project export", () => {
         ],
       },
       equipment: {
-        listModels: async () => [{ id: "model", typeId: "type", name: "Lamp", dailyPriceEUR: 100 }],
+        listModels: async () => [{ id: "model", typeId: "type", name: "Lamp", manufacturer: "Acme", trackingMode: "serial", unitCostEUR: 250, dailyPriceEUR: 100 }],
         listTypes: async () => [{ id: "type", name: "Light" }], listUnits: async () => [], listWarehouses: async () => [],
         listContractors: async () => [{ id: "vendor", name: "Vendor", contacts: null, createdAt }], listJournal: async () => [],
       },
       venues: { list: async () => [{ id: "venue", name: "Hall", address: "Street" }] },
-      people: { list: async () => [] },
+      people: { list: async () => [{ id: "owner", nickname: "Boss", displayName: "Owner" }] },
       finance: {
         listAccounts: async () => [{ id: "account", name: "Cash", currency: "EUR", balance: 0, createdAt }],
         listFxRates: async () => [{ currency: "RSD", rateToEUR: 0.01, updatedAt: createdAt }],
         listProjectEstimateLines: async () => [],
         getProjectEstimateSettings: async () => ({ projectId: "project", totalDiscountType: "percent", totalDiscountValue: 10 }),
         listTransactions: async () => [transaction],
+        listInvoiceVersions: async () => [{ id: "invoice", number: "KP-7", date: "2026-10-01", currency: "EUR", totalEUR: 270, createdAt }],
       },
     } as never, false);
 
@@ -74,6 +75,10 @@ describe("full project export", () => {
     expect(contractorRows.reduce((sum, row) => sum + Number(row["Сколько оплачено реально, EUR"]), 0)).toBe(50);
     expect(positions.reduce((sum, row) => sum + Number(row["Доля общей скидки, EUR"] || 0), 0)).toBe(30);
     expect(records.every((row) => row["Заметка проекта"] === "")).toBe(true);
+    expect(records.every((row) => row["Этап проекта"] === "Сбор")).toBe(true);
+    expect(records.every((row) => row["Номер последнего КП"] === "KP-7")).toBe(true);
+    expect(positions.find((row) => row["Запись ID"] === "gear")?.["Производитель"]).toBe("Acme");
+    expect(contractorRows.every((row) => row["Подрядчик ID"] === "vendor")).toBe(true);
     expect(csv.startsWith("\uFEFF")).toBe(true);
   });
 });

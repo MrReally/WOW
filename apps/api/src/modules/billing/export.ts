@@ -24,6 +24,16 @@ const PROJECT_STATUS: Record<Projects.ProjectStatus, string> = {
   cancelled: "Отменён",
 };
 
+const PROJECT_STAGE: Record<Projects.ProjectChecklistGroup, string> = {
+  prep: "Сбор",
+  pickup: "Забор",
+  delivery: "Доставка",
+  mount: "Монтаж",
+  show: "Шоу",
+  dismantle: "Демонтаж",
+  return: "Возврат",
+};
+
 const TRANSACTION_CATEGORY: Record<Finance.TxCategory, string> = {
   rental_revenue: "Начисление аренды",
   prepayment: "Предоплата",
@@ -46,15 +56,22 @@ const daysBetween = (start: string | null, end: string | null) =>
 const publicName = (user: People.UserDTO | undefined) => user?.nickname?.trim() || user?.displayName?.trim() || "";
 
 const COLUMNS = [
-  "Проект ID", "Проект", "Дата время начало", "Дата время конец", "Статус", "Код статуса",
+  "Проект ID", "Проект", "Базовое название проекта", "Дата время начало", "Дата время конец", "Статус", "Код статуса",
+  "Этап проекта", "Код этапа проекта", "Проект создан", "Складской оборот завершён", "Дресс-код", "Единый дресс-код (да/нет)",
   "Заказчик ID", "Заказчик", "Контакты заказчика", "Заметка проекта", "Площадка ID", "Площадка", "Адрес площадки",
+  "Последнее КП ID", "Номер последнего КП", "Дата последнего КП", "Последнее КП создано", "Валюта последнего КП", "Сумма последнего КП, EUR",
   "Тип записи", "Подтип записи", "Запись ID", "Раздел", "Позиция", "Комментарий позиции", "Состояние позиции",
+  "Источник позиции сметы", "Исходная запись ID", "Строка сметы ID", "Скрыта в смете (да/нет)", "Порядок в смете",
   "Количество", "Периодов", "Цена за единицу, EUR", "Прибыль записи, EUR", "Траты записи, EUR", "Сальдо записи, EUR",
   "Сколько оплачено реально, EUR", "Денежный поток, EUR", "Остаток к оплате, EUR",
-  "Единица", "Серийный номер", "Участник", "Статус участия", "Подрядчик", "Резерв (да/нет)",
+  "Модель ID", "Модель оборудования", "Тип оборудования ID", "Тип оборудования", "Производитель", "Режим учёта", "Себестоимость единицы, EUR",
+  "Единица ID", "Единица", "Серийный номер", "Статус единицы", "Текущее место хранения",
+  "Роль ID", "Ставка роли, EUR", "Назначение ID", "Участник ID", "Участник", "Ставки участников, EUR", "Статус участия", "Причина отмены участия",
+  "Подрядчик ID", "Подрядчик", "Подтверждено у подрядчика (да/нет)", "Дата оплаты подрядчику", "Дата возврата подрядчику", "Резерв (да/нет)",
   "Скидка", "Тип скидки", "Размер скидки", "Скидка позиции, EUR", "Доля общей скидки, EUR",
   "Откуда взято", "Куда возвращено", "Начало позиции", "Конец позиции",
-  "Счёт", "Категория транзакции", "Исходная сумма", "Исходная валюта", "Курс к EUR",
+  "Счёт ID", "Счёт", "Категория транзакции", "Исходная сумма", "Исходная валюта", "Курс к EUR", "Исправляет операцию ID",
+  "Автор операции ID", "Автор операции", "Изменил операцию ID", "Изменил операцию", "Аннулировал операцию ID", "Аннулировал операцию",
   "Создано", "Обновлено", "Аннулировано", "Финансы проекта учитываются (да/нет)", "Серия проекта ID",
 ] as const;
 
@@ -76,15 +93,23 @@ function baseRow(
   project: Projects.ProjectDTO,
   client: Projects.ClientDTO | undefined,
   venue: Venues.VenueDTO | undefined,
+  latestInvoice: Finance.InvoiceVersionDTO | undefined,
   canViewProjectNotes: boolean,
 ): ExportRow {
   return {
     "Проект ID": project.id,
     "Проект": project.name,
+    "Базовое название проекта": project.baseName,
     "Дата время начало": project.startsAt,
     "Дата время конец": project.endsAt,
     "Статус": PROJECT_STATUS[project.status],
     "Код статуса": project.status,
+    "Этап проекта": PROJECT_STAGE[project.operationStage],
+    "Код этапа проекта": project.operationStage,
+    "Проект создан": project.createdAt,
+    "Складской оборот завершён": project.warehouseTurnoverCompletedAt,
+    "Дресс-код": project.dressCodeLabel,
+    "Единый дресс-код (да/нет)": project.dressCodeUniform,
     "Заказчик ID": project.clientId,
     "Заказчик": client?.name,
     "Контакты заказчика": client?.contacts,
@@ -92,6 +117,12 @@ function baseRow(
     "Площадка ID": project.venueId,
     "Площадка": venue?.name,
     "Адрес площадки": venue?.address,
+    "Последнее КП ID": latestInvoice?.id,
+    "Номер последнего КП": latestInvoice?.number,
+    "Дата последнего КП": latestInvoice?.date,
+    "Последнее КП создано": latestInvoice?.createdAt,
+    "Валюта последнего КП": latestInvoice?.currency,
+    "Сумма последнего КП, EUR": latestInvoice?.totalEUR,
     "Финансы проекта учитываются (да/нет)": project.financeTracked,
     "Серия проекта ID": project.seriesId,
   };
@@ -166,8 +197,7 @@ export async function createFullExportCsv(deps: ExportDeps, canViewProjectNotes:
   const rows: ExportRow[] = [];
 
   for (const project of projects) {
-    const common = baseRow(project, clientById.get(project.clientId), project.venueId ? venueById.get(project.venueId) : undefined, canViewProjectNotes);
-    const [reservations, assignments, roles, contractorItems, estimateLines, estimateSettings, transactions, journal] = await Promise.all([
+    const [reservations, assignments, roles, contractorItems, estimateLines, estimateSettings, transactions, journal, invoiceVersions] = await Promise.all([
       deps.projects.listReservations(project.id),
       deps.projects.listAssignments(project.id),
       deps.projects.listProjectRoles(project.id),
@@ -176,7 +206,15 @@ export async function createFullExportCsv(deps: ExportDeps, canViewProjectNotes:
       deps.finance.getProjectEstimateSettings(project.id),
       deps.finance.listTransactions({ projectId: project.id, includeVoided: true }),
       deps.equipment.listJournal({ projectId: project.id, limit: 2000 }),
+      deps.finance.listInvoiceVersions(project.id),
     ]);
+    const common = baseRow(
+      project,
+      clientById.get(project.clientId),
+      project.venueId ? venueById.get(project.venueId) : undefined,
+      invoiceVersions[0],
+      canViewProjectNotes,
+    );
     const estimatesBySource = new Map(estimateLines.filter((line) => line.sourceRefId).map((line) => [line.sourceRefId!, line]));
     const liveTransactions = transactions.filter((transaction) => !transaction.voidedAt);
     const projectDays = daysBetween(project.startsAt, project.endsAt);
@@ -223,14 +261,31 @@ export async function createFullExportCsv(deps: ExportDeps, canViewProjectNotes:
           "Позиция": saved?.name ?? model?.name ?? reservation.modelId,
           "Комментарий позиции": saved?.comment,
           "Состояние позиции": saved?.hidden ? "Скрыта в смете" : "Активна",
+          "Источник позиции сметы": saved?.source ?? "equipment",
+          "Исходная запись ID": saved?.sourceRefId ?? reservation.id,
+          "Строка сметы ID": saved?.id,
+          "Скрыта в смете (да/нет)": saved?.hidden ?? false,
+          "Порядок в смете": saved?.sortOrder,
           "Количество": saved?.qty ?? reservation.qty,
           "Периодов": saved ? 1 : projectDays,
           "Цена за единицу, EUR": saved ? (saved.qty ? round2(saved.priceEUR / saved.qty) : saved.priceEUR) : model?.dailyPriceEUR,
           "Траты записи, EUR": saved?.hidden ? 0 : economics.cost,
           "Сколько оплачено реально, EUR": actual,
           "Остаток к оплате, EUR": round2(economics.cost - Math.max(0, -actual)),
+          "Модель ID": model?.id ?? reservation.modelId,
+          "Модель оборудования": model?.name,
+          "Тип оборудования ID": model?.typeId,
+          "Тип оборудования": model ? typeById.get(model.typeId)?.name : null,
+          "Производитель": model?.manufacturer,
+          "Режим учёта": model?.trackingMode,
+          "Себестоимость единицы, EUR": model?.unitCostEUR,
+          "Единица ID": reservationUnits.map((unit) => unit.id).join(", "),
           "Единица": reservationUnits.map((unit) => unit.assetTag).join(", "),
           "Серийный номер": reservationUnits.map((unit) => unit.serial).filter(Boolean).join(", "),
+          "Статус единицы": reservationUnits.map((unit) => unit.status).join(", "),
+          "Текущее место хранения": reservationUnits.map((unit) => unit.warehouseId
+            ? warehouseById.get(unit.warehouseId)?.name ?? unit.warehouseId
+            : unit.installedVenueId ? venueById.get(unit.installedVenueId)?.name ?? unit.installedVenueId : "").filter(Boolean).join(", "),
           "Резерв (да/нет)": reservation.isReserve,
           "Скидка": saved && saved.discountValue > 0 ? `${saved.discountValue} ${DISCOUNT_TYPE[saved.discountType]}` : "",
           "Тип скидки": saved ? DISCOUNT_TYPE[saved.discountType] : null,
@@ -262,13 +317,22 @@ export async function createFullExportCsv(deps: ExportDeps, canViewProjectNotes:
           "Позиция": saved?.name ?? item.name,
           "Комментарий позиции": saved?.comment || item.note,
           "Состояние позиции": [item.booked ? "Подтверждена" : "Не подтверждена", item.returnedAt ? "Возвращена" : item.kind === "equipment" ? "Не возвращена" : null].filter(Boolean).join("; "),
+          "Источник позиции сметы": saved?.source ?? "contractor",
+          "Исходная запись ID": saved?.sourceRefId ?? item.id,
+          "Строка сметы ID": saved?.id,
+          "Скрыта в смете (да/нет)": saved?.hidden ?? false,
+          "Порядок в смете": saved?.sortOrder,
           "Количество": saved?.qty ?? item.qty,
           "Периодов": 1,
           "Цена за единицу, EUR": saved ? (saved.qty ? round2(saved.priceEUR / saved.qty) : saved.priceEUR) : item.priceEUR,
           "Траты записи, EUR": economics.cost,
           "Сколько оплачено реально, EUR": round2(paid + legacyPaid),
           "Остаток к оплате, EUR": Math.max(0, round2(economics.cost - paid - legacyPaid)),
+          "Подрядчик ID": item.contractorId,
           "Подрядчик": contractorById.get(item.contractorId)?.name ?? item.contractorId,
+          "Подтверждено у подрядчика (да/нет)": item.booked,
+          "Дата оплаты подрядчику": item.paidAt,
+          "Дата возврата подрядчику": item.returnedAt,
           "Резерв (да/нет)": false,
           "Скидка": saved && saved.discountValue > 0 ? `${saved.discountValue} ${DISCOUNT_TYPE[saved.discountType]}` : "",
           "Тип скидки": saved ? DISCOUNT_TYPE[saved.discountType] : null,
@@ -281,9 +345,9 @@ export async function createFullExportCsv(deps: ExportDeps, canViewProjectNotes:
     }
 
     const isActiveAssignment = (assignment: Projects.AssignmentDTO) => assignment.status === "added" || assignment.status === "accepted";
-    const laborSources: Array<{ id: string; title: string; comment: string | null; qty: number; rate: number; startsAt: string | null; endsAt: string | null; assignments: Projects.AssignmentDTO[]; billable: boolean; createdAt: string }> = roles.length
-      ? roles.map((role) => ({ id: role.id, title: role.title, comment: role.comment, qty: role.requiredCount, rate: role.rateEUR ?? 0, startsAt: role.startsAt, endsAt: role.endsAt, assignments: assignments.filter((assignment) => assignment.roleId === role.id), billable: true, createdAt: role.createdAt }))
-      : assignments.map((assignment) => ({ id: assignment.id, title: assignment.roleNote || "Участник", comment: null, qty: 1, rate: assignment.rateEUR ?? 0, startsAt: project.startsAt, endsAt: project.endsAt, assignments: [assignment], billable: isActiveAssignment(assignment), createdAt: assignment.createdAt }));
+    const laborSources: Array<{ id: string; roleId: string | null; title: string; comment: string | null; qty: number; rate: number; startsAt: string | null; endsAt: string | null; assignments: Projects.AssignmentDTO[]; billable: boolean; createdAt: string }> = roles.length
+      ? roles.map((role) => ({ id: role.id, roleId: role.id, title: role.title, comment: role.comment, qty: role.requiredCount, rate: role.rateEUR ?? 0, startsAt: role.startsAt, endsAt: role.endsAt, assignments: assignments.filter((assignment) => assignment.roleId === role.id), billable: true, createdAt: role.createdAt }))
+      : assignments.map((assignment) => ({ id: assignment.id, roleId: assignment.roleId, title: assignment.roleNote || "Участник", comment: null, qty: 1, rate: assignment.rateEUR ?? 0, startsAt: project.startsAt, endsAt: project.endsAt, assignments: [assignment], billable: isActiveAssignment(assignment), createdAt: assignment.createdAt }));
     for (const labor of laborSources) {
       const saved = estimatesBySource.get(labor.id);
       const rawEconomics = estimateEconomics(labor.rate * labor.qty, labor.rate * labor.qty, saved, rsdRateToEUR);
@@ -304,14 +368,25 @@ export async function createFullExportCsv(deps: ExportDeps, canViewProjectNotes:
           "Позиция": saved?.name ?? labor.title,
           "Комментарий позиции": saved?.comment || labor.comment,
           "Состояние позиции": `${labor.assignments.filter(isActiveAssignment).length}/${labor.qty} активно; всего ${labor.assignments.length}`,
+          "Источник позиции сметы": saved?.source ?? "labor",
+          "Исходная запись ID": saved?.sourceRefId ?? labor.id,
+          "Строка сметы ID": saved?.id,
+          "Скрыта в смете (да/нет)": saved?.hidden ?? false,
+          "Порядок в смете": saved?.sortOrder,
           "Количество": saved?.qty ?? labor.qty,
           "Периодов": 1,
           "Цена за единицу, EUR": saved ? (saved.qty ? round2(saved.priceEUR / saved.qty) : saved.priceEUR) : labor.rate,
           "Траты записи, EUR": economics.cost,
           "Сколько оплачено реально, EUR": round2(ledgerPaid + legacyPaid),
           "Остаток к оплате, EUR": Math.max(0, round2(economics.cost - ledgerPaid - legacyPaid)),
+          "Роль ID": labor.roleId,
+          "Ставка роли, EUR": labor.rate,
+          "Назначение ID": labor.assignments.map((assignment) => assignment.id).join(", "),
+          "Участник ID": labor.assignments.map((assignment) => assignment.userId).join(", "),
           "Участник": labor.assignments.map((assignment) => publicName(personById.get(assignment.userId))).filter(Boolean).join(", "),
+          "Ставки участников, EUR": labor.assignments.map((assignment) => assignment.rateEUR ?? "").join(", "),
           "Статус участия": labor.assignments.map((assignment) => assignment.status).join(", "),
+          "Причина отмены участия": labor.assignments.map((assignment) => assignment.cancellationReason ?? "").join(", "),
           "Резерв (да/нет)": false,
           "Скидка": saved && saved.discountValue > 0 ? `${saved.discountValue} ${DISCOUNT_TYPE[saved.discountType]}` : "",
           "Тип скидки": saved ? DISCOUNT_TYPE[saved.discountType] : null,
@@ -339,6 +414,11 @@ export async function createFullExportCsv(deps: ExportDeps, canViewProjectNotes:
           "Позиция": line.name,
           "Комментарий позиции": line.comment,
           "Состояние позиции": line.hidden ? "Скрыта в смете" : "Активна",
+          "Источник позиции сметы": line.source,
+          "Исходная запись ID": line.sourceRefId,
+          "Строка сметы ID": line.id,
+          "Скрыта в смете (да/нет)": line.hidden,
+          "Порядок в смете": line.sortOrder,
           "Количество": line.qty,
           "Периодов": 1,
           "Цена за единицу, EUR": line.qty ? round2(line.priceEUR / line.qty) : line.priceEUR,
@@ -371,6 +451,11 @@ export async function createFullExportCsv(deps: ExportDeps, canViewProjectNotes:
           "Позиция": line.name,
           "Комментарий позиции": line.comment,
           "Состояние позиции": "Источник не найден; в итог сметы не входит",
+          "Источник позиции сметы": line.source,
+          "Исходная запись ID": line.sourceRefId,
+          "Строка сметы ID": line.id,
+          "Скрыта в смете (да/нет)": line.hidden,
+          "Порядок в смете": line.sortOrder,
           "Количество": line.qty,
           "Периодов": 1,
           "Цена за единицу, EUR": line.qty ? round2(line.priceEUR / line.qty) : line.priceEUR,
@@ -412,6 +497,9 @@ export async function createFullExportCsv(deps: ExportDeps, canViewProjectNotes:
       const linkedToPlannedCost = transaction.kind === "expense" && Boolean(transaction.assignmentId || transaction.contractorId);
       const standaloneCost = transaction.kind === "expense" && !linkedToPlannedCost && !transaction.voidedAt ? transaction.amountEUR : 0;
       const actualPaid = !transaction.voidedAt && (transaction.kind === "expense" || transaction.category === "prepayment" || transaction.category === "debt_settlement") ? transaction.amountEUR : 0;
+      const transactionUnit = transaction.unitId ? unitById.get(transaction.unitId) : undefined;
+      const transactionModel = transactionUnit ? modelById.get(transactionUnit.modelId) : undefined;
+      const transactionAssignment = transaction.assignmentId ? assignments.find((assignment) => assignment.id === transaction.assignmentId) : undefined;
       rows.push({
         ...common,
         "Тип записи": transaction.kind === "expense" ? "трата" : "платёж",
@@ -429,14 +517,39 @@ export async function createFullExportCsv(deps: ExportDeps, canViewProjectNotes:
         "Сальдо записи, EUR": round2(-standaloneCost),
         "Сколько оплачено реально, EUR": actualPaid,
         "Денежный поток, EUR": transaction.voidedAt || transaction.category === "rental_revenue" ? 0 : round2(transaction.kind === "income" ? transaction.amountEUR : -transaction.amountEUR),
-        "Единица": transaction.unitId ? unitById.get(transaction.unitId)?.assetTag ?? transaction.unitId : null,
-        "Участник": transaction.assignmentId ? publicName(personById.get(assignments.find((assignment) => assignment.id === transaction.assignmentId)?.userId ?? "")) : null,
+        "Модель ID": transactionModel?.id,
+        "Модель оборудования": transactionModel?.name,
+        "Тип оборудования ID": transactionModel?.typeId,
+        "Тип оборудования": transactionModel ? typeById.get(transactionModel.typeId)?.name : null,
+        "Производитель": transactionModel?.manufacturer,
+        "Режим учёта": transactionModel?.trackingMode,
+        "Себестоимость единицы, EUR": transactionModel?.unitCostEUR,
+        "Единица ID": transaction.unitId,
+        "Единица": transactionUnit?.assetTag ?? transaction.unitId,
+        "Серийный номер": transactionUnit?.serial,
+        "Статус единицы": transactionUnit?.status,
+        "Текущее место хранения": transactionUnit?.warehouseId ? warehouseById.get(transactionUnit.warehouseId)?.name ?? transactionUnit.warehouseId : null,
+        "Роль ID": transactionAssignment?.roleId,
+        "Назначение ID": transaction.assignmentId,
+        "Участник ID": transactionAssignment?.userId,
+        "Участник": transactionAssignment ? publicName(personById.get(transactionAssignment.userId)) : null,
+        "Ставки участников, EUR": transactionAssignment?.rateEUR,
+        "Статус участия": transactionAssignment?.status,
+        "Подрядчик ID": transaction.contractorId,
         "Подрядчик": transaction.contractorId ? contractorById.get(transaction.contractorId)?.name ?? transaction.contractorId : null,
+        "Счёт ID": transaction.accountId,
         "Счёт": accountById.get(transaction.accountId)?.name ?? transaction.accountId,
         "Категория транзакции": TRANSACTION_CATEGORY[transaction.category],
         "Исходная сумма": transaction.amount,
         "Исходная валюта": transaction.currency,
         "Курс к EUR": transaction.fxRateToEUR,
+        "Исправляет операцию ID": transaction.replacesTransactionId,
+        "Автор операции ID": transaction.createdByUserId,
+        "Автор операции": transaction.createdByUserId ? publicName(personById.get(transaction.createdByUserId)) : null,
+        "Изменил операцию ID": transaction.updatedByUserId,
+        "Изменил операцию": transaction.updatedByUserId ? publicName(personById.get(transaction.updatedByUserId)) : null,
+        "Аннулировал операцию ID": transaction.voidedByUserId,
+        "Аннулировал операцию": transaction.voidedByUserId ? publicName(personById.get(transaction.voidedByUserId)) : null,
         "Создано": transaction.createdAt,
         "Обновлено": transaction.updatedAt,
         "Аннулировано": transaction.voidedAt,
