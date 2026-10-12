@@ -21,6 +21,7 @@ import { createAuditModule } from "./modules/audit/index.js";
 import { createTransportModule } from "./modules/transport/index.js";
 import { createAppSettingsModule } from "./modules/appSettings/index.js";
 import { createContractorsModule } from "./modules/contractors/index.js";
+import { createSuppliesModule } from "./modules/supplies/index.js";
 import { createApexService } from "./modules/apex/service.js";
 import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
@@ -68,6 +69,11 @@ export function createModules(bus: EventBus = new EventBus()) {
   });
   const notifications = createNotificationsModule(pool);
   const catalog = createCatalogModule(pool);
+  const supplies = createSuppliesModule(
+    pool,
+    async (itemId) => !!await catalog.service.getItem(itemId),
+    async (warehouseId) => (await equipment.service.listWarehouses()).some(warehouse => warehouse.id === warehouseId),
+  );
   const operations = createOperationsModule(pool, equipment.service, projects.service, venues.service);
   const audit = createAuditModule(pool);
   const transport = createTransportModule(pool);
@@ -872,9 +878,9 @@ export function createModules(bus: EventBus = new EventBus()) {
     return setInterval(() => void dispatchClientFollowupNotifications(), 60_000);
   }
 
-  const modules = [appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, operations, transport, audit];
+  const modules = [appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, supplies, operations, transport, audit];
 
-  return { bus, appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, operations, transport, audit, apex, billing, modules, authorizeFinanceProject, handleTelegramCallback, startReminderScheduler, startProjectProblemScheduler, startClientFollowupScheduler };
+  return { bus, appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, supplies, operations, transport, audit, apex, billing, modules, authorizeFinanceProject, handleTelegramCallback, startReminderScheduler, startProjectProblemScheduler, startClientFollowupScheduler };
 }
 
 export type Wiring = ReturnType<typeof createModules>;

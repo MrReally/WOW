@@ -13,7 +13,8 @@
     "./people": "./src/people.ts",
     "./common": "./src/common.ts",
     "./app-settings": "./src/appSettings.ts",
-    "./contractors": "./src/contractors.ts"
+    "./contractors": "./src/contractors.ts",
+    "./supplies": "./src/supplies.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",

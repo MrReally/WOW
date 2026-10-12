@@ -2,17 +2,23 @@ import type { Catalog } from "@sever/contracts";
 import { one, query, tx, type Sql } from "../../core/db.js";
 import { NotFound } from "../../core/errors.js";
 
-type ItemRow = { id:string; sku:string; name:string; kind:Catalog.CatalogItemKind; group_name:string|null; base_unit:string; active:boolean; created_at:Date };
+type CategoryRow = { id:string; name:string; active:boolean; sort_order:number; created_at:Date };
+type ItemRow = { id:string; sku:string; name:string; kind:Catalog.CatalogItemKind; category_id:string|null; group_name:string|null; measurement_kind:Catalog.CatalogMeasurementKind; base_unit:string; active:boolean; created_at:Date };
 type PackRow = { id:string; item_id:string; name:string; coefficient:string; barcode:string|null; supplier_code:string|null; active:boolean };
 type RecipeRow = { id:string; item_id:string; version:number; valid_from:Date; valid_to:Date|null; output_qty:string; output_unit:string; technology:string|null };
 type LineRow = { id:string; ingredient_item_id:string; unit:string; gross_qty:string; net_qty:string; base_qty:string };
-const itemDTO=(r:ItemRow):Catalog.CatalogItemDTO=>({id:r.id,sku:r.sku,name:r.name,kind:r.kind,groupName:r.group_name,baseUnit:r.base_unit,active:r.active,createdAt:r.created_at.toISOString()});
+const categoryDTO=(r:CategoryRow):Catalog.CatalogCategoryDTO=>({id:r.id,name:r.name,active:r.active,sortOrder:r.sort_order,createdAt:r.created_at.toISOString()});
+const itemDTO=(r:ItemRow):Catalog.CatalogItemDTO=>({id:r.id,sku:r.sku,name:r.name,kind:r.kind,categoryId:r.category_id,groupName:r.group_name,measurementKind:r.measurement_kind,baseUnit:r.base_unit,active:r.active,createdAt:r.created_at.toISOString()});
 const packDTO=(r:PackRow):Catalog.PackagingUnitDTO=>({id:r.id,itemId:r.item_id,name:r.name,coefficient:Number(r.coefficient),barcode:r.barcode,supplierCode:r.supplier_code,active:r.active});
 
 export function createCatalogService(db: Sql): Catalog.CatalogService {
  return {
+  async listCategories(includeArchived=false){ return (await query<CategoryRow>(db,`SELECT * FROM catalog.categories ${includeArchived?"":"WHERE active=true"} ORDER BY sort_order,name`)).map(categoryDTO); },
+  async createCategory(input){ const r=await one<CategoryRow>(db,`INSERT INTO catalog.categories(name,sort_order) VALUES($1,$2) RETURNING *`,[input.name,input.sortOrder??0]); return categoryDTO(r!); },
+  async updateCategory(id,input){ const existing=await one<CategoryRow>(db,`SELECT * FROM catalog.categories WHERE id=$1`,[id]); if(!existing)throw NotFound("catalog category",id); const r=await one<CategoryRow>(db,`UPDATE catalog.categories SET name=$2,active=$3,sort_order=$4 WHERE id=$1 RETURNING *`,[id,input.name??existing.name,input.active??existing.active,input.sortOrder??existing.sort_order]); return categoryDTO(r!); },
   async listItems(){ return (await query<ItemRow>(db,`SELECT * FROM catalog.items ORDER BY group_name NULLS FIRST,name`)).map(itemDTO); },
-  async createItem(input){ const r=await one<ItemRow>(db,`INSERT INTO catalog.items(sku,name,kind,group_name,base_unit) VALUES($1,$2,$3,$4,$5) RETURNING *`,[input.sku,input.name,input.kind,input.groupName??null,input.baseUnit]); return itemDTO(r!); },
+  async getItem(id){ const r=await one<ItemRow>(db,`SELECT * FROM catalog.items WHERE id=$1`,[id]); return r?itemDTO(r):null; },
+  async createItem(input){ const r=await one<ItemRow>(db,`INSERT INTO catalog.items(sku,name,kind,category_id,group_name,measurement_kind,base_unit) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,[input.sku,input.name,input.kind,input.categoryId??null,input.groupName??null,input.measurementKind??"count",input.baseUnit]); return itemDTO(r!); },
   async listPackaging(itemId){ return (await query<PackRow>(db,`SELECT * FROM catalog.packaging_units WHERE item_id=$1 ORDER BY name`,[itemId])).map(packDTO); },
   async addPackaging(itemId,input){ if(!await one(db,`SELECT id FROM catalog.items WHERE id=$1`,[itemId])) throw NotFound("catalog item",itemId); const r=await one<PackRow>(db,`INSERT INTO catalog.packaging_units(item_id,name,coefficient,barcode,supplier_code,active) VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,[itemId,input.name,input.coefficient,input.barcode,input.supplierCode,input.active]); return packDTO(r!); },
   async listRecipes(itemId){

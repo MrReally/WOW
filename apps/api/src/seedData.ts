@@ -1,7 +1,7 @@
 // Rich, diverse demo dataset — used by `pnpm seed` and the admin "reset to demo"
 // action. Assumes empty module schemas (the caller drops + migrates first).
 
-import type { Catalog, Equipment, Finance, People, Projects, Venues, Plans } from "@sever/contracts";
+import type { Catalog, Equipment, Finance, People, Projects, Venues, Plans, Supplies } from "@sever/contracts";
 
 export interface SeedServices {
   people: People.PeopleService;
@@ -11,6 +11,7 @@ export interface SeedServices {
   venues: Venues.VenuesService;
   plans: Plans.PlansService;
   catalog: Catalog.CatalogService;
+  supplies: Supplies.SuppliesService;
 }
 
 function iso(daysFromNow: number, hour = 10): string {
@@ -42,8 +43,11 @@ export async function seedDemo(s: SeedServices): Promise<{ summary: Record<strin
   const tech2 = await mkUser("tech2@sever.local", "tech123", "Мария Котова", techRole.id, "tech-002", 15);
 
   // ── Rental consumables and reusable kit composition (shared by mobile and desktop) ──
-  const gaffer = await s.catalog.createItem({ sku: "CON-GAFFER-BLK", name: "Скотч Gaffer чёрный", kind: "product", groupName: "Расходные материалы", baseUnit: "roll" });
-  const batteries = await s.catalog.createItem({ sku: "CON-BAT-AA", name: "Батарейки AA", kind: "product", groupName: "Расходные материалы", baseUnit: "pcs" });
+  const consumablesCategory = await s.catalog.createCategory({ name: "Расходные материалы", sortOrder: 10 });
+  const liquidsCategory = await s.catalog.createCategory({ name: "Жидкости", sortOrder: 20 });
+  const gaffer = await s.catalog.createItem({ sku: "CON-GAFFER-BLK", name: "Скотч Gaffer чёрный", kind: "product", categoryId: consumablesCategory.id, measurementKind: "count", groupName: "Расходные материалы", baseUnit: "roll" });
+  const batteries = await s.catalog.createItem({ sku: "CON-BAT-AA", name: "Батарейки AA", kind: "product", categoryId: consumablesCategory.id, measurementKind: "count", groupName: "Расходные материалы", baseUnit: "pcs" });
+  const fogFluid = await s.catalog.createItem({ sku: "CON-FOG-FLUID", name: "Жидкость для дым-машины", kind: "product", categoryId: liquidsCategory.id, measurementKind: "liquid", groupName: "Расходные материалы", baseUnit: "l" });
   const stageKit = await s.catalog.createItem({ sku: "KIT-STAGE-BASIC", name: "Комплект расходников для сцены", kind: "equipment_kit", groupName: "Комплекты", baseUnit: "kit" });
   await s.catalog.addPackaging(gaffer.id, { name: "Коробка 24 рулона", coefficient: 24, barcode: "460000000101", supplierCode: null, active: true });
   await s.catalog.addPackaging(batteries.id, { name: "Упаковка 20 штук", coefficient: 20, barcode: "460000000102", supplierCode: null, active: true });
@@ -74,6 +78,14 @@ export async function seedDemo(s: SeedServices): Promise<{ summary: Record<strin
   const tDistribution = await s.equipment.createType({ name: "Силовое распределение", trackingMode: "serial" });
 
   const mainWarehouse = (await s.equipment.listWarehouses())[0]!;
+  await s.supplies.setSettings({ itemId: gaffer.id, warehouseId: mainWarehouse.id, minimumQty: 5, maximumQty: 24 });
+  await s.supplies.setSettings({ itemId: batteries.id, warehouseId: mainWarehouse.id, minimumQty: 40, maximumQty: 200 });
+  await s.supplies.setSettings({ itemId: fogFluid.id, warehouseId: mainWarehouse.id, minimumQty: 5, maximumQty: 20 });
+  await s.supplies.createReceipt({ itemId: batteries.id, warehouseId: mainWarehouse.id, quantity: 86, packageCount: 5, packageLabel: "Упаковка 20 штук", supplierName: "Demo supplier", currency: "EUR", totalPrice: 43, fxRateToEUR: 1 }, admin.id);
+  const fogCan1 = await s.supplies.createContainer({ itemId: fogFluid.id, warehouseId: mainWarehouse.id, label: "Канистра 1", capacityLiters: 5 }, admin.id);
+  const fogCan2 = await s.supplies.createContainer({ itemId: fogFluid.id, warehouseId: mainWarehouse.id, label: "Канистра 2", capacityLiters: 5 }, admin.id);
+  await s.supplies.createReceipt({ itemId: fogFluid.id, warehouseId: mainWarehouse.id, containerId: fogCan1.id, quantity: 1.9, supplierName: "Demo supplier", currency: "EUR", totalPrice: 10.64, fxRateToEUR: 1 }, admin.id);
+  await s.supplies.createReceipt({ itemId: fogFluid.id, warehouseId: mainWarehouse.id, containerId: fogCan2.id, quantity: 1.8, supplierName: "Demo supplier", currency: "EUR", totalPrice: 10.08, fxRateToEUR: 1 }, admin.id);
   const roomMain = await s.equipment.createStorageZone({ warehouseId:mainWarehouse.id,name:"Основной зал хранения",code:"MAIN",kind:"room",sortOrder:10 });
   const rackLight = await s.equipment.createStorageZone({ warehouseId:mainWarehouse.id,parentId:roomMain.id,name:"Свет",code:"L",kind:"rack",sortOrder:20 });
   const shelfPars = await s.equipment.createStorageZone({ warehouseId:mainWarehouse.id,parentId:rackLight.id,name:"PAR и Wash",code:"L-01",kind:"shelf",sortOrder:21 });
@@ -306,7 +318,8 @@ export async function seedDemo(s: SeedServices): Promise<{ summary: Record<strin
       storageZones: seededZones.length,
       projects: 5,
       accounts: 2,
-      catalogItems: 3,
+      catalogItems: 4,
+      supplyItems: 3,
     },
   };
 }

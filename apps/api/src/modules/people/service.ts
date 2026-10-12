@@ -175,12 +175,14 @@ const USER_SELECT = `
 const WAREHOUSE_PERMS: Permission[] = [
   "operations.view", "warehouse.view", "warehouse.catalog.manage", "warehouse.import",
   "warehouse.issue", "warehouse.unit.status", "projects.view", "projects.reservation.manage",
+  "supplies.view", "supplies.move", "supplies.catalog.manage", "supplies.purchase.manage",
   "projects.timing.manage", "projects.timing.viewAll", "projects.assignment.manage", "clients.manage",
   "venues.view", "venues.manage", "venues.archive", "plans.view", "plans.manage", "people.view",
   "notifications.project.stage", "notifications.equipment.issued", "notifications.equipment.incomplete",
 ];
 const TECH_PERMS: Permission[] = [
   "operations.view", "warehouse.view", "warehouse.issue", "projects.view", "plans.view",
+  "supplies.view", "supplies.move",
   "notifications.project.stage", "notifications.equipment.issued", "notifications.equipment.incomplete",
 ];
 

@@ -1201,6 +1201,32 @@ h1,
   padding: 0 16px var(--space-6);
 }
 
+/* ── Supplies: separate quantity stock + tactile liquid level ─────── */
+.supplies-page { padding-bottom: var(--space-6); }
+.supplies-hero { display:flex; align-items:flex-end; justify-content:space-between; gap:var(--space-3); padding:8px 4px 18px; }
+.supplies-hero h1 { margin:6px 0 4px; font-family:var(--font-heading); font-size:clamp(26px,7vw,38px); line-height:1; }
+.supplies-hero p { margin:0; color:var(--text2); font-size:var(--fs-sm); }
+.supplies-tabs { display:flex; gap:6px; overflow-x:auto; padding:2px 0 14px; }
+.supplies-tabs button { border:none; cursor:pointer; white-space:nowrap; }
+.supply-card { overflow:hidden; }
+.supply-inline-form { margin-top:var(--space-4); padding-top:var(--space-4); border-top:1px solid var(--bdr); }
+.liquid-levels { display:flex; align-items:flex-start; gap:var(--space-5); overflow-x:auto; padding:var(--space-5) 4px 4px; }
+.liquid-level { flex:0 0 118px; display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center; }
+.liquid-level__name { min-height:32px; color:var(--text2); font-size:var(--fs-xs); font-weight:700; }
+.liquid-level__control { --liquid-fill:0%; position:relative; width:84px; height:220px; overflow:hidden; border:1px solid var(--bdr-hi); border-radius:44px; background:var(--s2); box-shadow:inset 0 1px 10px var(--bdr-md),0 12px 32px -22px var(--text); touch-action:none; }
+.liquid-level__fill { position:absolute; inset:auto 0 0; height:var(--liquid-fill); background:linear-gradient(to top,var(--info),color-mix(in srgb,var(--info) 66%,var(--s1))); transition:height .12s ease-out; }
+.liquid-level__shine { position:absolute; inset:1px; border-radius:inherit; pointer-events:none; background:linear-gradient(110deg,color-mix(in srgb,var(--card) 45%,transparent),transparent 42%); }
+.liquid-level__input { position:absolute; inset:0; z-index:3; width:100%; height:100%; margin:0; opacity:0; cursor:ns-resize; writing-mode:vertical-lr; direction:rtl; }
+.liquid-level__input:focus-visible { opacity:1; accent-color:var(--info); outline:3px solid var(--accent); outline-offset:-6px; border-radius:inherit; }
+.liquid-level__percent { position:absolute; z-index:2; inset:50% 0 auto; transform:translateY(-50%); color:var(--text); font-family:var(--font-mono); font-size:13px; font-weight:800; pointer-events:none; mix-blend-mode:luminosity; }
+.liquid-level strong { color:var(--text); font-family:var(--font-mono); font-size:14px; }
+.liquid-level small { color:var(--text3); font-size:10px; line-height:1.35; }
+@media (min-width:900px) {
+  .supplies-page { max-width:1080px; margin:0 auto; }
+  .liquid-level__control { height:250px; }
+  .supply-inline-form { display:grid; grid-template-columns:1fr 1fr auto; gap:var(--space-3); align-items:end; }
+}
+
 /* ── Desktop ERP surfaces ─────────────────────────────────────────── */
 .page-toolbar__title,
 .desktop-project-table {

@@ -19,6 +19,7 @@ export const WORKSPACES: Workspace[] = [
   { id: "apex", name: "Apex", shortcut: "A", glyph: "radar", tone: "info", route: "/apex", requires: ["apex.view"], sub: "Управление · прокаты · проблемы · долги" },
   { id: "ops", name: "Operations", shortcut: "O", glyph: "pin", tone: "warn", route: "/operations", requires: ["operations.view"], sub: "Бригада · мои проекты · выдача/возврат" },
   { id: "wh", name: "Warehouse", shortcut: "W", glyph: "box", tone: "warn", route: "/warehouse", requires: ["warehouse.view"], sub: "Каталог · склад · кабели" },
+  { id: "sup", name: "Supplies", shortcut: "U", glyph: "grid", tone: "info", route: "/supplies", requires: ["supplies.view"], sub: "Расходники · жидкости · закупки" },
   { id: "venues", name: "Venues", shortcut: "V", glyph: "pin", tone: "info", route: "/venues", requires: ["venues.view", "venues.manage", "venues.archive", "venues.delete"], sub: "Площадки · карточки · архив" },
   { id: "plan", name: "Planning", shortcut: "P", glyph: "rows", tone: "purple", route: "/projects", requires: ["projects.view"], sub: "Проекты · брони · команда" },
   { id: "crew", name: "Crew", shortcut: "E", glyph: "person", tone: "ok", route: "/crew", requires: ["people.view"], sub: "Работники · досье · история" },
@@ -42,6 +43,11 @@ export const WORKSPACE_COPY: Record<string, Record<"ru" | "en" | "sr", { name: s
     ru: { name: "Warehouse", sub: "Каталог · склад · кабели" },
     en: { name: "Warehouse", sub: "Catalog · stock · cables" },
     sr: { name: "Warehouse", sub: "Katalog · magacin · kablovi" },
+  },
+  sup: {
+    ru: { name: "Supplies", sub: "Расходники · жидкости · закупки" },
+    en: { name: "Supplies", sub: "Consumables · liquids · purchasing" },
+    sr: { name: "Supplies", sub: "Potrošni materijal · tečnosti · nabavka" },
   },
   venues: {
     ru: { name: "Venues", sub: "Площадки · карточки · архив" },

@@ -19,6 +19,7 @@ import { SettingsPage } from "../features/settings/SettingsPage.tsx";
 import { MySettingsPage } from "../features/settings/MySettingsPage.tsx";
 import { BackofficePage } from "../features/backoffice/BackofficePage.tsx";
 import { VenuesPage } from "../features/venues/VenuesPage.tsx";
+import { SuppliesPage } from "../features/supplies/SuppliesPage.tsx";
 
 export function AppRouter() {
   const { can } = useSession();
@@ -40,6 +41,7 @@ export function AppRouter() {
       <Route path="/operations/projects/:id" element={<Guard allow={["operations.view"]}><OperationsProjectPage /></Guard>} />
       <Route path="/warehouse" element={<Guard allow={["warehouse.view"]}><WarehousePage /></Guard>} />
       <Route path="/warehouse/units/:id" element={<Guard allow={["warehouse.view"]}><UnitDetailPage /></Guard>} />
+      <Route path="/supplies" element={<Guard allow={["supplies.view"]}><SuppliesPage /></Guard>} />
       <Route path="/venues" element={<Guard allow={["venues.view", "venues.manage", "venues.archive", "venues.delete"]}><VenuesPage /></Guard>} />
       <Route path="/projects" element={<Guard allow={["projects.view"]}><ProjectsPage /></Guard>} />
       <Route path="/projects/:id" element={<Guard allow={["projects.view"]}><ProjectDetailPage /></Guard>} />

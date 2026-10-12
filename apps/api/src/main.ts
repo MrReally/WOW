@@ -27,6 +27,7 @@ async function main() {
         venues: wiring.venues.service,
         plans: wiring.plans.service,
         catalog: wiring.catalog.service,
+        supplies: wiring.supplies.service,
       });
     }
   }

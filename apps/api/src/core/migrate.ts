@@ -8,6 +8,9 @@ export async function runMigrations(): Promise<void> {
   const migrations = collectMigrations();
   const client = await pool.connect();
   try {
+    // Startup and test workers may reach migrations at the same time. Serialize
+    // the idempotent DDL to avoid PostgreSQL catalog deadlocks.
+    await client.query("SELECT pg_advisory_lock(hashtext('sever:migrations'))");
     for (const { name, sql } of migrations) {
       // eslint-disable-next-line no-console
       console.log(`[migrate] applying ${name}`);
@@ -16,6 +19,7 @@ export async function runMigrations(): Promise<void> {
     // eslint-disable-next-line no-console
     console.log(`[migrate] done (${migrations.length} modules)`);
   } finally {
+    await client.query("SELECT pg_advisory_unlock(hashtext('sever:migrations'))").catch(() => undefined);
     client.release();
   }
 }

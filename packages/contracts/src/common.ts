@@ -34,6 +34,10 @@ export type Permission =
   | "warehouse.unit.status"
   | "warehouse.costs.view"
   | "warehouse.import"
+  | "supplies.view"
+  | "supplies.move"
+  | "supplies.catalog.manage"
+  | "supplies.purchase.manage"
   | "projects.view"
   | "projects.manage"
   | "projects.reservation.manage"
@@ -90,6 +94,10 @@ export const PERMISSIONS: PermissionMeta[] = [
   { key: "warehouse.issue", group: "Склад", label: "Выдавать и принимать оборудование" },
   { key: "warehouse.unit.status", group: "Склад", label: "Менять статус единиц (ремонт, утеря)" },
   { key: "warehouse.costs.view", group: "Склад", label: "Видеть стоимость ремонтов и сервисов" },
+  { key: "supplies.view", group: "Расходники", label: "Видеть остатки расходников" },
+  { key: "supplies.move", group: "Расходники", label: "Проводить расход, списание и корректировку" },
+  { key: "supplies.catalog.manage", group: "Расходники", label: "Управлять категориями, позициями и ёмкостями" },
+  { key: "supplies.purchase.manage", group: "Расходники", label: "Принимать закупки и управлять пополнением" },
   { key: "projects.view", group: "Планирование", label: "Видеть проекты" },
   { key: "projects.manage", group: "Планирование", label: "Создавать/редактировать проекты" },
   { key: "projects.reservation.manage", group: "Планирование", label: "Брони и распределение" },

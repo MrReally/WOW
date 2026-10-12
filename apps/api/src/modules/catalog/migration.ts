@@ -1,10 +1,20 @@
 export const migration = `
 CREATE SCHEMA IF NOT EXISTS catalog;
+CREATE TABLE IF NOT EXISTS catalog.categories (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL UNIQUE,
+ active boolean NOT NULL DEFAULT true, sort_order integer NOT NULL DEFAULT 0,
+ created_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS catalog.items (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), sku text NOT NULL UNIQUE, name text NOT NULL,
  kind text NOT NULL CHECK (kind IN ('product','item','semi_finished','modifier','equipment_kit')),
  group_name text, base_unit text NOT NULL, active boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE catalog.items ADD COLUMN IF NOT EXISTS category_id uuid REFERENCES catalog.categories(id);
+ALTER TABLE catalog.items ADD COLUMN IF NOT EXISTS measurement_kind text NOT NULL DEFAULT 'count';
+ALTER TABLE catalog.items DROP CONSTRAINT IF EXISTS catalog_items_measurement_kind_check;
+ALTER TABLE catalog.items ADD CONSTRAINT catalog_items_measurement_kind_check CHECK (measurement_kind IN ('count','length','liquid'));
+CREATE INDEX IF NOT EXISTS catalog_items_category_idx ON catalog.items(category_id);
 CREATE TABLE IF NOT EXISTS catalog.packaging_units (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), item_id uuid NOT NULL, name text NOT NULL,
  coefficient numeric(14,6) NOT NULL CHECK (coefficient > 0), barcode text, supplier_code text, active boolean NOT NULL DEFAULT true
