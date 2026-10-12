@@ -88,6 +88,7 @@ export function createModules(bus: EventBus = new EventBus()) {
     projects: projects.service,
     finance: finance.service,
     people: people.service,
+    venues: venues.service,
   });
   const apex = createApexService({
     equipment: equipment.service,

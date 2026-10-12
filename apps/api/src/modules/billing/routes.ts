@@ -93,4 +93,14 @@ export function registerBillingRoutes(
     requirePermission(auth, "finance.view", "finance.manage");
     return service.contractorDebts();
   });
+  app.get("/api/reports/full-export.csv", async (req, reply) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.view", "finance.manage");
+    const csv = await service.fullExportCsv(auth.permissions.includes("projects.note.view"));
+    const date = new Date().toISOString().slice(0, 10);
+    return reply
+      .header("Content-Type", "text/csv; charset=utf-8")
+      .header("Content-Disposition", `attachment; filename="sever-full-export-${date}.csv"`)
+      .send(csv);
+  });
 }

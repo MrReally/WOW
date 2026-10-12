@@ -145,6 +145,20 @@ export function useCreateBackup() {
   });
 }
 
+export function useFullExport() {
+  return useMutation({
+    mutationFn: async () => {
+      const response = await authenticatedFetch("/api/reports/full-export.csv");
+      const fallback = `sever-full-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      return {
+        blob: await response.blob(),
+        filename: response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? fallback,
+      };
+    },
+    meta: { successMessage: "Экспорт подготовлен" },
+  });
+}
+
 export function useRestoreBackup() {
   const qc = useQueryClient();
   return useMutation({

@@ -1,6 +1,7 @@
-import type { Equipment, Finance, ID, People, Projects } from "@sever/contracts";
+import type { Equipment, Finance, ID, People, Projects, Venues } from "@sever/contracts";
 import { amountAfterDiscountEUR, discountAmountEUR } from "@sever/contracts";
 import { NotFound } from "../../core/errors.js";
+import { createFullExportCsv } from "./export.js";
 
 // Billing is a read-only aggregator (like Apex): it owns no data and composes
 // the public services of projects, equipment, finance and people to produce a
@@ -12,12 +13,14 @@ export interface BillingDeps {
   equipment: Equipment.EquipmentService;
   finance: Finance.FinanceService;
   people: People.PeopleService;
+  venues: Venues.VenuesService;
 }
 
 export interface BillingService {
   projectInvoice(projectId: ID): Promise<Finance.ProjectInvoiceDTO>;
   outstandingClientDebts(): Promise<Finance.ProjectFinanceDTO[]>;
   contractorDebts(): Promise<Projects.ContractorDebtDTO[]>;
+  fullExportCsv(canViewProjectNotes: boolean): Promise<string>;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -213,6 +216,9 @@ export function createBillingService(deps: BillingDeps): BillingService {
         }
       }
       return [...totals].filter(([, debt]) => debt > 0).map(([contractorId, debtEUR]) => ({ contractorId, debtEUR: round2(debtEUR) }));
+    },
+    async fullExportCsv(canViewProjectNotes) {
+      return createFullExportCsv(deps, canViewProjectNotes);
     },
   };
 }

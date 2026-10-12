@@ -10,6 +10,7 @@ import { useCableSettings, useSetCableSettings } from "../warehouse/hooks.ts";
 import { nameFormatForInput, nameFormatFromInput } from "../warehouse/cables.ts";
 import { BackupManager } from "./components/BackupManager.tsx";
 import { FleetManager } from "./components/FleetManager.tsx";
+import { FullExport } from "./components/FullExport.tsx";
 
 export function SettingsPage() {
   const { theme, toggle } = useTheme();
@@ -181,6 +182,8 @@ export function SettingsPage() {
           )}
         </>
       )}
+
+      {can("finance.view", "finance.manage") && <FullExport />}
 
       <BackupManager canBackup={can("data.backup")} canRestore={can("data.restore")} />
 
