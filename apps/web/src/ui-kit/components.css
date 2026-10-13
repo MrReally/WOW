@@ -1494,8 +1494,9 @@ input[type="checkbox"]:not(.toggle-switch):disabled { cursor: default; opacity: 
 .warehouse-filter-row .chip { min-height: 34px; flex: 0 0 auto; border: 0; cursor: pointer; }
 .warehouse-readiness-card { padding: 27px 18px 18px; }
 .warehouse-readiness-card__body { gap: 18px; align-items: center; transform: translateY(22px); }
-.warehouse-readiness-ring { width: 120px; height: 120px; flex: 0 0 120px; display: grid; place-items: center; border-radius: 50%; transform: rotate(-90deg); }
-.warehouse-readiness-ring__center { width: 88px; height: 88px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 50%; background: var(--card); transform: rotate(90deg); }
+.warehouse-readiness-ring { position: relative; width: 120px; height: 120px; flex: 0 0 120px; }
+.warehouse-readiness-ring > svg { width: 120px; height: 120px; display: block; transform: rotate(-90deg); }
+.warehouse-readiness-ring__center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .warehouse-readiness-ring__center strong { color: var(--label-primary); font-family: var(--font-brand); font-size: 29px; font-weight: 800; line-height: 1; }
 .warehouse-readiness-ring__center span { margin-top: 4px; color: var(--label-tertiary); font-size: 11px; font-variant-numeric: tabular-nums; }
 .warehouse-readiness-card__action { margin-top: 39px; }

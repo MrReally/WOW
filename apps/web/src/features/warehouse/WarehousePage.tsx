@@ -56,22 +56,44 @@ function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps
   const inRepair = units.filter((u) => u.status === "in_repair" || u.status === "at_contractor").length;
   const lost = units.filter((u) => u.status === "lost").length;
   const total = Math.max(units.length, inStock + onProject + inRepair + lost);
-  const pct = (value: number) => total > 0 ? (value / total) * 100 : 0;
-  const stockEnd = pct(inStock);
-  const projectEnd = stockEnd + pct(onProject);
-  const repairEnd = projectEnd + pct(inRepair);
-  const lostEnd = repairEnd + pct(lost);
+  const ringRadius = 53;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  let ringOffset = 0;
+  const ringSegments = [
+    { value: inStock, color: "var(--green)" },
+    { value: onProject, color: "var(--orange)" },
+    { value: inRepair, color: "var(--red)" },
+    { value: lost, color: "var(--lost)" },
+  ].map((segment) => {
+    const length = total > 0 ? (segment.value / total) * ringCircumference : 0;
+    const result = { ...segment, length, offset: ringOffset };
+    ringOffset += length;
+    return result;
+  });
 
   return (
     <div className="card warehouse-readiness-card">
       <div className="row warehouse-readiness-card__body">
         <div
           className="warehouse-readiness-ring"
-          style={{
-            background: `conic-gradient(var(--green) 0 ${stockEnd}%, var(--orange) ${stockEnd}% ${projectEnd}%, var(--red) ${projectEnd}% ${repairEnd}%, var(--lost) ${repairEnd}% ${lostEnd}%, var(--fill-gray-strong) ${lostEnd}% 100%)`,
-          }}
           aria-label={`${inStock} из ${total} на складе`}
         >
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle cx="60" cy="60" r={ringRadius} fill="none" stroke="var(--fill-gray)" strokeWidth="14" />
+            {ringSegments.map((segment, index) => (
+              <circle
+                key={`${segment.color}-${index}`}
+                cx="60"
+                cy="60"
+                r={ringRadius}
+                fill="none"
+                stroke={segment.color}
+                strokeWidth="14"
+                strokeDasharray={`${Math.max(0, segment.length - 2)} ${ringCircumference}`}
+                strokeDashoffset={-segment.offset}
+              />
+            ))}
+          </svg>
           <div className="warehouse-readiness-ring__center">
             <strong>{inStock}</strong>
             <span>из {total}</span>
