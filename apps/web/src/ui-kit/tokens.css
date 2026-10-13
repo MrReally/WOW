@@ -81,6 +81,7 @@
   --orange-text: #9a5a00;
   --tint-orange: rgba(224, 150, 15, .15);
   --red: #e5492f;
+  --lost: #9a5849;
   --red-text: #bf321b;
   --tint-red: rgba(229, 73, 47, .12);
   --teal: #3f76e4;
@@ -180,6 +181,7 @@
   --orange-text: #ecb85c;
   --tint-orange: rgba(224, 163, 58, .18);
   --red: #f0604d;
+  --lost: #8f493b;
   --red-text: #f7826f;
   --tint-red: rgba(240, 96, 77, .18);
   --teal: #5b8def;

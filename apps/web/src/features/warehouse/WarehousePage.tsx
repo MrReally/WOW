@@ -8,7 +8,6 @@ import {
   SectionHead,
   Chip,
   Dot,
-  ProgressRing,
   Loading,
   ErrorState,
   EmptyState,
@@ -52,22 +51,32 @@ function PrepStat({ tone, value, label }: { tone: Tone; value: number; label: st
 }
 
 function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps: () => void }) {
-  const inStock = units.filter((u) => u.status === "in_stock").length;
+  const inStock = units.filter((u) => u.status === "in_stock" || u.status === "reserved").length;
   const onProject = units.filter((u) => u.status === "on_project").length;
-  const inRepair = units.filter((u) => u.status === "in_repair").length;
+  const inRepair = units.filter((u) => u.status === "in_repair" || u.status === "at_contractor").length;
   const lost = units.filter((u) => u.status === "lost").length;
-  const total = inStock + onProject;
-  const pct = total ? (inStock / total) * 100 : 0;
+  const total = Math.max(units.length, inStock + onProject + inRepair + lost);
+  const pct = (value: number) => total > 0 ? (value / total) * 100 : 0;
+  const stockEnd = pct(inStock);
+  const projectEnd = stockEnd + pct(onProject);
+  const repairEnd = projectEnd + pct(inRepair);
+  const lostEnd = repairEnd + pct(lost);
 
   return (
-    <div style={{ padding: "6px 4px 4px" }}>
-      <div className="t-cond" style={{ fontSize: 32, fontWeight: 800, color: "var(--text)", marginTop: 8 }}>Warehouse</div>
-
-      <div className="row" style={{ gap: 20, marginTop: 18, alignItems: "center" }}>
-        <ProgressRing pct={pct} tone="warn" size={128} stroke={11}>
-          <span className="t-cond" style={{ fontSize: 30, fontWeight: 800, color: "var(--text)", lineHeight: 0.9 }}>{inStock}</span>
-          <span className="t-mono" style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>of {total}</span>
-        </ProgressRing>
+    <div className="card warehouse-readiness-card">
+      <div className="row warehouse-readiness-card__body">
+        <div
+          className="warehouse-readiness-ring"
+          style={{
+            background: `conic-gradient(var(--green) 0 ${stockEnd}%, var(--orange) ${stockEnd}% ${projectEnd}%, var(--red) ${projectEnd}% ${repairEnd}%, var(--lost) ${repairEnd}% ${lostEnd}%, var(--fill-gray-strong) ${lostEnd}% 100%)`,
+          }}
+          aria-label={`${inStock} из ${total} на складе`}
+        >
+          <div className="warehouse-readiness-ring__center">
+            <strong>{inStock}</strong>
+            <span>из {total}</span>
+          </div>
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
           <PrepStat tone="ok" value={inStock} label="на складе" />
           <PrepStat tone="warn" value={onProject} label="на проектах" />
@@ -76,7 +85,7 @@ function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps
         </div>
       </div>
 
-      <div style={{ marginTop: 20 }}>
+      <div className="warehouse-readiness-card__action">
         <Button block variant="primary" onClick={onOps}>+ Перемещение</Button>
       </div>
     </div>
@@ -213,7 +222,6 @@ export function WarehousePage() {
   const visibleModels=categoryFilter==="all"?allModels:allModels.filter(model=>categoryFilter==="none"?!model.categoryId:model.categoryId===categoryFilter);
   const getTypeName = (tid: string | undefined) => (types.data ?? []).find((t) => t.id === tid)?.name ?? "Без типа";
   const warehouseName = (id: string | null | undefined) => warehouseList.find((w) => w.id === id)?.name ?? "—";
-  const selectedWarehouse = warehouseList.find((w) => w.id === warehouseFilter) ?? null;
   const openWarehouseCreate = () => {
     setWarehouseNameDraft("");
     setWarehouseAddressDraft("");
@@ -261,6 +269,9 @@ export function WarehousePage() {
   const filteredByWarehouse = warehouseFilter === "all" ? warehouseStockUnits : warehouseStockUnits.filter((u) => u.warehouseId === warehouseFilter);
   const filteredByStatus = statusFilter === "all" ? filteredByWarehouse : filteredByWarehouse.filter((u) => u.status === statusFilter);
   const filtered = filteredByStatus.filter(unit=>visibleModels.some(model=>model.id===unit.modelId)).filter(unitMatches);
+  const dashboardSearchResults = query
+    ? allUnits.filter((unit) => visibleModels.some((model) => model.id === unit.modelId)).filter(unitMatches)
+    : [];
   const statuses: (Equipment.UnitStatus | "all")[] = ["all", "in_stock", "on_project", "in_repair", "reserved", "lost"];
 
   const repairTone = (s: Equipment.UnitStatus) => (s === "in_repair" ? "alert" : "warn");
@@ -272,66 +283,53 @@ export function WarehousePage() {
       return next;
     });
   const repairCount = (openRepairs.data ?? []).length + (openHandovers.data ?? []).length;
+  const repairEstimateEUR = (openRepairs.data ?? []).reduce((sum, repair) => sum + (repair.estCostEUR ?? repair.costEUR ?? 0), 0)
+    + (openHandovers.data ?? []).reduce((sum, handover) => sum + (handover.costEUR ?? 0), 0);
   const searchField = (
     <Field label="Поиск по складу">
       <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, тип, номер, серийник" />
     </Field>
   );
+  const stockSearchField = <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель или тип" />;
   const warehouseSelector = (
     <>
-      <SectionHead label="Склады" meta={warehouseFilter === "all" ? "ВСЕ" : warehouseName(warehouseFilter)} />
-      <div className="card" style={{ padding: "12px 14px", marginBottom: 12 }}>
-        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
-          <button
-            className={`chip ${warehouseFilter === "all" ? "chip--accent chip--solid" : "chip--neutral"}`}
-            style={{ cursor: "pointer", border: "none" }}
-            onClick={() => setWarehouseFilter("all")}
-          >
-            Все склады
-          </button>
-          {warehouseList.map((w) => (
-            <button
-              key={w.id}
-              className={`chip ${warehouseFilter === w.id ? "chip--accent chip--solid" : "chip--neutral"}`}
-              style={{ cursor: "pointer", border: "none" }}
-              onClick={() => setWarehouseFilter(w.id)}
-              title={w.address ?? undefined}
-            >
-              {w.name}{w.isDefault ? " ★" : ""}
-            </button>
-          ))}
-        </div>
-        {warehouseFilter !== "all" && (
-          <p className="card__subtitle" style={{ marginTop: 8 }}>
-            {warehouseList.find((w) => w.id === warehouseFilter)?.address || "Адрес не указан"}
-          </p>
-        )}
-        {canCatalog && (
-          <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
-            <Button variant="secondary" onClick={openWarehouseCreate}>
-              + Склад
-            </Button>
-            {warehouseFilter !== "all" && (
-              <>
-                <Button variant="ghost" disabled={!selectedWarehouse} onClick={() => selectedWarehouse && openWarehouseEdit(selectedWarehouse)}>
-                  Редактировать
-                </Button>
-                <Button
-                  variant="ghost"
-                  disabled={warehouseList.find((w) => w.id === warehouseFilter)?.isDefault}
-                  aria-label={warehouseList.find((w) => w.id === warehouseFilter)?.isDefault ? "Основной склад" : "Сделать основным"}
-                  title={warehouseList.find((w) => w.id === warehouseFilter)?.isDefault ? "Основной склад" : "Сделать основным"}
-                  style={{ width: 44, height: 44, padding: 0, flex: "0 0 auto", fontSize: 20 }}
-                  onClick={() => updateWarehouse.mutate({ id: warehouseFilter, input: { isDefault: true } })}
-                >
-                  {warehouseList.find((w) => w.id === warehouseFilter)?.isDefault ? "★" : "☆"}
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-        {canCatalog && warehouseForm && (
-          <div className="card card--flat" style={{ marginTop: 12 }}>
+      <div className="row row--between warehouse-section-head">
+        <SectionHead label="Склады" meta={`${warehouseList.length}`} />
+        {canCatalog && <button className="text-action" type="button" onClick={openWarehouseCreate}>+ Склад</button>}
+      </div>
+      <div className="warehouse-filter-row" aria-label="Выбор склада">
+        <button className={`chip ${warehouseFilter === "all" ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => setWarehouseFilter("all")}>Все склады</button>
+        {warehouseList.map((warehouse) => (
+          <button key={warehouse.id} className={`chip ${warehouseFilter === warehouse.id ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => setWarehouseFilter(warehouse.id)} title={warehouse.address ?? undefined}>{warehouse.name}</button>
+        ))}
+      </div>
+      <div className="stack warehouse-location-list">
+        {warehouseList.filter((warehouse) => warehouseFilter === "all" || warehouse.id === warehouseFilter).map((warehouse) => {
+          const unitCount = allUnits.filter((unit) => unit.warehouseId === warehouse.id && unit.status !== "installed").length;
+          return (
+            <div className="card warehouse-location-card" key={warehouse.id}>
+              <div className="row row--between" style={{ alignItems: "flex-start" }}>
+                <div style={{ minWidth: 0 }}>
+                  <p className="card__title">{warehouse.name}</p>
+                  <p className="card__subtitle">{warehouse.address || "Адрес не указан"}</p>
+                </div>
+                {warehouse.isDefault && <Chip label="основной" tone="info" />}
+              </div>
+              <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+                <Chip label={`${unitCount} ед.`} tone="ok" />
+              </div>
+              {canCatalog && (
+                <div className="row warehouse-location-card__actions">
+                  <Button block variant="secondary" onClick={() => openWarehouseEdit(warehouse)}>Редактировать</Button>
+                  {!warehouse.isDefault && <Button block variant="ghost" onClick={() => updateWarehouse.mutate({ id: warehouse.id, input: { isDefault: true } })}>Сделать основным</Button>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {canCatalog && warehouseForm && (
+          <div className="card card--flat warehouse-form-card">
             <p className="card__title">{warehouseForm.mode === "create" ? "Новый склад" : "Редактировать склад"}</p>
             <Field label="Название">
               <Input value={warehouseNameDraft} onChange={(e) => setWarehouseNameDraft(e.target.value)} placeholder="Main warehouse" />
@@ -350,13 +348,34 @@ export function WarehousePage() {
               <Button variant="secondary" block onClick={closeWarehouseForm}>Отмена</Button>
             </div>
           </div>
-        )}
-      </div>
+      )}
     </>
   );
-  const categorySelector=<><SectionHead label={showArchived?"Архив":"Категории"} meta={categoryFilter==="all"?"ВСЕ":categories.data?.find(category=>category.id===categoryFilter)?.name??"БЕЗ КАТЕГОРИИ"}/><div className="card" style={{padding:"10px 12px",marginBottom:12,display:"flex",gap:6,flexWrap:"wrap"}}><button className={`chip ${!showArchived&&categoryFilter==="all"?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>{setShowArchived(false);setCategoryFilter("all");}}>Все</button>{!showArchived&&(categories.data??[]).map(category=><button key={category.id} className={`chip ${categoryFilter===category.id?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>setCategoryFilter(category.id)}>{category.name}</button>)}{!showArchived&&<button className={`chip ${categoryFilter==="none"?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>setCategoryFilter("none")}>Без категории</button>}<button className={`chip ${showArchived?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>{setShowArchived(true);setCategoryFilter("all");}}>Архив</button></div></>;
+  const warehouseFilterRow = (
+    <div className="warehouse-filter-row" aria-label="Выбор склада">
+      <button className={`chip ${warehouseFilter === "all" ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => setWarehouseFilter("all")}>Все склады</button>
+      {warehouseList.map((warehouse) => (
+        <button key={warehouse.id} className={`chip ${warehouseFilter === warehouse.id ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => setWarehouseFilter(warehouse.id)}>{warehouse.name}</button>
+      ))}
+    </div>
+  );
+  const categorySelector = (
+    <div className="warehouse-filter-row" aria-label="Категории склада">
+      <button className={`chip ${!showArchived && categoryFilter === "all" ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => { setShowArchived(false); setCategoryFilter("all"); }}>Все</button>
+      {!showArchived && (categories.data ?? []).map((category) => (
+        <button key={category.id} className={`chip ${categoryFilter === category.id ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => setCategoryFilter(category.id)}>{category.name}</button>
+      ))}
+      {!showArchived && <button className={`chip ${categoryFilter === "none" ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => setCategoryFilter("none")}>Без категории</button>}
+      <button className={`chip ${showArchived ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => { setShowArchived(true); setCategoryFilter("all"); }}>Архив</button>
+    </div>
+  );
   const repairSection = (
     <>
+      <div className="warehouse-repair-stats">
+        <div className="card"><span>в ремонте</span><strong>{openRepairs.data?.length ?? 0}</strong></div>
+        <div className="card"><span>на сервисе</span><strong>{openHandovers.data?.length ?? 0}</strong></div>
+        <div className="card"><span>оценка</span><strong>{eur(repairEstimateEUR)}</strong></div>
+      </div>
       <SectionHead label="Ремонты и сервисные выдачи" meta={`${repairCount}`} />
       {repairCount === 0 ? (
         <EmptyState title="Нет открытых ремонтов" />
@@ -386,10 +405,7 @@ export function WarehousePage() {
   );
   const modelSection = (
     <>
-      <SectionHead label="Модели" meta={canEdit ? undefined : `${allModels.length}`} />
-      <Field label="Поиск модели">
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель или тип" />
-      </Field>
+      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Начните вводить модель" />
       {canEdit && (
         <div className="row" style={{ marginBottom: 10 }}>
           {canCatalog && <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Модель / единица</Button>}
@@ -436,15 +452,7 @@ export function WarehousePage() {
   );
   const cableSection = (
     <>
-      {warehouseSelector}
-      <Field label="Поиск кабеля">
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Разъём, длина, тип" />
-      </Field>
-      {canCatalog && (
-        <div className="row" style={{ marginBottom: 10 }}>
-          <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Кабель</Button>
-        </div>
-      )}
+      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Разъём, длина, тип" />
       <SectionHead label="Кабели" meta={`${cableModels.length}`} />
       {cableModels.length === 0 ? (
         <EmptyState title="Нет кабелей" />
@@ -462,6 +470,7 @@ export function WarehousePage() {
           ))}
         </div>
       )}
+      {canCatalog && <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Кабель</Button>}
     </>
   );
   const unitSection = (
@@ -547,14 +556,15 @@ export function WarehousePage() {
   );
 
   const warehouseTabs = (
-    <div className="project-tabbar" role="tablist" aria-label="Warehouse">
+    <div className="warehouse-tabs" role="tablist" aria-label="Warehouse">
       {WAREHOUSE_TABS.map((tab) => {
         const isActive = activeTab === tab.id;
         const count = tab.id === "repair" ? repairCount : tab.id === "stocklist" ? filtered.length : tab.id === "installed" ? allUnits.filter(u => u.status === "installed").length : tab.id === "cables" ? cableModels.length : tab.id === "models" ? serialModels.length + quantityModels.length : 0;
         return (
-          <button key={tab.id} className={`project-tabbar__item ${isActive ? "project-tabbar__item--active" : ""}`} onClick={() => setActiveTab(tab.id)} aria-label={tab.label} aria-selected={isActive} role="tab" type="button" style={{ ["--tab-c" as string]: `var(--${tab.tone === "accent" ? "accent" : tab.tone})` }}>
-            <span className="project-tabbar__icon"><WarehouseGlyph type={tab.id} />{count > 0 && <span className="project-tabbar__badge">{count > 9 ? "9+" : count}</span>}</span>
-            <span className="project-tabbar__label">{tab.shortLabel}</span>
+          <button key={tab.id} className={`warehouse-tabs__item ${isActive ? "warehouse-tabs__item--active" : ""}`} onClick={() => setActiveTab(tab.id)} aria-label={tab.label} aria-selected={isActive} role="tab" type="button">
+            <span className="warehouse-tabs__icon"><WarehouseGlyph type={tab.id} /></span>
+            <span>{tab.shortLabel}</span>
+            {count > 0 && <span className="warehouse-tabs__badge">{count > 9 ? "9+" : count}</span>}
           </button>
         );
       })}
@@ -567,16 +577,29 @@ export function WarehousePage() {
       {activeTab === "dashboard" && categorySelector}
       {activeTab === "dashboard" && (
         <>
-          <PrepHero units={allUnits} onOps={canIssue ? () => setOpsOpen(true) : () => navigate("/operations")} />
+          <PrepHero units={allUnits.filter((unit) => visibleModels.some((model) => model.id === unit.modelId))} onOps={canIssue ? () => setOpsOpen(true) : () => navigate("/operations")} />
           {searchField}
+          {query && (
+            <div className="card warehouse-search-results">
+              {dashboardSearchResults.length > 0 ? dashboardSearchResults.map((unit, index) => {
+                const tone: Tone = unit.status === "in_stock" ? "ok" : unit.status === "on_project" ? "warn" : unit.status === "lost" || unit.status === "in_repair" ? "alert" : "info";
+                return (
+                  <button key={unit.id} className="warehouse-search-result" onClick={() => navigate(`/warehouse/units/${unit.id}`)} style={{ borderBottom: index < dashboardSearchResults.length - 1 ? undefined : "none" }}>
+                    <span><strong>{unit.assetTag}</strong><small>{allModels.find((model) => model.id === unit.modelId)?.name ?? unit.modelId}{unit.serial ? ` · ${unit.serial}` : ""}</small></span>
+                    <Chip label={unitStatusLabel[unit.status]} tone={tone} />
+                  </button>
+                );
+              }) : <EmptyState title="Ничего не найдено" />}
+            </div>
+          )}
+          {warehouseSelector}
         </>
       )}
       {activeTab === "repair" && repairSection}
       {activeTab === "stocklist" && (
         <>
-          {searchField}
-          {warehouseSelector}
-          {categorySelector}
+          {stockSearchField}
+          {warehouseFilterRow}
           {unitSection}
         </>
       )}
