@@ -2381,6 +2381,17 @@ textarea.input:focus {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .mobile-workspace-pill__chevron {
+    width: 10px;
+    height: 10px;
+    flex: 0 0 10px;
+    overflow: visible;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
   .mobile-back { max-width: 100px; gap: 3px; color: var(--blue); font-size: 17px; }
   .mobile-back > span:first-child { flex: 0 0 auto; font-size: 34px; font-weight: 300; line-height: 1; transform: translateY(-1px); }
   .mobile-back > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

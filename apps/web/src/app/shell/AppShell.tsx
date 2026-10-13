@@ -142,7 +142,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button className="mobile-wordmark" onClick={() => setSwitcherOpen(true)} aria-label={t("workspace.current")}>
               <SeverStar size={26} />
               <strong>SEVER</strong>
-              <span className="mobile-workspace-pill">{workspacePill}<span aria-hidden="true">⌄</span></span>
+              <span className="mobile-workspace-pill">
+                {workspacePill}
+                <svg className="mobile-workspace-pill__chevron" aria-hidden="true" viewBox="0 0 12 12">
+                  <path d="M2.5 4.5 6 8l3.5-3.5" />
+                </svg>
+              </span>
             </button>
           )}
         </div>
