@@ -10,6 +10,7 @@ import {
   Loading,
   Metric,
   SectionTitle,
+  Sheet,
   StatusBadge,
   Textarea,
 } from "../../ui-kit/index.ts";
@@ -59,6 +60,7 @@ export function ContractorsPage() {
   const [name, setName] = useState("");
   const [contacts, setContacts] = useState("");
   const [query, setQuery] = useState("");
+  const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editContacts, setEditContacts] = useState("");
@@ -80,10 +82,6 @@ export function ContractorsPage() {
 
   const list = contractors.data ?? [];
   const open = openItems.data ?? [];
-  useEffect(() => {
-    if (!selectedId && list[0]) setSelectedId(list[0].id);
-  }, [list, selectedId]);
-
   const selected = list.find((c) => c.id === selectedId) ?? null;
   useEffect(() => {
     if (!selected) return;
@@ -115,7 +113,7 @@ export function ContractorsPage() {
   const submitNew = () =>
     create.mutate(
       { name: name.trim(), contacts: contacts.trim() || null },
-      { onSuccess: (c) => { setSelectedId(c.id); setName(""); setContacts(""); } }
+      { onSuccess: (c) => { setSelectedId(c.id); setName(""); setContacts(""); setCreating(false); } }
     );
 
   const submitEdit = () => {
@@ -130,23 +128,11 @@ export function ContractorsPage() {
   if (contractors.error) return <ErrorState error={contractors.error} onRetry={contractors.refetch} />;
 
   return (
-    <div className="stack">
-      <SectionTitle>{t("contractors.title")}</SectionTitle>
-
-      <Card>
-        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-          <Metric value={list.length} label={t("contractors.title")} />
-          <Metric value={open.length} label={t("contractors.returnDue")} tone={open.length ? "danger" : "ok"} />
-          <Metric value={eur(open.reduce((sum, item) => sum + totalCost(item), 0))} label={t("finance.payables")} tone={open.length ? "danger" : "ok"} />
-        </div>
-      </Card>
-
-      <Field label={t("common.search")}>
-        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Light, truss, kontakt..." />
-      </Field>
-
-      <Card>
-        <p className="card__title">{t("contractors.new")}</p>
+    <div className="stack contractors-page">
+      {!selected && <>
+      <div className="contractor-metrics"><Card><Metric value={eur(open.reduce((sum,item)=>sum+totalCost(item),0))} label={t("finance.payables")} tone={open.length?"danger":"ok"}/></Card><Card><Metric value={open.length} label={t("contractors.returnDue")} tone={open.length?"danger":"ok"}/></Card></div>
+      <Button block onClick={()=>setCreating(value=>!value)}>+ Подрядчик</Button>
+      <Sheet open={creating} onClose={()=>setCreating(false)} title={t("contractors.new")}>
         <Field label={t("common.name")}>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Company / person / warehouse" />
         </Field>
@@ -156,30 +142,33 @@ export function ContractorsPage() {
         <Button block disabled={!name.trim() || create.isPending} onClick={submitNew}>
           {t("contractors.add")}
         </Button>
-      </Card>
+      </Sheet>
+      <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Название или контакт" />
 
       {list.length === 0 ? (
         <EmptyState title={t("contractors.empty")} hint={t("contractors.emptyHint")} />
       ) : (
-        <div className="row" style={{ gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+        <Card className="directory-list">
           {filteredContractors.map((c) => {
             const count = open.filter((item) => item.contractorId === c.id).length;
+            const cost = open.filter((item)=>item.contractorId===c.id).reduce((sum,item)=>sum+totalCost(item),0);
             return (
               <button
                 key={c.id}
-                className={`chip ${selectedId === c.id ? "chip--accent chip--solid" : "chip--neutral"}`}
-                style={{ border: "none", cursor: "pointer", whiteSpace: "nowrap" }}
+                className="directory-row"
                 onClick={() => setSelectedId(c.id)}
               >
-                {c.name}{count ? ` · ${t("contractors.returnDue")} ${count}` : ""}
+                <span className="directory-row__icon">♢</span><span><strong>{c.name}</strong><small>{c.contacts||"Без контактов"}{cost?` · к оплате ${eur(cost)}`:""}</small></span>{count?<StatusBadge tone="warn">возврат {count}</StatusBadge>:null}<i>›</i>
               </button>
             );
           })}
-        </div>
+        </Card>
       )}
+      </>}
 
       {selected && (
         <>
+          <button className="detail-back" onClick={()=>setSelectedId("")}>‹ Contractors</button>
           <Card>
             <div className="row row--between">
               <div style={{ minWidth: 0 }}>

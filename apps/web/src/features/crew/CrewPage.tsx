@@ -2,7 +2,7 @@ import { inviteCancellationReasonLabel } from "../../lib/labels.ts";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Equipment, People, Projects } from "@sever/contracts";
-import { Card, Button, SectionHead, Field, Input, Select, Textarea, Loading, EmptyState, Chip } from "../../ui-kit/index.ts";
+import { Card, Button, SectionHead, Field, Input, Select, Textarea, Loading, EmptyState, Chip, Sheet } from "../../ui-kit/index.ts";
 import { useSession } from "../../app/session.ts";
 import { api } from "../../lib/api.ts";
 import { getToken } from "../../lib/api.ts";
@@ -224,6 +224,8 @@ export function CrewPage() {
   const [historyMode, setHistoryMode] = useState<"projects" | "actions">("projects");
   const [applicationRoleIds, setApplicationRoleIds] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<CrewTab>("people");
+  const [crewQuery, setCrewQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
 
   const list = people.data ?? [];
   const applications = useQuery({
@@ -244,7 +246,14 @@ export function CrewPage() {
     meta: { successMessage: "Анкета отклонена" },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["crew-applications"] }),
   });
-  const selected = list.find((u) => u.id === selectedId) ?? list[0] ?? null;
+  const selected = list.find((u) => u.id === selectedId) ?? null;
+  const roleNames = [...new Set(list.map((person) => person.roleName).filter(Boolean))] as string[];
+  const filteredPeople = list.filter((person) => {
+    const query = crewQuery.trim().toLowerCase();
+    const matchesRole = roleFilter === "all" || person.roleName === roleFilter;
+    const matchesQuery = !query || [personName(person), person.roleName, person.telegramUsername, person.email].some((value) => value?.toLowerCase().includes(query));
+    return matchesRole && matchesQuery;
+  });
   const actionHistory = useQuery({
     enabled: !!selected,
     queryKey: ["people", selected?.id, "equipment-journal"],
@@ -253,10 +262,6 @@ export function CrewPage() {
   const units = useQuery({ queryKey: ["equipment", "units"], queryFn: () => api.get<Equipment.EquipmentUnitDTO[]>("/api/equipment/units") });
   const models = useQuery({ queryKey: ["equipment", "models"], queryFn: () => api.get<Equipment.EquipmentModelDTO[]>("/api/equipment/models") });
   const warehouses = useQuery({ queryKey: ["equipment", "warehouses"], queryFn: () => api.get<Equipment.WarehouseDTO[]>("/api/equipment/warehouses") });
-
-  useEffect(() => {
-    if (!selectedId && list[0]) setSelectedId(list[0].id);
-  }, [list, selectedId]);
 
   useEffect(() => {
     if (!selected) return;
@@ -351,7 +356,7 @@ export function CrewPage() {
 
   return (
     <div className={`stack ${(canReviewApplications || canManagePeople) ? "page-with-tabbar" : ""}`}>
-      <SectionHead label="Crew" meta={pendingApplications.length > 0 ? `${list.length} · ${pendingApplications.length} анкет` : `${list.length}`} />
+      <div className="design-tabs crew-tabs" role="tablist">{([{id:"people",label:"Работники",count:list.length},{id:"applications",label:"Анкеты",count:pendingApplications.length,hidden:!canReviewApplications},{id:"deleted",label:"Удалённые",count:deletedList.length,hidden:!canManagePeople}] as const).filter(item=>!("hidden" in item&&item.hidden)).map(item=><button key={item.id} className={currentTab===item.id?"is-active":""} onClick={()=>{setActiveTab(item.id);setSelectedId("");}}>{item.label}{item.count?<span className={item.id==="applications"?"is-alert":""}>{item.count}</span>:null}</button>)}</div>
       {currentTab === "applications" ? (
         <>
           <SectionHead label="Анкеты" meta={`${pendingApplications.length}`} />
@@ -455,22 +460,8 @@ export function CrewPage() {
               </div>
             </Card>
           )}
-          {!isAddingPerson ? (
-            <Button variant="secondary" onClick={() => setIsAddingPerson(true)}>Добавить человека</Button>
-          ) : (
-            <Card>
-              <div className="row row--between">
-                <SectionHead label="Новый человек" />
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setIsAddingPerson(false);
-                    setNewPerson({ name: "", email: "", telegram: "", roleId: "" });
-                  }}
-                >
-                  ×
-                </Button>
-              </div>
+          <Button variant="secondary" onClick={() => setIsAddingPerson(true)}>Добавить человека</Button>
+          <Sheet open={isAddingPerson} onClose={() => { setIsAddingPerson(false); setNewPerson({ name: "", email: "", telegram: "", roleId: "" }); }} title="Новый человек">
               <Field label="Имя">
                 <Input value={newPerson.name} onChange={(e) => setNewPerson((p) => ({ ...p, name: e.target.value }))} placeholder="Имя Фамилия" />
               </Field>
@@ -504,13 +495,17 @@ export function CrewPage() {
               >
                 Создать
               </Button>
-            </Card>
-          )}
+          </Sheet>
         </>
       )}
-      {!selected && <EmptyState title="Crew пуст" />}
+      {!selected && <>
+        <Input value={crewQuery} onChange={event=>setCrewQuery(event.target.value)} placeholder="Имя, роль, Telegram" />
+        <div className="crew-role-filters"><button className={`supply-filter-chip ${roleFilter==="all"?"is-active":""}`} onClick={()=>setRoleFilter("all")}>Все</button>{roleNames.map(role=><button key={role} className={`supply-filter-chip ${roleFilter===role?"is-active":""}`} onClick={()=>setRoleFilter(role)}>{role}</button>)}</div>
+        <Card className="directory-list">{filteredPeople.length?filteredPeople.map(person=><button className="directory-row" key={person.id} onClick={()=>setSelectedId(person.id)}>{displayImageUrl(person.photoUrl)?<img src={displayImageUrl(person.photoUrl)!} alt="" className="crew-photo"/>:<span className="crew-photo crew-photo--empty">{personName(person).split(/\s+/).map(part=>part[0]).join("").slice(0,2).toUpperCase()}</span>}<span><strong>{personName(person)}</strong><small>{person.roleName}{person.hourlyRateEUR!=null?` · ${person.hourlyRateEUR} €/ч`:""}{person.telegramUsername?` · ${telegramFieldValue(person.telegramUsername)}`:""}</small></span><i>›</i></button>):<EmptyState title="Никого не найдено"/>}</Card>
+      </>}
       {selected && (
         <>
+      <button className="detail-back" onClick={()=>setSelectedId("")}>‹ Crew</button>
       <div className="row" style={{ gap: 8, overflowX: "auto", paddingBottom: 2 }}>
         {list.map((person) => (
           <button
@@ -758,35 +753,6 @@ export function CrewPage() {
         </>
       )}
         </>
-      )}
-      {(canReviewApplications || canManagePeople) && (
-        <div className="project-tabbar" role="tablist" aria-label="Crew">
-          {([
-            { id: "people" as const, label: "Работники", shortLabel: "Люди", count: list.length },
-            canReviewApplications ? { id: "applications" as const, label: "Анкеты", shortLabel: "Анкеты", count: pendingApplications.length } : null,
-            canManagePeople ? { id: "deleted" as const, label: "Удалённые", shortLabel: "Удал.", count: deletedList.length } : null,
-          ].filter(Boolean) as { id: CrewTab; label: string; shortLabel: string; count: number }[]).map((tab) => {
-            const isActive = currentTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                className={`project-tabbar__item ${isActive ? "project-tabbar__item--active" : ""}`}
-                onClick={() => setActiveTab(tab.id)}
-                aria-label={tab.label}
-                aria-selected={isActive}
-                role="tab"
-                type="button"
-                style={{ ["--tab-c" as string]: tab.id === "applications" ? "var(--warn)" : tab.id === "deleted" ? "var(--danger)" : "var(--accent)" }}
-              >
-                <span className="project-tabbar__icon">
-                  <CrewTabIcon type={tab.id} />
-                  {tab.count > 0 && <span className="project-tabbar__badge">{tab.count > 9 ? "9+" : tab.count}</span>}
-                </span>
-                <span className="project-tabbar__label">{tab.shortLabel}</span>
-              </button>
-            );
-          })}
-        </div>
       )}
     </div>
   );

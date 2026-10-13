@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Venues } from "@sever/contracts";
-import { Button, Card, Chip, EmptyState, Field, Input, Loading, SectionTitle } from "../../ui-kit/index.ts";
+import { Button, Card, Chip, EmptyState, Field, Input, Loading, Sheet } from "../../ui-kit/index.ts";
 import { useSession } from "../../app/session.ts";
 import { AddressInput } from "../places/AddressInput.tsx";
 import { useArchiveVenue, useCreateVenue, useDeleteVenue, useUpdateVenue, useVenues } from "../plans/hooks.ts";
@@ -17,12 +17,21 @@ export function VenuesPage() {
   const archive = useArchiveVenue();
   const remove = useDeleteVenue();
   const [creating, setCreating] = useState(false);
+  const [selectedId, setSelectedId] = useState("");
+  const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const saveNew = () => create.mutate(draft as Venues.CreateVenueInput, { onSuccess: () => { setDraft(emptyDraft()); setCreating(false); } });
-  return <div className="stack">
-    <div className="row row--between"><SectionTitle>Venues</SectionTitle><div className="row"><label className="chip chip--neutral"><input type="checkbox" checked={showArchive} onChange={e => setShowArchive(e.target.checked)} /> Архив</label>{can("venues.manage") && <Button onClick={() => setCreating(true)}>+ Площадка</Button>}</div></div>
-    {creating && <Card><VenueForm draft={draft} setDraft={setDraft} /><div className="row"><Button block disabled={!draft.name.trim() || create.isPending} onClick={saveNew}>Создать</Button><Button block variant="secondary" onClick={() => setCreating(false)}>Отмена</Button></div></Card>}
-    {venues.isLoading ? <Loading /> : (venues.data ?? []).length === 0 ? <EmptyState title="Площадок пока нет" /> : (venues.data ?? []).map(venue => <VenueCard key={venue.id} venue={venue} canEdit={can("venues.manage")} canArchive={can("venues.archive", "venues.manage")} canDelete={can("venues.delete")} onSave={input => update.mutate({ id: venue.id, input })} onArchive={() => archive.mutate({ id: venue.id, archived: !venue.archivedAt })} onDelete={() => confirm(`Удалить «${venue.name}» окончательно?`) && remove.mutate(venue.id)} />)}
+  const rows=(venues.data??[]).filter(venue=>!query.trim()||[venue.name,venue.address].some(value=>value?.toLowerCase().includes(query.trim().toLowerCase())));
+  const selected=(venues.data??[]).find(venue=>venue.id===selectedId)??null;
+  return <div className="stack venues-page">
+    {!selected&&<>
+    {can("venues.manage")&&<Button block onClick={()=>setCreating(true)}>+ Площадка</Button>}
+    <div className="segmented-control"><button className={!showArchive?"is-active":""} onClick={()=>setShowArchive(false)}>Активные · {!showArchive?(venues.data??[]).length:""}</button><button className={showArchive?"is-active":""} onClick={()=>setShowArchive(true)}>Архив{showArchive?` · ${(venues.data??[]).length}`:""}</button></div>
+    <Input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Название или адрес"/>
+    <Sheet open={creating} onClose={()=>setCreating(false)} title="Новая площадка"><VenueForm draft={draft} setDraft={setDraft}/><div className="row"><Button block disabled={!draft.name.trim()||create.isPending} onClick={saveNew}>Создать</Button><Button block variant="secondary" onClick={()=>setCreating(false)}>Отмена</Button></div></Sheet>
+    {venues.isLoading?<Loading/>:rows.length===0?<EmptyState title="Площадок пока нет"/>:<Card className="directory-list">{rows.map(venue=><button className="directory-row" key={venue.id} onClick={()=>setSelectedId(venue.id)}><span className="directory-row__icon">⌂</span><span><strong>{venue.name}</strong><small>{[venue.address,venue.workingHours].filter(Boolean).join(" · ")||"Адрес не указан"}</small></span>{venue.archivedAt&&<Chip label="архив" tone="neutral"/>}<i>›</i></button>)}</Card>}
+    </>}
+    {selected&&<><button className="detail-back" onClick={()=>setSelectedId("")}>‹ Venues</button><VenueCard venue={selected} canEdit={can("venues.manage")} canArchive={can("venues.archive","venues.manage")} canDelete={can("venues.delete")} onSave={input=>update.mutate({id:selected.id,input})} onArchive={()=>archive.mutate({id:selected.id,archived:!selected.archivedAt})} onDelete={()=>confirm(`Удалить «${selected.name}» окончательно?`)&&remove.mutate(selected.id)}/></>}
   </div>;
 }
 

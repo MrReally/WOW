@@ -193,7 +193,7 @@ export function WarehousePage() {
   const [warehouseNameDraft, setWarehouseNameDraft] = useState("");
   const [warehouseAddressDraft, setWarehouseAddressDraft] = useState("");
   const [search, setSearch] = useState("");
-  const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
+  const [expandedStockModels, setExpandedStockModels] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<WarehouseTab>("dashboard");
   const [categoryFilter,setCategoryFilter]=useState("all");
 
@@ -269,10 +269,10 @@ export function WarehousePage() {
 
   const repairTone = (s: Equipment.UnitStatus) => (s === "in_repair" ? "alert" : "warn");
   const tag = (uid: string) => allUnits.find((x) => x.id === uid)?.assetTag ?? uid.slice(0, 6);
-  const toggleType = (tid: string) =>
-    setCollapsedTypes((prev) => {
+  const toggleStockModel = (modelId: string) =>
+    setExpandedStockModels((prev) => {
       const next = new Set(prev);
-      next.has(tid) ? next.delete(tid) : next.add(tid);
+      next.has(modelId) ? next.delete(modelId) : next.add(modelId);
       return next;
     });
   const repairCount = (openRepairs.data ?? []).length + (openHandovers.data ?? []).length;
@@ -494,44 +494,57 @@ export function WarehousePage() {
             (groups.get(tid) ?? groups.set(tid, []).get(tid)!).push(u);
           }
           const ordered = [...groups.entries()].sort((a, b) => getTypeName(a[0]).localeCompare(getTypeName(b[0])));
-          return ordered.map(([tid, list]) => (
-            <div key={tid}>
-              <div className="row row--between" style={{ alignItems: "center" }}>
-                <SectionHead label={getTypeName(tid)} meta={`${list.length}`} />
-                <div className="row" style={{ gap: 6 }}>
+          return ordered.map(([tid, list]) => {
+            const modelGroups = new Map<string, Equipment.EquipmentUnitDTO[]>();
+            for (const unit of list) (modelGroups.get(unit.modelId) ?? modelGroups.set(unit.modelId, []).get(unit.modelId)!).push(unit);
+            return (
+              <div key={tid}>
+                <div className="row row--between" style={{ alignItems: "center" }}>
+                  <SectionHead label={getTypeName(tid)} meta={`${modelGroups.size}`} />
                   {canCatalog && (
                     <button className="icon-btn" aria-label="Редактировать тип" title="Редактировать тип" onClick={() => setEditType((types.data ?? []).find(type => type.id === tid) ?? null)}>
                       ✎
                     </button>
                   )}
-                  <button className="icon-btn" aria-label={collapsedTypes.has(tid) ? "Развернуть" : "Свернуть"} title={collapsedTypes.has(tid) ? "Развернуть" : "Свернуть"} onClick={() => toggleType(tid)}>
-                    {collapsedTypes.has(tid) ? "▾" : "▴"}
-                  </button>
                 </div>
-              </div>
-              {!collapsedTypes.has(tid) && (
-                <div className="card" style={{ padding: "2px 16px" }}>
-                  {list.map((u, i) => {
-                    const tone: Tone = u.status === "in_stock" ? "ok" : u.status === "on_project" ? "warn" : u.status === "lost" || u.status === "in_repair" ? "alert" : "info";
+                <div className="card stock-model-list">
+                  {[...modelGroups.entries()].map(([modelId, modelUnits], modelIndex) => {
+                    const model = modelOf(modelId);
+                    const inStock = modelUnits.filter(unit => unit.status === "in_stock").length;
+                    const reserved = modelUnits.filter(unit => unit.status === "reserved").length;
+                    const onProject = modelUnits.filter(unit => unit.status === "on_project").length;
+                    const inRepair = modelUnits.filter(unit => unit.status === "in_repair").length;
+                    const isExpanded = expandedStockModels.has(modelId);
                     return (
-                      <div
-                        key={u.id}
-                        className="lrow card--tappable"
-                        style={{ borderBottom: i === list.length - 1 ? "none" : undefined }}
-                        onClick={() => navigate(`/warehouse/units/${u.id}`)}
-                      >
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div className="lrow__title">{u.assetTag}</div>
-                          <div className="lrow__detail">{modelOf(u.modelId)?.name ?? u.modelId} · {warehouseName(u.warehouseId)}</div>
-                        </div>
-                        <Chip label={unitStatusLabel[u.status]} tone={tone} />
+                      <div key={modelId} className={modelIndex === modelGroups.size - 1 ? "" : "stock-model-group"}>
+                        <button className="stock-model-row" onClick={() => toggleStockModel(modelId)} aria-expanded={isExpanded}>
+                          <span className="stock-model-row__icon">◇</span>
+                          <span className="stock-model-row__body">
+                            <span className="stock-model-row__title">{model?.name ?? modelId}</span>
+                            <span className="stock-model-row__detail">{inStock} на складе · {reserved} резерв · {onProject} на проекте</span>
+                          </span>
+                          {inRepair > 0 ? <Chip label={`ремонт ${inRepair}`} tone="alert" /> : <span className="stock-model-row__count">{modelUnits.length}</span>}
+                        </button>
+                        {isExpanded && (
+                          <div className="stock-unit-list">
+                            {modelUnits.map((unit) => {
+                              const tone: Tone = unit.status === "in_stock" ? "ok" : unit.status === "on_project" ? "warn" : unit.status === "lost" || unit.status === "in_repair" ? "alert" : "info";
+                              return (
+                                <button key={unit.id} className="stock-unit-row" onClick={() => navigate(`/warehouse/units/${unit.id}`)}>
+                                  <span><strong>{unit.assetTag}</strong><small>{warehouseName(unit.warehouseId)}</small></span>
+                                  <Chip label={unitStatusLabel[unit.status]} tone={tone} />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
-              )}
-            </div>
-          ));
+              </div>
+            );
+          });
         })()
       )}
     </>
@@ -565,8 +578,9 @@ export function WarehousePage() {
       {activeTab === "repair" && repairSection}
       {activeTab === "stocklist" && (
         <>
-          {warehouseSelector}
           {searchField}
+          {warehouseSelector}
+          {categorySelector}
           {unitSection}
         </>
       )}

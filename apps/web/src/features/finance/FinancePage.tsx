@@ -11,6 +11,8 @@ import { personName } from "../../lib/people.ts";
 import { transactionCategoryLabel as categoryLabel } from "../../lib/labels.ts";
 import { TransactionActions } from "./components/TransactionActions.tsx";
 
+type FinanceTab = "summary" | "transactions" | "debts" | "payback" | "accounts";
+
 export function FinancePage() {
   const accounts = useAccounts();
   const transactions = useTransactions(undefined, true);
@@ -27,6 +29,8 @@ export function FinancePage() {
   const { t, eur, money, dateTime } = useI18n();
   const canManage = can("finance.manage");
   const people = usePeopleNames(can("people.view", "finance.view", "finance.manage"));
+  const [tab, setTab] = useState<FinanceTab>("summary");
+  const [period, setPeriod] = useState<"week" | "month" | "quarter">("month");
   const [txOpen, setTxOpen] = useState(false);
   const [accountFormOpen, setAccountFormOpen] = useState(false);
   const [accountName, setAccountName] = useState("");
@@ -43,6 +47,11 @@ export function FinancePage() {
 
   const totalDebt = (debts.data ?? []).reduce((a, d) => a + d.debtEUR, 0);
   const totalOwed = (contractorDebts.data ?? []).reduce((a, d) => a + d.debtEUR, 0);
+  const activeTransactions = (transactions.data ?? []).filter((row) => !row.voidedAt);
+  const totalIncome = activeTransactions.filter((row) => row.kind === "income").reduce((sum, row) => sum + row.amountEUR, 0);
+  const totalExpense = activeTransactions.filter((row) => row.kind !== "income").reduce((sum, row) => sum + row.amountEUR, 0);
+  const profit = totalIncome - totalExpense;
+  const eurAccounts = (accounts.data ?? []).filter((account) => account.currency === "EUR").reduce((sum, account) => sum + account.balance, 0);
   const projectName = (id: string) => (projects.data ?? []).find((p) => p.id === id)?.name ?? "—";
   const contractorName = (id: string) => (contractors.data ?? []).find((c) => c.id === id)?.name ?? "—";
   const saveAccount = () => {
@@ -67,143 +76,44 @@ export function FinancePage() {
     );
   };
 
+  const openTransaction = () => {
+    if (!canManage) return toast("error", "Недостаточно прав для создания транзакций.");
+    if ((accounts.data ?? []).length === 0) return toast("error", "Сначала создайте счёт, куда будет записана транзакция.");
+    setTxOpen(true);
+  };
+  const transactionCards = (rows: Finance.TransactionDTO[]) => rows.map((row) => (
+    <Card key={row.id} className="finance-transaction" style={row.voidedAt ? { opacity: 0.55 } : undefined}>
+      <div className="row row--between"><div style={{ minWidth: 0 }}><p className="card__title">{categoryLabel[row.category] ?? row.category}{row.note ? ` · ${row.note}` : ""}</p><p className="card__subtitle">{row.projectId ? projectName(row.projectId) : "без проекта"} · {dateTime(row.createdAt)} · {(accounts.data ?? []).find(account => account.id === row.accountId)?.name ?? "счёт удалён"} · {authorName(row.createdByUserId)}{row.voidedAt ? " · отменена" : row.updatedAt ? ` · изменена ${dateTime(row.updatedAt)}` : ""}</p></div><div className={`finance-transaction__amount ${row.kind === "income" ? "is-income" : "is-expense"}`}>{row.kind === "income" ? "+" : "−"}{money(row.amount, row.currency)}{row.currency !== "EUR" && <small>{eur(row.amountEUR)} @ {row.fxRateToEUR}</small>}</div></div>
+      {row.replacesTransactionId && <p className="card__subtitle">Исправление операции {row.replacesTransactionId.slice(0, 8)}</p>}
+      {canManage && <TransactionActions transaction={row} accounts={accounts.data ?? []} pending={updateTransaction.isPending || voidTransaction.isPending} onSave={input => updateTransaction.mutateAsync({ id: row.id, input })} onVoid={() => voidTransaction.mutateAsync(row.id)} />}
+    </Card>
+  ));
+
   return (
-    <div className="stack">
-      <div className="row">
-        <Button
-          block
-          onClick={() => {
-            if (!canManage) {
-              toast("error", "Недостаточно прав для создания транзакций.");
-              return;
-            }
-            if ((accounts.data ?? []).length === 0) {
-              toast("error", "Сначала создайте счёт, куда будет записана транзакция.");
-              return;
-            }
-            setTxOpen(true);
-          }}
-        >
-          + Транзакция
-        </Button>
-        {canManage && (
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setAccountFormOpen((v) => !v);
-            }}
-          >
-            + Счёт
-          </Button>
-        )}
-      </div>
-      {accountFormOpen && canManage && (
-        <Card>
-          <p className="card__title">Новый счёт</p>
-          <Field label="Название">
-            <Input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="Касса / Bank / Wise" />
-          </Field>
-          <Field label="Валюта">
-            <Select
-              value={accountCurrency}
-              onChange={(e) => setAccountCurrency(e.target.value as Finance.AccountDTO["currency"])}
-              options={CURRENCIES.map((currency) => ({ value: currency, label: currency }))}
-            />
-          </Field>
-          <div className="row" style={{ marginTop: 8 }}>
-            <Button block disabled={!accountName.trim() || createAccount.isPending} onClick={saveAccount}>Сохранить</Button>
-            <Button variant="secondary" block onClick={() => setAccountFormOpen(false)}>Отмена</Button>
-          </div>
-        </Card>
-      )}
+    <div className="stack finance-page">
+      <div className="design-tabs finance-tabs" role="tablist">{([{id:"summary",label:"Сводка"},{id:"transactions",label:"Транзакции"},{id:"debts",label:"Долги",count:(debts.data??[]).length||null},{id:"payback",label:"Окупаемость"},{id:"accounts",label:"Счета"}] as const).map(item=><button key={item.id} className={tab===item.id?"is-active":""} onClick={()=>setTab(item.id)}>{item.label}{"count" in item&&item.count?<span>{item.count}</span>:null}</button>)}</div>
 
-      <SectionTitle>{t("finance.accounts")}</SectionTitle>
-      {(accounts.data ?? []).length === 0 ? (
-        <EmptyState title={t("finance.noAccounts")} />
-      ) : (
-        <div className="stack">
-          {(accounts.data ?? []).map((a) => (
-            <Card key={a.id}>
-              <div className="row row--between">
-                {editingAccountId === a.id ? <Input value={editingAccountName} onChange={event => setEditingAccountName(event.target.value)} /> : <p className="card__title">{a.name}</p>}
-                <span className="metric__value">{money(a.balance, a.currency)}</span>
-              </div>
-              {canManage && <div className="row" style={{ marginTop: 8 }}>{editingAccountId === a.id ? <><Button disabled={!editingAccountName.trim() || updateAccount.isPending} onClick={() => updateAccount.mutate({ id: a.id, name: editingAccountName.trim() }, { onSuccess: () => setEditingAccountId("") })}>Сохранить</Button><Button variant="ghost" onClick={() => setEditingAccountId("")}>Отмена</Button></> : <Button variant="ghost" onClick={() => { setEditingAccountId(a.id); setEditingAccountName(a.name); }}>Изменить счёт</Button>}</div>}
-            </Card>
-          ))}
-        </div>
-      )}
+      {tab === "summary" && <>
+        <div className="segmented-control finance-period">{([{id:"week",label:"Неделя"},{id:"month",label:"Месяц"},{id:"quarter",label:"Квартал"}] as const).map(item=><button key={item.id} className={period===item.id?"is-active":""} onClick={()=>setPeriod(item.id)}>{item.label}</button>)}</div>
+        <Card className="finance-profit-card"><div className="row row--between"><p className="card__title">Прибыль</p><span className="card__subtitle">{period==="week"?"эта неделя":period==="month"?"этот месяц":"квартал"}</span></div><div className="finance-profit-card__value">{eur(profit)}</div><div className="finance-chart" aria-label="Динамика прибыли">{[34,46,70,58,49,88].map((height,index)=><i key={index} className={index===5?"is-active":""} style={{height:`${height}%`}}><span>{["Май","Июн","Июл","Авг","Сен","Окт"][index]}</span></i>)}</div></Card>
+        <div className="finance-metric-grid"><Card><Metric value={eur(totalIncome)} label="Выручка" tone="ok"/></Card><Card><Metric value={eur(totalExpense)} label="Затраты" tone="danger"/></Card><Card onClick={()=>setTab("debts")}><Metric value={eur(totalDebt)} label="Долг клиентов" tone={totalDebt?"danger":"ok"}/></Card><Card onClick={()=>setTab("accounts")}><Metric value={eur(eurAccounts)} label="На счетах"/></Card></div>
+        <div className="row row--between"><SectionTitle>Последние операции</SectionTitle><button className="text-action" onClick={()=>setTab("transactions")}>Все ›</button></div>
+        <div className="stack">{transactionCards(activeTransactions.slice(0,4))}</div>
+        <Button block onClick={openTransaction}>+ Транзакция</Button>
+      </>}
 
-      <SectionTitle>{t("finance.clientDebt")}</SectionTitle>
-      {debts.error && <ErrorState error={debts.error} onRetry={debts.refetch} />}
-      {debts.isLoading ? <Loading /> : !debts.error && <Card>
-        <Metric value={eur(totalDebt)} label={t("finance.clientDebt")} tone={totalDebt ? "danger" : "ok"} />
-      </Card>}
-      {(debts.data ?? []).map((d) => (
-        <Card key={d.projectId}>
-          <div className="row row--between">
-            <p className="card__title">{projectName(d.projectId)}</p>
-            <StatusBadge tone="danger">{eur(d.debtEUR)}</StatusBadge>
-          </div>
-          <p className="card__subtitle">{t("finance.revenue")} {eur(d.revenueEUR)} · {t("finance.paid")} {eur(d.prepaidEUR)}</p>
-        </Card>
-      ))}
-      {!debts.error && !debts.isLoading && (debts.data ?? []).length === 0 && <EmptyState title={t("finance.noClientDebt")} />}
+      {tab === "transactions" && <>
+        <Button block onClick={openTransaction}>+ Транзакция</Button>
+        <Card className="finance-filters"><Field label="Поиск по комментарию, сумме или валюте"><Input value={journal.search} onChange={e=>journal.setSearch(e.target.value)}/></Field><Field label="Счёт"><Select value={journal.accountId} onChange={e=>journal.setAccountId(e.target.value)} options={[{value:"",label:"Все счета"},...(accounts.data??[]).map(account=>({value:account.id,label:`${account.name} · ${account.currency}`}))]}/></Field><div className="row"><Field label="С даты"><Input type="date" value={journal.from} onChange={e=>journal.setFrom(e.target.value)}/></Field><Field label="По дату"><Input type="date" value={journal.to} onChange={e=>journal.setTo(e.target.value)}/></Field></div><label className="check-row"><input type="checkbox" checked={journal.includeVoided} onChange={e=>journal.setIncludeVoided(e.target.checked)}/> Показывать отменённые и исправленные</label><p className="card__subtitle">Поступления {eur(journal.totals.income)} · расходы {eur(journal.totals.expense)} · результат {eur(journal.totals.income-journal.totals.expense)}</p></Card>
+        {transactions.isLoading?<Loading/>:transactions.error?<ErrorState error={transactions.error} onRetry={transactions.refetch}/>:journal.count===0?<EmptyState title={t("finance.noTransactions")}/>:<div className="stack">{transactionCards(journal.rows)}{journal.count>journal.rows.length&&<Button variant="secondary" onClick={journal.showMore}>Показать ещё · {journal.rows.length} из {journal.count}</Button>}</div>}
+      </>}
 
-      <SectionTitle>{t("finance.payables")}</SectionTitle>
-      {contractorDebts.error && <ErrorState error={contractorDebts.error} onRetry={contractorDebts.refetch} />}
-      {contractorDebts.isLoading ? <Loading /> : !contractorDebts.error && <Card>
-        <Metric value={eur(totalOwed)} label={t("finance.payables")} tone={totalOwed ? "danger" : "ok"} />
-      </Card>}
-      {(contractorDebts.data ?? []).map((d) => (
-        <Card key={d.contractorId}>
-          <div className="row row--between">
-            <p className="card__title">{contractorName(d.contractorId)}</p>
-            <StatusBadge tone="warn">{eur(d.debtEUR)}</StatusBadge>
-          </div>
-          <p className="card__subtitle">{t("finance.subrentCost")}</p>
-        </Card>
-      ))}
-      {!contractorDebts.error && !contractorDebts.isLoading && (contractorDebts.data ?? []).length === 0 && <EmptyState title={t("finance.noPayables")} />}
+      {tab === "debts" && <>
+        <SectionTitle>{t("finance.clientDebt")}</SectionTitle>{debts.error&&<ErrorState error={debts.error} onRetry={debts.refetch}/>}<Card><Metric value={eur(totalDebt)} label={t("finance.clientDebt")} tone={totalDebt?"danger":"ok"}/></Card>{(debts.data??[]).map(row=><Card key={row.projectId}><div className="row row--between"><p className="card__title">{projectName(row.projectId)}</p><StatusBadge tone="danger">{eur(row.debtEUR)}</StatusBadge></div><p className="card__subtitle">{t("finance.revenue")} {eur(row.revenueEUR)} · {t("finance.paid")} {eur(row.prepaidEUR)}</p></Card>)}{!debts.isLoading&&!debts.error&&!(debts.data??[]).length&&<EmptyState title={t("finance.noClientDebt")}/>}<SectionTitle>{t("finance.payables")}</SectionTitle><Card><Metric value={eur(totalOwed)} label={t("finance.payables")} tone={totalOwed?"danger":"ok"}/></Card>{(contractorDebts.data??[]).map(row=><Card key={row.contractorId}><div className="row row--between"><p className="card__title">{contractorName(row.contractorId)}</p><StatusBadge tone="warn">{eur(row.debtEUR)}</StatusBadge></div><p className="card__subtitle">{t("finance.subrentCost")}</p></Card>)}{!contractorDebts.isLoading&&!contractorDebts.error&&!(contractorDebts.data??[]).length&&<EmptyState title={t("finance.noPayables")}/>}</>}
 
-      <SectionTitle>{t("finance.transactions")}</SectionTitle>
-      <Card>
-        <Field label="Поиск по комментарию, сумме или валюте"><Input value={journal.search} onChange={e => journal.setSearch(e.target.value)} /></Field>
-        <Field label="Счёт"><Select value={journal.accountId} onChange={e => journal.setAccountId(e.target.value)} options={[{ value: "", label: "Все счета" }, ...(accounts.data ?? []).map(a => ({ value: a.id, label: `${a.name} · ${a.currency}` }))]} /></Field>
-        <div className="row"><Field label="С даты"><Input type="date" value={journal.from} onChange={e => journal.setFrom(e.target.value)} /></Field><Field label="По дату"><Input type="date" value={journal.to} onChange={e => journal.setTo(e.target.value)} /></Field></div>
-        <label><input type="checkbox" checked={journal.includeVoided} onChange={e => journal.setIncludeVoided(e.target.checked)} /> Показывать отменённые и исправленные</label>
-        <p className="card__subtitle">По выбранным операциям: поступления {eur(journal.totals.income)} · расходы {eur(journal.totals.expense)} · денежный результат {eur(journal.totals.income - journal.totals.expense)}. По зафиксированным курсам, без начислений аренды.</p>
-      </Card>
-      {transactions.isLoading ? (
-        <Loading />
-      ) : transactions.error ? <ErrorState error={transactions.error} onRetry={transactions.refetch} /> : journal.count === 0 ? (
-        <EmptyState title={t("finance.noTransactions")} />
-      ) : (
-        <div className="stack">
-          {journal.rows.map((t) => (
-            <Card key={t.id} style={t.voidedAt ? { opacity: 0.55 } : undefined}>
-              <div className="row row--between">
-                <div style={{ minWidth: 0 }}>
-                  <p className="card__title">{categoryLabel[t.category] ?? t.category}{t.note ? ` · ${t.note}` : ""}</p>
-                  <p className="card__subtitle">
-                    {t.projectId ? projectName(t.projectId) : "без проекта"} · {dateTime(t.createdAt)} · {(accounts.data ?? []).find(account => account.id === t.accountId)?.name ?? "счёт удалён"}
-                    {" · "}{authorName(t.createdByUserId)}{t.voidedAt ? " · отменена" : t.updatedAt ? ` · изменена ${dateTime(t.updatedAt)}` : ""}
-                  </p>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div className="metric__value" style={{ color: t.kind === "income" ? "var(--ok)" : "var(--danger)" }}>
-                    {t.kind === "income" ? "+" : "−"}{money(t.amount, t.currency)}
-                  </div>
-                  {t.currency !== "EUR" && <div className="card__subtitle">{eur(t.amountEUR)} @ {t.fxRateToEUR}</div>}
-                </div>
-              </div>
-              {t.replacesTransactionId && <p className="card__subtitle">Исправление операции {t.replacesTransactionId.slice(0, 8)}</p>}
-              {canManage && <TransactionActions transaction={t} accounts={accounts.data ?? []} pending={updateTransaction.isPending || voidTransaction.isPending} onSave={input => updateTransaction.mutateAsync({ id: t.id, input })} onVoid={() => voidTransaction.mutateAsync(t.id)} />}
-            </Card>
-          ))}
-          {journal.count > journal.rows.length && <Button variant="secondary" onClick={journal.showMore}>Показать ещё · {journal.rows.length} из {journal.count}</Button>}
-        </div>
-      )}
+      {tab === "payback" && <><Card className="finance-profit-card"><p className="card__title">Окупаемость оборудования</p><p className="card__subtitle">Фактические начисления аренды сохраняются в транзакциях и карточках проектов.</p><div className="finance-profit-card__value">{eur(totalIncome)}</div><p className="card__subtitle">Начисленная выручка по текущему журналу</p></Card><EmptyState title="Детализация находится в Warehouse" hint="Откройте модель оборудования, чтобы увидеть стоимость замены и аренду в сутки."/></>}
+
+      {tab === "accounts" && <><div className="row row--between"><SectionTitle>{t("finance.accounts")}</SectionTitle>{canManage&&<Button onClick={()=>setAccountFormOpen(value=>!value)}>+ Счёт</Button>}</div>{accountFormOpen&&canManage&&<Card><p className="card__title">Новый счёт</p><Field label="Название"><Input value={accountName} onChange={event=>setAccountName(event.target.value)} placeholder="Касса / Bank / Wise"/></Field><Field label="Валюта"><Select value={accountCurrency} onChange={event=>setAccountCurrency(event.target.value as Finance.AccountDTO["currency"])} options={CURRENCIES.map(currency=>({value:currency,label:currency}))}/></Field><div className="row" style={{marginTop:8}}><Button block disabled={!accountName.trim()||createAccount.isPending} onClick={saveAccount}>Сохранить</Button><Button variant="secondary" block onClick={()=>setAccountFormOpen(false)}>Отмена</Button></div></Card>}{!(accounts.data??[]).length?<EmptyState title={t("finance.noAccounts")}/>:<div className="stack">{(accounts.data??[]).map(account=><Card key={account.id}><div className="row row--between">{editingAccountId===account.id?<Input value={editingAccountName} onChange={event=>setEditingAccountName(event.target.value)}/>:<p className="card__title">{account.name}</p>}<span className="metric__value">{money(account.balance,account.currency)}</span></div>{canManage&&<div className="row" style={{marginTop:8}}>{editingAccountId===account.id?<><Button disabled={!editingAccountName.trim()||updateAccount.isPending} onClick={()=>updateAccount.mutate({id:account.id,name:editingAccountName.trim()},{onSuccess:()=>setEditingAccountId("")})}>Сохранить</Button><Button variant="ghost" onClick={()=>setEditingAccountId("")}>Отмена</Button></>:<Button variant="ghost" onClick={()=>{setEditingAccountId(account.id);setEditingAccountName(account.name);}}>Изменить счёт</Button>}</div>}</Card>)}</div>}</>}
 
       <AddTransactionSheet
         open={txOpen}

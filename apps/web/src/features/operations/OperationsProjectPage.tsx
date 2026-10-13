@@ -144,8 +144,8 @@ export function OperationsProjectPage() {
   const venue = project.data.venueId ? (venues.data ?? []).find((item) => item.id === project.data?.venueId) : null;
 
   return (
-    <div className="stack" style={{ paddingBottom: 92 }}>
-      <Button variant="ghost" onClick={() => navigate("/operations")}>← Operations</Button>
+    <div className="stack nested-mobile-page" style={{ paddingBottom: 92 }}>
+      <Button className="nested-mobile-page__back" variant="ghost" onClick={() => navigate("/operations")}>← Operations</Button>
 
       <Card>
         <div className="row row--between">
