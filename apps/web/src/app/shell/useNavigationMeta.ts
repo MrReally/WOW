@@ -55,15 +55,15 @@ export function useNavigationMeta(pathname: string, locale: string): NavigationM
 
   const roots: Record<string, [string, string]> = {
     "/apex": ["Обзор", formattedToday(locale)],
-    "/operations": ["Operations", "Бригада · мои проекты · выдача"],
-    "/projects": ["Planning", "Проекты · брони · команда"],
+    "/operations": ["Operations", ""],
+    "/projects": ["Planning", ""],
     "/warehouse": ["Warehouse", "Каталог · склад · кабели"],
-    "/supplies": ["Расходники", "Остатки, жидкости и закупки отдельно от оборудования"],
-    "/venues": ["Venues", "Площадки · карточки · архив"],
-    "/crew": ["Crew", "Работники · досье · история"],
-    "/contractors": ["Contractors", "Подрядчики · цены · возвраты"],
-    "/finance": ["Finance", "Счета · долги · окупаемость"],
-    "/settings": ["Settings", "Автопарк · права · курсы"],
+    "/supplies": ["Расходники", ""],
+    "/venues": ["Venues", ""],
+    "/crew": ["Crew", ""],
+    "/contractors": ["Contractors", ""],
+    "/finance": ["Finance", ""],
+    "/settings": ["Settings", ""],
     "/more": ["Ещё", "Workspaces"],
   };
   const [title, subtitle] = roots[pathname] ?? ["SEVER", ""];

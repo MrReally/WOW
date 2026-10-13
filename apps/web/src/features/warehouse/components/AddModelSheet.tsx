@@ -225,7 +225,7 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
           {usesAutoName && cableSettings.isError && <p className="card__subtitle">Не удалось загрузить шаблон имени. Повторите загрузку настроек.</p>}
           {selectedType?.trackingMode === "serial" && (
             <label className="chip chip--neutral" style={{ marginBottom: 10 }}>
-              <input type="checkbox" checked={serialExtension} onChange={(e) => toggleSerialExtension(e.target.checked)} />
+              <input className="toggle-switch" type="checkbox" checked={serialExtension} onChange={(e) => toggleSerialExtension(e.target.checked)} />
               Это удлинитель: хранить длину и розетки
             </label>
           )}

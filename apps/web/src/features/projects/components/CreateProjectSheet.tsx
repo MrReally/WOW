@@ -165,7 +165,7 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
       {(starts || ends) && !validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Укажите обе даты; конец должен быть позже начала</p>}
       {!starts && !ends && <p className="card__subtitle">Дата необязательна — её можно добавить позже.</p>}
       <label className="row" style={{ justifyContent: "flex-start", gap: 8 }}>
-        <input type="checkbox" checked={recurring} disabled={!validRange} onChange={(event) => setRecurring(event.target.checked)} />
+        <input className="toggle-switch" type="checkbox" checked={recurring} disabled={!validRange} onChange={(event) => setRecurring(event.target.checked)} />
         <span>Регулярный проект</span>
       </label>
       {recurring && <div className="stack" style={{ gap: 8 }}>

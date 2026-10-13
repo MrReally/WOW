@@ -166,10 +166,10 @@ export function MySettingsPage() {
               <span style={{ color: "var(--text)" }}>Отображать все проекты</span>
               <input
                 type="checkbox"
+                className="toggle-switch"
                 checked={user.operationsShowAllProjects}
                 disabled={setMyPreferences.isPending}
                 onChange={(e) => setMyPreferences.mutate({ operationsShowAllProjects: e.target.checked })}
-                style={{ width: 20, height: 20, accentColor: "var(--accent)", flexShrink: 0 }}
               />
             </label>
           </Card>
@@ -220,10 +220,10 @@ export function MySettingsPage() {
                 <span style={{ color: "var(--text)" }}>{kindLabel[k]}</span>
                 <input
                   type="checkbox"
+                  className="toggle-switch"
                   checked={current[k]}
                   disabled={setPrefs.isPending}
                   onChange={() => togglePref(k)}
-                  style={{ width: 20, height: 20, accentColor: "var(--accent)", flexShrink: 0 }}
                 />
               </label>
             ))}
@@ -248,10 +248,10 @@ export function MySettingsPage() {
                     <span style={{ color: "var(--text)" }}>{advancedLabel[event]}</span>
                     <input
                       type="checkbox"
+                      className="toggle-switch"
                       checked={advancedPrefs.data[event]}
                       disabled={setAdvancedPrefs.isPending}
                       onChange={() => toggleAdvancedPref(event)}
-                      style={{ width: 20, height: 20, accentColor: "var(--accent)", flexShrink: 0 }}
                     />
                   </label>
                 ))}

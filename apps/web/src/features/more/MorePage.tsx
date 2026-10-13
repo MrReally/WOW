@@ -61,7 +61,7 @@ export function MorePage() {
       <div className="card more-list">
         <NotificationsBell variant="row" />
         <button className="more-list-row" onClick={() => navigate("/me")}><span className="more-row-copy"><strong>Мои настройки</strong></span><span className="more-chevron">›</span><i /></button>
-        {can("backoffice.access") && <button className="more-list-row" onClick={() => navigate("/backoffice")}><span className="more-row-copy"><strong>Backoffice</strong><small>Вход в desktop/backoffice ERP-режим</small></span><span className="more-chevron">›</span><i /></button>}
+        {can("backoffice.access") && <button className="more-list-row" onClick={() => navigate("/backoffice")}><span className="more-row-copy"><strong>Backoffice</strong></span><span className="more-chevron">›</span><i /></button>}
         <button className="more-list-row more-list-row--danger" onClick={logout}><span className="more-row-copy"><strong>Выйти</strong></span></button>
       </div>
     </div>

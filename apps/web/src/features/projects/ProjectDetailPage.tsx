@@ -619,7 +619,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             <div className="row row--between">
             <label style={{ cursor: "pointer" }}>
               <span className="row" style={{ gap: 6, whiteSpace: "nowrap" }}>
-                <input type="checkbox" checked={resIsReserve} onChange={(e) => setResIsReserve(e.target.checked)} />
+                <input className="toggle-switch" type="checkbox" checked={resIsReserve} onChange={(e) => setResIsReserve(e.target.checked)} />
                 В резерв · не добавлять в счёт
               </span>
             </label>
@@ -720,7 +720,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
               )}
               <div className="row row--between" style={{ marginTop: 8, alignItems: "flex-start" }}>
                 <label className="row" style={{ gap: 8 }}>
-                  <input type="checkbox" checked={timingOffsets.length > 0} disabled={t.assigneeIds.length === 0 || createReminder.isPending || deleteReminder.isPending} onChange={(e) => void setTimingReminderOffsets(t, e.target.checked ? [60] : [])} />
+                  <input className="toggle-switch" type="checkbox" checked={timingOffsets.length > 0} disabled={t.assigneeIds.length === 0 || createReminder.isPending || deleteReminder.isPending} onChange={(e) => void setTimingReminderOffsets(t, e.target.checked ? [60] : [])} />
                   <span>Пинг в ТГ</span>
                 </label>
                 {timingOffsets.length > 0 && (
@@ -1309,7 +1309,7 @@ function DeliveryCalculator({ venueId, people, rsdRateToEUR, onApply }: { venueI
     <div className="row" style={{ marginTop: 10 }}><Field label="Откуда"><Select value={warehouseId || selectedWarehouse?.id || ""} onChange={e => setWarehouseId(e.target.value)} options={(warehouses.data ?? []).map(item => ({ value: item.id, label: item.name }))} /></Field><Field label="Куда"><Input disabled value={venue?.address ?? "Укажите адрес площадки"} /></Field></div>
     <div className="row"><Field label="Автомобиль"><Select value={vehicleId || selectedVehicle?.id || ""} onChange={e => setVehicleId(e.target.value)} options={(vehicles.data ?? []).map(item => ({ value: item.id, label: `${item.plateNumber} · ${item.model} · права ${item.requiredLicenseCategory}` }))} /></Field><Field label="Топливо, €/л (необязательно)"><Input type="number" min="0" step="0.001" value={fuelPrice} onChange={e => setFuelPrice(e.target.value)} placeholder="Автоматически по официальной цене" /></Field>{!config.data?.googleMapsConfigured && <Field label="Км в одну сторону"><Input type="number" step="0.1" value={distance} onChange={e => setDistance(e.target.value)} placeholder="25" /></Field>}</div>
     {selectedVehicle && <p className="card__subtitle" style={{ marginBottom: 8 }}>Совместимые водители в команде: {compatibleDrivers.length ? compatibleDrivers.map(person => personName(person)).join(", ") : `нет людей с категорией ${selectedVehicle.requiredLicenseCategory}`}</p>}
-    <label className="row" style={{ marginBottom: 10 }}><input type="checkbox" checked={roundTrip} onChange={e => setRoundTrip(e.target.checked)} /> Туда и обратно</label>
+    <label className="row row--between" style={{ marginBottom: 10 }}>Туда и обратно <input className="toggle-switch" type="checkbox" checked={roundTrip} onChange={e => setRoundTrip(e.target.checked)} /></label>
     <Button block disabled={!selectedWarehouse?.address || !venue?.address || !selectedVehicle || (!config.data?.googleMapsConfigured && !(Number(distance) > 0)) || quote.isPending} onClick={calculate}>Рассчитать доставку</Button>
     {quote.data && <div className="stack" style={{ marginTop: 10 }}><span>{quote.data.distanceKm} км · {quote.data.fuelLitres} л × {quote.data.fuelPriceEURPerL} €/л ({quote.data.fuelPriceSource === "serbia_ministry" ? `официальная цена${quote.data.fuelPriceRSDPerL ? ` ${quote.data.fuelPriceRSDPerL} RSD/л` : ""}` : quote.data.fuelPriceSource === "manual" ? "вручную" : "без топлива"}) · топливо {eur(quote.data.fuelCostEUR)} + амортизация {eur(quote.data.depreciationCostEUR)} = расчёт {eur(quote.data.totalCostEUR)}</span><div className="row row--between"><Field label="Итоговая себестоимость, €"><Input type="number" min="0" step="0.01" value={outputCost} onChange={e => setOutputCost(e.target.value)} /></Field><Button variant="secondary" disabled={!selectedVehicle || !(Number(outputCost) >= 0)} onClick={() => { onApply(quote.data!, selectedVehicle!, Number(outputCost)); setOutputCost(""); quote.reset(); }}>Добавить строку «Доставка»</Button></div></div>}</>}
   </Card>;

@@ -163,7 +163,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
       <Field label="Дресс-код">
         <Select value={dressCodeOptionId} onChange={e => setDressCodeOptionId(e.target.value)} options={[{ value: "", label: "— не выбран —" }, ...(dressCodes.data ?? []).map(x => ({ value: x.id, label: x.label }))]} />
       </Field>
-      <label className="row"><input type="checkbox" checked={dressCodeUniform} onChange={e => setDressCodeUniform(e.target.checked)} /> В форме SEVER</label>
+      <label className="row row--between">В форме SEVER <input className="toggle-switch" type="checkbox" checked={dressCodeUniform} onChange={e => setDressCodeUniform(e.target.checked)} /></label>
       <div className="row">
         <Field label="Начало">
           <ConfiguredDateTimeInput value={starts} onChange={setStarts} />

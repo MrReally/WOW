@@ -125,6 +125,10 @@
   --sheet-group-bg: rgba(255, 255, 255, .85);
   --scrim: rgba(14, 14, 30, .28);
   --grabber: rgba(7, 7, 7, .22);
+  --switch-on: var(--green);
+  --switch-off: rgba(120, 120, 128, .20);
+  --switch-knob: #fff;
+  --shadow-knob: 0 3px 8px rgba(0, 0, 0, .15);
   --wp-a: #b8afff;
   --wp-b: #a9c3ff;
   --wp-c: #ddd8ff;
@@ -220,6 +224,10 @@
   --sheet-group-bg: rgba(247, 247, 247, .05);
   --scrim: rgba(0, 0, 0, .60);
   --grabber: rgba(247, 247, 247, .28);
+  --switch-on: var(--green);
+  --switch-off: rgba(120, 120, 128, .32);
+  --switch-knob: #f7f7f7;
+  --shadow-knob: 0 3px 8px rgba(0, 0, 0, .35);
   --wp-a: #2a1f9e;
   --wp-b: #3b5fe0;
   --wp-c: #1a1450;

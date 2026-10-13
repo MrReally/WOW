@@ -261,7 +261,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
             </>
           )}
           <Field label="Дресс-код"><Select value={dressCodeOptionId} onChange={e => setDressCodeOptionId(e.target.value)} options={[{ value: "", label: "— не выбран —" }, ...(dressCodes.data ?? []).map(x => ({ value: x.id, label: x.label }))]} /></Field>
-          <label className="row"><input type="checkbox" checked={dressCodeUniform} onChange={e => setDressCodeUniform(e.target.checked)} /> В форме SEVER</label>
+          <label className="row row--between">В форме SEVER <input className="toggle-switch" type="checkbox" checked={dressCodeUniform} onChange={e => setDressCodeUniform(e.target.checked)} /></label>
         </WizardScreen>
       )}
 
@@ -282,7 +282,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
               <Select value={draft.modelId} onChange={(e) => patchReservation(idx, { modelId: e.target.value })} options={[{ value: "", label: "Модель" }, ...(models.data ?? []).map((m) => ({ value: m.id, label: modelLabel(m) }))]} />
               <Input type="number" value={draft.qty} onChange={(e) => patchReservation(idx, { qty: e.target.value })} placeholder="Кол-во" />
               <label className="row" style={{ gap: 8 }}>
-                <input type="checkbox" checked={draft.isReserve} onChange={(e) => patchReservation(idx, { isReserve: e.target.checked })} />
+                <input className="toggle-switch" type="checkbox" checked={draft.isReserve} onChange={(e) => patchReservation(idx, { isReserve: e.target.checked })} />
                 <span>В резерв · не добавлять в счёт</span>
               </label>
             </DraftCard>

@@ -135,7 +135,7 @@ export function EditModelSheet({ model, types = [], categories = [], onClose }: 
       </div>
       {model.trackingMode === "serial" && (
         <label className="chip chip--neutral" style={{ marginBottom: 10 }}>
-          <input type="checkbox" checked={serialExtension} onChange={(e) => setSerialExtension(e.target.checked)} />
+          <input className="toggle-switch" type="checkbox" checked={serialExtension} onChange={(e) => setSerialExtension(e.target.checked)} />
           Это удлинитель: хранить длину и розетки
         </label>
       )}

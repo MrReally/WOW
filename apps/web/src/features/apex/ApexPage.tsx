@@ -175,7 +175,6 @@ export function ApexPage() {
 
       <div className="apex-section-head"><span>Загрузка оборудования</span><button onClick={() => navigate("/warehouse")}>Склад ›</button></div>
       <Card>
-        <p className="card__subtitle">Что простаивает, что в дефиците по броням</p>
         <div className="apex-stock-bar" aria-hidden="true"><i /><i /><i /><i /></div>
         <div className="apex-stock-legend">
           <Metric value={reservedUnits} label="Резерв" />

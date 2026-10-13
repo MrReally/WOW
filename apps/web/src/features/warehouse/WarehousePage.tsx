@@ -61,10 +61,6 @@ function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps
 
   return (
     <div style={{ padding: "6px 4px 4px" }}>
-      <div className="row" style={{ gap: 8 }}>
-        <Dot tone="warn" glow />
-        <span className="t-label">СКЛАД · ГОТОВНОСТЬ</span>
-      </div>
       <div className="t-cond" style={{ fontSize: 32, fontWeight: 800, color: "var(--text)", marginTop: 8 }}>Warehouse</div>
 
       <div className="row" style={{ gap: 20, marginTop: 18, alignItems: "center" }}>

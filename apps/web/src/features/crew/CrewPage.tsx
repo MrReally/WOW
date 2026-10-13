@@ -679,10 +679,10 @@ export function CrewPage() {
           <span style={{ color: "var(--text)" }}>Использовать как аватарку</span>
           <input
             type="checkbox"
+            className="toggle-switch"
             checked={!!draft.usePhotoAsAvatar}
             disabled={!draft.photoUrl}
             onChange={(e) => setDraft((d) => ({ ...d, usePhotoAsAvatar: e.target.checked }))}
-            style={{ width: 20, height: 20, accentColor: "var(--accent)", flexShrink: 0 }}
           />
         </label>
         <Button block disabled={updateUser.isPending || !fullName(draft)} onClick={save}>Сохранить</Button>
