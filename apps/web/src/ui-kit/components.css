@@ -1451,14 +1451,17 @@ input[type="checkbox"]:not(.toggle-switch):disabled { cursor: default; opacity: 
 .warehouse-mobile-page { gap: 12px; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
 .warehouse-tabs {
   display: flex;
-  width: calc(100% + 32px);
+  width: calc(100% + 16px);
   gap: 5px;
   overflow-x: auto;
-  margin: 0 -16px;
-  padding: 4px 16px;
-  border-top: 1px solid var(--separator);
-  border-bottom: 1px solid var(--separator);
-  background: var(--s-sticky);
+  margin: 0 -8px;
+  padding: 5px 8px;
+  border: 1px solid var(--warehouse-tabs-border);
+  border-radius: 22px;
+  background: var(--warehouse-tabs-bg);
+  box-shadow: var(--warehouse-tabs-shadow);
+  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
   scrollbar-width: none;
 }
 .warehouse-tabs::-webkit-scrollbar,
