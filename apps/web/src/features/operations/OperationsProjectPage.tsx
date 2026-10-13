@@ -3,12 +3,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { Equipment, Finance, People, Projects } from "@sever/contracts";
 import { Avatar, Button, Card, Chip, EmptyState, ErrorState, Input, Loading, SectionHead, Select, WSGlyph } from "../../ui-kit/index.ts";
 import { dateRange, dateTime, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
+import { configuredTime } from "../../lib/dateFormat.ts";
 import { personInitials, personName } from "../../lib/people.ts";
 import { useSession } from "../../app/session.ts";
 import { useAllUnits, useAssignments, useContractorItems, useEquipmentModels, useIssueProjectQuantity, useIssueResolvedUnits, usePeople, useProject, useProjectEquipmentJournal, useProjectInvoice, useProjectVenues, useReservations, useReturnProjectQuantity, useSetProjectFinanceTracking, useUpdateAssignment } from "../projects/hooks.ts";
 import { useAccounts, useCreateTransaction, useTransactions, useUpdateTransaction, useVoidTransaction } from "../finance/hooks.ts";
 import { useContractors } from "../contractors/hooks.ts";
-import { TimingTimeline } from "../projects/components/TimingTimeline.tsx";
 import { PROJECT_STAGE_ORDER, ProjectStageProgress } from "../projects/components/ProjectStageProgress.tsx";
 import { useChangeStatus, useReturnUnits, useWarehouses } from "../warehouse/hooks.ts";
 import {
@@ -130,6 +130,7 @@ export function OperationsProjectPage() {
   const canOpenProject = can("projects.view");
   const people = usePeople(canListPeople);
   const [activeTab, setActiveTab] = useState<OperationsTab>("turnover");
+  const [timingMode, setTimingMode] = useState<"all" | "me">("all");
 
   if (project.isLoading) return <Loading />;
   if (project.error) return <ErrorState error={project.error} onRetry={project.refetch} />;
@@ -139,12 +140,14 @@ export function OperationsProjectPage() {
   const upcomingStage = nextStage(activeStage);
   const rollbackStage = previousStage(activeStage);
   const seesWholeTiming = !!user?.operationsShowAllProjects || can("projects.timing.viewAll", "projects.timing.manage");
-  const visibleTimings = seesWholeTiming ? (timings.data ?? []) : (timings.data ?? []).filter(timing => !!user && timing.assigneeIds.includes(user.id));
+  const allTimings = timings.data ?? [];
+  const myTimings = allTimings.filter(timing => !!user && timing.assigneeIds.includes(user.id));
+  const visibleTimings = seesWholeTiming && timingMode === "all" ? allTimings : myTimings;
   const activeTiming = currentTiming(visibleTimings);
   const venue = project.data.venueId ? (venues.data ?? []).find((item) => item.id === project.data?.venueId) : null;
 
   return (
-    <div className="stack nested-mobile-page" style={{ paddingBottom: 92 }}>
+    <div className="stack nested-mobile-page operations-project-page">
       <Button className="nested-mobile-page__back" variant="ghost" onClick={() => navigate("/operations")}>← Operations</Button>
 
       <Card>
@@ -160,6 +163,27 @@ export function OperationsProjectPage() {
         </div>
         <ProjectStageProgress stage={activeStage} complete={!!project.data.warehouseTurnoverCompletedAt} />
       </Card>
+
+      <div className="segmented-control operations-project-tabs" role="tablist" aria-label="Operations">
+        {([
+          { id: "turnover", label: "Оборот" },
+          { id: "timing", label: "Тайминг" },
+          { id: "finance", label: "Финансы" },
+        ] as const)
+          .filter(tab => tab.id !== "finance" || can("operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage"))
+          .map(tab => (
+            <button
+              key={tab.id}
+              className={activeTab === tab.id ? "is-active" : ""}
+              onClick={() => setActiveTab(tab.id)}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              type="button"
+            >
+              {tab.label}
+            </button>
+          ))}
+      </div>
 
       {activeTab === "turnover" && <>
         <SectionHead label="Сейчас" />
@@ -183,14 +207,83 @@ export function OperationsProjectPage() {
         <StageHistory events={events.data ?? []} people={people.data ?? []} currentUser={user ?? null} />
       </>}
 
-      {activeTab === "timing" && <><SectionHead label={seesWholeTiming ? "Полный тайминг" : "Мой тайминг"} meta={`${visibleTimings.length}`} />{visibleTimings.length ? <TimingTimeline timings={visibleTimings} userName={userId => personName(userId === user?.id ? user : (people.data ?? []).find(person => person.id === userId), "—")} /> : <EmptyState title="Вас пока не добавили ни на одно событие" />}</>}
+      {activeTab === "timing" && (
+        <OperationsTimingPanel
+          timings={visibleTimings}
+          mode={seesWholeTiming ? timingMode : "me"}
+          canSeeAll={seesWholeTiming}
+          onModeChange={setTimingMode}
+          people={people.data ?? []}
+          currentUser={user ?? null}
+        />
+      )}
 
       {activeTab === "finance" && (can("operations.finance.view", "operations.finance.manage") || can("operations.payroll.view", "operations.payroll.manage")) && <OperationsFinancePanel project={project.data} canClientView={can("operations.finance.view", "operations.finance.manage")} canClientManage={can("operations.finance.manage")} canPayrollView={can("operations.payroll.view", "operations.payroll.manage")} canPayrollManage={can("operations.payroll.manage")} />}
 
-      <div className="project-tabbar" role="tablist" aria-label="Operations">
-        {([{ id: "turnover", label: "Оборот", icon: "▣" }, { id: "timing", label: "Тайминг", icon: "◷" }, { id: "finance", label: "Финансы", icon: "€" }] as const).filter(tab => tab.id !== "finance" || can("operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage")).map(tab => <button key={tab.id} className={`project-tabbar__item ${activeTab === tab.id ? "project-tabbar__item--active" : ""}`} onClick={() => setActiveTab(tab.id)} role="tab" aria-selected={activeTab === tab.id} style={{ ["--tab-c" as string]: "var(--accent)" }}><span className="project-tabbar__icon" style={{ fontWeight: 800, fontSize: 20 }}>{tab.icon}</span><span className="project-tabbar__label">{tab.label}</span></button>)}
-      </div>
     </div>
+  );
+}
+
+function OperationsTimingPanel({
+  timings,
+  mode,
+  canSeeAll,
+  onModeChange,
+  people,
+  currentUser,
+}: {
+  timings: Projects.TimingDTO[];
+  mode: "all" | "me";
+  canSeeAll: boolean;
+  onModeChange: (mode: "all" | "me") => void;
+  people: People.UserDTO[];
+  currentUser: People.UserDTO | null;
+}) {
+  const sorted = [...timings].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+  const now = Date.now();
+  const person = (userId: string) => userId === currentUser?.id ? currentUser : people.find(item => item.id === userId);
+
+  return (
+    <>
+      {canSeeAll && (
+        <div className="segmented-control operations-timing-mode" role="tablist" aria-label="Режим тайминга">
+          <button type="button" className={mode === "all" ? "is-active" : ""} role="tab" aria-selected={mode === "all"} onClick={() => onModeChange("all")}>Полный тайминг</button>
+          <button type="button" className={mode === "me" ? "is-active" : ""} role="tab" aria-selected={mode === "me"} onClick={() => onModeChange("me")}>Мой тайминг</button>
+        </div>
+      )}
+      {sorted.length > 0 ? (
+        <Card className="operations-timing-card">
+          {sorted.map((timing, index) => {
+            const startsAt = Date.parse(timing.startsAt);
+            const endsAt = Date.parse(timing.endsAt);
+            const state = endsAt < now ? "done" : startsAt <= now && endsAt >= now ? "now" : "upcoming";
+            const assignees = timing.assigneeIds.map(person).filter((item): item is People.UserDTO => Boolean(item));
+            return (
+              <div className={`operations-timing-row operations-timing-row--${state}`} key={timing.id}>
+                <div className="operations-timing-row__time">
+                  <strong>{configuredTime(timing.startsAt)}</strong>
+                  <span>{configuredTime(timing.endsAt)}</span>
+                </div>
+                <div className="operations-timing-row__content">
+                  <strong>{timing.title}</strong>
+                  {assignees.length > 0 && (
+                    <div className="operations-timing-row__people" aria-label={assignees.map(item => personName(item, "")).join(", ")}>
+                      {assignees.slice(0, 4).map(item => <Avatar key={item.id} initials={personInitials(item)} size={24} src={item.usePhotoAsAvatar ? item.photoUrl : null} />)}
+                      {assignees.length > 4 && <Avatar initials={`+${assignees.length - 4}`} size={24} />}
+                    </div>
+                  )}
+                </div>
+                {state === "now" && <Chip label="сейчас" tone="info" />}
+                {state === "done" && <Chip label="готово" tone="neutral" />}
+                {index < sorted.length - 1 && <span className="operations-timing-row__separator" aria-hidden="true" />}
+              </div>
+            );
+          })}
+        </Card>
+      ) : (
+        <EmptyState title={mode === "me" ? "Вас нет в тайминге" : "Тайминг не заполнен"} />
+      )}
+    </>
   );
 }
 

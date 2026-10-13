@@ -1403,6 +1403,51 @@ input[type="checkbox"]:not(.toggle-switch):focus-visible { outline: 3px solid va
 input[type="checkbox"]:not(.toggle-switch):disabled { cursor: default; opacity: .45; }
 .segmented-control { display:flex; padding:3px; border-radius:11px; background:var(--fill-gray); }
 .segmented-control > button { flex:1; }
+.operations-project-page { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+.operations-project-tabs,
+.operations-timing-mode {
+  width: 100%;
+  flex: 0 0 auto;
+  position: static;
+  z-index: auto;
+  box-sizing: border-box;
+  box-shadow: var(--shadow-segment);
+}
+.operations-project-tabs > button,
+.operations-timing-mode > button { min-width: 0; font-size: 13.5px; }
+.operations-project-tabs > button.is-active,
+.operations-timing-mode > button.is-active {
+  background: var(--segment-selected-bg);
+  box-shadow: var(--shadow-segment);
+  font-weight: 600;
+}
+.operations-timing-card { padding: 6px 16px; overflow: hidden; }
+.operations-timing-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr) auto;
+  gap: 12px;
+  min-height: 68px;
+  align-items: center;
+  padding: 12px 0;
+}
+.operations-timing-row--done { opacity: .5; }
+.operations-timing-row__separator {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: var(--separator);
+}
+.operations-timing-row__time { display: flex; flex-direction: column; font-variant-numeric: tabular-nums; }
+.operations-timing-row__time strong { color: var(--label-primary); font-size: 15px; font-weight: 700; }
+.operations-timing-row--now .operations-timing-row__time strong { color: var(--blue-text); }
+.operations-timing-row__time span { color: var(--label-tertiary); font-size: 12px; }
+.operations-timing-row__content { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.operations-timing-row__content > strong { overflow: hidden; color: var(--label-primary); font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.operations-timing-row__people { display: flex; min-height: 24px; align-items: center; }
+.operations-timing-row__people .avatar:not(:first-child) { margin-left: -5px; }
 
 @media (min-width:900px) {
   .design-tabs { margin-left:0; margin-right:0; border:1px solid var(--separator); border-radius:16px; }
