@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Equipment } from "@sever/contracts";
 import {
@@ -25,6 +25,9 @@ import {
   useOpenRepairs,
   useOpenHandovers,
   useWarehouses,
+  useStorageZones,
+  useSaveStorageZones,
+  type StorageZoneDraftInput,
   useCreateWarehouse,
   useUpdateWarehouse,
   useUpdateType,
@@ -39,6 +42,65 @@ import { CableMoveSheet, CableRow } from "./components/CableMoveSheet.tsx";
 import { OpsSheet } from "./components/OpsSheet.tsx";
 import { AddressInput } from "../places/AddressInput.tsx";
 import { useCreateVenue, useUpdateVenue, useVenues } from "../plans/hooks.ts";
+
+type ZoneDraft = StorageZoneDraftInput;
+
+const ZONE_LEVELS: Record<Equipment.StorageZoneKind, { label: string; child?: "rack" | "shelf"; add?: string }> = {
+  room: { label: "Помещение", child: "rack", add: "+ Стеллаж" },
+  rack: { label: "Стеллаж", child: "shelf", add: "+ Полка" },
+  shelf: { label: "Полка" },
+  bin: { label: "Ячейка" },
+  floor: { label: "Напольная зона" },
+  other: { label: "Зона" },
+};
+
+function ZoneEditor({ zones, onChange }: { zones: ZoneDraft[]; onChange: (zones: ZoneDraft[]) => void }) {
+  const children = (parentId: string | null) => zones.filter((zone) => zone.parentId === parentId);
+  const addZone = (parentId: string | null, kind: "room" | "rack" | "shelf") => {
+    const parent = parentId ? zones.find((zone) => zone.id === parentId) : null;
+    const siblings = children(parentId);
+    const ordinal = siblings.length + 1;
+    const code = parent ? `${parent.code}-${kind === "rack" ? String(ordinal).padStart(2, "0") : ordinal}` : String.fromCharCode(64 + ordinal);
+    onChange([...zones, { id: `new-${crypto.randomUUID()}`, parentId, name: `${ZONE_LEVELS[kind].label} ${ordinal}`, code, kind, isNew: true }]);
+  };
+  const updateZone = (id: string, input: Partial<ZoneDraft>) => onChange(zones.map((zone) => zone.id === id ? { ...zone, ...input } : zone));
+  const removeZone = (id: string) => {
+    const removed = new Set([id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      zones.forEach((zone) => {
+        if (zone.parentId && removed.has(zone.parentId) && !removed.has(zone.id)) {
+          removed.add(zone.id);
+          changed = true;
+        }
+      });
+    }
+    onChange(zones.filter((zone) => !removed.has(zone.id)));
+  };
+  const renderZone = (zone: ZoneDraft, depth: number): ReactNode => {
+    const config = ZONE_LEVELS[zone.kind];
+    return (
+      <div key={zone.id}>
+        <div className="warehouse-zone-row" style={{ paddingLeft: depth * 18 }}>
+          <span className={`warehouse-zone-row__icon warehouse-zone-row__icon--${zone.kind}`} aria-hidden="true" />
+          <Input aria-label={`${config.label}: название`} value={zone.name} onChange={(event) => updateZone(zone.id, { name: event.target.value })} />
+          <Input className="warehouse-zone-row__code" aria-label={`${config.label}: код`} value={zone.code} onChange={(event) => updateZone(zone.id, { code: event.target.value.toUpperCase() })} />
+          {config.child && <button className="warehouse-zone-row__add" type="button" onClick={() => addZone(zone.id, config.child!)}>{config.add}</button>}
+          <button className="warehouse-zone-row__remove" type="button" aria-label={`Удалить ${zone.name}`} onClick={() => removeZone(zone.id)}>×</button>
+        </div>
+        {children(zone.id).map((child) => renderZone(child, depth + 1))}
+      </div>
+    );
+  };
+  return (
+    <div className="warehouse-zone-editor">
+      {children(null).map((zone) => renderZone(zone, 0))}
+      <button className="warehouse-zone-editor__add-room" type="button" onClick={() => addZone(null, "room")}>+ Помещение</button>
+      {zones.length === 0 && <p className="warehouse-zone-editor__empty">Зон пока нет</p>}
+    </div>
+  );
+}
 
 function PrepStat({ tone, value, label }: { tone: Tone; value: number; label: string }) {
   return (
@@ -197,7 +259,9 @@ export function WarehousePage() {
   const units = useUnits(showArchived ? { includeArchived: true } : undefined);
   const types = useTypes();
   const warehouses = useWarehouses();
+  const storageZones = useStorageZones();
   const venues = useVenues(true);
+  const saveStorageZones = useSaveStorageZones();
   const createWarehouse = useCreateWarehouse();
   const updateWarehouse = useUpdateWarehouse();
   const createPlace = useCreateVenue();
@@ -219,6 +283,7 @@ export function WarehousePage() {
   const [warehouseForm, setWarehouseForm] = useState<{ mode: "create" | "edit"; id?: string } | null>(null);
   const [warehouseNameDraft, setWarehouseNameDraft] = useState("");
   const [warehouseAddressDraft, setWarehouseAddressDraft] = useState("");
+  const [warehouseZoneDrafts, setWarehouseZoneDrafts] = useState<ZoneDraft[]>([]);
   const [search, setSearch] = useState("");
   const [expandedStockModels, setExpandedStockModels] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<WarehouseTab>("dashboard");
@@ -247,17 +312,26 @@ export function WarehousePage() {
   const openWarehouseCreate = () => {
     setWarehouseNameDraft("");
     setWarehouseAddressDraft("");
+    setWarehouseZoneDrafts([]);
     setWarehouseForm({ mode: "create" });
   };
   const openWarehouseEdit = (warehouse: Equipment.WarehouseDTO) => {
     setWarehouseNameDraft(warehouse.name);
     setWarehouseAddressDraft(warehouse.address ?? "");
+    setWarehouseZoneDrafts((storageZones.data ?? []).filter((zone) => zone.warehouseId === warehouse.id && zone.active).map((zone) => ({
+      id: zone.id,
+      parentId: zone.parentId,
+      name: zone.name,
+      code: zone.code,
+      kind: zone.kind,
+    })));
     setWarehouseForm({ mode: "edit", id: warehouse.id });
   };
   const closeWarehouseForm = () => {
     setWarehouseForm(null);
     setWarehouseNameDraft("");
     setWarehouseAddressDraft("");
+    setWarehouseZoneDrafts([]);
   };
   const saveWarehouse = async () => {
     const name = warehouseNameDraft.trim();
@@ -269,11 +343,13 @@ export function WarehousePage() {
       if (placeId) await updatePlace.mutateAsync({ id: placeId, input: { name, address, isWarehouse: true } });
       else placeId = (await createPlace.mutateAsync({ name, address, isVenue: false, isWarehouse: true })).id;
       await updateWarehouse.mutateAsync({ id: warehouseForm.id, input: { name, address, placeId } });
+      await saveStorageZones.mutateAsync({ warehouseId: warehouseForm.id, zones: warehouseZoneDrafts });
       closeWarehouseForm();
       return;
     }
     const place = await createPlace.mutateAsync({ name, address, isVenue: false, isWarehouse: true });
     const warehouse = await createWarehouse.mutateAsync({ name, address, placeId: place.id });
+    await saveStorageZones.mutateAsync({ warehouseId: warehouse.id, zones: warehouseZoneDrafts });
     setWarehouseFilter(warehouse.id);
     closeWarehouseForm();
   };
@@ -318,7 +394,7 @@ export function WarehousePage() {
   const warehouseSelector = (
     <>
       <div className="row row--between warehouse-section-head">
-        <SectionHead label="Склады и зоны" meta={`${warehouseList.length}`} />
+        <SectionHead label="Склады" meta={`${warehouseList.length}`} />
         {canCatalog && <button className="text-action" type="button" onClick={openWarehouseCreate}>+ Склад</button>}
       </div>
       <div className="warehouse-filter-row" aria-label="Выбор склада">
@@ -332,20 +408,19 @@ export function WarehousePage() {
           const unitCount = allUnits.filter((unit) => unit.warehouseId === warehouse.id && unit.status !== "installed").length;
           return (
             <div className="card warehouse-location-card" key={warehouse.id}>
-              <div className="row row--between" style={{ alignItems: "flex-start" }}>
+              <div className="row row--between warehouse-location-card__heading">
                 <div style={{ minWidth: 0 }}>
                   <p className="card__title">{warehouse.name}</p>
                   <p className="card__subtitle">{warehouse.address || "Адрес не указан"}</p>
                 </div>
                 {warehouse.isDefault && <Chip label="основной" tone="info" />}
               </div>
-              <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+              <div className="row warehouse-location-card__counts">
                 <Chip label={`${unitCount} ед.`} tone="ok" />
               </div>
               {canCatalog && (
-                <div className="row warehouse-location-card__actions">
-                  <Button block variant="secondary" onClick={() => openWarehouseEdit(warehouse)}>Редактировать</Button>
-                  {!warehouse.isDefault && <Button block variant="ghost" onClick={() => updateWarehouse.mutate({ id: warehouse.id, input: { isDefault: true } })}>Сделать основным</Button>}
+                <div className="warehouse-location-card__actions">
+                  <Button block variant="secondary" disabled={storageZones.isLoading} onClick={() => openWarehouseEdit(warehouse)}>Редактировать</Button>
                 </div>
               )}
             </div>
@@ -625,7 +700,7 @@ export function WarehousePage() {
         <Sheet
           open={!!warehouseForm}
           onClose={closeWarehouseForm}
-          title={warehouseForm?.mode === "create" ? "Новый склад" : "Редактировать склад"}
+          title={warehouseForm?.mode === "create" ? "Новый склад" : `Склад · ${warehouseNameDraft || "Без названия"}`}
         >
           <Field label="Название">
             <Input value={warehouseNameDraft} onChange={(e) => setWarehouseNameDraft(e.target.value)} placeholder="Main warehouse" />
@@ -633,10 +708,19 @@ export function WarehousePage() {
           <Field label="Адрес">
             <AddressInput value={warehouseAddressDraft} onChange={setWarehouseAddressDraft} placeholder="Адрес — можно вставить или найти" />
           </Field>
+          <Field label="Зоны хранения · помещение → стеллаж → полка">
+            <div className="card warehouse-zone-editor-card">
+              <ZoneEditor zones={warehouseZoneDrafts} onChange={setWarehouseZoneDrafts} />
+            </div>
+            <p className="warehouse-zone-editor__hint">Код зоны печатается на этикетке и ищется в поиске склада.</p>
+          </Field>
+          {warehouseForm?.mode === "edit" && warehouseForm.id && !warehouseList.find((warehouse) => warehouse.id === warehouseForm.id)?.isDefault && (
+            <Button variant="ghost" block onClick={() => updateWarehouse.mutate({ id: warehouseForm.id!, input: { isDefault: true } })}>Сделать основным</Button>
+          )}
           <div className="row" style={{ marginTop: 8 }}>
             <Button
               block
-              disabled={!warehouseNameDraft.trim() || createWarehouse.isPending || updateWarehouse.isPending}
+              disabled={!warehouseNameDraft.trim() || warehouseZoneDrafts.some((zone) => !zone.name.trim() || !zone.code.trim()) || createWarehouse.isPending || updateWarehouse.isPending || saveStorageZones.isPending}
               onClick={() => void saveWarehouse()}
             >
               Сохранить
