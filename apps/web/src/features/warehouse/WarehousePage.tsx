@@ -537,9 +537,25 @@ export function WarehousePage() {
     </>
   );
 
+  const warehouseTabs = (
+    <div className="project-tabbar" role="tablist" aria-label="Warehouse">
+      {WAREHOUSE_TABS.map((tab) => {
+        const isActive = activeTab === tab.id;
+        const count = tab.id === "repair" ? repairCount : tab.id === "stocklist" ? filtered.length : tab.id === "installed" ? allUnits.filter(u => u.status === "installed").length : tab.id === "cables" ? cableModels.length : tab.id === "models" ? serialModels.length + quantityModels.length : 0;
+        return (
+          <button key={tab.id} className={`project-tabbar__item ${isActive ? "project-tabbar__item--active" : ""}`} onClick={() => setActiveTab(tab.id)} aria-label={tab.label} aria-selected={isActive} role="tab" type="button" style={{ ["--tab-c" as string]: `var(--${tab.tone === "accent" ? "accent" : tab.tone})` }}>
+            <span className="project-tabbar__icon"><WarehouseGlyph type={tab.id} />{count > 0 && <span className="project-tabbar__badge">{count > 9 ? "9+" : count}</span>}</span>
+            <span className="project-tabbar__label">{tab.shortLabel}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <div style={{ paddingBottom: 92 }}>
-      {categorySelector}
+    <div className="stack warehouse-mobile-page">
+      {warehouseTabs}
+      {activeTab === "dashboard" && categorySelector}
       {activeTab === "dashboard" && (
         <>
           <PrepHero units={allUnits} onOps={canIssue ? () => setOpsOpen(true) : () => navigate("/operations")} />
@@ -570,30 +586,6 @@ export function WarehousePage() {
       {canCatalog && <EditModelSheet model={editModel} types={types.data??[]} categories={categories.data??[]} onClose={() => setEditModel(null)} />}
       {canCatalog && <TypeSettingsSheet type={editType} onClose={() => setEditType(null)} />}
       <CableMoveSheet model={cableModel} warehouses={warehouseList} selectedWarehouseId={warehouseFilter === "all" ? null : warehouseFilter} onClose={() => setCableModel(null)} />
-      <div className="project-tabbar" role="tablist" aria-label="Warehouse">
-        {WAREHOUSE_TABS.map((tab) => {
-          const isActive = activeTab === tab.id;
-          const count = tab.id === "repair" ? repairCount : tab.id === "stocklist" ? filtered.length : tab.id === "installed" ? allUnits.filter(u => u.status === "installed").length : tab.id === "cables" ? cableModels.length : tab.id === "models" ? serialModels.length + quantityModels.length : 0;
-          return (
-            <button
-              key={tab.id}
-              className={`project-tabbar__item ${isActive ? "project-tabbar__item--active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
-              aria-label={tab.label}
-              aria-selected={isActive}
-              role="tab"
-              type="button"
-              style={{ ["--tab-c" as string]: `var(--${tab.tone === "accent" ? "accent" : tab.tone})` }}
-            >
-              <span className="project-tabbar__icon">
-                <WarehouseGlyph type={tab.id} />
-                {count > 0 && <span className="project-tabbar__badge">{count > 9 ? "9+" : count}</span>}
-              </span>
-              <span className="project-tabbar__label">{tab.shortLabel}</span>
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }

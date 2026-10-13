@@ -52,8 +52,10 @@ export function ProjectsPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [statusFilters, setStatusFilters] = useState<Projects.ProjectStatus[]>([]);
   const [view, setView] = useState<PlanningView>("journal");
+  const [archiveMode, setArchiveMode] = useState<"work" | "archive">("work");
   const allProjects = projects.data ?? [];
-  const statusProjects = filterProjectsByStatuses(allProjects, statusFilters);
+  const scopedProjects = allProjects.filter((project) => archiveMode === "work" ? !["completed", "cancelled"].includes(project.status) : ["completed", "cancelled"].includes(project.status));
+  const statusProjects = filterProjectsByStatuses(scopedProjects, statusFilters);
   const search = useProjectSearch(statusProjects, venues.data ?? []);
 
   if (projects.isLoading) return <Loading />;
@@ -86,18 +88,11 @@ export function ProjectsPage() {
       )}
 
       <div className="planning-controls">
-        <div className="planning-view-switch" aria-label="Вид Planning">
-          {([
-            ["journal", "Журнал"],
-            ["agenda", "Расписание"],
-            ["calendar", "Календарь"],
-          ] as const).map(([value, label]) => (
-            <button key={value} className={view === value ? "is-active" : ""} aria-pressed={view === value} onClick={() => setView(value)}>
-              {label}
-            </button>
-          ))}
+        <div className="planning-view-switch planning-archive-switch" aria-label="Раздел Planning">
+          <button className={archiveMode === "work" ? "is-active" : ""} aria-pressed={archiveMode === "work"} onClick={() => { setArchiveMode("work"); setStatusFilters([]); }}>Рабочий журнал</button>
+          <button className={archiveMode === "archive" ? "is-active" : ""} aria-pressed={archiveMode === "archive"} onClick={() => { setArchiveMode("archive"); setStatusFilters([]); }}>Проведённые и отменённые</button>
         </div>
-        <div className="row planning-status-filters">
+        {archiveMode === "work" && <div className="row planning-status-filters">
           <button
             className={`chip ${statusFilters.length === 0 ? "chip--accent chip--solid" : "chip--neutral"}`}
             aria-pressed={statusFilters.length === 0}
@@ -115,10 +110,16 @@ export function ProjectsPage() {
               {projectStatusLabel[status]}
             </button>
           ))}
-        </div>
+        </div>}
       </div>
 
-      <ProjectSearch open={search.isOpen} query={search.query} onToggle={search.toggle} onQueryChange={search.setQuery} />
+      <div className="planning-search-row">
+        <ProjectSearch alwaysOpen open={search.isOpen} query={search.query} onToggle={search.toggle} onQueryChange={search.setQuery} />
+        <details className="planning-view-menu">
+          <summary aria-label="Выбрать представление">▦</summary>
+          <div>{([ ["journal", "Список"], ["agenda", "Расписание"], ["calendar", "Календарь"] ] as const).map(([value, label]) => <button key={value} className={view === value ? "is-active" : ""} onClick={(event) => { setView(value); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{label}</button>)}</div>
+        </details>
+      </div>
 
       {list.length === 0 ? (
         <EmptyState title={search.query ? "Ничего не найдено" : "Нет проектов"} hint={!search.query && !canCreate ? "Вам пока не назначены проекты" : undefined} />
@@ -129,7 +130,7 @@ export function ProjectsPage() {
       ) : (
         <>
         <div className="stack mobile-project-list">
-          {mobileProjects.active.map((project) => (
+          {list.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}
@@ -138,25 +139,6 @@ export function ProjectsPage() {
               canViewNote={canViewNote}
             />
           ))}
-          {mobileProjects.archived.length > 0 && (
-            <details className="mobile-project-archive">
-              <summary>
-                <span>Проведённые и отменённые</span>
-                <span className="mobile-project-archive__count">{mobileProjects.archived.length}</span>
-              </summary>
-              <div className="stack mobile-project-archive__list">
-                {mobileProjects.archived.map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    project={project}
-                    clientName={clientName}
-                    onOpen={() => navigate(`/projects/${project.id}`)}
-                    canViewNote={canViewNote}
-                  />
-                ))}
-              </div>
-            </details>
-          )}
         </div>
         <div className="data-table-wrap desktop-project-table">
           <table className="data-table">

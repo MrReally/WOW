@@ -17,6 +17,7 @@ import {
 import { projectStatusTone } from "../../lib/labels.ts";
 import { useI18n } from "../../app/i18n.tsx";
 import { useApexDashboard, useResolveProblem, useOpsProjects } from "./hooks.ts";
+import { ProjectStageProgress } from "../projects/components/ProjectStageProgress.tsx";
 
 /* Hero — current operation identity (v2 OperationHeader). */
 function OperationHero({ current, upcoming }: { current: ApexRentalRow[]; upcoming: ApexRentalRow[] }) {
@@ -134,83 +135,72 @@ export function ApexPage() {
   const resolve = useResolveProblem();
   const opsProjects = useOpsProjects();
   const navigate = useNavigate();
-  const { eur, t } = useI18n();
+  const { eur, t, dateRange, projectStatusLabel } = useI18n();
+  const [segment, setSegment] = useState<"now" | "soon" | "problems">("now");
 
   if (isLoading) return <Loading />;
   if (error) return <ErrorState error={error} onRetry={refetch} />;
   if (!data) return null;
 
   const totalDebt = data.debts.reduce((a, d) => a + d.debtEUR, 0);
+  const selectedRentals = segment === "now" ? data.current : data.upcoming;
+  const reservedUnits = data.upcoming.reduce((sum, row) => sum + row.unitsOnProject, 0);
+  const projectUnits = data.current.reduce((sum, row) => sum + row.unitsOnProject, 0);
+  const repairProblems = data.problems.filter((problem) => problem.kind === "unit_repair").length;
 
   return (
-    <div>
-      <OperationHero current={data.current} upcoming={data.upcoming} />
-
-      <div className="card card--flat" style={{ padding: "14px 16px" }}>
-        <div className="row" style={{ gap: 22, flexWrap: "wrap" }}>
-          <Metric value={data.current.length} label={t("apex.running")} />
-          <Metric value={data.upcoming.length} label={t("apex.planned")} />
-          <Metric value={data.problems.length} label={t("apex.problems")} tone={data.problems.length ? "danger" : "ok"} />
-          <Metric value={eur(totalDebt)} label={t("finance.clientDebt")} tone={totalDebt ? "danger" : "ok"} />
-        </div>
-        {data.upcoming.length + data.current.length > 0 && (
-          <div style={{ marginTop: 14 }}>
-            <ProgressBar
-              pct={(data.current.length / Math.max(1, data.current.length + data.upcoming.length)) * 100}
-              tone="info"
-              height={6}
-            />
-          </div>
-        )}
+    <div className="stack apex-glass-page">
+      <div className="apex-stat-grid">
+        <button className="apex-stat-tile" onClick={() => setSegment("now")}><span>Текущие</span><strong className={data.current.length ? "is-accent" : ""}>{data.current.length}</strong></button>
+        <button className="apex-stat-tile" onClick={() => setSegment("soon")}><span>Предстоящие</span><strong>{data.upcoming.length}</strong></button>
+        <button className="apex-stat-tile" onClick={() => setSegment("problems")}><span>Проблемы</span><strong className={data.problems.length ? "is-danger" : ""}>{data.problems.length}</strong></button>
       </div>
 
-      {data.problems.length > 0 && (
-        <>
-          <SectionHead label={t("apex.needsAttention")} meta={String(data.problems.length)} />
-          <div className="card" style={{ padding: "2px 16px" }}>
-            {data.problems.map((p) => {
-              const pid = p.refs?.projectId;
-              const proj = pid ? (opsProjects.data ?? []).find((x) => x.id === pid) : null;
-              return (
-                <NeedsRow
-                  key={p.id}
-                  problem={p}
-                  projectName={proj?.name ?? null}
-                  onOpen={pid ? () => navigate(`/projects/${pid}`) : null}
-                  onResolve={p.kind === "unit_lost" ? () => resolve.mutate({ id: p.id, scope: "equipment" }) : null}
-                />
-              );
-            })}
-          </div>
-        </>
-      )}
+      <div className="apex-segments" aria-label="Фильтр обзора">
+        {([['now', 'сейчас'], ['soon', 'скоро'], ['problems', 'проблемы']] as const).map(([value, label]) => <button key={value} className={segment === value ? "is-active" : ""} onClick={() => setSegment(value)}>{label}</button>)}
+      </div>
 
-      <SectionHead label={t("apex.activeNow")} meta={data.current.length ? undefined : "—"} />
-      {data.current.length === 0 ? (
-        <EmptyState title={t("apex.noActive")} />
-      ) : (
-        <div className="stack">
-          {data.current.map((r) => (
-            <RentalCard key={r.project.id} row={r} onOpen={() => navigate(`/projects/${r.project.id}`)} />
-          ))}
+      <div className="card apex-current-card">
+        {segment === "problems" ? (data.problems.length ? data.problems.map((problem) => {
+          const projectId = problem.refs?.projectId;
+          const project = projectId ? (opsProjects.data ?? []).find((item) => item.id === projectId) : null;
+          return <NeedsRow key={problem.id} problem={problem} projectName={project?.name ?? null} onOpen={projectId ? () => navigate(`/projects/${projectId}`) : null} onResolve={problem.kind === "unit_lost" ? () => resolve.mutate({ id: problem.id, scope: "equipment" }) : null} />;
+        }) : <EmptyState title="Проблем нет" hint="Утери, дефициты и долги появятся здесь" />) : selectedRentals.length ? selectedRentals.map((row) => (
+          <button className="apex-rental-row" key={row.project.id} onClick={() => navigate(segment === "now" ? `/operations/projects/${row.project.id}` : `/projects/${row.project.id}`)}>
+            <span className="apex-rental-head"><span><strong>{row.project.name}</strong><small>{row.clientName} · {dateRange(row.project.startsAt, row.project.endsAt)}</small></span><Chip label={projectStatusLabel[row.project.status]} tone={projectStatusTone[row.project.status]} /></span>
+            {segment === "now" && <ProjectStageProgress stage={row.project.operationStage} complete={Boolean(row.project.warehouseTurnoverCompletedAt)} />}
+          </button>
+        )) : <EmptyState title={segment === "now" ? t("apex.noActive") : t("apex.noUpcoming")} />}
+      </div>
+
+      <div className="apex-section-head"><span>Загрузка оборудования</span><button onClick={() => navigate("/warehouse")}>Склад ›</button></div>
+      <Card>
+        <p className="card__subtitle">Что простаивает, что в дефиците по броням</p>
+        <div className="apex-stock-bar" aria-hidden="true"><i /><i /><i /><i /></div>
+        <div className="apex-stock-legend">
+          <Metric value={reservedUnits} label="Резерв" />
+          <Metric value={projectUnits} label="На проекте" />
+          <Metric value={repairProblems} label="Ремонт" tone={repairProblems ? "danger" : undefined} />
         </div>
-      )}
+      </Card>
 
-      <SectionHead label={t("apex.upcoming")} meta={data.upcoming.length ? undefined : "—"} />
-      {data.upcoming.length === 0 ? (
-        <EmptyState title={t("apex.noUpcoming")} />
-      ) : (
-        <div className="stack">
-          {data.upcoming.map((r) => (
-            <RentalCard key={r.project.id} row={r} onOpen={() => navigate(`/projects/${r.project.id}`)} />
-          ))}
+      <div className="apex-section-head"><span>Финансы</span><button onClick={() => navigate("/finance")}>Finance ›</button></div>
+      <Card>
+        <div className="apex-finance-grid">
+          <Metric value={eur(data.financeSummary.revenueEUR)} label="Выручка" />
+          <Metric value={eur(data.financeSummary.recordedCostEUR)} label="Затраты" />
+          <Metric value={eur(data.financeSummary.profitAfterRecordedCostEUR)} label="Прибыль" tone={data.financeSummary.profitAfterRecordedCostEUR >= 0 ? "ok" : "danger"} />
         </div>
-      )}
+        <div className="apex-finance-grid apex-finance-grid--second">
+          <Metric value={eur(totalDebt)} label="Долг клиентов" tone={totalDebt ? "danger" : undefined} />
+          <Metric value={eur(data.financeSummary.contractorDebtEUR)} label="К оплате" />
+          <Metric value={data.financeSummary.accountBalances.map((account) => `${account.balance.toLocaleString("ru-RU")} ${account.currency}`).join(" · ") || eur(0)} label="На счетах" />
+        </div>
+      </Card>
 
-      <SectionHead label={t("apex.finance")} />
-      <div className="stack">
-        <FinanceSummaryCard summary={data.financeSummary} />
-        <ComingSoon title={t("apex.utilization")} hint={t("apex.utilizationHint")} />
+      <div className="apex-section-head"><span>Открытые брони</span><small>· {data.upcoming.length}</small></div>
+      <div className="card apex-bookings">
+        {data.upcoming.length ? data.upcoming.map((row) => <button key={row.project.id} onClick={() => navigate(`/projects/${row.project.id}`)}><span><strong>{row.project.name}</strong><small>{dateRange(row.project.startsAt, row.project.endsAt)} · {row.unitsOnProject} ед.</small></span><b>›</b></button>) : <EmptyState title="Открытых броней нет" />}
       </div>
     </div>
   );

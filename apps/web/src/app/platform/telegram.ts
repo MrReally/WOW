@@ -44,7 +44,7 @@ export function detectPlatform(): Platform {
   if (tg && tg.initData) {
     tg.ready();
     tg.expand();
-    const bg = (tg.colorScheme ?? "dark") === "dark" ? "#15171b" : "#f2efe8";
+    const bg = (tg.colorScheme ?? "dark") === "dark" ? "#070707" : "#f7f7f7";
     try {
       tg.setBackgroundColor?.(bg);
       tg.setHeaderColor?.(bg);
