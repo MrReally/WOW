@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { createReadStream } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -14,6 +14,7 @@ import type { Wiring } from "./registry.js";
 import { env } from "./env.js";
 import { createDatabaseBackup, databaseToolsStatus, MAX_RESTORE_BYTES, restoreDatabaseBackup } from "./core/databaseBackup.js";
 import { startMaintenance, stopMaintenance } from "./core/maintenance.js";
+import { sendTelegramDocument } from "./core/telegram.js";
 
 const resetSchema = z.object({ mode: z.enum(["demo", "empty"]) });
 
@@ -56,6 +57,28 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: RouteContext, wir
       .header("content-length", String(backup.size))
       .header("cache-control", "no-store")
       .send(createReadStream(backup.file));
+  });
+
+  app.post("/api/admin/backup/telegram", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "data.backup");
+    if (!auth.telegramId) throw BadRequest("К аккаунту не привязан Telegram");
+    const tools = await databaseToolsStatus();
+    if (!tools.available) throw new AppError("backup_unavailable", "На сервере не установлены PostgreSQL backup tools", 503);
+    const backup = await createDatabaseBackup();
+    try {
+      const sent = await sendTelegramDocument(
+        auth.telegramId,
+        await readFile(backup.file),
+        backup.filename,
+        `Резервная копия PostgreSQL SEVER · ${(backup.size / 1024 / 1024).toFixed(2)} МБ`,
+        "application/vnd.postgresql.custom",
+      );
+      if (!sent) throw new AppError("telegram_delivery_failed", "Не удалось отправить резервную копию в Telegram. Проверьте, что бот запущен, может писать вам и размер файла поддерживается Telegram.", 502);
+      return { sent: true, filename: backup.filename, size: backup.size };
+    } finally {
+      await backup.cleanup();
+    }
   });
 
   app.post("/api/admin/restore", { bodyLimit: MAX_RESTORE_BYTES }, async (req) => {

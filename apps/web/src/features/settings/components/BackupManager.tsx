@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
 import { Button, Card, Input, Loading, SectionTitle } from "../../../ui-kit/index.ts";
-import { useBackupStatus, useCreateBackup, useRestoreBackup } from "../hooks.ts";
+import { useBackupStatus, useCreateBackup, useRestoreBackup, useSendBackupToTelegram } from "../hooks.ts";
 
 export function BackupManager({ canBackup, canRestore }: { canBackup: boolean; canRestore: boolean }) {
   const status = useBackupStatus(canBackup);
   const createBackup = useCreateBackup();
+  const sendBackupToTelegram = useSendBackupToTelegram();
   const restore = useRestoreBackup();
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -18,8 +19,13 @@ export function BackupManager({ canBackup, canRestore }: { canBackup: boolean; c
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = filename;
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
       anchor.click();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => {
+        anchor.remove();
+        URL.revokeObjectURL(url);
+      }, 1_000);
     },
   });
   const restoreReady = canRestore && status.data?.restoreAvailable && file && confirmation === "ВОССТАНОВИТЬ";
@@ -34,9 +40,14 @@ export function BackupManager({ canBackup, canRestore }: { canBackup: boolean; c
             Архив содержит все модули, настройки, историю, пользователей и документы. Храните его в защищённом месте.
           </p>
         </div>
-        <Button disabled={!status.data?.available || createBackup.isPending} onClick={download}>
-          {createBackup.isPending ? "Создаём архив…" : "Скачать резервную копию"}
-        </Button>
+        <div className="stack" style={{ gap: 8 }}>
+          <Button block disabled={!status.data?.available || createBackup.isPending || sendBackupToTelegram.isPending} onClick={download}>
+            {createBackup.isPending ? "Создаём архив…" : "Скачать резервную копию"}
+          </Button>
+          <Button block variant="secondary" disabled={!status.data?.available || createBackup.isPending || sendBackupToTelegram.isPending} onClick={() => sendBackupToTelegram.mutate()}>
+            {sendBackupToTelegram.isPending ? "Создаём и отправляем…" : "Отправить копию в Telegram"}
+          </Button>
+        </div>
         {!status.data?.available && <p className="card__subtitle" style={{ color: "var(--danger)" }}>На сервере недоступны PostgreSQL backup tools.</p>}
       </div>}
     </Card>

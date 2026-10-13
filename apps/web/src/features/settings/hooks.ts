@@ -145,6 +145,13 @@ export function useCreateBackup() {
   });
 }
 
+export function useSendBackupToTelegram() {
+  return useMutation({
+    mutationFn: () => api.post<{ sent: true; filename: string; size: number }>("/api/admin/backup/telegram", {}),
+    meta: { successMessage: "Резервная копия отправлена в Telegram" },
+  });
+}
+
 export function useFullExport() {
   return useMutation({
     mutationFn: async () => {
