@@ -42,9 +42,9 @@ import { useCreateVenue, useUpdateVenue, useVenues } from "../plans/hooks.ts";
 
 function PrepStat({ tone, value, label }: { tone: Tone; value: number; label: string }) {
   return (
-    <div className="row" style={{ gap: 11 }}>
+    <div className="row" style={{ gap: 10 }}>
       <Dot tone={tone} size={9} />
-      <span className="t-cond" style={{ fontSize: 21, fontWeight: 800, color: "var(--text)", minWidth: 30 }}>{value}</span>
+      <span style={{ fontSize: 17, fontWeight: 700, color: "var(--text)", minWidth: 34, fontVariantNumeric: "tabular-nums" }}>{value}</span>
       <span className="t-mono" style={{ fontSize: 12.5, color: "var(--text2)" }}>{label}</span>
     </div>
   );
@@ -77,7 +77,7 @@ function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps
             <span>из {total}</span>
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
           <PrepStat tone="ok" value={inStock} label="на складе" />
           <PrepStat tone="warn" value={onProject} label="на проектах" />
           <PrepStat tone="alert" value={inRepair} label="в ремонте" />
@@ -286,15 +286,17 @@ export function WarehousePage() {
   const repairEstimateEUR = (openRepairs.data ?? []).reduce((sum, repair) => sum + (repair.estCostEUR ?? repair.costEUR ?? 0), 0)
     + (openHandovers.data ?? []).reduce((sum, handover) => sum + (handover.costEUR ?? 0), 0);
   const searchField = (
-    <Field label="Поиск по складу">
-      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, тип, номер, серийник" />
-    </Field>
+    <div className="warehouse-dashboard-search">
+      <Field label="Поиск по складу">
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, номер, серийник, код зоны" />
+      </Field>
+    </div>
   );
   const stockSearchField = <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель или тип" />;
   const warehouseSelector = (
     <>
       <div className="row row--between warehouse-section-head">
-        <SectionHead label="Склады" meta={`${warehouseList.length}`} />
+        <SectionHead label="Склады и зоны" meta={`${warehouseList.length}`} />
         {canCatalog && <button className="text-action" type="button" onClick={openWarehouseCreate}>+ Склад</button>}
       </div>
       <div className="warehouse-filter-row" aria-label="Выбор склада">
@@ -328,27 +330,6 @@ export function WarehousePage() {
           );
         })}
       </div>
-      {canCatalog && warehouseForm && (
-          <div className="card card--flat warehouse-form-card">
-            <p className="card__title">{warehouseForm.mode === "create" ? "Новый склад" : "Редактировать склад"}</p>
-            <Field label="Название">
-              <Input value={warehouseNameDraft} onChange={(e) => setWarehouseNameDraft(e.target.value)} placeholder="Main warehouse" />
-            </Field>
-            <Field label="Адрес">
-              <AddressInput value={warehouseAddressDraft} onChange={setWarehouseAddressDraft} placeholder="Адрес — можно вставить или найти" />
-            </Field>
-            <div className="row" style={{ marginTop: 8 }}>
-              <Button
-                block
-                disabled={!warehouseNameDraft.trim() || createWarehouse.isPending || updateWarehouse.isPending}
-                onClick={() => void saveWarehouse()}
-              >
-                Сохранить
-              </Button>
-              <Button variant="secondary" block onClick={closeWarehouseForm}>Отмена</Button>
-            </div>
-          </div>
-      )}
     </>
   );
   const warehouseFilterRow = (
@@ -618,6 +599,30 @@ export function WarehousePage() {
       )}
       {canCatalog && <EditModelSheet model={editModel} types={types.data??[]} categories={categories.data??[]} onClose={() => setEditModel(null)} />}
       {canCatalog && <TypeSettingsSheet type={editType} onClose={() => setEditType(null)} />}
+      {canCatalog && (
+        <Sheet
+          open={!!warehouseForm}
+          onClose={closeWarehouseForm}
+          title={warehouseForm?.mode === "create" ? "Новый склад" : "Редактировать склад"}
+        >
+          <Field label="Название">
+            <Input value={warehouseNameDraft} onChange={(e) => setWarehouseNameDraft(e.target.value)} placeholder="Main warehouse" />
+          </Field>
+          <Field label="Адрес">
+            <AddressInput value={warehouseAddressDraft} onChange={setWarehouseAddressDraft} placeholder="Адрес — можно вставить или найти" />
+          </Field>
+          <div className="row" style={{ marginTop: 8 }}>
+            <Button
+              block
+              disabled={!warehouseNameDraft.trim() || createWarehouse.isPending || updateWarehouse.isPending}
+              onClick={() => void saveWarehouse()}
+            >
+              Сохранить
+            </Button>
+            <Button variant="secondary" block onClick={closeWarehouseForm}>Отмена</Button>
+          </div>
+        </Sheet>
+      )}
       <CableMoveSheet model={cableModel} warehouses={warehouseList} selectedWarehouseId={warehouseFilter === "all" ? null : warehouseFilter} onClose={() => setCableModel(null)} />
     </div>
   );

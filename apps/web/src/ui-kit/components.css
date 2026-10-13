@@ -1491,15 +1491,18 @@ input[type="checkbox"]:not(.toggle-switch):disabled { cursor: default; opacity: 
   padding: 0 16px 2px;
   scrollbar-width: none;
 }
-.warehouse-filter-row .chip { flex: 0 0 auto; border: 0; cursor: pointer; }
-.warehouse-readiness-card { padding: 18px; }
-.warehouse-readiness-card__body { gap: 18px; align-items: center; }
+.warehouse-filter-row .chip { min-height: 34px; flex: 0 0 auto; border: 0; cursor: pointer; }
+.warehouse-readiness-card { padding: 27px 18px 18px; }
+.warehouse-readiness-card__body { gap: 18px; align-items: center; transform: translateY(22px); }
 .warehouse-readiness-ring { width: 120px; height: 120px; flex: 0 0 120px; display: grid; place-items: center; border-radius: 50%; transform: rotate(-90deg); }
 .warehouse-readiness-ring__center { width: 88px; height: 88px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 50%; background: var(--card); transform: rotate(90deg); }
 .warehouse-readiness-ring__center strong { color: var(--label-primary); font-family: var(--font-brand); font-size: 29px; font-weight: 800; line-height: 1; }
 .warehouse-readiness-ring__center span { margin-top: 4px; color: var(--label-tertiary); font-size: 11px; font-variant-numeric: tabular-nums; }
-.warehouse-readiness-card__action { margin-top: 16px; }
+.warehouse-readiness-card__action { margin-top: 39px; }
+.warehouse-dashboard-search { margin-top: 12px; }
+.warehouse-dashboard-search .field { margin-bottom: 0; }
 .warehouse-section-head > .section-head { flex: 1; }
+.warehouse-section-head { margin-top: -7px; margin-bottom: -10px; }
 .warehouse-mobile-page .row.row--between > .section-head { min-width: 0; flex: 1; }
 .warehouse-section-head .text-action { padding: 6px 0; font-size: 13px; font-weight: 600; }
 .warehouse-location-list { gap: 10px; }
@@ -2396,7 +2399,12 @@ textarea.input:focus {
     white-space: nowrap;
     pointer-events: none;
   }
-  .ws-bar__actions { margin-left: auto; flex: 0 0 auto; }
+  .ws-bar__actions {
+    position: absolute;
+    right: 14px;
+    margin-left: auto;
+    flex: 0 0 auto;
+  }
   .nav-icon-button,
   .bell {
     position: relative;
@@ -2425,7 +2433,7 @@ textarea.input:focus {
     z-index: 1;
     width: 100%;
     flex: 1;
-    padding: calc(102px + env(safe-area-inset-top)) 16px calc(118px + env(safe-area-inset-bottom));
+    padding: calc(54px + env(safe-area-inset-top)) 16px calc(118px + env(safe-area-inset-bottom));
   }
   .workspace-large-title { padding: 0 12px 14px; }
   .workspace-large-title h1 {
