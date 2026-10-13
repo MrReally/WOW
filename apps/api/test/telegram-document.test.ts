@@ -39,6 +39,29 @@ describe("Telegram document delivery", () => {
     await expect(sendTelegramDocument("@username", Buffer.from("pdf"), "invoice.pdf")).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("uploads CSV exports with their spreadsheet content type", async () => {
+    env.auth.telegramBotToken = "test-token";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      ok: true,
+      result: { message_id: 43 },
+    }), { headers: { "Content-Type": "application/json" } }));
+
+    await expect(sendTelegramDocument(
+      "123456",
+      Buffer.from("\uFEFFПроект;Сумма\r\nТест;10"),
+      "sever-export.csv",
+      "Полный экспорт",
+      "text/csv; charset=utf-8",
+    )).resolves.toEqual({ chatId: "123456", messageId: 43 });
+
+    const form = vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body as FormData;
+    const document = form.get("document") as File;
+    expect(document.name).toBe("sever-export.csv");
+    expect(document.type).toBe("text/csv; charset=utf-8");
+    expect(await document.text()).toContain("Проект;Сумма");
+    expect(form.get("caption")).toBe("Полный экспорт");
+  });
 });
 
 describe("Telegram file download", () => {

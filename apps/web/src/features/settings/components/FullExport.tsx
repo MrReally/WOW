@@ -1,8 +1,9 @@
 import { Button, Card, SectionTitle } from "../../../ui-kit/index.ts";
-import { useFullExport } from "../hooks.ts";
+import { useFullExport, useSendFullExportToTelegram } from "../hooks.ts";
 
 export function FullExport() {
   const exportData = useFullExport();
+  const sendToTelegram = useSendFullExportToTelegram();
 
   const download = () => exportData.mutate(undefined, {
     onSuccess: ({ blob, filename }) => {
@@ -10,8 +11,13 @@ export function FullExport() {
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = filename;
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
       anchor.click();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => {
+        anchor.remove();
+        URL.revokeObjectURL(url);
+      }, 1_000);
     },
   });
 
@@ -25,9 +31,14 @@ export function FullExport() {
             CSV для Excel и Google Sheets: позиции оборудования, роли, подрядчики, ручные строки сметы и все финансовые операции, включая аннулированные.
           </p>
         </div>
-        <Button disabled={exportData.isPending} onClick={download}>
-          {exportData.isPending ? "Готовим файл…" : "Скачать полный CSV"}
-        </Button>
+        <div className="stack" style={{ gap: 8 }}>
+          <Button block disabled={exportData.isPending || sendToTelegram.isPending} onClick={download}>
+            {exportData.isPending ? "Готовим файл…" : "Скачать CSV"}
+          </Button>
+          <Button block variant="secondary" disabled={exportData.isPending || sendToTelegram.isPending} onClick={() => sendToTelegram.mutate()}>
+            {sendToTelegram.isPending ? "Отправляем…" : "Отправить в Telegram"}
+          </Button>
+        </div>
         <p className="card__subtitle">
           Плановые суммы и фактические движения денег вынесены в отдельные колонки, чтобы выплаты не удваивали расходы. Заметки проектов выгружаются только пользователям с правом их просмотра.
         </p>

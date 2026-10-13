@@ -159,6 +159,13 @@ export function useFullExport() {
   });
 }
 
+export function useSendFullExportToTelegram() {
+  return useMutation({
+    mutationFn: () => api.post<{ sent: true; filename: string }>("/api/reports/full-export.csv/telegram", {}),
+    meta: { successMessage: "CSV отправлен в Telegram" },
+  });
+}
+
 export function useRestoreBackup() {
   const qc = useQueryClient();
   return useMutation({

@@ -45,8 +45,11 @@ type SendTelegramDocument = (
   chatId: string | null,
   document: Buffer,
   filename: string,
-  caption?: string
+  caption?: string,
+  contentType?: string,
 ) => Promise<{ chatId: string; messageId: number } | null>;
+
+const fullExportFilename = () => `sever-full-export-${new Date().toISOString().slice(0, 10)}.csv`;
 
 export function registerBillingRoutes(
   app: FastifyInstance,
@@ -97,10 +100,25 @@ export function registerBillingRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.view", "finance.manage");
     const csv = await service.fullExportCsv(auth.permissions.includes("projects.note.view"));
-    const date = new Date().toISOString().slice(0, 10);
     return reply
       .header("Content-Type", "text/csv; charset=utf-8")
-      .header("Content-Disposition", `attachment; filename="sever-full-export-${date}.csv"`)
+      .header("Content-Disposition", `attachment; filename="${fullExportFilename()}"`)
       .send(csv);
+  });
+  app.post("/api/reports/full-export.csv/telegram", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.view", "finance.manage");
+    if (!auth.telegramId) throw BadRequest("К аккаунту не привязан Telegram");
+    const csv = await service.fullExportCsv(auth.permissions.includes("projects.note.view"));
+    const filename = fullExportFilename();
+    const sent = await sendTelegramDocument(
+      auth.telegramId,
+      Buffer.from(csv, "utf8"),
+      filename,
+      "Полный экспорт проектов SEVER",
+      "text/csv; charset=utf-8",
+    );
+    if (!sent) throw new AppError("telegram_delivery_failed", "Не удалось отправить CSV в Telegram. Убедитесь, что бот запущен и может писать вам.", 502);
+    return { sent: true, filename };
   });
 }

@@ -169,14 +169,15 @@ export async function sendTelegramDocument(
   chatId: string | null,
   document: Buffer,
   filename: string,
-  caption?: string
+  caption?: string,
+  contentType = "application/pdf",
 ): Promise<{ chatId: string; messageId: number } | null> {
   const token = env.auth.telegramBotToken;
   if (!token || !chatId || !/^\d+$/.test(chatId)) return null;
 
   const form = new FormData();
   form.set("chat_id", chatId);
-  form.set("document", new Blob([document], { type: "application/pdf" }), filename);
+  form.set("document", new Blob([document], { type: contentType }), filename);
   if (caption) form.set("caption", caption);
 
   try {
