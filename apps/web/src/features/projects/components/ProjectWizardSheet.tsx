@@ -22,6 +22,7 @@ import { useDressCodeOptions } from "../../settings/hooks.ts";
 import { useSession } from "../../../app/session.ts";
 import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
 import { isoFromLocal } from "../../../lib/datetime.ts";
+import { ProjectNoteField } from "./ProjectNoteField.tsx";
 
 type StepId = "name" | "client" | "venue" | "time" | "reservations" | "crew" | "contractors" | "finance" | "finish";
 
@@ -375,7 +376,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
             <p className="card__subtitle">{selectedClientName || "Клиент"} · можно открыть проект или сразу перейти к смете.</p>
           </Card>
           {project && setupIncomplete && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Проект создан, но часть дополнительных данных не сохранилась. Откройте проект и проверьте его заполнение.</p>}
-          {!project && canViewNote && <Field label="Общая заметка по проекту"><Textarea value={projectNote} onChange={(e) => setProjectNote(e.target.value)} placeholder="Важная информация для команды и планирования" /></Field>}
+          {!project && canViewNote && <ProjectNoteField value={projectNote} onChange={setProjectNote} />}
         </WizardScreen>
       )}
 

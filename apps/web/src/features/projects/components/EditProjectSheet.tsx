@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Projects } from "@sever/contracts";
-import { Sheet, Field, Input, Select, Button, Textarea } from "../../../ui-kit/index.ts";
+import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
 import { useApplyProjectSeriesChange, usePreviewProjectSeriesChange, useUpdateProject } from "../hooks.ts";
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
@@ -8,6 +8,7 @@ import { isoFromLocal, toLocalInput } from "../../../lib/datetime.ts";
 import { useDressCodeOptions } from "../../settings/hooks.ts";
 import { useSession } from "../../../app/session.ts";
 import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
+import { ProjectNoteField } from "./ProjectNoteField.tsx";
 
 interface Props {
   open: boolean;
@@ -173,9 +174,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
         </Field>
       </div>
       {(starts || ends) && !validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Укажите обе даты; конец должен быть позже начала</p>}
-      {canViewNote && <Field label="Общая заметка по проекту">
-        <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Важная информация для команды и планирования" />
-      </Field>}
+      {canViewNote && <ProjectNoteField value={note} onChange={setNote} />}
       {project.seriesId && <Field label="Область изменения">
         <Select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} options={[
           { value: "only_this", label: "Только этот проект" },

@@ -1541,6 +1541,14 @@ input[type="checkbox"]:not(.toggle-switch):disabled { cursor: default; opacity: 
 .warehouse-zone-editor__empty { margin: 4px 0 0; color: var(--label-tertiary); font-size: 12px; }
 .warehouse-zone-editor__hint { margin: 8px 2px 0; color: var(--label-tertiary); font-size: 12px; line-height: 1.35; }
 .warehouse-form-card { margin-top: 2px; }
+.project-new-client { margin: 12px 0 20px; }
+.project-form-divider { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: var(--label-tertiary); font-size: 11.5px; font-weight: 600; letter-spacing: .2px; white-space: nowrap; }
+.project-form-divider::before,
+.project-form-divider::after { content: ""; height: 1px; flex: 1; background: var(--separator); }
+.project-new-client__controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.project-new-client__controls .btn { min-height: var(--h-field); }
+.project-form-note { display: block; margin: 18px 0 16px; }
+.project-form-note__label { display: block; margin: 0 2px 9px; color: var(--label-secondary); font-size: 12px; font-weight: 600; letter-spacing: .2px; }
 .warehouse-search-results { padding: 2px 16px; overflow: hidden; }
 .warehouse-search-result { width: 100%; min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border: 0; border-bottom: 1px solid var(--separator); background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .warehouse-search-result > span:first-child { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
