@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Equipment, Finance, Projects } from "@sever/contracts";
 import { Button, Card, Chip, Field, Input, Select, Sheet, Textarea } from "../../../ui-kit/index.ts";
@@ -110,6 +110,8 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const [financeDrafts, setFinanceDrafts] = useState<FinanceDraft[]>([{ name: "", client: "", cost: "" }]);
   const [projectNote, setProjectNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [setupIncomplete, setSetupIncomplete] = useState(false);
+  const creationInFlight = useRef(false);
 
   const step = steps[stepIndex]!;
   const validRange = !!starts && ends > starts;
@@ -146,12 +148,17 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       setNewContractorContacts("");
       setFinanceDrafts([{ name: "", client: "", cost: "" }]);
       setProjectNote("");
+      setSetupIncomplete(false);
+      creationInFlight.current = false;
     }, 150);
   };
 
   const createEverything = async () => {
-    if (project || busy) return;
+    if (project || busy || creationInFlight.current) return;
+    creationInFlight.current = true;
     setBusy(true);
+    setSetupIncomplete(false);
+    let created: Projects.ProjectDTO | null = null;
     try {
       let cid = clientId;
       if (!cid && clientName.trim()) {
@@ -166,7 +173,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
         vid = venue.id;
         setVenueId(venue.id);
       }
-      const created = await createProject.mutateAsync({
+      created = await createProject.mutateAsync({
         name: projectName.trim(),
         clientId: cid,
         venueId: vid,
@@ -176,6 +183,10 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
         ...(canViewNote ? { note: projectNote.trim() || null } : {}),
         ...(validRange ? { startsAt: isoFromLocal(starts), endsAt: isoFromLocal(ends) } : {}),
       });
+      // The project itself is already durable at this point. Switch to the
+      // success screen immediately so a later optional setup failure cannot
+      // leave the user with another active "Create project" button.
+      setProject(created);
       let createdContractorId = "";
       if (newContractorName.trim()) {
         const contractor = await createContractor.mutateAsync({ name: newContractorName.trim(), contacts: newContractorContacts.trim() || null });
@@ -214,9 +225,11 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       }));
       lines.push(...financeDrafts.filter((line) => line.name.trim() && ((Number(line.client) || 0) !== 0 || (Number(line.cost) || 0) !== 0)).map((line) => ({ source: "manual" as const, section: "Прочее", name: line.name.trim(), qty: 1, priceEUR: Number(line.client) || 0, costEUR: Number(line.cost) || 0, comment: "" })));
       if (lines.length > 0) await api.put(`/api/projects/${created.id}/estimate-lines`, { lines });
-      setProject(created);
+    } catch {
+      if (created) setSetupIncomplete(true);
     } finally {
       setBusy(false);
+      creationInFlight.current = false;
     }
   };
 
@@ -361,6 +374,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
             <p className="card__title">{project?.name ?? projectName}</p>
             <p className="card__subtitle">{selectedClientName || "Клиент"} · можно открыть проект или сразу перейти к смете.</p>
           </Card>
+          {project && setupIncomplete && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Проект создан, но часть дополнительных данных не сохранилась. Откройте проект и проверьте его заполнение.</p>}
           {!project && canViewNote && <Field label="Общая заметка по проекту"><Textarea value={projectNote} onChange={(e) => setProjectNote(e.target.value)} placeholder="Важная информация для команды и планирования" /></Field>}
         </WizardScreen>
       )}
@@ -370,7 +384,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
         {step.skip && step.id !== "finish" && <Button variant="ghost" onClick={skip}>Пропустить</Button>}
         {step.id === "finish" ? (
           project ? <>
-            <Button block variant="secondary" disabled={!project} onClick={() => project && navigate(`/projects/${project.id}`)}>Проект</Button>
+            <Button block variant="secondary" disabled={!project} onClick={() => project && navigate(`/projects/${project.id}`)}>Открыть проект</Button>
             <Button block disabled={!project} onClick={() => project && navigate(`/projects/${project.id}/invoice`)}>Смета</Button>
           </> : <Button block disabled={busy} onClick={() => void createEverything()}>{busy ? "Создаём…" : "Создать проект"}</Button>
         ) : (
