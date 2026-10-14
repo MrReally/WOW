@@ -2,24 +2,28 @@ import { useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import type { People } from "@sever/contracts";
 import { api, setToken } from "../../lib/api.ts";
-import { Card, Button, Field, Input, Loading } from "../../ui-kit/index.ts";
+import { Card, Button, Field, Input, Loading, SeverStar } from "../../ui-kit/index.ts";
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ width: "100%", maxWidth: 380 }}>
-        <div className="t-cond" style={{ fontSize: 34, fontWeight: 800, textAlign: "center", marginBottom: 20, color: "var(--text)" }}>
-          SEVER
+    <div className="auth-screen sever">
+      <div className="auth-wallpaper" aria-hidden="true">
+        <i /><i /><i /><i />
+      </div>
+      <main className="auth-shell">
+        <div className="auth-brand" aria-label="SEVER">
+          <span className="auth-brand__mark"><SeverStar size={34} /></span>
+          <strong>SEVER</strong>
         </div>
         {children}
-      </div>
+      </main>
     </div>
   );
 }
 
 export function AuthGate() {
   const setup = useQuery({ queryKey: ["setup-status"], queryFn: () => api.get<{ needsBootstrap: boolean }>("/api/auth/setup-status"), retry: false });
-  if (setup.isLoading) return <Loading label="Загрузка…" />;
+  if (setup.isLoading) return <Centered><div className="auth-loading"><Loading label="Загрузка…" /></div></Centered>;
   return setup.data?.needsBootstrap ? <BootstrapScreen /> : <LoginScreen />;
 }
 
@@ -38,13 +42,16 @@ function BootstrapScreen() {
   });
   return (
     <Centered>
-      <Card>
-        <p className="card__title" style={{ marginBottom: 4 }}>Первый запуск — создайте владельца</p>
-        <p className="card__subtitle" style={{ marginBottom: 16 }}>Этот email станет аккаунтом владельца со всеми правами.</p>
+      <Card className="auth-card">
+        <div className="auth-card__intro">
+          <span>НАСТРОЙКА SEVER</span>
+          <h1>Создайте владельца</h1>
+          <p>Этот email станет аккаунтом владельца со всеми правами.</p>
+        </div>
         <Field label="Ваше имя"><Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Иван Комаров" /></Field>
-        <Field label="Email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" /></Field>
-        <Field label="Пароль (мин. 6)"><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
-        <Button block disabled={!email || !displayName || password.length < 6 || m.isPending} onClick={() => m.mutate()}>
+        <Field label="Email"><Input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" /></Field>
+        <Field label="Пароль (мин. 6)"><Input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+        <Button className="auth-card__submit" block disabled={!email || !displayName || password.length < 6 || m.isPending} onClick={() => m.mutate()}>
           Создать и войти
         </Button>
       </Card>
@@ -66,11 +73,15 @@ function LoginScreen() {
   });
   return (
     <Centered>
-      <Card>
-        <p className="card__title" style={{ marginBottom: 16 }}>Вход</p>
-        <Field label="Email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" /></Field>
-        <Field label="Пароль"><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && m.mutate()} /></Field>
-        <Button block disabled={!email || !password || m.isPending} onClick={() => m.mutate()}>Войти</Button>
+      <Card className="auth-card">
+        <div className="auth-card__intro">
+          <span>SEVER ID</span>
+          <h1>Вход</h1>
+          <p>Введите данные рабочего аккаунта.</p>
+        </div>
+        <Field label="Email"><Input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" /></Field>
+        <Field label="Пароль"><Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && email && password && m.mutate()} /></Field>
+        <Button className="auth-card__submit" block disabled={!email || !password || m.isPending} onClick={() => m.mutate()}>Войти</Button>
       </Card>
     </Centered>
   );
@@ -94,9 +105,12 @@ export function ChangePasswordScreen() {
   };
   return (
     <Centered>
-      <Card>
-        <p className="card__title" style={{ marginBottom: 4 }}>Смените временный пароль</p>
-        <p className="card__subtitle" style={{ marginBottom: 16 }}>Это нужно сделать при первом входе.</p>
+      <Card className="auth-card">
+        <div className="auth-card__intro">
+          <span>БЕЗОПАСНОСТЬ</span>
+          <h1>Смените пароль</h1>
+          <p>Задайте постоянный пароль для продолжения работы.</p>
+        </div>
         <Field label="Новый пароль (мин. 6)">
           <Input
             type="password"
@@ -117,8 +131,8 @@ export function ChangePasswordScreen() {
             onChange={(e) => setConfirm(e.target.value)}
           />
         </Field>
-        {confirm && password !== confirm && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Пароли не совпадают</p>}
-        <Button block disabled={!ok || m.isPending} onClick={() => m.mutate()}>Сохранить</Button>
+        {confirm && password !== confirm && <p className="auth-card__error">Пароли не совпадают</p>}
+        <Button className="auth-card__submit" block disabled={!ok || m.isPending} onClick={() => m.mutate()}>Сохранить</Button>
       </Card>
     </Centered>
   );
