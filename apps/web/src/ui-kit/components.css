@@ -2322,6 +2322,86 @@ input[type="checkbox"]:not(.toggle-switch):disabled { cursor: default; opacity: 
 .stock-unit-row > span:first-child { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .stock-unit-row strong { font-size: 13px; }
 .stock-unit-row small { font-size: 10px; color: var(--text3); }
+
+.cable-connectors {
+  display: flex;
+  width: calc(100% + 32px);
+  gap: 8px;
+  overflow-x: auto;
+  margin: 0 -16px;
+  padding: 0 16px 2px;
+  scrollbar-width: none;
+}
+.cable-connectors::-webkit-scrollbar { display: none; }
+.cable-connector-card {
+  width: 84px;
+  flex: 0 0 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  color: var(--label-primary);
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+}
+.cable-connector-card__visual {
+  width: 84px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 14px;
+  color: var(--label-tertiary);
+  background: var(--glass-bg-strong);
+  box-shadow: inset 0 0 0 1px var(--glass-border);
+}
+.cable-connector-card__visual img { width: 100%; height: 100%; object-fit: contain; }
+.cable-connector-card__visual svg { width: 23px; height: 23px; }
+.cable-connector-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.cable-connector-create .btn { height: 44px; }
+.cable-type-group { display: grid; gap: 0; }
+.cable-model-list { padding: 2px 16px; overflow: hidden; }
+.cable-list-row { min-height: 64px; }
+.cable-list-row .lrow__detail { font-family: var(--font-mono); }
+.cable-row-stepper { margin-left: 8px; }
+.cable-row-stepper button { width: 30px; height: 30px; }
+.cable-connector-detail__image,
+.cable-connector-detail__placeholder {
+  width: 100%;
+  height: 200px;
+  margin-bottom: 14px;
+  border-radius: 18px;
+  object-fit: contain;
+  background: var(--glass-bg-strong);
+  box-shadow: inset 0 0 0 1px var(--glass-border);
+}
+.cable-connector-detail__placeholder { display: grid; place-items: center; color: var(--label-tertiary); }
+.cable-connector-detail__placeholder svg { width: 36px; height: 36px; }
+.cable-form { display: flex; flex-direction: column; gap: 14px; }
+.cable-kind-picker { display: flex; flex-wrap: wrap; gap: 7px; }
+.cable-form__label {
+  margin: 0 0 8px;
+  color: var(--label-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.cable-connector-picker { margin-bottom: 0; }
+.cable-form__outlets { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; }
+.cable-form__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cable-form__grid .field { margin: 0; }
+.cable-form__preview { display: flex; flex-direction: column; gap: 5px; padding: 12px; }
+.cable-form__preview span { color: var(--label-tertiary); font-size: 10px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+.cable-form__preview strong { color: var(--label-primary); font-size: 15px; }
+.cable-form-stepper output { min-width: 24px; }
 /* Last-resort recovery surface for rendering failures. */
 .fatal-error { max-width:680px; margin:10vh auto; padding:28px; border:1px solid var(--bdr-md); border-radius:16px; background:var(--card); color:var(--text); }
 .fatal-error p { color:var(--text2); }.fatal-error code { display:block; margin:8px 0; padding:10px; border-radius:8px; background:var(--s2); }

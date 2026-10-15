@@ -32,13 +32,16 @@ import {
   useUpdateWarehouse,
   useUpdateType,
   useCableSettings,
+  useCableConnectors,
+  useCreateCableConnector,
   useCategories,
 } from "./hooks.ts";
-import { formatCableModel } from "./cables.ts";
+import { cableAttrs, formatCableModel } from "./cables.ts";
 import { AddModelSheet } from "./components/AddModelSheet.tsx";
 import { EditModelSheet } from "./components/EditModelSheet.tsx";
 import { ImportSheet } from "./components/ImportSheet.tsx";
 import { CableMoveSheet, CableRow } from "./components/CableMoveSheet.tsx";
+import { CableCreateSheet } from "./components/CableCreateSheet.tsx";
 import { OpsSheet } from "./components/OpsSheet.tsx";
 import { AddressInput } from "../places/AddressInput.tsx";
 import { useCreateVenue, useUpdateVenue, useVenues } from "../plans/hooks.ts";
@@ -270,12 +273,17 @@ export function WarehousePage() {
   const openRepairs = useOpenRepairs();
   const openHandovers = useOpenHandovers();
   const cableSettings = useCableSettings();
+  const cableConnectors = useCableConnectors();
+  const createCableConnector = useCreateCableConnector();
   const categories=useCategories();
 
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
   const [cableModel, setCableModel] = useState<Equipment.EquipmentModelDTO | null>(null);
+  const [cableCreateOpen, setCableCreateOpen] = useState(false);
+  const [selectedConnector, setSelectedConnector] = useState<Equipment.CableConnectorDTO | null>(null);
+  const [newConnectorName, setNewConnectorName] = useState("");
   const [editModel, setEditModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [editType, setEditType] = useState<Equipment.EquipmentTypeDTO | null>(null);
   const [warehouseFilter, setWarehouseFilter] = useState("all");
@@ -550,25 +558,57 @@ export function WarehousePage() {
   );
   const cableSection = (
     <>
-      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Разъём, длина, тип" />
-      <SectionHead label="Кабели" meta={`${cableModels.length}`} />
+      <SectionHead label="Справочник разъёмов" meta={`${cableConnectors.data?.length ?? 0}`} />
+      <div className="cable-connectors" aria-label="Справочник разъёмов">
+        {(cableConnectors.data ?? []).map((connector) => (
+          <button key={connector.id} type="button" className="cable-connector-card" onClick={() => setSelectedConnector(connector)}>
+            <span className="cable-connector-card__visual">
+              {connector.imageDataUrl ? <img src={connector.imageDataUrl} alt="" /> : <WarehouseGlyph type="cables" />}
+            </span>
+            <span>{connector.name}</span>
+          </button>
+        ))}
+      </div>
+      {canCatalog && (
+        <div className="cable-connector-create">
+          <Input value={newConnectorName} onChange={(event) => setNewConnectorName(event.target.value)} placeholder="Новый разъём" />
+          <Button variant="secondary" disabled={!newConnectorName.trim() || createCableConnector.isPending} onClick={() => createCableConnector.mutate({ name: newConnectorName.trim(), designation: newConnectorName.trim().slice(0, 24) }, { onSuccess: () => setNewConnectorName("") })}>Добавить</Button>
+        </div>
+      )}
+      <SectionHead label="Кабели" />
+      <span className="warehouse-search-field warehouse-stock-search">
+        <span className="warehouse-search-field__icon" aria-hidden="true" />
+        <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Разъём, длина, тип" />
+      </span>
       {cableModels.length === 0 ? (
         <EmptyState title="Нет кабелей" />
       ) : (
-        <div className="card" style={{ padding: "2px 16px" }}>
-          {cableModels.map((m, i) => (
-            <CableRow
-              key={m.id}
-              model={m}
-              warehouseId={warehouseFilter === "all" ? null : warehouseFilter}
-              onMove={() => setCableModel(m)}
-              onEdit={canCatalog ? () => setEditModel(m) : undefined}
-              last={i === cableModels.length - 1}
-            />
-          ))}
-        </div>
+        (() => {
+          const groups = new Map<string, Equipment.EquipmentModelDTO[]>();
+          for (const model of cableModels) {
+            const group = cableAttrs(model)?.cableType || "Кабели";
+            (groups.get(group) ?? groups.set(group, []).get(group)!).push(model);
+          }
+          return [...groups.entries()].map(([group, groupModels]) => (
+            <div key={group} className="cable-type-group">
+              <SectionHead label={group} meta={`${groupModels.length}`} />
+              <div className="card cable-model-list">
+                {groupModels.map((model, index) => (
+                  <CableRow
+                    key={model.id}
+                    model={model}
+                    warehouseId={warehouseFilter === "all" ? null : warehouseFilter}
+                    onMove={() => setCableModel(model)}
+                    showStepper
+                    last={index === groupModels.length - 1}
+                  />
+                ))}
+              </div>
+            </div>
+          ));
+        })()
       )}
-      {canCatalog && <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Кабель</Button>}
+      {canCatalog && <Button block variant="secondary" onClick={() => setCableCreateOpen(true)}>+ Кабель</Button>}
     </>
   );
   const unitSection = (
@@ -698,6 +738,12 @@ export function WarehousePage() {
           <ImportSheet open={importOpen} onClose={() => setImportOpen(false)} />
         </>
       )}
+      {canCatalog && <CableCreateSheet open={cableCreateOpen} onClose={() => setCableCreateOpen(false)} types={types.data ?? []} categories={categories.data ?? []} warehouses={warehouseList} />}
+      <Sheet open={!!selectedConnector} onClose={() => setSelectedConnector(null)} title={selectedConnector ? `Разъём · ${selectedConnector.name}` : "Разъём"}>
+        {selectedConnector?.imageDataUrl ? <img className="cable-connector-detail__image" src={selectedConnector.imageDataUrl} alt="" /> : <div className="cable-connector-detail__placeholder"><WarehouseGlyph type="cables" /></div>}
+        <Field label="Обозначение"><Input value={selectedConnector?.designation ?? ""} readOnly /></Field>
+        <p className="card__subtitle">Кабелей с этим разъёмом: {selectedConnector ? cableModels.filter((model) => { const attrs = cableAttrs(model); return attrs?.sideAConnector === selectedConnector.name || attrs?.sideBConnector === selectedConnector.name; }).length : 0}</p>
+      </Sheet>
       {canIssue && (
         <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} models={allModels} />
       )}
