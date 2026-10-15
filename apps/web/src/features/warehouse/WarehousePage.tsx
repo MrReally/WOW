@@ -278,7 +278,6 @@ export function WarehousePage() {
   const [cableModel, setCableModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [editModel, setEditModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [editType, setEditType] = useState<Equipment.EquipmentTypeDTO | null>(null);
-  const [statusFilter, setStatusFilter] = useState<Equipment.UnitStatus | "all">("all");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [warehouseForm, setWarehouseForm] = useState<{ mode: "create" | "edit"; id?: string } | null>(null);
   const [warehouseNameDraft, setWarehouseNameDraft] = useState("");
@@ -358,6 +357,8 @@ export function WarehousePage() {
   const storageZoneById = new Map(activeStorageZones.map((zone) => [zone.id, zone]));
   const modelMatches = (m: Equipment.EquipmentModelDTO) =>
     !query || [m.name, m.manufacturer ?? "", getTypeName(m.typeId), m.trackingMode === "cable" ? formatCableModel(m, cableSettings.data?.nameFormat) : ""].some((v) => v.toLowerCase().includes(query));
+  const stockModelMatches = (m: Equipment.EquipmentModelDTO) =>
+    !query || m.name.toLowerCase().includes(query);
   const unitMatches = (u: Equipment.EquipmentUnitDTO) => {
     const m = allModels.find((x) => x.id === u.modelId);
     return !query || [u.assetTag, u.serial ?? "", storageZoneById.get(u.zoneId ?? "")?.code ?? "", m?.name ?? "", m?.manufacturer ?? "", getTypeName(m?.typeId)].some((v) => v.toLowerCase().includes(query));
@@ -367,12 +368,14 @@ export function WarehousePage() {
   const cableModels = visibleModels.filter((m) => m.trackingMode === "cable" && modelMatches(m));
   const warehouseStockUnits = allUnits.filter(unit => unit.status !== "installed");
   const filteredByWarehouse = warehouseFilter === "all" ? warehouseStockUnits : warehouseStockUnits.filter((u) => u.warehouseId === warehouseFilter);
-  const filteredByStatus = statusFilter === "all" ? filteredByWarehouse : filteredByWarehouse.filter((u) => u.status === statusFilter);
-  const filtered = filteredByStatus.filter(unit=>visibleModels.some(model=>model.id===unit.modelId)).filter(unitMatches);
+  const visibleModelIds = new Set(visibleModels.map((model) => model.id));
+  const filtered = filteredByWarehouse.filter((unit) => {
+    const model = allModels.find((candidate) => candidate.id === unit.modelId);
+    return visibleModelIds.has(unit.modelId) && !!model && stockModelMatches(model);
+  });
   const dashboardSearchResults = query
     ? allUnits.filter((unit) => visibleModels.some((model) => model.id === unit.modelId)).filter(unitMatches)
     : [];
-  const statuses: (Equipment.UnitStatus | "all")[] = ["all", "in_stock", "on_project", "in_repair", "reserved", "lost"];
 
   const repairTone = (s: Equipment.UnitStatus) => (s === "in_repair" ? "alert" : "warn");
   const tag = (uid: string) => allUnits.find((x) => x.id === uid)?.assetTag ?? uid.slice(0, 6);
@@ -395,7 +398,12 @@ export function WarehousePage() {
       </Field>
     </div>
   );
-  const stockSearchField = <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель или тип" />;
+  const stockSearchField = (
+    <span className="warehouse-search-field warehouse-stock-search">
+      <span className="warehouse-search-field__icon" aria-hidden="true" />
+      <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель или тип" />
+    </span>
+  );
   const warehouseSelector = (
     <>
       <div className="row row--between warehouse-section-head">
@@ -443,7 +451,7 @@ export function WarehousePage() {
   );
   const warehouseFilterRow = (
     <div className="warehouse-filter-row" aria-label="Выбор склада">
-      <button className={`warehouse-choice ${warehouseFilter === "all" ? "is-active" : ""}`} onClick={() => setWarehouseFilter("all")}>Все склады</button>
+      <button className={`warehouse-choice ${warehouseFilter === "all" ? "is-active" : ""}`} onClick={() => setWarehouseFilter("all")}>ВСЕ</button>
       {warehouseList.map((warehouse) => (
         <button key={warehouse.id} className={`warehouse-choice ${warehouseFilter === warehouse.id ? "is-active" : ""}`} onClick={() => setWarehouseFilter(warehouse.id)}>{warehouse.name}</button>
       ))}
@@ -565,20 +573,8 @@ export function WarehousePage() {
   );
   const unitSection = (
     <>
-      <SectionHead label="Единицы" meta={`${filtered.length}`} />
-      <div className="row warehouse-status-filter" style={{ flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-        {statuses.map((s) => (
-          <button
-            key={s}
-            className={`warehouse-choice ${statusFilter === s ? "is-active" : ""}`}
-            onClick={() => setStatusFilter(s)}
-          >
-            {s === "all" ? "Все" : unitStatusLabel[s]}
-          </button>
-        ))}
-      </div>
       {filtered.length === 0 ? (
-        <EmptyState title="Нет единиц" />
+        <EmptyState title="Нет моделей" />
       ) : (
         (() => {
           const modelOf = (mid: string) => allModels.find((m) => m.id === mid);
@@ -592,15 +588,8 @@ export function WarehousePage() {
             const modelGroups = new Map<string, Equipment.EquipmentUnitDTO[]>();
             for (const unit of list) (modelGroups.get(unit.modelId) ?? modelGroups.set(unit.modelId, []).get(unit.modelId)!).push(unit);
             return (
-              <div key={tid}>
-                <div className="row row--between" style={{ alignItems: "center" }}>
-                  <SectionHead label={getTypeName(tid)} meta={`${modelGroups.size}`} />
-                  {canCatalog && (
-                    <button className="icon-btn" aria-label="Редактировать тип" title="Редактировать тип" onClick={() => setEditType((types.data ?? []).find(type => type.id === tid) ?? null)}>
-                      ✎
-                    </button>
-                  )}
-                </div>
+              <div key={tid} className="stock-type-group">
+                <SectionHead label={getTypeName(tid)} meta={`${modelGroups.size}`} />
                 <div className="card stock-model-list">
                   {[...modelGroups.entries()].map(([modelId, modelUnits], modelIndex) => {
                     const model = modelOf(modelId);
@@ -612,7 +601,9 @@ export function WarehousePage() {
                     return (
                       <div key={modelId} className={modelIndex === modelGroups.size - 1 ? "" : "stock-model-group"}>
                         <button className="stock-model-row" onClick={() => toggleStockModel(modelId)} aria-expanded={isExpanded}>
-                          <span className="stock-model-row__icon">◇</span>
+                          {model?.imageUrl
+                            ? <img className="stock-model-row__image" src={model.imageUrl} alt="" />
+                            : <span className="stock-model-row__icon" aria-hidden="true">◇</span>}
                           <span className="stock-model-row__body">
                             <span className="stock-model-row__title">{model?.name ?? modelId}</span>
                             <span className="stock-model-row__detail">{inStock} на складе · {reserved} резерв · {onProject} на проекте</span>
@@ -693,6 +684,7 @@ export function WarehousePage() {
         <>
           {stockSearchField}
           {warehouseFilterRow}
+          {categorySelector}
           {unitSection}
         </>
       )}

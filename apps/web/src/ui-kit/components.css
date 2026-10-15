@@ -2297,19 +2297,22 @@ input[type="checkbox"]:not(.toggle-switch):disabled { cursor: default; opacity: 
   }
 }
 
-.stock-model-list { padding: 0 16px; overflow: hidden; }
+.warehouse-stock-search { width: 100%; }
+.stock-type-group { display: grid; gap: 0; }
+.stock-model-list { padding: 2px 16px; overflow: hidden; }
 .stock-model-group { border-bottom: 1px solid var(--line); }
 .stock-model-row {
-  width: 100%; min-height: 68px; display: flex; align-items: center; gap: 12px;
-  padding: 11px 0; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer;
+  width: 100%; min-height: 64px; display: flex; align-items: center; gap: 12px;
+  padding: 10px 0; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer;
 }
 .stock-model-row__icon {
   width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center;
-  border-radius: 8px; color: var(--accent); background: var(--accent-soft); font-size: 20px;
+  border-radius: 8px; color: var(--blue); background: var(--tint-blue); font-size: 20px;
 }
+.stock-model-row__image { width: 30px; height: 30px; flex: 0 0 30px; border-radius: 8px; object-fit: contain; background: var(--fill-gray); }
 .stock-model-row__body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.stock-model-row__title { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.stock-model-row__detail { font-size: 11px; color: var(--text3); line-height: 1.35; }
+.stock-model-row__title { font-size: 15px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stock-model-row__detail { font-size: 11px; color: var(--label-secondary); line-height: 1.35; }
 .stock-model-row__count { font-family: var(--font-mono); font-size: 14px; color: var(--text2); }
 .stock-unit-list { padding: 0 0 8px 42px; }
 .stock-unit-row {
