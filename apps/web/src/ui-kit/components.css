@@ -1693,7 +1693,32 @@ input[type="checkbox"]:not(.toggle-switch):disabled { cursor: default; opacity: 
   padding: 0 16px 2px;
   scrollbar-width: none;
 }
-.warehouse-filter-row .chip { min-height: 34px; flex: 0 0 auto; border: 0; cursor: pointer; }
+.warehouse-choice {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  flex: 0 0 auto;
+  gap: 5px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 16px;
+  color: var(--label-secondary);
+  background: var(--fill-gray);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-ios), color var(--dur-fast) var(--ease-ios), box-shadow var(--dur-fast) var(--ease-ios), transform 120ms var(--ease-ios);
+}
+.warehouse-choice.is-active {
+  color: var(--label-on-accent);
+  background: var(--blue);
+  box-shadow: 0 6px 14px -8px var(--blue);
+}
+.warehouse-choice:active { transform: scale(.96); }
+.warehouse-choice:focus-visible { outline: 3px solid var(--tint-blue); outline-offset: 2px; }
 .warehouse-readiness-card { padding: 27px 18px 18px; }
 .warehouse-readiness-card__body { gap: 18px; align-items: center; transform: translateY(22px); }
 .warehouse-readiness-ring { position: relative; width: 120px; height: 120px; flex: 0 0 120px; }

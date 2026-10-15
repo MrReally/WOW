@@ -398,9 +398,9 @@ export function WarehousePage() {
         {canCatalog && <button className="text-action" type="button" onClick={openWarehouseCreate}>+ Склад</button>}
       </div>
       <div className="warehouse-filter-row" aria-label="Выбор склада">
-        <button className={`chip ${warehouseFilter === "all" ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => setWarehouseFilter("all")}>Все склады</button>
+        <button className={`warehouse-choice ${warehouseFilter === "all" ? "is-active" : ""}`} onClick={() => setWarehouseFilter("all")}>Все склады</button>
         {warehouseList.map((warehouse) => (
-          <button key={warehouse.id} className={`chip ${warehouseFilter === warehouse.id ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => setWarehouseFilter(warehouse.id)} title={warehouse.address ?? undefined}>{warehouse.name}</button>
+          <button key={warehouse.id} className={`warehouse-choice ${warehouseFilter === warehouse.id ? "is-active" : ""}`} onClick={() => setWarehouseFilter(warehouse.id)} title={warehouse.address ?? undefined}>{warehouse.name}</button>
         ))}
       </div>
       <div className="stack warehouse-location-list">
@@ -431,20 +431,20 @@ export function WarehousePage() {
   );
   const warehouseFilterRow = (
     <div className="warehouse-filter-row" aria-label="Выбор склада">
-      <button className={`chip ${warehouseFilter === "all" ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => setWarehouseFilter("all")}>Все склады</button>
+      <button className={`warehouse-choice ${warehouseFilter === "all" ? "is-active" : ""}`} onClick={() => setWarehouseFilter("all")}>Все склады</button>
       {warehouseList.map((warehouse) => (
-        <button key={warehouse.id} className={`chip ${warehouseFilter === warehouse.id ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => setWarehouseFilter(warehouse.id)}>{warehouse.name}</button>
+        <button key={warehouse.id} className={`warehouse-choice ${warehouseFilter === warehouse.id ? "is-active" : ""}`} onClick={() => setWarehouseFilter(warehouse.id)}>{warehouse.name}</button>
       ))}
     </div>
   );
   const categorySelector = (
     <div className="warehouse-filter-row" aria-label="Категории склада">
-      <button className={`chip ${!showArchived && categoryFilter === "all" ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => { setShowArchived(false); setCategoryFilter("all"); }}>Все</button>
+      <button className={`warehouse-choice ${!showArchived && categoryFilter === "all" ? "is-active" : ""}`} onClick={() => { setShowArchived(false); setCategoryFilter("all"); }}>Все</button>
       {!showArchived && (categories.data ?? []).map((category) => (
-        <button key={category.id} className={`chip ${categoryFilter === category.id ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => setCategoryFilter(category.id)}>{category.name}</button>
+        <button key={category.id} className={`warehouse-choice ${categoryFilter === category.id ? "is-active" : ""}`} onClick={() => setCategoryFilter(category.id)}>{category.name}</button>
       ))}
-      {!showArchived && <button className={`chip ${categoryFilter === "none" ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => setCategoryFilter("none")}>Без категории</button>}
-      <button className={`chip ${showArchived ? "chip--accent chip--solid" : "chip--neutral"}`} onClick={() => { setShowArchived(true); setCategoryFilter("all"); }}>Архив</button>
+      {!showArchived && <button className={`warehouse-choice ${categoryFilter === "none" ? "is-active" : ""}`} onClick={() => setCategoryFilter("none")}>Без категории</button>}
+      <button className={`warehouse-choice ${showArchived ? "is-active" : ""}`} onClick={() => { setShowArchived(true); setCategoryFilter("all"); }}>Архив</button>
     </div>
   );
   const repairSection = (
@@ -554,12 +554,11 @@ export function WarehousePage() {
   const unitSection = (
     <>
       <SectionHead label="Единицы" meta={`${filtered.length}`} />
-      <div className="row" style={{ flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+      <div className="row warehouse-status-filter" style={{ flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
         {statuses.map((s) => (
           <button
             key={s}
-            className={`chip ${statusFilter === s ? "chip--accent chip--solid" : "chip--neutral"}`}
-            style={{ cursor: "pointer", border: "none" }}
+            className={`warehouse-choice ${statusFilter === s ? "is-active" : ""}`}
             onClick={() => setStatusFilter(s)}
           >
             {s === "all" ? "Все" : unitStatusLabel[s]}
