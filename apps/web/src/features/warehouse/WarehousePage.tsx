@@ -354,11 +354,13 @@ export function WarehousePage() {
     closeWarehouseForm();
   };
   const query = search.trim().toLowerCase();
+  const activeStorageZones = (storageZones.data ?? []).filter((zone) => zone.active);
+  const storageZoneById = new Map(activeStorageZones.map((zone) => [zone.id, zone]));
   const modelMatches = (m: Equipment.EquipmentModelDTO) =>
     !query || [m.name, m.manufacturer ?? "", getTypeName(m.typeId), m.trackingMode === "cable" ? formatCableModel(m, cableSettings.data?.nameFormat) : ""].some((v) => v.toLowerCase().includes(query));
   const unitMatches = (u: Equipment.EquipmentUnitDTO) => {
     const m = allModels.find((x) => x.id === u.modelId);
-    return !query || [u.assetTag, u.serial ?? "", m?.name ?? "", m?.manufacturer ?? "", getTypeName(m?.typeId)].some((v) => v.toLowerCase().includes(query));
+    return !query || [u.assetTag, u.serial ?? "", storageZoneById.get(u.zoneId ?? "")?.code ?? "", m?.name ?? "", m?.manufacturer ?? "", getTypeName(m?.typeId)].some((v) => v.toLowerCase().includes(query));
   };
   const serialModels = visibleModels.filter((m) => m.trackingMode === "serial" && modelMatches(m));
   const quantityModels = visibleModels.filter((m) => m.trackingMode === "quantity" && modelMatches(m));
@@ -386,7 +388,10 @@ export function WarehousePage() {
   const searchField = (
     <div className="warehouse-dashboard-search">
       <Field label="Поиск по складу">
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, номер, серийник, код зоны" />
+        <span className="warehouse-search-field">
+          <span className="warehouse-search-field__icon" aria-hidden="true" />
+          <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, номер, серийник, код зоны" />
+        </span>
       </Field>
     </div>
   );
@@ -667,10 +672,14 @@ export function WarehousePage() {
             <div className="card warehouse-search-results">
               {dashboardSearchResults.length > 0 ? dashboardSearchResults.map((unit, index) => {
                 const tone: Tone = unit.status === "in_stock" ? "ok" : unit.status === "on_project" ? "warn" : unit.status === "lost" || unit.status === "in_repair" ? "alert" : "info";
+                const zoneCode = storageZoneById.get(unit.zoneId ?? "")?.code;
                 return (
                   <button key={unit.id} className="warehouse-search-result" onClick={() => navigate(`/warehouse/units/${unit.id}`)} style={{ borderBottom: index < dashboardSearchResults.length - 1 ? undefined : "none" }}>
-                    <span><strong>{unit.assetTag}</strong><small>{allModels.find((model) => model.id === unit.modelId)?.name ?? unit.modelId}{unit.serial ? ` · ${unit.serial}` : ""}</small></span>
-                    <Chip label={unitStatusLabel[unit.status]} tone={tone} />
+                    <span><strong>{unit.assetTag}</strong><small>{allModels.find((model) => model.id === unit.modelId)?.name ?? unit.modelId}{unit.serial ? ` · ${unit.serial}` : ""}{zoneCode ? ` · ${zoneCode}` : ""}</small></span>
+                    <span className="warehouse-search-result__tail">
+                      <Chip label={unitStatusLabel[unit.status].toLocaleLowerCase("ru-RU")} tone={tone} />
+                      <span className="warehouse-search-result__chevron" aria-hidden="true" />
+                    </span>
                   </button>
                 );
               }) : <EmptyState title="Ничего не найдено" />}

@@ -1766,6 +1766,11 @@ input[type="checkbox"]:not(.toggle-switch):disabled { cursor: default; opacity: 
 .warehouse-readiness-card__action { margin-top: 39px; }
 .warehouse-dashboard-search { margin-top: 12px; }
 .warehouse-dashboard-search .field { margin-bottom: 0; }
+.warehouse-search-field { position:relative; display:block; }
+.warehouse-search-field__icon { position:absolute; z-index:1; left:15px; top:50%; width:17px; height:17px; border:1.7px solid var(--label-secondary); border-radius:50%; transform:translateY(-57%); pointer-events:none; }
+.warehouse-search-field__icon::after { content:""; position:absolute; width:7px; border-top:1.7px solid var(--label-secondary); right:-5px; bottom:-3px; transform:rotate(45deg); transform-origin:left center; }
+.warehouse-search-field .input { padding-left:46px; }
+.warehouse-search-field .input::-webkit-search-cancel-button { display:none; }
 .warehouse-section-head > .section-head { flex: 1; }
 .warehouse-section-head { margin-top: -7px; margin-bottom: -10px; }
 .warehouse-mobile-page .row.row--between > .section-head { min-width: 0; flex: 1; }
@@ -1816,7 +1821,9 @@ input[type="checkbox"]:not(.toggle-switch):disabled { cursor: default; opacity: 
 .warehouse-search-result strong,
 .warehouse-search-result small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .warehouse-search-result strong { color: var(--label-primary); font-size: 15px; }
-.warehouse-search-result small { color: var(--label-secondary); font-size: 12px; }
+.warehouse-search-result small { color: var(--label-secondary); font-size: 13px; }
+.warehouse-search-result__tail { flex:0 0 auto; display:flex; align-items:center; gap:12px; }
+.warehouse-search-result__chevron { width:9px; height:9px; flex:0 0 9px; margin-right:2px; border-top:1.5px solid var(--label-tertiary); border-right:1.5px solid var(--label-tertiary); transform:rotate(45deg); }
 .warehouse-repair-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .warehouse-repair-stats .card { min-width: 0; min-height: 86px; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; padding: 13px; }
 .warehouse-repair-stats span { overflow: hidden; color: var(--label-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
