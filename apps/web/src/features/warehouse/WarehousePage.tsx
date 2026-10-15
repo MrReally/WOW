@@ -406,6 +406,10 @@ export function WarehousePage() {
       <div className="stack warehouse-location-list">
         {warehouseList.filter((warehouse) => warehouseFilter === "all" || warehouse.id === warehouseFilter).map((warehouse) => {
           const unitCount = allUnits.filter((unit) => unit.warehouseId === warehouse.id && unit.status !== "installed").length;
+          const warehouseZones = (storageZones.data ?? []).filter((zone) => zone.warehouseId === warehouse.id && zone.active);
+          const roomCount = warehouseZones.filter((zone) => zone.kind === "room").length;
+          const rackCount = warehouseZones.filter((zone) => zone.kind === "rack").length;
+          const shelfCount = warehouseZones.filter((zone) => zone.kind === "shelf").length;
           return (
             <div className="card warehouse-location-card" key={warehouse.id}>
               <div className="row row--between warehouse-location-card__heading">
@@ -416,6 +420,9 @@ export function WarehousePage() {
                 {warehouse.isDefault && <Chip label="основной" tone="info" />}
               </div>
               <div className="row warehouse-location-card__counts">
+                <Chip label={`${roomCount} помещ.`} tone="neutral" />
+                <Chip label={`${rackCount} стеллажей`} tone="neutral" />
+                <Chip label={`${shelfCount} полок`} tone="neutral" />
                 <Chip label={`${unitCount} ед.`} tone="ok" />
               </div>
               {canCatalog && (
