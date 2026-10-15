@@ -20,6 +20,32 @@ export function useEquipmentModels() {
   });
 }
 
+export function useEquipmentModelAvailability(
+  models: Equipment.EquipmentModelDTO[],
+  startsAt: string,
+  endsAt: string,
+) {
+  const modelKey = models.map((model) => model.id).join("|");
+  const dated = !!startsAt && !!endsAt;
+  return useQuery({
+    enabled: models.length > 0,
+    queryKey: ["projects", "reservation-picker-availability", modelKey, startsAt, endsAt],
+    queryFn: async () => {
+      const rows = await Promise.all(models.map(async (model) => {
+        if (dated) {
+          const availability = await api.get<Projects.ReservationAvailabilityDTO>(
+            `/api/reservations/availability?modelId=${model.id}&startsAt=${encodeURIComponent(startsAt)}&endsAt=${encodeURIComponent(endsAt)}`,
+          );
+          return [model.id, { free: availability.free, total: availability.total }] as const;
+        }
+        const stock = await api.get<Equipment.ModelStockDTO>(`/api/equipment/models/${model.id}/stock`);
+        return [model.id, { free: stock.inStock, total: stock.total }] as const;
+      }));
+      return Object.fromEntries(rows) as Record<string, { free: number; total: number }>;
+    },
+  });
+}
+
 export function useProjects() {
   return useQuery({ queryKey: ["projects", "list"], queryFn: () => api.get<Projects.ProjectDTO[]>("/api/projects") });
 }

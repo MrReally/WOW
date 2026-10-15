@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Equipment } from "@sever/contracts";
 import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
-import { useCableSettings, useModelStock, useModelStockAtWarehouse, useTransferQty, useRepairQty, useServiceQty } from "../hooks.ts";
+import { useCableSettings, useModelStock, useModelStockAtWarehouse, useTransferQty, useRepairQty, useServiceQty, useSetModelStock } from "../hooks.ts";
 import { useSession } from "../../../app/session.ts";
 import { cableAttrs, formatCableModel } from "../cables.ts";
 
@@ -102,32 +102,46 @@ export function CableRow({
   warehouseId,
   onMove,
   onEdit,
+  showStepper = false,
   last,
 }: {
   model: Equipment.EquipmentModelDTO;
   warehouseId?: string | null;
   onMove: () => void;
   onEdit?: () => void;
+  showStepper?: boolean;
   last?: boolean;
 }) {
   const aggregateStock = useModelStock(model.id, !warehouseId);
   const scopedStock = useModelStockAtWarehouse(model.id, warehouseId ?? "", !!warehouseId);
   const settings = useCableSettings(model.trackingMode === "cable");
+  const setStock = useSetModelStock();
   const stock = warehouseId ? scopedStock : aggregateStock;
   const attrs = cableAttrs(model);
   const title = model.trackingMode === "cable" ? formatCableModel(model, settings.data?.nameFormat) : model.name;
+  const isExtension = attrs?.cableType?.toLowerCase() === "удлинитель";
+  const setTotal = (total: number) => setStock.mutate({ modelId: model.id, warehouseId: warehouseId || null, total: Math.max(stock.data?.onProjects ?? 0, total) });
   return (
-    <div className={`lrow ${onEdit ? "card--tappable" : ""}`} style={{ borderBottom: last ? "none" : undefined }} onClick={onEdit}>
+    <div className={`lrow cable-list-row ${(showStepper || onEdit) ? "card--tappable" : ""}`} style={{ borderBottom: last ? "none" : undefined }} onClick={showStepper ? onMove : onEdit}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="lrow__title">{title}</div>
+        <div className="lrow__title">{isExtension ? model.name : title}</div>
         <div className="lrow__detail">
-          {model.trackingMode === "cable" ? (attrs?.cableType || "кабель") : "количество"}
-          {stock.data ? ` · свободно ${stock.data.inStock}/${stock.data.total}` : ""}
+          {model.trackingMode === "cable" && attrs?.lengthM ? `${attrs.lengthM} м` : model.trackingMode === "cable" ? "кабель" : "количество"}
+          {stock.data ? ` · свободно ${stock.data.inStock} из ${stock.data.total}` : ""}
+          {isExtension ? " · удлинитель" : ""}
         </div>
       </div>
-      <Button variant="secondary" style={{ height: 38, padding: "0 12px" }} onClick={(event) => { event.stopPropagation(); onMove(); }}>
-        Операции
-      </Button>
+      {showStepper && stock.data ? (
+        <div className="quantity-stepper cable-row-stepper" aria-label={`Количество ${title}`} onClick={(event) => event.stopPropagation()}>
+          <button type="button" aria-label={`Уменьшить количество ${title}`} disabled={setStock.isPending || stock.data.total <= stock.data.onProjects} onClick={() => setTotal(stock.data!.total - 1)}>−</button>
+          <output>{stock.data.total}</output>
+          <button type="button" aria-label={`Увеличить количество ${title}`} disabled={setStock.isPending} onClick={() => setTotal(stock.data!.total + 1)}>+</button>
+        </div>
+      ) : (
+        <Button variant="secondary" style={{ height: 38, padding: "0 12px" }} onClick={(event) => { event.stopPropagation(); onMove(); }}>
+          Операции
+        </Button>
+      )}
     </div>
   );
 }

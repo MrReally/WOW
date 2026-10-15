@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Transport } from "@sever/contracts";
-import { Button, Card, Field, Input, Select } from "../../../ui-kit/index.ts";
+import { Button, Card, EmptyState, Field, Input, Select, Sheet } from "../../../ui-kit/index.ts";
 import { useCreateVehicle, useUpdateVehicle, useVehicles } from "../../transport/hooks.ts";
 
 const fuelOptions = [{ value: "diesel", label: "Дизель" }, { value: "petrol", label: "Бензин" }, { value: "hybrid", label: "Гибрид" }, { value: "electric", label: "Электро" }];
@@ -15,14 +15,17 @@ function FleetVehicleCard({ vehicle, onUpdate }: { vehicle: Transport.VehicleDTO
 
 export function FleetManager() {
   const vehicles = useVehicles(true), create = useCreateVehicle(), update = useUpdateVehicle();
+  const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<Transport.CreateVehicleInput>({ plateNumber: "", model: "", requiredLicenseCategory: "B", fuelType: "diesel", consumptionLPer100Km: 8, depreciationEURPerKm: 0 });
-  const submit = () => create.mutate(draft, { onSuccess: () => setDraft({ plateNumber: "", model: "", requiredLicenseCategory: "B", fuelType: "diesel", consumptionLPer100Km: 8, depreciationEURPerKm: 0 }) });
+  const submit = () => create.mutate(draft, { onSuccess: () => { setDraft({ plateNumber: "", model: "", requiredLicenseCategory: "B", fuelType: "diesel", consumptionLPer100Km: 8, depreciationEURPerKm: 0 }); setCreating(false); } });
   return <div className="stack">
+    {(vehicles.data ?? []).length === 0 && <EmptyState title="Машин пока нет" hint="Добавьте автомобиль для расчёта доставки" />}
     {(vehicles.data ?? []).map((vehicle) => <FleetVehicleCard key={vehicle.id} vehicle={vehicle} onUpdate={(input) => update.mutate({ id: vehicle.id, input })} />)}
-    <Card><p className="card__title">Добавить автомобиль</p>
+    <Button block onClick={() => setCreating(true)}>+ Автомобиль</Button>
+    <Sheet open={creating} onClose={() => setCreating(false)} title="Добавить автомобиль">
       <div className="row"><Field label="Номер"><Input value={draft.plateNumber} onChange={e => setDraft(x => ({ ...x, plateNumber: e.target.value }))} placeholder="BG 1234 AB" /></Field><Field label="Модель"><Input value={draft.model} onChange={e => setDraft(x => ({ ...x, model: e.target.value }))} placeholder="Mercedes Sprinter" /></Field></div>
       <div className="row"><Field label="Категория прав"><Input value={draft.requiredLicenseCategory} onChange={e => setDraft(x => ({ ...x, requiredLicenseCategory: e.target.value.toUpperCase() }))} placeholder="B" /></Field><Field label="Топливо"><Select value={draft.fuelType} onChange={e => setDraft(x => ({ ...x, fuelType: e.target.value as Transport.FuelType }))} options={fuelOptions} /></Field><Field label="л/100 км"><Input type="number" min="0" step="0.1" value={draft.consumptionLPer100Km} onChange={e => setDraft(x => ({ ...x, consumptionLPer100Km: Number(e.target.value) }))} /></Field><Field label="Амортизация, €/км"><Input type="number" min="0" step="0.01" value={draft.depreciationEURPerKm} onChange={e => setDraft(x => ({ ...x, depreciationEURPerKm: Number(e.target.value) }))} /></Field></div>
       <Button block disabled={!draft.plateNumber.trim() || !draft.model.trim() || create.isPending} onClick={submit}>Добавить машину</Button>
-    </Card>
+    </Sheet>
   </div>;
 }

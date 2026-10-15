@@ -1,10 +1,12 @@
 import { useNavigate } from "react-router-dom";
 import type { Projects } from "@sever/contracts";
-import { Card, SectionHead, Chip, Dot, VenueTrace, Loading, ErrorState, EmptyState, ProjectSearch } from "../../ui-kit/index.ts";
+import { Card, Button, SectionHead, Chip, Loading, ErrorState, EmptyState, ProjectSearch } from "../../ui-kit/index.ts";
 import { dateRange, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
 import { useProjectSearch } from "../../lib/useProjectSearch.ts";
 import { useMyProjects, useOperationVenues } from "./hooks.ts";
 import { MapRouteButton } from "./components/MapRouteButton.tsx";
+import { ProjectStageProgress } from "../projects/components/ProjectStageProgress.tsx";
+import { projectStagePresentation } from "../../lib/labels.ts";
 
 function isLive(p: Projects.ProjectDTO): boolean {
   const now = Date.now();
@@ -39,39 +41,32 @@ export function OperationsPage() {
   const leadVenue = lead?.venueId ? venueById.get(lead.venueId) : null;
 
   return (
-    <div>
-      <div style={{ position: "relative", padding: "6px 4px 16px", overflow: "hidden" }}>
-        <VenueTrace width={186} height={140} style={{ position: "absolute", right: -28, top: -6, opacity: 0.5, pointerEvents: "none" }} />
-        <div style={{ position: "relative" }}>
-          <div className="row" style={{ gap: 8 }}>
-            <Dot tone={current ? "ok" : "warn"} glow />
-            <span className="t-label">{current ? "ТЕКУЩАЯ ОПЕРАЦИЯ" : "БЛИЖАЙШАЯ ОПЕРАЦИЯ"}</span>
-          </div>
-          <div className="t-cond" style={{ fontSize: 34, fontWeight: 800, color: "var(--text)", lineHeight: 0.98, marginTop: 8 }}>
-            {lead ? lead.name : "Нет назначенных операций"}
-          </div>
-          {lead && <div className="t-mono" style={{ fontSize: 12, color: "var(--text3)", marginTop: 6 }}>{dateRange(lead.startsAt, lead.endsAt)}</div>}
-          {leadVenue && <div className="row" style={{ gap: 6, marginTop: 4 }}><div className="t-mono" style={{ minWidth: 0, fontSize: 12, color: "var(--text2)" }}>📍 {[leadVenue.name, leadVenue.address].filter(Boolean).join(" · ")}</div><MapRouteButton venue={leadVenue} /></div>}
-        </div>
-      </div>
+    <div className="stack operations-home">
+      {lead ? <Card className="operations-live-card" onClick={() => navigate(`/operations/projects/${lead.id}`)}>
+        <div className="operations-live-head"><span>{current ? "ТЕКУЩАЯ ОПЕРАЦИЯ" : "БЛИЖАЙШАЯ ОПЕРАЦИЯ"}</span><Chip label={projectStagePresentation[lead.operationStage].label.toLowerCase()} tone="info" /></div>
+        <div><p className="operations-live-title">{lead.name}</p>{leadVenue && <div className="operations-live-venue">📍 {[leadVenue.name, leadVenue.address].filter(Boolean).join(" · ")} <MapRouteButton venue={leadVenue} /></div>}</div>
+        <ProjectStageProgress stage={lead.operationStage} complete={Boolean(lead.warehouseTurnoverCompletedAt)} />
+        <Button block onClick={(event) => { event.stopPropagation(); navigate(`/operations/projects/${lead.id}`); }}>Открыть оборот</Button>
+      </Card> : <Card><EmptyState title="Нет проектов в работе" hint="Проект появится здесь после подтверждения в Planning" /><Button block variant="secondary" onClick={() => navigate("/projects")}>Открыть Planning</Button></Card>}
 
-      <ProjectSearch open={search.isOpen} query={search.query} onToggle={search.toggle} onQueryChange={search.setQuery} />
+      <ProjectSearch alwaysOpen open={search.isOpen} query={search.query} onToggle={search.toggle} onQueryChange={search.setQuery} />
       <SectionHead label="Мои проекты" meta={search.query ? `${list.length} из ${allProjects.length}` : `${list.length}`} />
       {list.length === 0 ? (
         <EmptyState title={search.query ? "Ничего не найдено" : "Вам пока не назначены проекты"} />
       ) : (
-        <div className="stack">
+        <div className="card operations-project-list">
           {list.map((p) => (
-            <Card key={p.id} onClick={() => navigate(`/operations/projects/${p.id}`)}>
+            <button className="operations-project-row" key={p.id} onClick={() => navigate(`/operations/projects/${p.id}`)}>
               <div className="row row--between">
                 <div style={{ minWidth: 0 }}>
                   <p className="card__title">{p.name}</p>
                   <p className="card__subtitle">{dateRange(p.startsAt, p.endsAt)}</p>
                   {p.venueId && venueById.get(p.venueId) && <div className="row" style={{ gap: 6 }}><p className="card__subtitle" style={{ minWidth: 0 }}>📍 {[venueById.get(p.venueId)?.name, venueById.get(p.venueId)?.address].filter(Boolean).join(" · ")}</p><MapRouteButton venue={venueById.get(p.venueId)!} /></div>}
                 </div>
-                <Chip label={projectStatusLabel[p.status]} tone={projectStatusTone[p.status]} />
+                <Chip label={p.warehouseTurnoverCompletedAt ? "завершён" : projectStagePresentation[p.operationStage].label.toLowerCase()} tone={p.warehouseTurnoverCompletedAt ? "ok" : projectStatusTone[p.status]} />
               </div>
-            </Card>
+              <span className="more-chevron">›</span>
+            </button>
           ))}
         </div>
       )}

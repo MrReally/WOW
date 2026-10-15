@@ -19,8 +19,8 @@ export default defineConfig({
         name: "SEVER App",
         short_name: "SEVER",
         description: "Equipment-centric operations system",
-        theme_color: "#f2efe8",
-        background_color: "#f2efe8",
+        theme_color: "#f7f7f7",
+        background_color: "#f7f7f7",
         display: "standalone",
         orientation: "portrait",
         icons: [

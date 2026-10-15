@@ -12,6 +12,8 @@ import { BackupManager } from "./components/BackupManager.tsx";
 import { FleetManager } from "./components/FleetManager.tsx";
 import { FullExport } from "./components/FullExport.tsx";
 
+type SettingsTab = "fleet" | "roles" | "rates" | "telegram" | "cables" | "data" | "general";
+
 export function SettingsPage() {
   const { theme, toggle } = useTheme();
   const { can } = useSession();
@@ -31,6 +33,7 @@ export function SettingsPage() {
   const [connectors, setConnectors] = useState("");
   const [nameFormat, setNameFormat] = useState("");
   const [extensionNameFormat, setExtensionNameFormat] = useState("");
+  const [tab, setTab] = useState<SettingsTab>("fleet");
 
   useEffect(() => {
     if (telegramInbox.data) {
@@ -46,7 +49,9 @@ export function SettingsPage() {
   }, [cableSettings.data]);
 
   return (
-    <div className="stack">
+    <div className="stack settings-page">
+      <div className="design-tabs settings-tabs" role="tablist">{([{id:"fleet",label:"Автопарк"},{id:"roles",label:"Права"},{id:"rates",label:"Курсы"},{id:"telegram",label:"Telegram"},{id:"cables",label:"Кабели"},{id:"data",label:"Данные"},{id:"general",label:"Прочее"}] as const).map(item=><button key={item.id} className={tab===item.id?"is-active":""} onClick={()=>setTab(item.id)}>{item.label}</button>)}</div>
+      {tab === "general" && <>
       <SectionTitle>Оформление</SectionTitle>
       <Card>
         <div className="row row--between">
@@ -60,8 +65,6 @@ export function SettingsPage() {
       {can("roles.manage") && <ProjectProblemNotificationSettings />}
 
       {can("roles.manage") && <ClientFollowupNotificationSettings />}
-
-      {can("roles.manage") && <RoleEditor />}
 
       {can("projects.manage") && <DressCodeSettings />}
 
@@ -90,10 +93,13 @@ export function SettingsPage() {
           </Card>
         </>
       )}
+      </>}
 
-      {can("finance.manage", "projects.manage") && <><SectionTitle>Автопарк</SectionTitle><FleetManager /></>}
+      {tab === "roles" && (can("roles.manage") ? <RoleEditor /> : <EmptySettings title="У вас нет доступа к ролям" />)}
 
-      {canTelegramInbox && (
+      {tab === "fleet" && (can("finance.manage", "projects.manage") ? <><SectionTitle>Автопарк</SectionTitle><FleetManager /></> : <EmptySettings title="У вас нет доступа к автопарку" />)}
+
+      {tab === "telegram" && canTelegramInbox && (
         <>
           <SectionTitle>Telegram Inbox</SectionTitle>
           <Card>
@@ -114,7 +120,7 @@ export function SettingsPage() {
         </>
       )}
 
-      {can("warehouse.catalog.manage") && (
+      {tab === "cables" && can("warehouse.catalog.manage") && (
         <>
           <SectionTitle>Кабели</SectionTitle>
           <Card>
@@ -158,7 +164,7 @@ export function SettingsPage() {
         </>
       )}
 
-      {can("finance.manage") && (
+      {tab === "rates" && can("finance.manage") && (
         <>
           <SectionTitle>Курсы валют (к EUR)</SectionTitle>
           {fx.isLoading ? (
@@ -183,8 +189,8 @@ export function SettingsPage() {
         </>
       )}
 
+      {tab === "data" && <>
       {can("finance.view", "finance.manage") && <FullExport />}
-
       <BackupManager canBackup={can("data.backup")} canRestore={can("data.restore")} />
 
       {canResetData && (
@@ -205,8 +211,13 @@ export function SettingsPage() {
           </Card>
         </>
       )}
+      </>}
     </div>
   );
+}
+
+function EmptySettings({ title }: { title: string }) {
+  return <Card><p className="card__subtitle">{title}</p></Card>;
 }
 
 function ProjectNameTemplateSettings() {

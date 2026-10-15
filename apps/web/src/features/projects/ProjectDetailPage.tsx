@@ -100,15 +100,14 @@ const TIMING_REMINDER_OPTIONS = [
 ];
 
 type ProjectTab = "overview" | "reservations" | "timing" | "team" | "contractors" | "finance";
-type ProjectTabIcon = ProjectTab | "plan" | "operations" | "back" | "close";
+type ProjectTabIcon = ProjectTab | "plan" | "operations" | "back" | "close" | "edit" | "copy" | "send" | "summary";
 
 const PROJECT_TABS: { id: ProjectTab; label: string; shortLabel: string; count?: "reservations" | "timing" | "team" | "contractors"; tone?: "accent" | "warn" | "info" | "ok" }[] = [
-  { id: "overview", label: "Обзор", shortLabel: "Обзор", tone: "accent" },
   { id: "reservations", label: "Брони", shortLabel: "Брони", count: "reservations", tone: "info" },
-  { id: "timing", label: "Тайминг", shortLabel: "План", count: "timing", tone: "warn" },
-  { id: "team", label: "Команда", shortLabel: "Люди", count: "team", tone: "ok" },
+  { id: "timing", label: "События", shortLabel: "События", count: "timing", tone: "warn" },
+  { id: "team", label: "Команда", shortLabel: "Команда", count: "team", tone: "ok" },
   { id: "contractors", label: "Подрядчики", shortLabel: "Подряд", count: "contractors", tone: "warn" },
-  { id: "finance", label: "Финансы", shortLabel: "€", tone: "accent" },
+  { id: "finance", label: "Финансы", shortLabel: "Финансы", tone: "accent" },
 ];
 
 interface StoredInvoiceVersion {
@@ -137,7 +136,8 @@ interface FinanceDraftLine {
 }
 
 function projectTabFrom(value: string | null): ProjectTab {
-  return PROJECT_TABS.some((tab) => tab.id === value) ? (value as ProjectTab) : "overview";
+  if (value === "overview") return "overview";
+  return PROJECT_TABS.some((tab) => tab.id === value) ? (value as ProjectTab) : "reservations";
 }
 
 export function ProjectDetailPage({ projectId, embedded = false }: { projectId?: string; embedded?: boolean } = {}) {
@@ -338,7 +338,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   };
   const setActiveTab = (tab: ProjectTab) => {
     const next = new URLSearchParams(searchParams);
-    if (tab === "overview") next.delete("tab");
+    if (tab === "reservations") next.delete("tab");
     else next.set("tab", tab);
     setSearchParams(next);
   };
@@ -367,7 +367,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
     if (tab.id === "finance") return canFinance && !!invoice.data;
     return true;
   });
-  const currentTab = visibleTabs.some((tab) => tab.id === activeTab) ? activeTab : "overview";
+  const currentTab = activeTab === "overview" || visibleTabs.some((tab) => tab.id === activeTab) ? activeTab : "reservations";
   const activeAssignments = (assignments.data ?? []).filter((a) => a.status === "added" || a.status === "accepted");
   const projectPeople = [...new Map(activeAssignments
     .map((a) => (people.data ?? []).find((u) => u.id === a.userId))
@@ -404,6 +404,33 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
     })));
   };
 
+  const projectTabs = (
+    <div className="project-tabbar" role="tablist" aria-label="Разделы проекта">
+      {visibleTabs.map((tab) => {
+        const isActive = currentTab === tab.id;
+        const count = tabCount(tab.count);
+        return (
+          <button
+            key={tab.id}
+            className={`project-tabbar__item ${isActive ? "project-tabbar__item--active" : ""}`}
+            onClick={() => setActiveTab(tab.id)}
+            aria-label={tab.label}
+            aria-selected={isActive}
+            role="tab"
+            type="button"
+            style={{ ["--tab-c" as string]: tab.tone ? `var(--${tab.tone === "accent" ? "accent" : tab.tone})` : "var(--accent)" }}
+          >
+            <span className="project-tabbar__icon">
+              <ProjectGlyph type={tab.id} />
+              {count > 0 && <span className="project-tabbar__badge">{count > 9 ? "9+" : count}</span>}
+            </span>
+            <span className="project-tabbar__label">{tab.shortLabel}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className={`stack project-mobile-page ${embedded ? "project-desktop-embedded" : ""}`}>
       {!embedded && <button className="icon-text-action" onClick={() => navigate(-1)} aria-label="Назад">
@@ -436,31 +463,16 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
         <ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} />
         {(p.dressCodeLabel || p.dressCodeUniform) && <p className="card__subtitle" style={{ marginTop: 4 }}>👔 {[p.dressCodeLabel, p.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}</p>}
         {canViewNote && p.note && <p className="project-note" style={{ marginTop: "var(--space-3)" }}>📝 {p.note}</p>}
-        {canManage && (
-          <div className="row" style={{ marginTop: "var(--space-3)" }}>
-            <div style={{ flex: 1 }}>
-              <Select
-                value={p.status}
-                onChange={(e) => setStatus.mutate({ id: p.id, status: e.target.value as Projects.ProjectStatus })}
-                options={PROJECT_STATUSES.map((s) => ({ value: s, label: projectStatusLabel[s] }))}
-              />
-            </div>
-            <Button variant="secondary" mobileIcon="edit" onClick={() => setEditOpen(true)}>Редактировать</Button>
-            <Button variant="secondary" mobileIcon="duplicate" onClick={() => setDuplicateOpen(true)}>Дублировать</Button>
-          </div>
-        )}
-        {canManage && p.status === "cancelled" && (
-          <Button
-            block
-            variant="secondary"
-            disabled={announceStatus.isPending}
-            onClick={() => announceStatus.mutate(p.id)}
-            style={{ marginTop: "var(--space-3)" }}
-          >
-            Сообщить персоналу
-          </Button>
-        )}
+        {canManage && <div className="project-status-chips" aria-label="Статус проекта">{PROJECT_STATUSES.map((status) => <button key={status} className={p.status === status ? "is-active" : ""} onClick={() => setStatus.mutate({ id: p.id, status })}>{projectStatusLabel[status]}</button>)}</div>}
+        <div className="project-hero-actions">
+          {canManage && <button onClick={() => setEditOpen(true)}><ProjectGlyph type="edit" /><span>Изменить</span></button>}
+          {canManage && <button onClick={() => setDuplicateOpen(true)}><ProjectGlyph type="copy" /><span>Дублировать</span></button>}
+          {canManage && <button disabled={announceStatus.isPending} onClick={() => announceStatus.mutate(p.id)}><ProjectGlyph type="send" /><span>Сообщить</span></button>}
+          <button onClick={() => setActiveTab("overview")}><ProjectGlyph type="summary" /><span>Сводка</span></button>
+        </div>
       </Card>
+
+      {projectTabs}
 
       {currentTab === "overview" && (
         <div className="stack">
@@ -607,7 +619,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             <div className="row row--between">
             <label style={{ cursor: "pointer" }}>
               <span className="row" style={{ gap: 6, whiteSpace: "nowrap" }}>
-                <input type="checkbox" checked={resIsReserve} onChange={(e) => setResIsReserve(e.target.checked)} />
+                <input className="toggle-switch" type="checkbox" checked={resIsReserve} onChange={(e) => setResIsReserve(e.target.checked)} />
                 В резерв · не добавлять в счёт
               </span>
             </label>
@@ -708,7 +720,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
               )}
               <div className="row row--between" style={{ marginTop: 8, alignItems: "flex-start" }}>
                 <label className="row" style={{ gap: 8 }}>
-                  <input type="checkbox" checked={timingOffsets.length > 0} disabled={t.assigneeIds.length === 0 || createReminder.isPending || deleteReminder.isPending} onChange={(e) => void setTimingReminderOffsets(t, e.target.checked ? [60] : [])} />
+                  <input className="toggle-switch" type="checkbox" checked={timingOffsets.length > 0} disabled={t.assigneeIds.length === 0 || createReminder.isPending || deleteReminder.isPending} onChange={(e) => void setTimingReminderOffsets(t, e.target.checked ? [60] : [])} />
                   <span>Пинг в ТГ</span>
                 </label>
                 {timingOffsets.length > 0 && (
@@ -1245,30 +1257,6 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       />
       <EditProjectSheet open={editOpen} project={p} clients={clients.data ?? []} onClose={() => setEditOpen(false)} />
       <DuplicateProjectSheet open={duplicateOpen} project={p} onClose={() => setDuplicateOpen(false)} />
-      <div className="project-tabbar" role="tablist" aria-label="Разделы проекта">
-        {visibleTabs.map((tab) => {
-          const isActive = currentTab === tab.id;
-          const count = tabCount(tab.count);
-          return (
-            <button
-              key={tab.id}
-              className={`project-tabbar__item ${isActive ? "project-tabbar__item--active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
-              aria-label={tab.label}
-              aria-selected={isActive}
-              role="tab"
-              type="button"
-              style={{ ["--tab-c" as string]: tab.tone ? `var(--${tab.tone === "accent" ? "accent" : tab.tone})` : "var(--accent)" }}
-            >
-              <span className="project-tabbar__icon">
-                <ProjectGlyph type={tab.id} />
-                {count > 0 && <span className="project-tabbar__badge">{count > 9 ? "9+" : count}</span>}
-              </span>
-              <span className="project-tabbar__label">{tab.shortLabel}</span>
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -1321,7 +1309,7 @@ function DeliveryCalculator({ venueId, people, rsdRateToEUR, onApply }: { venueI
     <div className="row" style={{ marginTop: 10 }}><Field label="Откуда"><Select value={warehouseId || selectedWarehouse?.id || ""} onChange={e => setWarehouseId(e.target.value)} options={(warehouses.data ?? []).map(item => ({ value: item.id, label: item.name }))} /></Field><Field label="Куда"><Input disabled value={venue?.address ?? "Укажите адрес площадки"} /></Field></div>
     <div className="row"><Field label="Автомобиль"><Select value={vehicleId || selectedVehicle?.id || ""} onChange={e => setVehicleId(e.target.value)} options={(vehicles.data ?? []).map(item => ({ value: item.id, label: `${item.plateNumber} · ${item.model} · права ${item.requiredLicenseCategory}` }))} /></Field><Field label="Топливо, €/л (необязательно)"><Input type="number" min="0" step="0.001" value={fuelPrice} onChange={e => setFuelPrice(e.target.value)} placeholder="Автоматически по официальной цене" /></Field>{!config.data?.googleMapsConfigured && <Field label="Км в одну сторону"><Input type="number" step="0.1" value={distance} onChange={e => setDistance(e.target.value)} placeholder="25" /></Field>}</div>
     {selectedVehicle && <p className="card__subtitle" style={{ marginBottom: 8 }}>Совместимые водители в команде: {compatibleDrivers.length ? compatibleDrivers.map(person => personName(person)).join(", ") : `нет людей с категорией ${selectedVehicle.requiredLicenseCategory}`}</p>}
-    <label className="row" style={{ marginBottom: 10 }}><input type="checkbox" checked={roundTrip} onChange={e => setRoundTrip(e.target.checked)} /> Туда и обратно</label>
+    <label className="row row--between" style={{ marginBottom: 10 }}>Туда и обратно <input className="toggle-switch" type="checkbox" checked={roundTrip} onChange={e => setRoundTrip(e.target.checked)} /></label>
     <Button block disabled={!selectedWarehouse?.address || !venue?.address || !selectedVehicle || (!config.data?.googleMapsConfigured && !(Number(distance) > 0)) || quote.isPending} onClick={calculate}>Рассчитать доставку</Button>
     {quote.data && <div className="stack" style={{ marginTop: 10 }}><span>{quote.data.distanceKm} км · {quote.data.fuelLitres} л × {quote.data.fuelPriceEURPerL} €/л ({quote.data.fuelPriceSource === "serbia_ministry" ? `официальная цена${quote.data.fuelPriceRSDPerL ? ` ${quote.data.fuelPriceRSDPerL} RSD/л` : ""}` : quote.data.fuelPriceSource === "manual" ? "вручную" : "без топлива"}) · топливо {eur(quote.data.fuelCostEUR)} + амортизация {eur(quote.data.depreciationCostEUR)} = расчёт {eur(quote.data.totalCostEUR)}</span><div className="row row--between"><Field label="Итоговая себестоимость, €"><Input type="number" min="0" step="0.01" value={outputCost} onChange={e => setOutputCost(e.target.value)} /></Field><Button variant="secondary" disabled={!selectedVehicle || !(Number(outputCost) >= 0)} onClick={() => { onApply(quote.data!, selectedVehicle!, Number(outputCost)); setOutputCost(""); quote.reset(); }}>Добавить строку «Доставка»</Button></div></div>}</>}
   </Card>;
@@ -1819,6 +1807,14 @@ function ProjectGlyph({ type }: { type: ProjectTabIcon }) {
       return <svg viewBox="0 0 24 24"><path d="M5 7.5h14v11H5z" {...p} /><path d="M8.5 7.5V5.8A1.8 1.8 0 0110.3 4h3.4a1.8 1.8 0 011.8 1.8v1.7M5 12h14M9.5 12v2h5v-2" {...p} /></svg>;
     case "close":
       return <svg viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" {...p} /></svg>;
+    case "edit":
+      return <svg viewBox="0 0 24 24"><path d="M5 19l3.5-.8L18 8.7a2.1 2.1 0 00-3-3l-9.5 9.5L5 19z" {...p} /></svg>;
+    case "copy":
+      return <svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2" {...p} /><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" {...p} /></svg>;
+    case "send":
+      return <svg viewBox="0 0 24 24"><path d="M4 11.5L20 4l-6.5 16-2.6-6.9L4 11.5zM10.9 13.1L20 4" {...p} /></svg>;
+    case "summary":
+      return <svg viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20H7zM14 3.5V8h4M10 12h5M10 15.5h5" {...p} /></svg>;
     default:
       return null;
   }

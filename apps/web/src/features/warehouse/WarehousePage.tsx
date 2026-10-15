@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Equipment } from "@sever/contracts";
 import {
@@ -8,7 +8,6 @@ import {
   SectionHead,
   Chip,
   Dot,
-  ProgressRing,
   Loading,
   ErrorState,
   EmptyState,
@@ -26,53 +25,146 @@ import {
   useOpenRepairs,
   useOpenHandovers,
   useWarehouses,
+  useStorageZones,
+  useSaveStorageZones,
+  type StorageZoneDraftInput,
   useCreateWarehouse,
   useUpdateWarehouse,
   useUpdateType,
   useCableSettings,
+  useCableConnectors,
+  useCreateCableConnector,
   useCategories,
 } from "./hooks.ts";
-import { formatCableModel } from "./cables.ts";
+import { cableAttrs, formatCableModel } from "./cables.ts";
 import { AddModelSheet } from "./components/AddModelSheet.tsx";
 import { EditModelSheet } from "./components/EditModelSheet.tsx";
 import { ImportSheet } from "./components/ImportSheet.tsx";
 import { CableMoveSheet, CableRow } from "./components/CableMoveSheet.tsx";
+import { CableCreateSheet } from "./components/CableCreateSheet.tsx";
 import { OpsSheet } from "./components/OpsSheet.tsx";
 import { AddressInput } from "../places/AddressInput.tsx";
 import { useCreateVenue, useUpdateVenue, useVenues } from "../plans/hooks.ts";
 
+type ZoneDraft = StorageZoneDraftInput;
+
+const ZONE_LEVELS: Record<Equipment.StorageZoneKind, { label: string; child?: "rack" | "shelf"; add?: string }> = {
+  room: { label: "Помещение", child: "rack", add: "+ Стеллаж" },
+  rack: { label: "Стеллаж", child: "shelf", add: "+ Полка" },
+  shelf: { label: "Полка" },
+  bin: { label: "Ячейка" },
+  floor: { label: "Напольная зона" },
+  other: { label: "Зона" },
+};
+
+function ZoneEditor({ zones, onChange }: { zones: ZoneDraft[]; onChange: (zones: ZoneDraft[]) => void }) {
+  const children = (parentId: string | null) => zones.filter((zone) => zone.parentId === parentId);
+  const addZone = (parentId: string | null, kind: "room" | "rack" | "shelf") => {
+    const parent = parentId ? zones.find((zone) => zone.id === parentId) : null;
+    const siblings = children(parentId);
+    const ordinal = siblings.length + 1;
+    const code = parent ? `${parent.code}-${kind === "rack" ? String(ordinal).padStart(2, "0") : ordinal}` : String.fromCharCode(64 + ordinal);
+    onChange([...zones, { id: `new-${crypto.randomUUID()}`, parentId, name: `${ZONE_LEVELS[kind].label} ${ordinal}`, code, kind, isNew: true }]);
+  };
+  const updateZone = (id: string, input: Partial<ZoneDraft>) => onChange(zones.map((zone) => zone.id === id ? { ...zone, ...input } : zone));
+  const removeZone = (id: string) => {
+    const removed = new Set([id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      zones.forEach((zone) => {
+        if (zone.parentId && removed.has(zone.parentId) && !removed.has(zone.id)) {
+          removed.add(zone.id);
+          changed = true;
+        }
+      });
+    }
+    onChange(zones.filter((zone) => !removed.has(zone.id)));
+  };
+  const renderZone = (zone: ZoneDraft, depth: number): ReactNode => {
+    const config = ZONE_LEVELS[zone.kind];
+    return (
+      <div key={zone.id}>
+        <div className="warehouse-zone-row" style={{ paddingLeft: depth * 18 }}>
+          <span className={`warehouse-zone-row__icon warehouse-zone-row__icon--${zone.kind}`} aria-hidden="true" />
+          <Input aria-label={`${config.label}: название`} value={zone.name} onChange={(event) => updateZone(zone.id, { name: event.target.value })} />
+          <Input className="warehouse-zone-row__code" aria-label={`${config.label}: код`} value={zone.code} onChange={(event) => updateZone(zone.id, { code: event.target.value.toUpperCase() })} />
+          {config.child && <button className="warehouse-zone-row__add" type="button" onClick={() => addZone(zone.id, config.child!)}>{config.add}</button>}
+          <button className="warehouse-zone-row__remove" type="button" aria-label={`Удалить ${zone.name}`} onClick={() => removeZone(zone.id)}>×</button>
+        </div>
+        {children(zone.id).map((child) => renderZone(child, depth + 1))}
+      </div>
+    );
+  };
+  return (
+    <div className="warehouse-zone-editor">
+      {children(null).map((zone) => renderZone(zone, 0))}
+      <button className="warehouse-zone-editor__add-room" type="button" onClick={() => addZone(null, "room")}>+ Помещение</button>
+      {zones.length === 0 && <p className="warehouse-zone-editor__empty">Зон пока нет</p>}
+    </div>
+  );
+}
+
 function PrepStat({ tone, value, label }: { tone: Tone; value: number; label: string }) {
   return (
-    <div className="row" style={{ gap: 11 }}>
+    <div className="row" style={{ gap: 10 }}>
       <Dot tone={tone} size={9} />
-      <span className="t-cond" style={{ fontSize: 21, fontWeight: 800, color: "var(--text)", minWidth: 30 }}>{value}</span>
+      <span style={{ fontSize: 17, fontWeight: 700, color: "var(--text)", minWidth: 34, fontVariantNumeric: "tabular-nums" }}>{value}</span>
       <span className="t-mono" style={{ fontSize: 12.5, color: "var(--text2)" }}>{label}</span>
     </div>
   );
 }
 
 function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps: () => void }) {
-  const inStock = units.filter((u) => u.status === "in_stock").length;
+  const inStock = units.filter((u) => u.status === "in_stock" || u.status === "reserved").length;
   const onProject = units.filter((u) => u.status === "on_project").length;
-  const inRepair = units.filter((u) => u.status === "in_repair").length;
+  const inRepair = units.filter((u) => u.status === "in_repair" || u.status === "at_contractor").length;
   const lost = units.filter((u) => u.status === "lost").length;
-  const total = inStock + onProject;
-  const pct = total ? (inStock / total) * 100 : 0;
+  const total = Math.max(units.length, inStock + onProject + inRepair + lost);
+  const ringRadius = 53;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  let ringOffset = 0;
+  const ringSegments = [
+    { value: inStock, color: "var(--green)" },
+    { value: onProject, color: "var(--orange)" },
+    { value: inRepair, color: "var(--red)" },
+    { value: lost, color: "var(--lost)" },
+  ].map((segment) => {
+    const length = total > 0 ? (segment.value / total) * ringCircumference : 0;
+    const result = { ...segment, length, offset: ringOffset };
+    ringOffset += length;
+    return result;
+  });
 
   return (
-    <div style={{ padding: "6px 4px 4px" }}>
-      <div className="row" style={{ gap: 8 }}>
-        <Dot tone="warn" glow />
-        <span className="t-label">СКЛАД · ГОТОВНОСТЬ</span>
-      </div>
-      <div className="t-cond" style={{ fontSize: 32, fontWeight: 800, color: "var(--text)", marginTop: 8 }}>Warehouse</div>
-
-      <div className="row" style={{ gap: 20, marginTop: 18, alignItems: "center" }}>
-        <ProgressRing pct={pct} tone="warn" size={128} stroke={11}>
-          <span className="t-cond" style={{ fontSize: 30, fontWeight: 800, color: "var(--text)", lineHeight: 0.9 }}>{inStock}</span>
-          <span className="t-mono" style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>of {total}</span>
-        </ProgressRing>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
+    <div className="card warehouse-readiness-card">
+      <div className="row warehouse-readiness-card__body">
+        <div
+          className="warehouse-readiness-ring"
+          aria-label={`${inStock} из ${total} на складе`}
+        >
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle cx="60" cy="60" r={ringRadius} fill="none" stroke="var(--fill-gray)" strokeWidth="14" />
+            {ringSegments.map((segment, index) => (
+              <circle
+                key={`${segment.color}-${index}`}
+                cx="60"
+                cy="60"
+                r={ringRadius}
+                fill="none"
+                stroke={segment.color}
+                strokeWidth="14"
+                strokeDasharray={`${Math.max(0, segment.length - 2)} ${ringCircumference}`}
+                strokeDashoffset={-segment.offset}
+              />
+            ))}
+          </svg>
+          <div className="warehouse-readiness-ring__center">
+            <strong>{inStock}</strong>
+            <span>из {total}</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
           <PrepStat tone="ok" value={inStock} label="на складе" />
           <PrepStat tone="warn" value={onProject} label="на проектах" />
           <PrepStat tone="alert" value={inRepair} label="в ремонте" />
@@ -80,7 +172,7 @@ function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps
         </div>
       </div>
 
-      <div style={{ marginTop: 20 }}>
+      <div className="warehouse-readiness-card__action">
         <Button block variant="primary" onClick={onOps}>+ Перемещение</Button>
       </div>
     </div>
@@ -170,7 +262,9 @@ export function WarehousePage() {
   const units = useUnits(showArchived ? { includeArchived: true } : undefined);
   const types = useTypes();
   const warehouses = useWarehouses();
+  const storageZones = useStorageZones();
   const venues = useVenues(true);
+  const saveStorageZones = useSaveStorageZones();
   const createWarehouse = useCreateWarehouse();
   const updateWarehouse = useUpdateWarehouse();
   const createPlace = useCreateVenue();
@@ -179,21 +273,26 @@ export function WarehousePage() {
   const openRepairs = useOpenRepairs();
   const openHandovers = useOpenHandovers();
   const cableSettings = useCableSettings();
+  const cableConnectors = useCableConnectors();
+  const createCableConnector = useCreateCableConnector();
   const categories=useCategories();
 
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
   const [cableModel, setCableModel] = useState<Equipment.EquipmentModelDTO | null>(null);
+  const [cableCreateOpen, setCableCreateOpen] = useState(false);
+  const [selectedConnector, setSelectedConnector] = useState<Equipment.CableConnectorDTO | null>(null);
+  const [newConnectorName, setNewConnectorName] = useState("");
   const [editModel, setEditModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [editType, setEditType] = useState<Equipment.EquipmentTypeDTO | null>(null);
-  const [statusFilter, setStatusFilter] = useState<Equipment.UnitStatus | "all">("all");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [warehouseForm, setWarehouseForm] = useState<{ mode: "create" | "edit"; id?: string } | null>(null);
   const [warehouseNameDraft, setWarehouseNameDraft] = useState("");
   const [warehouseAddressDraft, setWarehouseAddressDraft] = useState("");
+  const [warehouseZoneDrafts, setWarehouseZoneDrafts] = useState<ZoneDraft[]>([]);
   const [search, setSearch] = useState("");
-  const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
+  const [expandedStockModels, setExpandedStockModels] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<WarehouseTab>("dashboard");
   const [categoryFilter,setCategoryFilter]=useState("all");
 
@@ -217,21 +316,29 @@ export function WarehousePage() {
   const visibleModels=categoryFilter==="all"?allModels:allModels.filter(model=>categoryFilter==="none"?!model.categoryId:model.categoryId===categoryFilter);
   const getTypeName = (tid: string | undefined) => (types.data ?? []).find((t) => t.id === tid)?.name ?? "Без типа";
   const warehouseName = (id: string | null | undefined) => warehouseList.find((w) => w.id === id)?.name ?? "—";
-  const selectedWarehouse = warehouseList.find((w) => w.id === warehouseFilter) ?? null;
   const openWarehouseCreate = () => {
     setWarehouseNameDraft("");
     setWarehouseAddressDraft("");
+    setWarehouseZoneDrafts([]);
     setWarehouseForm({ mode: "create" });
   };
   const openWarehouseEdit = (warehouse: Equipment.WarehouseDTO) => {
     setWarehouseNameDraft(warehouse.name);
     setWarehouseAddressDraft(warehouse.address ?? "");
+    setWarehouseZoneDrafts((storageZones.data ?? []).filter((zone) => zone.warehouseId === warehouse.id && zone.active).map((zone) => ({
+      id: zone.id,
+      parentId: zone.parentId,
+      name: zone.name,
+      code: zone.code,
+      kind: zone.kind,
+    })));
     setWarehouseForm({ mode: "edit", id: warehouse.id });
   };
   const closeWarehouseForm = () => {
     setWarehouseForm(null);
     setWarehouseNameDraft("");
     setWarehouseAddressDraft("");
+    setWarehouseZoneDrafts([]);
   };
   const saveWarehouse = async () => {
     const name = warehouseNameDraft.trim();
@@ -243,124 +350,138 @@ export function WarehousePage() {
       if (placeId) await updatePlace.mutateAsync({ id: placeId, input: { name, address, isWarehouse: true } });
       else placeId = (await createPlace.mutateAsync({ name, address, isVenue: false, isWarehouse: true })).id;
       await updateWarehouse.mutateAsync({ id: warehouseForm.id, input: { name, address, placeId } });
+      await saveStorageZones.mutateAsync({ warehouseId: warehouseForm.id, zones: warehouseZoneDrafts });
       closeWarehouseForm();
       return;
     }
     const place = await createPlace.mutateAsync({ name, address, isVenue: false, isWarehouse: true });
     const warehouse = await createWarehouse.mutateAsync({ name, address, placeId: place.id });
+    await saveStorageZones.mutateAsync({ warehouseId: warehouse.id, zones: warehouseZoneDrafts });
     setWarehouseFilter(warehouse.id);
     closeWarehouseForm();
   };
   const query = search.trim().toLowerCase();
+  const activeStorageZones = (storageZones.data ?? []).filter((zone) => zone.active);
+  const storageZoneById = new Map(activeStorageZones.map((zone) => [zone.id, zone]));
   const modelMatches = (m: Equipment.EquipmentModelDTO) =>
     !query || [m.name, m.manufacturer ?? "", getTypeName(m.typeId), m.trackingMode === "cable" ? formatCableModel(m, cableSettings.data?.nameFormat) : ""].some((v) => v.toLowerCase().includes(query));
+  const stockModelMatches = (m: Equipment.EquipmentModelDTO) =>
+    !query || m.name.toLowerCase().includes(query);
   const unitMatches = (u: Equipment.EquipmentUnitDTO) => {
     const m = allModels.find((x) => x.id === u.modelId);
-    return !query || [u.assetTag, u.serial ?? "", m?.name ?? "", m?.manufacturer ?? "", getTypeName(m?.typeId)].some((v) => v.toLowerCase().includes(query));
+    return !query || [u.assetTag, u.serial ?? "", storageZoneById.get(u.zoneId ?? "")?.code ?? "", m?.name ?? "", m?.manufacturer ?? "", getTypeName(m?.typeId)].some((v) => v.toLowerCase().includes(query));
   };
   const serialModels = visibleModels.filter((m) => m.trackingMode === "serial" && modelMatches(m));
   const quantityModels = visibleModels.filter((m) => m.trackingMode === "quantity" && modelMatches(m));
   const cableModels = visibleModels.filter((m) => m.trackingMode === "cable" && modelMatches(m));
   const warehouseStockUnits = allUnits.filter(unit => unit.status !== "installed");
   const filteredByWarehouse = warehouseFilter === "all" ? warehouseStockUnits : warehouseStockUnits.filter((u) => u.warehouseId === warehouseFilter);
-  const filteredByStatus = statusFilter === "all" ? filteredByWarehouse : filteredByWarehouse.filter((u) => u.status === statusFilter);
-  const filtered = filteredByStatus.filter(unit=>visibleModels.some(model=>model.id===unit.modelId)).filter(unitMatches);
-  const statuses: (Equipment.UnitStatus | "all")[] = ["all", "in_stock", "on_project", "in_repair", "reserved", "lost"];
+  const visibleModelIds = new Set(visibleModels.map((model) => model.id));
+  const filtered = filteredByWarehouse.filter((unit) => {
+    const model = allModels.find((candidate) => candidate.id === unit.modelId);
+    return visibleModelIds.has(unit.modelId) && !!model && stockModelMatches(model);
+  });
+  const dashboardSearchResults = query
+    ? allUnits.filter((unit) => visibleModels.some((model) => model.id === unit.modelId)).filter(unitMatches)
+    : [];
 
   const repairTone = (s: Equipment.UnitStatus) => (s === "in_repair" ? "alert" : "warn");
   const tag = (uid: string) => allUnits.find((x) => x.id === uid)?.assetTag ?? uid.slice(0, 6);
-  const toggleType = (tid: string) =>
-    setCollapsedTypes((prev) => {
+  const toggleStockModel = (modelId: string) =>
+    setExpandedStockModels((prev) => {
       const next = new Set(prev);
-      next.has(tid) ? next.delete(tid) : next.add(tid);
+      next.has(modelId) ? next.delete(modelId) : next.add(modelId);
       return next;
     });
   const repairCount = (openRepairs.data ?? []).length + (openHandovers.data ?? []).length;
+  const repairEstimateEUR = (openRepairs.data ?? []).reduce((sum, repair) => sum + (repair.estCostEUR ?? repair.costEUR ?? 0), 0)
+    + (openHandovers.data ?? []).reduce((sum, handover) => sum + (handover.costEUR ?? 0), 0);
   const searchField = (
-    <Field label="Поиск по складу">
-      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, тип, номер, серийник" />
-    </Field>
+    <div className="warehouse-dashboard-search">
+      <Field label="Поиск по складу">
+        <span className="warehouse-search-field">
+          <span className="warehouse-search-field__icon" aria-hidden="true" />
+          <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, номер, серийник, код зоны" />
+        </span>
+      </Field>
+    </div>
+  );
+  const stockSearchField = (
+    <span className="warehouse-search-field warehouse-stock-search">
+      <span className="warehouse-search-field__icon" aria-hidden="true" />
+      <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель или тип" />
+    </span>
   );
   const warehouseSelector = (
     <>
-      <SectionHead label="Склады" meta={warehouseFilter === "all" ? "ВСЕ" : warehouseName(warehouseFilter)} />
-      <div className="card" style={{ padding: "12px 14px", marginBottom: 12 }}>
-        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
-          <button
-            className={`chip ${warehouseFilter === "all" ? "chip--accent chip--solid" : "chip--neutral"}`}
-            style={{ cursor: "pointer", border: "none" }}
-            onClick={() => setWarehouseFilter("all")}
-          >
-            Все склады
-          </button>
-          {warehouseList.map((w) => (
-            <button
-              key={w.id}
-              className={`chip ${warehouseFilter === w.id ? "chip--accent chip--solid" : "chip--neutral"}`}
-              style={{ cursor: "pointer", border: "none" }}
-              onClick={() => setWarehouseFilter(w.id)}
-              title={w.address ?? undefined}
-            >
-              {w.name}{w.isDefault ? " ★" : ""}
-            </button>
-          ))}
-        </div>
-        {warehouseFilter !== "all" && (
-          <p className="card__subtitle" style={{ marginTop: 8 }}>
-            {warehouseList.find((w) => w.id === warehouseFilter)?.address || "Адрес не указан"}
-          </p>
-        )}
-        {canCatalog && (
-          <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
-            <Button variant="secondary" onClick={openWarehouseCreate}>
-              + Склад
-            </Button>
-            {warehouseFilter !== "all" && (
-              <>
-                <Button variant="ghost" disabled={!selectedWarehouse} onClick={() => selectedWarehouse && openWarehouseEdit(selectedWarehouse)}>
-                  Редактировать
-                </Button>
-                <Button
-                  variant="ghost"
-                  disabled={warehouseList.find((w) => w.id === warehouseFilter)?.isDefault}
-                  aria-label={warehouseList.find((w) => w.id === warehouseFilter)?.isDefault ? "Основной склад" : "Сделать основным"}
-                  title={warehouseList.find((w) => w.id === warehouseFilter)?.isDefault ? "Основной склад" : "Сделать основным"}
-                  style={{ width: 44, height: 44, padding: 0, flex: "0 0 auto", fontSize: 20 }}
-                  onClick={() => updateWarehouse.mutate({ id: warehouseFilter, input: { isDefault: true } })}
-                >
-                  {warehouseList.find((w) => w.id === warehouseFilter)?.isDefault ? "★" : "☆"}
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-        {canCatalog && warehouseForm && (
-          <div className="card card--flat" style={{ marginTop: 12 }}>
-            <p className="card__title">{warehouseForm.mode === "create" ? "Новый склад" : "Редактировать склад"}</p>
-            <Field label="Название">
-              <Input value={warehouseNameDraft} onChange={(e) => setWarehouseNameDraft(e.target.value)} placeholder="Main warehouse" />
-            </Field>
-            <Field label="Адрес">
-              <AddressInput value={warehouseAddressDraft} onChange={setWarehouseAddressDraft} placeholder="Адрес — можно вставить или найти" />
-            </Field>
-            <div className="row" style={{ marginTop: 8 }}>
-              <Button
-                block
-                disabled={!warehouseNameDraft.trim() || createWarehouse.isPending || updateWarehouse.isPending}
-                onClick={() => void saveWarehouse()}
-              >
-                Сохранить
-              </Button>
-              <Button variant="secondary" block onClick={closeWarehouseForm}>Отмена</Button>
+      <div className="row row--between warehouse-section-head">
+        <SectionHead label="Склады" meta={`${warehouseList.length}`} />
+        {canCatalog && <button className="text-action" type="button" onClick={openWarehouseCreate}>+ Склад</button>}
+      </div>
+      <div className="warehouse-filter-row" aria-label="Выбор склада">
+        <button className={`warehouse-choice ${warehouseFilter === "all" ? "is-active" : ""}`} onClick={() => setWarehouseFilter("all")}>Все склады</button>
+        {warehouseList.map((warehouse) => (
+          <button key={warehouse.id} className={`warehouse-choice ${warehouseFilter === warehouse.id ? "is-active" : ""}`} onClick={() => setWarehouseFilter(warehouse.id)} title={warehouse.address ?? undefined}>{warehouse.name}</button>
+        ))}
+      </div>
+      <div className="stack warehouse-location-list">
+        {warehouseList.filter((warehouse) => warehouseFilter === "all" || warehouse.id === warehouseFilter).map((warehouse) => {
+          const unitCount = allUnits.filter((unit) => unit.warehouseId === warehouse.id && unit.status !== "installed").length;
+          const warehouseZones = (storageZones.data ?? []).filter((zone) => zone.warehouseId === warehouse.id && zone.active);
+          const roomCount = warehouseZones.filter((zone) => zone.kind === "room").length;
+          const rackCount = warehouseZones.filter((zone) => zone.kind === "rack").length;
+          const shelfCount = warehouseZones.filter((zone) => zone.kind === "shelf").length;
+          return (
+            <div className="card warehouse-location-card" key={warehouse.id}>
+              <div className="row row--between warehouse-location-card__heading">
+                <div style={{ minWidth: 0 }}>
+                  <p className="card__title">{warehouse.name}</p>
+                  <p className="card__subtitle">{warehouse.address || "Адрес не указан"}</p>
+                </div>
+                {warehouse.isDefault && <Chip label="основной" tone="info" />}
+              </div>
+              <div className="row warehouse-location-card__counts">
+                <Chip label={`${roomCount} помещ.`} tone="neutral" />
+                <Chip label={`${rackCount} стеллажей`} tone="neutral" />
+                <Chip label={`${shelfCount} полок`} tone="neutral" />
+                <Chip label={`${unitCount} ед.`} tone="ok" />
+              </div>
+              {canCatalog && (
+                <div className="warehouse-location-card__actions">
+                  <Button block variant="secondary" disabled={storageZones.isLoading} onClick={() => openWarehouseEdit(warehouse)}>Редактировать</Button>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })}
       </div>
     </>
   );
-  const categorySelector=<><SectionHead label={showArchived?"Архив":"Категории"} meta={categoryFilter==="all"?"ВСЕ":categories.data?.find(category=>category.id===categoryFilter)?.name??"БЕЗ КАТЕГОРИИ"}/><div className="card" style={{padding:"10px 12px",marginBottom:12,display:"flex",gap:6,flexWrap:"wrap"}}><button className={`chip ${!showArchived&&categoryFilter==="all"?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>{setShowArchived(false);setCategoryFilter("all");}}>Все</button>{!showArchived&&(categories.data??[]).map(category=><button key={category.id} className={`chip ${categoryFilter===category.id?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>setCategoryFilter(category.id)}>{category.name}</button>)}{!showArchived&&<button className={`chip ${categoryFilter==="none"?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>setCategoryFilter("none")}>Без категории</button>}<button className={`chip ${showArchived?"chip--accent chip--solid":"chip--neutral"}`} onClick={()=>{setShowArchived(true);setCategoryFilter("all");}}>Архив</button></div></>;
+  const warehouseFilterRow = (
+    <div className="warehouse-filter-row" aria-label="Выбор склада">
+      <button className={`warehouse-choice ${warehouseFilter === "all" ? "is-active" : ""}`} onClick={() => setWarehouseFilter("all")}>ВСЕ</button>
+      {warehouseList.map((warehouse) => (
+        <button key={warehouse.id} className={`warehouse-choice ${warehouseFilter === warehouse.id ? "is-active" : ""}`} onClick={() => setWarehouseFilter(warehouse.id)}>{warehouse.name}</button>
+      ))}
+    </div>
+  );
+  const categorySelector = (
+    <div className="warehouse-filter-row" aria-label="Категории склада">
+      <button className={`warehouse-choice ${!showArchived && categoryFilter === "all" ? "is-active" : ""}`} onClick={() => { setShowArchived(false); setCategoryFilter("all"); }}>Все</button>
+      {!showArchived && (categories.data ?? []).map((category) => (
+        <button key={category.id} className={`warehouse-choice ${categoryFilter === category.id ? "is-active" : ""}`} onClick={() => setCategoryFilter(category.id)}>{category.name}</button>
+      ))}
+      {!showArchived && <button className={`warehouse-choice ${categoryFilter === "none" ? "is-active" : ""}`} onClick={() => setCategoryFilter("none")}>Без категории</button>}
+      <button className={`warehouse-choice ${showArchived ? "is-active" : ""}`} onClick={() => { setShowArchived(true); setCategoryFilter("all"); }}>Архив</button>
+    </div>
+  );
   const repairSection = (
     <>
+      <div className="warehouse-repair-stats">
+        <div className="card"><span>в ремонте</span><strong>{openRepairs.data?.length ?? 0}</strong></div>
+        <div className="card"><span>на сервисе</span><strong>{openHandovers.data?.length ?? 0}</strong></div>
+        <div className="card"><span>оценка</span><strong>{eur(repairEstimateEUR)}</strong></div>
+      </div>
       <SectionHead label="Ремонты и сервисные выдачи" meta={`${repairCount}`} />
       {repairCount === 0 ? (
         <EmptyState title="Нет открытых ремонтов" />
@@ -390,10 +511,7 @@ export function WarehousePage() {
   );
   const modelSection = (
     <>
-      <SectionHead label="Модели" meta={canEdit ? undefined : `${allModels.length}`} />
-      <Field label="Поиск модели">
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель или тип" />
-      </Field>
+      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Начните вводить модель" />
       {canEdit && (
         <div className="row" style={{ marginBottom: 10 }}>
           {canCatalog && <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Модель / единица</Button>}
@@ -440,51 +558,63 @@ export function WarehousePage() {
   );
   const cableSection = (
     <>
-      {warehouseSelector}
-      <Field label="Поиск кабеля">
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Разъём, длина, тип" />
-      </Field>
+      <SectionHead label="Справочник разъёмов" meta={`${cableConnectors.data?.length ?? 0}`} />
+      <div className="cable-connectors" aria-label="Справочник разъёмов">
+        {(cableConnectors.data ?? []).map((connector) => (
+          <button key={connector.id} type="button" className="cable-connector-card" onClick={() => setSelectedConnector(connector)}>
+            <span className="cable-connector-card__visual">
+              {connector.imageDataUrl ? <img src={connector.imageDataUrl} alt="" /> : <WarehouseGlyph type="cables" />}
+            </span>
+            <span>{connector.name}</span>
+          </button>
+        ))}
+      </div>
       {canCatalog && (
-        <div className="row" style={{ marginBottom: 10 }}>
-          <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Кабель</Button>
+        <div className="cable-connector-create">
+          <Input value={newConnectorName} onChange={(event) => setNewConnectorName(event.target.value)} placeholder="Новый разъём" />
+          <Button variant="secondary" disabled={!newConnectorName.trim() || createCableConnector.isPending} onClick={() => createCableConnector.mutate({ name: newConnectorName.trim(), designation: newConnectorName.trim().slice(0, 24) }, { onSuccess: () => setNewConnectorName("") })}>Добавить</Button>
         </div>
       )}
-      <SectionHead label="Кабели" meta={`${cableModels.length}`} />
+      <SectionHead label="Кабели" />
+      <span className="warehouse-search-field warehouse-stock-search">
+        <span className="warehouse-search-field__icon" aria-hidden="true" />
+        <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Разъём, длина, тип" />
+      </span>
       {cableModels.length === 0 ? (
         <EmptyState title="Нет кабелей" />
       ) : (
-        <div className="card" style={{ padding: "2px 16px" }}>
-          {cableModels.map((m, i) => (
-            <CableRow
-              key={m.id}
-              model={m}
-              warehouseId={warehouseFilter === "all" ? null : warehouseFilter}
-              onMove={() => setCableModel(m)}
-              onEdit={canCatalog ? () => setEditModel(m) : undefined}
-              last={i === cableModels.length - 1}
-            />
-          ))}
-        </div>
+        (() => {
+          const groups = new Map<string, Equipment.EquipmentModelDTO[]>();
+          for (const model of cableModels) {
+            const group = cableAttrs(model)?.cableType || "Кабели";
+            (groups.get(group) ?? groups.set(group, []).get(group)!).push(model);
+          }
+          return [...groups.entries()].map(([group, groupModels]) => (
+            <div key={group} className="cable-type-group">
+              <SectionHead label={group} meta={`${groupModels.length}`} />
+              <div className="card cable-model-list">
+                {groupModels.map((model, index) => (
+                  <CableRow
+                    key={model.id}
+                    model={model}
+                    warehouseId={warehouseFilter === "all" ? null : warehouseFilter}
+                    onMove={() => setCableModel(model)}
+                    showStepper
+                    last={index === groupModels.length - 1}
+                  />
+                ))}
+              </div>
+            </div>
+          ));
+        })()
       )}
+      {canCatalog && <Button block variant="secondary" onClick={() => setCableCreateOpen(true)}>+ Кабель</Button>}
     </>
   );
   const unitSection = (
     <>
-      <SectionHead label="Единицы" meta={`${filtered.length}`} />
-      <div className="row" style={{ flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-        {statuses.map((s) => (
-          <button
-            key={s}
-            className={`chip ${statusFilter === s ? "chip--accent chip--solid" : "chip--neutral"}`}
-            style={{ cursor: "pointer", border: "none" }}
-            onClick={() => setStatusFilter(s)}
-          >
-            {s === "all" ? "Все" : unitStatusLabel[s]}
-          </button>
-        ))}
-      </div>
       {filtered.length === 0 ? (
-        <EmptyState title="Нет единиц" />
+        <EmptyState title="Нет моделей" />
       ) : (
         (() => {
           const modelOf = (mid: string) => allModels.find((m) => m.id === mid);
@@ -494,63 +624,107 @@ export function WarehousePage() {
             (groups.get(tid) ?? groups.set(tid, []).get(tid)!).push(u);
           }
           const ordered = [...groups.entries()].sort((a, b) => getTypeName(a[0]).localeCompare(getTypeName(b[0])));
-          return ordered.map(([tid, list]) => (
-            <div key={tid}>
-              <div className="row row--between" style={{ alignItems: "center" }}>
-                <SectionHead label={getTypeName(tid)} meta={`${list.length}`} />
-                <div className="row" style={{ gap: 6 }}>
-                  {canCatalog && (
-                    <button className="icon-btn" aria-label="Редактировать тип" title="Редактировать тип" onClick={() => setEditType((types.data ?? []).find(type => type.id === tid) ?? null)}>
-                      ✎
-                    </button>
-                  )}
-                  <button className="icon-btn" aria-label={collapsedTypes.has(tid) ? "Развернуть" : "Свернуть"} title={collapsedTypes.has(tid) ? "Развернуть" : "Свернуть"} onClick={() => toggleType(tid)}>
-                    {collapsedTypes.has(tid) ? "▾" : "▴"}
-                  </button>
-                </div>
-              </div>
-              {!collapsedTypes.has(tid) && (
-                <div className="card" style={{ padding: "2px 16px" }}>
-                  {list.map((u, i) => {
-                    const tone: Tone = u.status === "in_stock" ? "ok" : u.status === "on_project" ? "warn" : u.status === "lost" || u.status === "in_repair" ? "alert" : "info";
+          return ordered.map(([tid, list]) => {
+            const modelGroups = new Map<string, Equipment.EquipmentUnitDTO[]>();
+            for (const unit of list) (modelGroups.get(unit.modelId) ?? modelGroups.set(unit.modelId, []).get(unit.modelId)!).push(unit);
+            return (
+              <div key={tid} className="stock-type-group">
+                <SectionHead label={getTypeName(tid)} meta={`${modelGroups.size}`} />
+                <div className="card stock-model-list">
+                  {[...modelGroups.entries()].map(([modelId, modelUnits], modelIndex) => {
+                    const model = modelOf(modelId);
+                    const inStock = modelUnits.filter(unit => unit.status === "in_stock").length;
+                    const reserved = modelUnits.filter(unit => unit.status === "reserved").length;
+                    const onProject = modelUnits.filter(unit => unit.status === "on_project").length;
+                    const inRepair = modelUnits.filter(unit => unit.status === "in_repair").length;
+                    const isExpanded = expandedStockModels.has(modelId);
                     return (
-                      <div
-                        key={u.id}
-                        className="lrow card--tappable"
-                        style={{ borderBottom: i === list.length - 1 ? "none" : undefined }}
-                        onClick={() => navigate(`/warehouse/units/${u.id}`)}
-                      >
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div className="lrow__title">{u.assetTag}</div>
-                          <div className="lrow__detail">{modelOf(u.modelId)?.name ?? u.modelId} · {warehouseName(u.warehouseId)}</div>
-                        </div>
-                        <Chip label={unitStatusLabel[u.status]} tone={tone} />
+                      <div key={modelId} className={modelIndex === modelGroups.size - 1 ? "" : "stock-model-group"}>
+                        <button className="stock-model-row" onClick={() => toggleStockModel(modelId)} aria-expanded={isExpanded}>
+                          {model?.imageUrl
+                            ? <img className="stock-model-row__image" src={model.imageUrl} alt="" />
+                            : <span className="stock-model-row__icon" aria-hidden="true">◇</span>}
+                          <span className="stock-model-row__body">
+                            <span className="stock-model-row__title">{model?.name ?? modelId}</span>
+                            <span className="stock-model-row__detail">{inStock} на складе · {reserved} резерв · {onProject} на проекте</span>
+                          </span>
+                          {inRepair > 0 ? <Chip label={`ремонт ${inRepair}`} tone="alert" /> : <span className="stock-model-row__count">{modelUnits.length}</span>}
+                        </button>
+                        {isExpanded && (
+                          <div className="stock-unit-list">
+                            {modelUnits.map((unit) => {
+                              const tone: Tone = unit.status === "in_stock" ? "ok" : unit.status === "on_project" ? "warn" : unit.status === "lost" || unit.status === "in_repair" ? "alert" : "info";
+                              return (
+                                <button key={unit.id} className="stock-unit-row" onClick={() => navigate(`/warehouse/units/${unit.id}`)}>
+                                  <span><strong>{unit.assetTag}</strong><small>{warehouseName(unit.warehouseId)}</small></span>
+                                  <Chip label={unitStatusLabel[unit.status]} tone={tone} />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
-              )}
-            </div>
-          ));
+              </div>
+            );
+          });
         })()
       )}
     </>
   );
 
+  const warehouseTabs = (
+    <div className="warehouse-tabs" role="tablist" aria-label="Warehouse">
+      {WAREHOUSE_TABS.map((tab) => {
+        const isActive = activeTab === tab.id;
+        const count = tab.id === "repair" ? repairCount : tab.id === "stocklist" ? filtered.length : tab.id === "installed" ? allUnits.filter(u => u.status === "installed").length : tab.id === "cables" ? cableModels.length : tab.id === "models" ? serialModels.length + quantityModels.length : 0;
+        return (
+          <button key={tab.id} className={`warehouse-tabs__item ${isActive ? "warehouse-tabs__item--active" : ""}`} onClick={() => setActiveTab(tab.id)} aria-label={tab.label} aria-selected={isActive} role="tab" type="button">
+            <span className="warehouse-tabs__icon"><WarehouseGlyph type={tab.id} /></span>
+            <span>{tab.shortLabel}</span>
+            {count > 0 && <span className="warehouse-tabs__badge">{count > 9 ? "9+" : count}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <div style={{ paddingBottom: 92 }}>
-      {categorySelector}
+    <div className="stack warehouse-mobile-page">
+      {warehouseTabs}
+      {activeTab === "dashboard" && categorySelector}
       {activeTab === "dashboard" && (
         <>
-          <PrepHero units={allUnits} onOps={canIssue ? () => setOpsOpen(true) : () => navigate("/operations")} />
+          <PrepHero units={allUnits.filter((unit) => visibleModels.some((model) => model.id === unit.modelId))} onOps={canIssue ? () => setOpsOpen(true) : () => navigate("/operations")} />
           {searchField}
+          {query && (
+            <div className="card warehouse-search-results">
+              {dashboardSearchResults.length > 0 ? dashboardSearchResults.map((unit, index) => {
+                const tone: Tone = unit.status === "in_stock" ? "ok" : unit.status === "on_project" ? "warn" : unit.status === "lost" || unit.status === "in_repair" ? "alert" : "info";
+                const zoneCode = storageZoneById.get(unit.zoneId ?? "")?.code;
+                return (
+                  <button key={unit.id} className="warehouse-search-result" onClick={() => navigate(`/warehouse/units/${unit.id}`)} style={{ borderBottom: index < dashboardSearchResults.length - 1 ? undefined : "none" }}>
+                    <span><strong>{unit.assetTag}</strong><small>{allModels.find((model) => model.id === unit.modelId)?.name ?? unit.modelId}{unit.serial ? ` · ${unit.serial}` : ""}{zoneCode ? ` · ${zoneCode}` : ""}</small></span>
+                    <span className="warehouse-search-result__tail">
+                      <Chip label={unitStatusLabel[unit.status].toLocaleLowerCase("ru-RU")} tone={tone} />
+                      <span className="warehouse-search-result__chevron" aria-hidden="true" />
+                    </span>
+                  </button>
+                );
+              }) : <EmptyState title="Ничего не найдено" />}
+            </div>
+          )}
+          {warehouseSelector}
         </>
       )}
       {activeTab === "repair" && repairSection}
       {activeTab === "stocklist" && (
         <>
-          {warehouseSelector}
-          {searchField}
+          {stockSearchField}
+          {warehouseFilterRow}
+          {categorySelector}
           {unitSection}
         </>
       )}
@@ -564,36 +738,51 @@ export function WarehousePage() {
           <ImportSheet open={importOpen} onClose={() => setImportOpen(false)} />
         </>
       )}
+      {canCatalog && <CableCreateSheet open={cableCreateOpen} onClose={() => setCableCreateOpen(false)} types={types.data ?? []} categories={categories.data ?? []} warehouses={warehouseList} />}
+      <Sheet open={!!selectedConnector} onClose={() => setSelectedConnector(null)} title={selectedConnector ? `Разъём · ${selectedConnector.name}` : "Разъём"}>
+        {selectedConnector?.imageDataUrl ? <img className="cable-connector-detail__image" src={selectedConnector.imageDataUrl} alt="" /> : <div className="cable-connector-detail__placeholder"><WarehouseGlyph type="cables" /></div>}
+        <Field label="Обозначение"><Input value={selectedConnector?.designation ?? ""} readOnly /></Field>
+        <p className="card__subtitle">Кабелей с этим разъёмом: {selectedConnector ? cableModels.filter((model) => { const attrs = cableAttrs(model); return attrs?.sideAConnector === selectedConnector.name || attrs?.sideBConnector === selectedConnector.name; }).length : 0}</p>
+      </Sheet>
       {canIssue && (
         <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} models={allModels} />
       )}
       {canCatalog && <EditModelSheet model={editModel} types={types.data??[]} categories={categories.data??[]} onClose={() => setEditModel(null)} />}
       {canCatalog && <TypeSettingsSheet type={editType} onClose={() => setEditType(null)} />}
-      <CableMoveSheet model={cableModel} warehouses={warehouseList} selectedWarehouseId={warehouseFilter === "all" ? null : warehouseFilter} onClose={() => setCableModel(null)} />
-      <div className="project-tabbar" role="tablist" aria-label="Warehouse">
-        {WAREHOUSE_TABS.map((tab) => {
-          const isActive = activeTab === tab.id;
-          const count = tab.id === "repair" ? repairCount : tab.id === "stocklist" ? filtered.length : tab.id === "installed" ? allUnits.filter(u => u.status === "installed").length : tab.id === "cables" ? cableModels.length : tab.id === "models" ? serialModels.length + quantityModels.length : 0;
-          return (
-            <button
-              key={tab.id}
-              className={`project-tabbar__item ${isActive ? "project-tabbar__item--active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
-              aria-label={tab.label}
-              aria-selected={isActive}
-              role="tab"
-              type="button"
-              style={{ ["--tab-c" as string]: `var(--${tab.tone === "accent" ? "accent" : tab.tone})` }}
+      {canCatalog && (
+        <Sheet
+          open={!!warehouseForm}
+          onClose={closeWarehouseForm}
+          title={warehouseForm?.mode === "create" ? "Новый склад" : `Склад · ${warehouseNameDraft || "Без названия"}`}
+        >
+          <Field label="Название">
+            <Input value={warehouseNameDraft} onChange={(e) => setWarehouseNameDraft(e.target.value)} placeholder="Main warehouse" />
+          </Field>
+          <Field label="Адрес">
+            <AddressInput value={warehouseAddressDraft} onChange={setWarehouseAddressDraft} placeholder="Адрес — можно вставить или найти" />
+          </Field>
+          <Field label="Зоны хранения · помещение → стеллаж → полка">
+            <div className="card warehouse-zone-editor-card">
+              <ZoneEditor zones={warehouseZoneDrafts} onChange={setWarehouseZoneDrafts} />
+            </div>
+            <p className="warehouse-zone-editor__hint">Код зоны печатается на этикетке и ищется в поиске склада.</p>
+          </Field>
+          {warehouseForm?.mode === "edit" && warehouseForm.id && !warehouseList.find((warehouse) => warehouse.id === warehouseForm.id)?.isDefault && (
+            <Button variant="ghost" block onClick={() => updateWarehouse.mutate({ id: warehouseForm.id!, input: { isDefault: true } })}>Сделать основным</Button>
+          )}
+          <div className="row" style={{ marginTop: 8 }}>
+            <Button
+              block
+              disabled={!warehouseNameDraft.trim() || warehouseZoneDrafts.some((zone) => !zone.name.trim() || !zone.code.trim()) || createWarehouse.isPending || updateWarehouse.isPending || saveStorageZones.isPending}
+              onClick={() => void saveWarehouse()}
             >
-              <span className="project-tabbar__icon">
-                <WarehouseGlyph type={tab.id} />
-                {count > 0 && <span className="project-tabbar__badge">{count > 9 ? "9+" : count}</span>}
-              </span>
-              <span className="project-tabbar__label">{tab.shortLabel}</span>
-            </button>
-          );
-        })}
-      </div>
+              Сохранить
+            </Button>
+            <Button variant="secondary" block onClick={closeWarehouseForm}>Отмена</Button>
+          </div>
+        </Sheet>
+      )}
+      <CableMoveSheet model={cableModel} warehouses={warehouseList} selectedWarehouseId={warehouseFilter === "all" ? null : warehouseFilter} onClose={() => setCableModel(null)} />
     </div>
   );
 }

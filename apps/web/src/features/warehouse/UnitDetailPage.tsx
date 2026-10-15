@@ -126,8 +126,8 @@ export function UnitDetailPage() {
   };
 
   return (
-    <div className="stack">
-      <Button variant="ghost" onClick={goBack}>← Назад</Button>
+    <div className="stack nested-mobile-page">
+      <Button className="nested-mobile-page__back" variant="ghost" onClick={goBack}>← Назад</Button>
 
       {/* Identity */}
       <Card>

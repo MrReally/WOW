@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Venues } from "@sever/contracts";
-import { Button, Card, Chip, EmptyState, Field, Input, Loading, SectionTitle } from "../../ui-kit/index.ts";
+import { Button, Card, Chip, EmptyState, Field, Input, Loading, Sheet } from "../../ui-kit/index.ts";
 import { useSession } from "../../app/session.ts";
 import { AddressInput } from "../places/AddressInput.tsx";
 import { useArchiveVenue, useCreateVenue, useDeleteVenue, useUpdateVenue, useVenues } from "../plans/hooks.ts";
@@ -17,12 +17,21 @@ export function VenuesPage() {
   const archive = useArchiveVenue();
   const remove = useDeleteVenue();
   const [creating, setCreating] = useState(false);
+  const [selectedId, setSelectedId] = useState("");
+  const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const saveNew = () => create.mutate(draft as Venues.CreateVenueInput, { onSuccess: () => { setDraft(emptyDraft()); setCreating(false); } });
-  return <div className="stack">
-    <div className="row row--between"><SectionTitle>Venues</SectionTitle><div className="row"><label className="chip chip--neutral"><input type="checkbox" checked={showArchive} onChange={e => setShowArchive(e.target.checked)} /> Архив</label>{can("venues.manage") && <Button onClick={() => setCreating(true)}>+ Площадка</Button>}</div></div>
-    {creating && <Card><VenueForm draft={draft} setDraft={setDraft} /><div className="row"><Button block disabled={!draft.name.trim() || create.isPending} onClick={saveNew}>Создать</Button><Button block variant="secondary" onClick={() => setCreating(false)}>Отмена</Button></div></Card>}
-    {venues.isLoading ? <Loading /> : (venues.data ?? []).length === 0 ? <EmptyState title="Площадок пока нет" /> : (venues.data ?? []).map(venue => <VenueCard key={venue.id} venue={venue} canEdit={can("venues.manage")} canArchive={can("venues.archive", "venues.manage")} canDelete={can("venues.delete")} onSave={input => update.mutate({ id: venue.id, input })} onArchive={() => archive.mutate({ id: venue.id, archived: !venue.archivedAt })} onDelete={() => confirm(`Удалить «${venue.name}» окончательно?`) && remove.mutate(venue.id)} />)}
+  const rows=(venues.data??[]).filter(venue=>!query.trim()||[venue.name,venue.address].some(value=>value?.toLowerCase().includes(query.trim().toLowerCase())));
+  const selected=(venues.data??[]).find(venue=>venue.id===selectedId)??null;
+  return <div className="stack venues-page">
+    {!selected&&<>
+    {can("venues.manage")&&<Button block onClick={()=>setCreating(true)}>+ Площадка</Button>}
+    <div className="segmented-control"><button className={!showArchive?"is-active":""} onClick={()=>setShowArchive(false)}>Активные · {!showArchive?(venues.data??[]).length:""}</button><button className={showArchive?"is-active":""} onClick={()=>setShowArchive(true)}>Архив{showArchive?` · ${(venues.data??[]).length}`:""}</button></div>
+    <Input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Название или адрес"/>
+    <Sheet open={creating} onClose={()=>setCreating(false)} title="Новая площадка"><VenueForm draft={draft} setDraft={setDraft}/><div className="row"><Button block disabled={!draft.name.trim()||create.isPending} onClick={saveNew}>Создать</Button><Button block variant="secondary" onClick={()=>setCreating(false)}>Отмена</Button></div></Sheet>
+    {venues.isLoading?<Loading/>:rows.length===0?<EmptyState title="Площадок пока нет"/>:<Card className="directory-list">{rows.map(venue=><button className="directory-row" key={venue.id} onClick={()=>setSelectedId(venue.id)}><span className="directory-row__icon">⌂</span><span><strong>{venue.name}</strong><small>{[venue.address,venue.workingHours].filter(Boolean).join(" · ")||"Адрес не указан"}</small></span>{venue.archivedAt&&<Chip label="архив" tone="neutral"/>}<i>›</i></button>)}</Card>}
+    </>}
+    {selected&&<><button className="detail-back" onClick={()=>setSelectedId("")}>‹ Venues</button><VenueCard venue={selected} canEdit={can("venues.manage")} canArchive={can("venues.archive","venues.manage")} canDelete={can("venues.delete")} onSave={input=>update.mutate({id:selected.id,input})} onArchive={()=>archive.mutate({id:selected.id,archived:!selected.archivedAt})} onDelete={()=>confirm(`Удалить «${selected.name}» окончательно?`)&&remove.mutate(selected.id)}/></>}
   </div>;
 }
 
@@ -35,5 +44,5 @@ function VenueCard({ venue, canEdit, canArchive, canDelete, onSave, onArchive, o
 
 function VenueForm({ draft, setDraft }: { draft: Draft; setDraft: (value: Draft) => void }) {
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft({ ...draft, [key]: value });
-  return <div className="stack"><Field label="Название"><Input value={draft.name} onChange={e => set("name", e.target.value)} /></Field><Field label="Адрес"><AddressInput value={draft.address ?? ""} onChange={v => set("address", v || null)} /></Field><div className="row"><Field label="Контакты"><Input value={draft.contacts ?? ""} onChange={e => set("contacts", e.target.value || null)} /></Field><Field label="Время работы"><Input value={draft.workingHours ?? ""} onChange={e => set("workingHours", e.target.value || null)} /></Field></div><div className="row"><Field label="Ширина сцены, м"><Input type="number" value={draft.widthM ?? ""} onChange={e => set("widthM", e.target.value ? Number(e.target.value) : null)} /></Field><Field label="Глубина сцены, м"><Input type="number" value={draft.depthM ?? ""} onChange={e => set("depthM", e.target.value ? Number(e.target.value) : null)} /></Field></div><Field label="Заметки"><Input value={draft.notes ?? ""} onChange={e => set("notes", e.target.value || null)} /></Field><div className="row"><label><input type="checkbox" checked={draft.isVenue ?? true} onChange={e => set("isVenue", e.target.checked)} /> Площадка</label><label><input type="checkbox" checked={draft.isWarehouse ?? false} onChange={e => set("isWarehouse", e.target.checked)} /> Склад</label></div></div>;
+  return <div className="stack"><Field label="Название"><Input value={draft.name} onChange={e => set("name", e.target.value)} /></Field><Field label="Адрес"><AddressInput value={draft.address ?? ""} onChange={v => set("address", v || null)} /></Field><div className="row"><Field label="Контакты"><Input value={draft.contacts ?? ""} onChange={e => set("contacts", e.target.value || null)} /></Field><Field label="Время работы"><Input value={draft.workingHours ?? ""} onChange={e => set("workingHours", e.target.value || null)} /></Field></div><div className="row"><Field label="Ширина сцены, м"><Input type="number" value={draft.widthM ?? ""} onChange={e => set("widthM", e.target.value ? Number(e.target.value) : null)} /></Field><Field label="Глубина сцены, м"><Input type="number" value={draft.depthM ?? ""} onChange={e => set("depthM", e.target.value ? Number(e.target.value) : null)} /></Field></div><Field label="Заметки"><Input value={draft.notes ?? ""} onChange={e => set("notes", e.target.value || null)} /></Field><div className="stack"><label className="row row--between">Площадка <input className="toggle-switch" type="checkbox" checked={draft.isVenue ?? true} onChange={e => set("isVenue", e.target.checked)} /></label><label className="row row--between">Склад <input className="toggle-switch" type="checkbox" checked={draft.isWarehouse ?? false} onChange={e => set("isWarehouse", e.target.checked)} /></label></div></div>;
 }

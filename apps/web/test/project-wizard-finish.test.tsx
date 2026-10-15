@@ -14,6 +14,7 @@ vi.mock("../src/features/projects/hooks.ts", () => ({
   useClients: () => ({ data: [{ id: "client-1", name: "Клиент" }] }),
   useVenues: () => ({ data: [] }),
   useEquipmentModels: () => ({ data: [] }),
+  useEquipmentModelAvailability: () => ({ data: {}, isLoading: false }),
   useContractors: () => ({ data: [] }),
   useCreateClient: mocks.idleMutation,
   useCreateProject: () => ({ mutateAsync: mocks.createProject, isPending: false }),

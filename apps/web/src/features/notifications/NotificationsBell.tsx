@@ -5,7 +5,7 @@ import { dateTime } from "../../lib/labels.ts";
 import { useUnreadCount, useNotifications, useMarkRead, useMarkAllRead } from "./hooks.ts";
 import "./notifications.css";
 
-export function NotificationsBell() {
+export function NotificationsBell({ variant = "icon" }: { variant?: "icon" | "row" }) {
   const [open, setOpen] = useState(false);
   const unread = useUnreadCount();
   const list = useNotifications(open);
@@ -16,13 +16,22 @@ export function NotificationsBell() {
 
   return (
     <>
-      <button className="bell" onClick={() => setOpen(true)} aria-label="Уведомления">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <path d="M6 9a6 6 0 1112 0c0 4 1.5 5.5 2 6H4c.5-.5 2-2 2-6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-          <path d="M9.5 19a2.5 2.5 0 005 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
-        {count > 0 && <span className="bell__badge">{count > 9 ? "9+" : count}</span>}
-      </button>
+      {variant === "row" ? (
+        <button className="more-list-row" onClick={() => setOpen(true)} aria-label="Уведомления">
+          <span className="more-row-copy"><strong>Уведомления</strong></span>
+          {count > 0 && <span className="notification-row-badge">{count > 9 ? "9+" : count}</span>}
+          <span className="more-chevron" aria-hidden="true">›</span>
+          <i aria-hidden="true" />
+        </button>
+      ) : (
+        <button className="bell" onClick={() => setOpen(true)} aria-label="Уведомления">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9a6 6 0 1112 0c0 4 1.5 5.5 2 6H4c.5-.5 2-2 2-6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+            <path d="M9.5 19a2.5 2.5 0 005 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+          {count > 0 && <span className="bell__badge">{count > 9 ? "9+" : count}</span>}
+        </button>
+      )}
 
       <Sheet open={open} onClose={() => setOpen(false)} title="Уведомления">
         {count > 0 && (

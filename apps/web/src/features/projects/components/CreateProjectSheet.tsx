@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Sheet, Field, Input, Select, Button, Textarea } from "../../../ui-kit/index.ts";
+import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
 import { useClients, useCreateClient, useCreateProject, useCreateProjectSeries } from "../hooks.ts";
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
 import { useSession } from "../../../app/session.ts";
 import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
 import { isoFromLocal } from "../../../lib/datetime.ts";
+import { ProjectNoteField } from "./ProjectNoteField.tsx";
 
 export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { can } = useSession();
@@ -127,30 +128,28 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
         </div>
       )}
 
-      <div className="row" style={{ alignItems: "flex-end", marginBottom: "var(--space-4)" }}>
-        <div style={{ flex: 1 }}>
-          <Field label="…или новый клиент">
-            <Input value={newClient} onChange={(e) => setNewClient(e.target.value)} placeholder="Имя клиента" />
-          </Field>
+      <div className="project-new-client">
+        <div className="project-form-divider"><span>или новый клиент</span></div>
+        <div className="project-new-client__controls">
+          <Input aria-label="Имя нового клиента" value={newClient} onChange={(e) => setNewClient(e.target.value)} placeholder="Имя клиента" />
+          <Button
+            variant="secondary"
+            disabled={!newClient || createClient.isPending}
+            onClick={() =>
+              createClient.mutate(
+                { name: newClient },
+                {
+                  onSuccess: (c) => {
+                    setClientId(c.id);
+                    setNewClient("");
+                  },
+                }
+              )
+            }
+          >
+            Добавить
+          </Button>
         </div>
-        <Button
-          variant="secondary"
-          disabled={!newClient || createClient.isPending}
-          onClick={() =>
-            createClient.mutate(
-              { name: newClient },
-              {
-                onSuccess: (c) => {
-                  setClientId(c.id);
-                  setNewClient("");
-                },
-              }
-            )
-          }
-          style={{ marginBottom: "var(--space-4)" }}
-        >
-          Добавить
-        </Button>
       </div>
 
       <div className="row">
@@ -165,7 +164,7 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
       {(starts || ends) && !validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Укажите обе даты; конец должен быть позже начала</p>}
       {!starts && !ends && <p className="card__subtitle">Дата необязательна — её можно добавить позже.</p>}
       <label className="row" style={{ justifyContent: "flex-start", gap: 8 }}>
-        <input type="checkbox" checked={recurring} disabled={!validRange} onChange={(event) => setRecurring(event.target.checked)} />
+        <input className="toggle-switch" type="checkbox" checked={recurring} disabled={!validRange} onChange={(event) => setRecurring(event.target.checked)} />
         <span>Регулярный проект</span>
       </label>
       {recurring && <div className="stack" style={{ gap: 8 }}>
@@ -188,9 +187,7 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
         {endMode === "until" && <Field label="Последняя дата"><Input type="date" value={until} onChange={(event) => setUntil(event.target.value)} /></Field>}
         <p className="card__subtitle">Каждая дата создаётся отдельным проектом со своей сметой и транзакциями. Ближайшие 12 недель будут созданы сразу.</p>
       </div>}
-      {canViewNote && <Field label="Общая заметка по проекту">
-        <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Важная информация для команды и планирования" />
-      </Field>}
+      {canViewNote && <ProjectNoteField value={note} onChange={setNote} />}
       <Button block disabled={!name || !clientId || ((!!starts || !!ends) && !validRange) || (recurring && (Number(interval) < 1 || (endMode === "count" && Number(occurrenceCount) < 1) || (endMode === "until" && !until))) || createProject.isPending || createSeries.isPending} onClick={submit}>
         Создать проект
       </Button>

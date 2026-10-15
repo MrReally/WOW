@@ -90,6 +90,47 @@ export function useUpdateStorageZone() {
   return useMutation({ mutationFn:({id,input}:{id:string;input:Partial<Pick<Equipment.StorageZoneDTO,"parentId"|"name"|"code"|"kind"|"active"|"sortOrder">>})=>api.patch<Equipment.StorageZoneDTO>(`/api/equipment/storage-zones/${id}`,input), onSuccess:()=>invalidateEquipment(qc), meta:{successMessage:"Зона хранения обновлена"} });
 }
 
+export type StorageZoneDraftInput = Pick<Equipment.StorageZoneDTO, "id" | "parentId" | "name" | "code" | "kind"> & { isNew?: boolean };
+
+export function useSaveStorageZones() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ warehouseId, zones }: { warehouseId: string; zones: StorageZoneDraftInput[] }) => {
+      const originalZones = (qc.getQueryData<Equipment.StorageZoneDTO[]>(["equipment", "storage-zones", "all"]) ?? [])
+        .filter((zone) => zone.warehouseId === warehouseId && zone.active);
+      const retainedIds = new Set(zones.filter((zone) => !zone.isNew).map((zone) => zone.id));
+      await Promise.all(originalZones.filter((zone) => !retainedIds.has(zone.id)).map((zone) =>
+        api.patch<Equipment.StorageZoneDTO>(`/api/equipment/storage-zones/${zone.id}`, { active: false })
+      ));
+      await Promise.all(zones.filter((zone) => !zone.isNew).map((zone) =>
+        api.patch<Equipment.StorageZoneDTO>(`/api/equipment/storage-zones/${zone.id}`, {
+          parentId: zone.parentId,
+          name: zone.name.trim(),
+          code: zone.code.trim().toUpperCase(),
+          kind: zone.kind,
+        })
+      ));
+      const idMap = new Map<string, string>();
+      const pending = zones.filter((zone) => zone.isNew);
+      while (pending.length > 0) {
+        const index = pending.findIndex((zone) => !zone.parentId || !zone.parentId.startsWith("new-") || idMap.has(zone.parentId));
+        if (index < 0) throw new Error("Не удалось сохранить иерархию зон");
+        const zone = pending.splice(index, 1)[0]!;
+        const created = await api.post<Equipment.StorageZoneDTO>("/api/equipment/storage-zones", {
+          warehouseId,
+          parentId: zone.parentId?.startsWith("new-") ? idMap.get(zone.parentId) ?? null : zone.parentId,
+          name: zone.name.trim(),
+          code: zone.code.trim().toUpperCase(),
+          kind: zone.kind,
+        });
+        idMap.set(zone.id, created.id);
+      }
+    },
+    onSuccess: () => invalidateEquipment(qc),
+    meta: { successMessage: "Зоны хранения сохранены" },
+  });
+}
+
 export function useUnits(filter?: { modelId?: string; status?: Equipment.UnitStatus; projectId?: string; warehouseId?: string; includeArchived?: boolean }) {
   const qs = new URLSearchParams();
   if (filter?.modelId) qs.set("modelId", filter.modelId);
