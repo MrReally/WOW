@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Equipment, Finance, Projects } from "@sever/contracts";
 import { Button, Card, Chip, Field, Input, Select, Sheet, Textarea } from "../../../ui-kit/index.ts";
@@ -13,6 +13,7 @@ import {
   useCreateProject,
   useCreateProjectRole,
   useCreateReservation,
+  useEquipmentModelAvailability,
   useEquipmentModels,
 } from "../hooks.ts";
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
@@ -34,7 +35,6 @@ interface Props {
 interface ReservationDraft {
   modelId: string;
   qty: string;
-  isReserve: boolean;
 }
 
 interface CrewDraft {
@@ -103,7 +103,8 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const [dressCodeUniform, setDressCodeUniform] = useState(false);
   const [starts, setStarts] = useState("");
   const [ends, setEnds] = useState("");
-  const [reservationDrafts, setReservationDrafts] = useState<ReservationDraft[]>([{ modelId: "", qty: "1", isReserve: false }]);
+  const [reservationDrafts, setReservationDrafts] = useState<ReservationDraft[]>([]);
+  const [reservationsAreReserve, setReservationsAreReserve] = useState(false);
   const [crewDrafts, setCrewDrafts] = useState<CrewDraft[]>([{ title: "", comment: "", count: "1", rate: "", startsAt: null, endsAt: null }]);
   const [contractorDrafts, setContractorDrafts] = useState<ContractorDraft[]>([{ contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }]);
   const [newContractorName, setNewContractorName] = useState("");
@@ -116,6 +117,9 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
 
   const step = steps[stepIndex]!;
   const validRange = !!starts && ends > starts;
+  const availabilityStartsAt = validRange ? isoFromLocal(starts) : "";
+  const availabilityEndsAt = validRange ? isoFromLocal(ends) : "";
+  const modelAvailability = useEquipmentModelAvailability(models.data ?? [], availabilityStartsAt, availabilityEndsAt);
   const selectedClientName = clients.data?.find((c) => c.id === clientId)?.name ?? clientName;
   const totals = useMemo(() => {
     const extrasClient = financeDrafts.reduce((sum, line) => sum + (Number(line.client) || 0), 0);
@@ -142,7 +146,8 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       setDressCodeUniform(false);
       setStarts("");
       setEnds("");
-      setReservationDrafts([{ modelId: "", qty: "1", isReserve: false }]);
+      setReservationDrafts([]);
+      setReservationsAreReserve(false);
       setCrewDrafts([{ title: "", comment: "", count: "1", rate: "", startsAt: null, endsAt: null }]);
       setContractorDrafts([{ contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }]);
       setNewContractorName("");
@@ -195,7 +200,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       }
       for (const draft of reservationDrafts) {
         if (!draft.modelId || Number(draft.qty) <= 0) continue;
-        await createReservation.mutateAsync({ projectId: created.id, modelId: draft.modelId, qty: Number(draft.qty), isReserve: draft.isReserve });
+        await createReservation.mutateAsync({ projectId: created.id, modelId: draft.modelId, qty: Number(draft.qty), isReserve: reservationsAreReserve });
       }
       for (const draft of crewDrafts) {
         if (!draft.title.trim()) continue;
@@ -289,19 +294,50 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       )}
 
       {step.id === "reservations" && (
-        <WizardScreen title="Брони оборудования">
-          {!validRange && <p className="card__subtitle">Дата проекта не указана — бронь сохранится, но наличие нужно будет подтвердить отдельно.</p>}
-          {reservationDrafts.map((draft, idx) => (
-            <DraftCard key={idx}>
-              <Select value={draft.modelId} onChange={(e) => patchReservation(idx, { modelId: e.target.value })} options={[{ value: "", label: "Модель" }, ...(models.data ?? []).map((m) => ({ value: m.id, label: modelLabel(m) }))]} />
-              <Input type="number" value={draft.qty} onChange={(e) => patchReservation(idx, { qty: e.target.value })} placeholder="Кол-во" />
-              <label className="row" style={{ gap: 8 }}>
-                <input className="toggle-switch" type="checkbox" checked={draft.isReserve} onChange={(e) => patchReservation(idx, { isReserve: e.target.checked })} />
-                <span>В резерв · не добавлять в счёт</span>
-              </label>
-            </DraftCard>
-          ))}
-          <Button variant="secondary" onClick={() => setReservationDrafts((x) => [...x, { modelId: "", qty: "1", isReserve: false }])}>+</Button>
+        <WizardScreen title="Брони">
+          <div className="reservation-picker" aria-label="Выбор оборудования">
+            {(models.data ?? []).map((model, index) => {
+              const draft = reservationDrafts.find((item) => item.modelId === model.id);
+              const quantity = Number(draft?.qty) || 0;
+              const availability = modelAvailability.data?.[model.id];
+              const maximum = Math.max(availability?.total ?? 0, quantity);
+              const availabilityLabel = modelAvailability.isLoading
+                ? "считаем наличие…"
+                : availability
+                  ? `свободно ${availability.free} из ${availability.total}`
+                  : "наличие не определено";
+              return (
+                <div
+                  className={`reservation-picker__row${quantity > 0 ? " is-selected" : ""}`}
+                  key={model.id}
+                  style={{ "--reservation-row-index": index } as CSSProperties}
+                >
+                  <div className="reservation-picker__model">
+                    <strong>{model.name}</strong>
+                    <span>{availabilityLabel}</span>
+                  </div>
+                  <QuantityStepper
+                    label={model.name}
+                    value={quantity}
+                    max={availability ? maximum : 999}
+                    onChange={(nextQuantity) => setReservationQuantity(model.id, nextQuantity)}
+                  />
+                </div>
+              );
+            })}
+            {!models.isLoading && !(models.data ?? []).length && (
+              <p className="reservation-picker__empty">В каталоге пока нет моделей оборудования</p>
+            )}
+          </div>
+          <label className="reservation-picker__reserve">
+            <strong>В резерв · не добавлять в счёт</strong>
+            <input
+              className="toggle-switch"
+              type="checkbox"
+              checked={reservationsAreReserve}
+              onChange={(event) => setReservationsAreReserve(event.target.checked)}
+            />
+          </label>
         </WizardScreen>
       )}
 
@@ -395,8 +431,13 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
     </Sheet>
   );
 
-  function patchReservation(index: number, patch: Partial<ReservationDraft>) {
-    setReservationDrafts((list) => list.map((item, i) => i === index ? { ...item, ...patch } : item));
+  function setReservationQuantity(modelId: string, quantity: number) {
+    setReservationDrafts((list) => {
+      if (quantity <= 0) return list.filter((item) => item.modelId !== modelId);
+      const existing = list.some((item) => item.modelId === modelId);
+      if (!existing) return [...list, { modelId, qty: String(quantity) }];
+      return list.map((item) => item.modelId === modelId ? { ...item, qty: String(quantity) } : item);
+    });
   }
   function patchCrew(index: number, patch: Partial<CrewDraft>) {
     setCrewDrafts((list) => list.map((item, i) => i === index ? { ...item, ...patch } : item));
@@ -420,6 +461,16 @@ function WizardScreen({ title, children }: { title: string; children: ReactNode 
 
 function DraftCard({ children }: { children: ReactNode }) {
   return <Card><div className="stack" style={{ gap: 8 }}>{children}</div></Card>;
+}
+
+function QuantityStepper({ label, value, max, onChange }: { label: string; value: number; max: number; onChange: (value: number) => void }) {
+  return (
+    <div className="quantity-stepper" aria-label={`Количество: ${label}`}>
+      <button type="button" aria-label={`Уменьшить количество: ${label}`} disabled={value <= 0} onClick={() => onChange(Math.max(0, value - 1))}>−</button>
+      <output key={value} aria-live="polite">{value}</output>
+      <button type="button" aria-label={`Увеличить количество: ${label}`} disabled={value >= max} onClick={() => onChange(Math.min(max, value + 1))}>+</button>
+    </div>
+  );
 }
 
 function modelLabel(model: Equipment.EquipmentModelDTO) {

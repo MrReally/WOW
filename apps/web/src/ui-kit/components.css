@@ -505,17 +505,85 @@ h1,
   min-height: 48px;
   transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.05s ease;
 }
+.select-shell { position: relative; display: block; width: 100%; min-width: 0; }
+.select-native { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; opacity: 0; pointer-events: none; }
 .select {
   appearance: none;
-  padding-right: 38px;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--text2) 50%),
-    linear-gradient(135deg, var(--text2) 50%, transparent 50%);
-  background-position:
-    calc(100% - 20px) calc(50% - 2px),
-    calc(100% - 14px) calc(50% - 2px);
-  background-size: 6px 6px, 6px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.select__value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select__chevron { width: 9px; height: 9px; flex: 0 0 9px; border-right: 1.5px solid var(--label-secondary); border-bottom: 1.5px solid var(--label-secondary); transform: translateY(-2px) rotate(45deg); transition: transform var(--dur-fast) ease; }
+.select-shell--open .select__chevron { transform: translateY(2px) rotate(225deg); }
+.select-shell--disabled { opacity: .48; }
+.select-shell--disabled .select { cursor: default; }
+.select-popover {
+  position: fixed;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 6px;
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  background: var(--sheet-bg);
+  color: var(--label-primary);
+  box-shadow: 0 24px 56px -24px rgba(0, 0, 0, .72), var(--glass-highlight);
+  backdrop-filter: var(--blur-sheet);
+  -webkit-backdrop-filter: var(--blur-sheet);
+  transform-origin: top center;
+  animation: select-popover-in var(--dur-fast) var(--ease-ios) both;
+}
+.select-popover__search-wrap { flex: 0 0 auto; padding: 4px 4px 6px; }
+.select-popover__search {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px 0 34px;
+  border: 0;
+  border-radius: 12px;
+  outline: 0;
+  background: var(--fill-gray-strong);
+  color: var(--label-primary);
+  font: 500 14px/1 var(--font-brand);
+  background-image: radial-gradient(circle, transparent 5px, var(--label-tertiary) 5.5px, var(--label-tertiary) 6.5px, transparent 7px), linear-gradient(45deg, transparent 46%, var(--label-tertiary) 47%, var(--label-tertiary) 55%, transparent 56%);
+  background-size: 15px 15px, 7px 7px;
+  background-position: 11px 10px, 23px 24px;
   background-repeat: no-repeat;
+}
+.select-popover__search::placeholder { color: var(--label-placeholder); }
+.select-options { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--label-quaternary) transparent; }
+.select-option {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--label-primary);
+  font: 500 14px/1.35 var(--font-brand);
+  text-align: left;
+  cursor: pointer;
+}
+.select-option:hover { background: var(--fill-gray); }
+.select-option:focus-visible { outline: 0; box-shadow: inset 0 0 0 1.5px var(--blue); }
+.select-option--selected { background: var(--tint-blue); color: var(--blue-text); font-weight: 700; }
+.select-option__check { color: var(--blue); font-size: 16px; }
+.select-options__empty { margin: 0; padding: 18px 12px; color: var(--label-tertiary); font-size: 13px; text-align: center; }
+@keyframes select-popover-in { from { opacity: 0; transform: translateY(-5px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+select { color-scheme: inherit; }
+select option,
+select optgroup {
+  background-color: var(--bg-screen);
+  color: var(--label-primary);
 }
 .input[type="number"] {
   appearance: textfield;
@@ -1389,6 +1457,137 @@ h1,
 .toggle-switch:checked::after { transform: translateX(20px); }
 .toggle-switch:focus-visible { outline: 3px solid var(--tint-blue); outline-offset: 2px; }
 .toggle-switch:disabled { cursor: default; opacity: .45; }
+
+/* Project wizard · equipment reservations. Mirrors the compact model list in
+   the mobile design instead of rendering one form card per reservation. */
+.reservation-picker {
+  overflow: hidden;
+  max-height: min(44dvh, 430px);
+  overflow-y: auto;
+  padding: 2px 14px;
+  border: 1px solid var(--bdr);
+  border-radius: 18px;
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(24px) saturate(125%);
+  -webkit-backdrop-filter: blur(24px) saturate(125%);
+  scrollbar-width: none;
+}
+.reservation-picker::-webkit-scrollbar { display: none; }
+.reservation-picker__row {
+  --reservation-row-index: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--separator);
+  animation: reservationRowIn 280ms var(--ease-ios) both;
+  animation-delay: min(calc(var(--reservation-row-index) * 24ms), 240ms);
+  transition: background var(--dur-base), margin var(--dur-base), padding var(--dur-base);
+}
+.reservation-picker__row:last-child { border-bottom: 0; }
+.reservation-picker__row.is-selected {
+  margin-inline: -8px;
+  padding-inline: 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.reservation-picker__model { flex: 1; min-width: 0; }
+.reservation-picker__model strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reservation-picker__model span {
+  display: block;
+  margin-top: 2px;
+  color: var(--label-secondary);
+  font-size: 13px;
+  line-height: 1.25;
+}
+.reservation-picker__empty {
+  margin: 0;
+  padding: 18px 2px;
+  color: var(--label-secondary);
+  font-size: 14px;
+  text-align: center;
+}
+.quantity-stepper {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+.quantity-stepper button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: var(--label-primary);
+  background: var(--fill-gray);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 140ms var(--ease-ios), color var(--dur-fast), background var(--dur-fast), opacity var(--dur-fast);
+}
+.quantity-stepper button:active:not(:disabled) { transform: scale(.82); }
+.quantity-stepper button:focus-visible { outline: 3px solid var(--tint-blue); outline-offset: 2px; }
+.quantity-stepper button:disabled { opacity: .34; cursor: default; }
+.quantity-stepper output {
+  min-width: 26px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  animation: quantityPop 180ms var(--ease-ios);
+}
+.reservation-picker__reserve {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 58px;
+  padding: 10px 14px;
+  border: 1px solid var(--bdr);
+  border-radius: 18px;
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  backdrop-filter: blur(24px) saturate(125%);
+  -webkit-backdrop-filter: blur(24px) saturate(125%);
+}
+.reservation-picker__reserve strong {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+@keyframes reservationRowIn {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes quantityPop {
+  0% { opacity: .45; transform: scale(.72); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reservation-picker__row,
+  .quantity-stepper output { animation: none; }
+}
 input[type="checkbox"]:not(.toggle-switch) {
   appearance: none; -webkit-appearance: none; position: relative; width: 22px; height: 22px; flex: 0 0 22px;
   margin: 0; border: 1.5px solid var(--label-tertiary); border-radius: 7px; background: var(--fill-gray); cursor: pointer;
