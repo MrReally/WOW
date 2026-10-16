@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Equipment } from "@sever/contracts";
 import {
@@ -30,6 +30,7 @@ import {
   type StorageZoneDraftInput,
   useCreateWarehouse,
   useUpdateWarehouse,
+  useCreateType,
   useUpdateType,
   useCableSettings,
   useCableConnectors,
@@ -179,38 +180,50 @@ function PrepHero({ units, onOps }: { units: Equipment.EquipmentUnitDTO[]; onOps
   );
 }
 
-function ModelRow({ model, units, last, onEdit }: { model: Equipment.EquipmentModelDTO; units: Equipment.EquipmentUnitDTO[]; last?: boolean; onEdit?: () => void }) {
-  const mine = units.filter((u) => u.modelId === model.id);
-  const inStock = mine.filter((u) => u.status === "in_stock").length;
-  const onProject = mine.filter((u) => u.status === "on_project").length;
+function ModelRow({ model, last, onEdit }: { model: Equipment.EquipmentModelDTO; last?: boolean; onEdit?: () => void }) {
+  const symbol = (model.attrs as Equipment.ModelAttrs | null)?.stageSymbol;
+  const symbolClass = symbol?.shape ? ` warehouse-model-symbol--${symbol.shape}` : "";
   return (
-    <div className={`lrow ${onEdit ? "card--tappable" : ""}`} style={{ borderBottom: last ? "none" : undefined }} onClick={onEdit}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {model.imageUrl&&<img className="equipment-model-thumb" src={model.imageUrl} alt=""/>}<div className="lrow__title">{model.name}</div>
-        <div className="lrow__detail">{model.manufacturer ?? "—"} · {eur(model.dailyPriceEUR)}/день</div>
-      </div>
-      <span className="t-mono" style={{ fontSize: 12, color: "var(--text2)" }}>×{mine.length}</span>
-      {onProject > 0 ? <Chip label={`${onProject} в работе`} tone="warn" /> : <Chip label={`${inStock} своб.`} tone="ok" />}
-    </div>
+    <button type="button" className="warehouse-model-row" data-last={last || undefined} onClick={onEdit} disabled={!onEdit}>
+      <span className={`warehouse-model-symbol${symbolClass}`} style={symbol?.color ? { "--model-symbol-color": symbol.color } as CSSProperties : undefined}>
+        {model.imageUrl ? <img src={model.imageUrl} alt="" /> : <span>{symbol?.code || model.name.slice(0, 2).toUpperCase()}</span>}
+      </span>
+      <span className="warehouse-model-row__copy">
+        <strong>{model.name}</strong>
+        <small>{model.manufacturer || "—"} · {eur(model.dailyPriceEUR)}/сутки</small>
+      </span>
+      <span className="warehouse-model-row__chevron" aria-hidden="true" />
+    </button>
   );
 }
 
-function TypeSettingsSheet({ type, onClose }: { type: Equipment.EquipmentTypeDTO | null; onClose: () => void }) {
+function TypeSettingsSheet({ open, type, onClose }: { open: boolean; type: Equipment.EquipmentTypeDTO | null; onClose: () => void }) {
+  const createType = useCreateType();
   const updateType = useUpdateType();
   const [name, setName] = useState("");
+  const [trackingMode, setTrackingMode] = useState<Equipment.TrackingMode>("serial");
   const [mode, setMode] = useState<Equipment.ReservationAssignmentMode | "">("");
   useEffect(() => {
     setName(type?.name ?? "");
+    setTrackingMode(type?.trackingMode ?? "serial");
     setMode(type?.reservationAssignmentMode ?? "");
-  }, [type]);
-  if (!type) return null;
-  return <Sheet open={!!type} onClose={onClose} title="Настройки типа">
+  }, [open, type]);
+  const save = () => {
+    if (type) {
+      updateType.mutate({ id: type.id, input: { name: name.trim(), reservationAssignmentMode: mode || null } }, { onSuccess: onClose });
+      return;
+    }
+    createType.mutate({ name: name.trim(), trackingMode, reservationAssignmentMode: mode || null }, { onSuccess: onClose });
+  };
+  const isPending = createType.isPending || updateType.isPending;
+  return <Sheet open={open} onClose={onClose} title={type ? "Настройки типа" : "Создать тип"}>
     <Field label="Название"><Input value={name} onChange={event => setName(event.target.value)} /></Field>
+    {!type && <Field label="Учёт"><Select value={trackingMode} onChange={event => setTrackingMode(event.target.value as Equipment.TrackingMode)} options={[{ value: "serial", label: "По серийным единицам" }, { value: "quantity", label: "Количество" }]} /></Field>}
     <Field label="Распределение в аренду">
       <Select value={mode} onChange={event => setMode(event.target.value as Equipment.ReservationAssignmentMode | "")} options={[{ value: "", label: "Выбирать в каждой модели" }, { value: "planning", label: "Распределять заранее в Planning" }, { value: "operations", label: "Отмечать по факту в Operations" }]} />
       {mode && <p className="card__subtitle">Настройка будет унаследована всеми моделями этого типа.</p>}
     </Field>
-    <Button block disabled={!name.trim() || updateType.isPending} onClick={() => updateType.mutate({ id: type.id, input: { name: name.trim(), reservationAssignmentMode: mode || null } }, { onSuccess: onClose })}>Сохранить</Button>
+    <Button block disabled={!name.trim() || isPending} onClick={save}>{type ? "Сохранить" : "Создать тип"}</Button>
   </Sheet>;
 }
 
@@ -286,6 +299,7 @@ export function WarehousePage() {
   const [newConnectorName, setNewConnectorName] = useState("");
   const [editModel, setEditModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [editType, setEditType] = useState<Equipment.EquipmentTypeDTO | null>(null);
+  const [typeSheetOpen, setTypeSheetOpen] = useState(false);
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [warehouseForm, setWarehouseForm] = useState<{ mode: "create" | "edit"; id?: string } | null>(null);
   const [warehouseNameDraft, setWarehouseNameDraft] = useState("");
@@ -510,51 +524,42 @@ export function WarehousePage() {
     </>
   );
   const modelSection = (
-    <>
-      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Начните вводить модель" />
+    <div className="warehouse-models-section">
+      <span className="warehouse-search-field warehouse-stock-search">
+        <span className="warehouse-search-field__icon" aria-hidden="true" />
+        <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Начните вводить модель" />
+      </span>
       {canEdit && (
-        <div className="row" style={{ marginBottom: 10 }}>
-          {canCatalog && <Button block variant="secondary" onClick={() => setAddOpen(true)}>+ Модель / единица</Button>}
-          {canImport && <Button block variant="secondary" onClick={() => setImportOpen(true)}>Импорт CSV</Button>}
+        <div className="warehouse-model-actions">
+          {canCatalog && <Button block onClick={() => setAddOpen(true)}>+ Модель</Button>}
+          {canCatalog && <Button block variant="secondary" onClick={() => { setEditType(null); setTypeSheetOpen(true); }}>+ Тип</Button>}
+          {canImport && <Button block variant="ghost" onClick={() => setImportOpen(true)}>Импорт CSV</Button>}
         </div>
       )}
       {canCatalog && (types.data ?? []).length > 0 && <>
         <SectionHead label="Типы" meta={`${types.data?.length ?? 0}`} />
-        <div className="row" style={{ flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-          {(types.data ?? []).map(type => <Button key={type.id} variant="ghost" onClick={() => setEditType(type)}>{type.name} · {type.reservationAssignmentMode === "operations" ? "Operations" : type.reservationAssignmentMode === "planning" ? "Planning" : "по модели"}</Button>)}
+        <div className="card warehouse-type-list">
+          {(types.data ?? []).map((type, index) => {
+            const typeModels = allModels.filter(model => model.typeId === type.id).length;
+            const accounting = type.trackingMode === "serial" ? "По серийным единицам" : type.trackingMode === "cable" ? "Кабель" : "Количество";
+            const allocation = type.reservationAssignmentMode === "operations" ? "по факту в Operations" : type.reservationAssignmentMode === "planning" ? "распределять заранее" : "выбирать в каждой модели";
+            return <button key={type.id} type="button" className="warehouse-type-row" data-last={index === (types.data?.length ?? 0) - 1 || undefined} onClick={() => { setEditType(type); setTypeSheetOpen(true); }}>
+              <span><strong>{type.name}</strong><small>{accounting} · {allocation}</small></span>
+              <span className="warehouse-type-row__count">{typeModels}</span>
+              <span className="warehouse-model-row__chevron" aria-hidden="true" />
+            </button>;
+          })}
         </div>
       </>}
-      {allModels.length === 0 ? (
-        <EmptyState title="Каталог пуст" hint={canEdit ? "Добавьте модели или импортируйте CSV" : undefined} />
+      <SectionHead label="Модели" meta={`${visibleModels.filter(model => model.trackingMode !== "cable").length}`} />
+      {serialModels.length + quantityModels.length === 0 ? (
+        <EmptyState title={query ? "Модели не найдены" : "Каталог пуст"} hint={!query && canEdit ? "Добавьте модели или импортируйте CSV" : undefined} />
       ) : (
-        <>
-          {serialModels.length > 0 && (
-            <div className="card" style={{ padding: "2px 16px" }}>
-              {serialModels.map((m, i) => (
-                <ModelRow key={m.id} model={m} units={allUnits} last={i === serialModels.length - 1} onEdit={canCatalog ? () => setEditModel(m) : undefined} />
-              ))}
-            </div>
-          )}
-          {quantityModels.length > 0 && (
-            <>
-              <SectionHead label="Количество" meta={`${quantityModels.length}`} />
-              <div className="card" style={{ padding: "2px 16px" }}>
-                {quantityModels.map((m, i) => (
-                  <CableRow
-                    key={m.id}
-                    model={m}
-                    warehouseId={warehouseFilter === "all" ? null : warehouseFilter}
-                    onMove={() => setCableModel(m)}
-                    onEdit={canCatalog ? () => setEditModel(m) : undefined}
-                    last={i === quantityModels.length - 1}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </>
+        <div className="card warehouse-model-list">
+          {[...serialModels, ...quantityModels].map((model, index, list) => <ModelRow key={model.id} model={model} last={index === list.length - 1} onEdit={canCatalog ? () => setEditModel(model) : undefined} />)}
+        </div>
       )}
-    </>
+    </div>
   );
   const cableSection = (
     <>
@@ -748,7 +753,7 @@ export function WarehousePage() {
         <OpsSheet open={opsOpen} onClose={() => setOpsOpen(false)} models={allModels} />
       )}
       {canCatalog && <EditModelSheet model={editModel} types={types.data??[]} categories={categories.data??[]} onClose={() => setEditModel(null)} />}
-      {canCatalog && <TypeSettingsSheet type={editType} onClose={() => setEditType(null)} />}
+      {canCatalog && <TypeSettingsSheet open={typeSheetOpen} type={editType} onClose={() => { setTypeSheetOpen(false); setEditType(null); }} />}
       {canCatalog && (
         <Sheet
           open={!!warehouseForm}
