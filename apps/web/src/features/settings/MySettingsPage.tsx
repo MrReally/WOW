@@ -1,43 +1,12 @@
 import type { Notifications } from "@sever/contracts";
 import { ADVANCED_NOTIFICATION_EVENTS, NOTIFICATION_KINDS } from "@sever/contracts";
-import { useEffect, useState } from "react";
-import { Card, Button, SectionTitle, Loading, Field, Input } from "../../ui-kit/index.ts";
+import { Card, Button, SectionTitle, Loading } from "../../ui-kit/index.ts";
 import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
 import { LOCALE_OPTIONS, useI18n } from "../../app/i18n.tsx";
 import { useAdvancedNotifPrefs, useNotifPrefs, useSetAdvancedNotifPrefs, useSetNotifPrefs } from "../notifications/hooks.ts";
 import { useCalendarFeed, useSetMyPreferences } from "./hooks.ts";
 import { personName } from "../../lib/people.ts";
-import { useInvoiceCompanySettings, useSetInvoiceCompanySettings } from "../finance/hooks.ts";
-
-interface InvoiceCompanySettings {
-  name: string;
-  requisites: string;
-  phone: string;
-  email: string;
-  telegram: string;
-  logoDataUrl: string | null;
-}
-
-function loadInvoiceCompany(): InvoiceCompanySettings {
-  try {
-    const raw = localStorage.getItem("sever.invoice.company");
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<InvoiceCompanySettings>;
-      return {
-        name: parsed.name ?? "SEVER",
-        requisites: parsed.requisites ?? "",
-        phone: parsed.phone ?? "+381 62 852 5240",
-        email: parsed.email ?? "sever.beo.contact@gmail.com",
-        telegram: parsed.telegram ?? "@sever_contact",
-        logoDataUrl: parsed.logoDataUrl ?? null,
-      };
-    }
-  } catch {
-    /* ignore */
-  }
-  return { name: "SEVER", requisites: "", phone: "+381 62 852 5240", email: "sever.beo.contact@gmail.com", telegram: "@sever_contact", logoDataUrl: null };
-}
 
 // Personal mini-settings — available to every signed-in user (not the admin
 // SettingsPage). Theme + which notifications they want.
@@ -52,38 +21,7 @@ export function MySettingsPage() {
   const setAdvancedPrefs = useSetAdvancedNotifPrefs();
   const calendar = useCalendarFeed();
   const setMyPreferences = useSetMyPreferences();
-  const serverInvoiceCompany = useInvoiceCompanySettings();
-  const setServerInvoiceCompany = useSetInvoiceCompanySettings();
   const current = prefs.data;
-  const [invoiceCompany, setInvoiceCompany] = useState<InvoiceCompanySettings>(loadInvoiceCompany);
-  const [invoiceCompanyTouched, setInvoiceCompanyTouched] = useState(false);
-
-  useEffect(() => {
-    localStorage.setItem("sever.invoice.company", JSON.stringify(invoiceCompany));
-  }, [invoiceCompany]);
-
-  useEffect(() => {
-    if (!serverInvoiceCompany.data || invoiceCompanyTouched) return;
-    setInvoiceCompany(serverInvoiceCompany.data);
-  }, [serverInvoiceCompany.data, invoiceCompanyTouched]);
-
-  const saveInvoiceCompany = (patch: Partial<InvoiceCompanySettings>) => {
-    const next = { ...invoiceCompany, ...patch };
-    setInvoiceCompanyTouched(true);
-    setInvoiceCompany(next);
-    setServerInvoiceCompany.mutate(next);
-  };
-
-  const uploadInvoiceLogo = (file: File | undefined) => {
-    if (!file) return;
-    if (!/^image\/(png|jpeg)$/.test(file.type) || file.size > 2_000_000) {
-      window.alert("Нужен PNG или JPEG размером не более 2 МБ");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => saveInvoiceCompany({ logoDataUrl: String(reader.result) });
-    reader.readAsDataURL(file);
-  };
 
   const togglePref = (kind: Notifications.NotificationKind) => {
     if (!current) return;
@@ -172,36 +110,6 @@ export function MySettingsPage() {
                 onChange={(e) => setMyPreferences.mutate({ operationsShowAllProjects: e.target.checked })}
               />
             </label>
-          </Card>
-        </>
-      )}
-
-      {can("finance.view", "finance.manage") && (
-        <>
-          <SectionTitle>Смета</SectionTitle>
-          <Card>
-            <Field label="Исполнитель">
-              <Input value={invoiceCompany.name} onChange={(e) => saveInvoiceCompany({ name: e.target.value })} />
-            </Field>
-            <div className="row">
-              <Field label="Phone">
-                <Input value={invoiceCompany.phone} onChange={(e) => saveInvoiceCompany({ phone: e.target.value })} />
-              </Field>
-              <Field label="Email">
-                <Input value={invoiceCompany.email} onChange={(e) => saveInvoiceCompany({ email: e.target.value })} />
-              </Field>
-            </div>
-            <Field label="Telegram">
-              <Input value={invoiceCompany.telegram} onChange={(e) => saveInvoiceCompany({ telegram: e.target.value })} />
-            </Field>
-            <Field label="Логотип для коммерческого предложения">
-              <input type="file" accept="image/png,image/jpeg" onChange={(e) => uploadInvoiceLogo(e.target.files?.[0])} />
-            </Field>
-            <p className="card__subtitle">PNG или JPEG, квадратный, рекомендуемый размер 1200 × 1200 px, максимум 2 МБ. В документе логотип выводится в области 170 × 170 px без обрезки.</p>
-            <div className="row" style={{ marginTop: 10 }}>
-              <img src={invoiceCompany.logoDataUrl ?? "/sever-logo.png"} alt="Логотип для КП" width={96} height={96} style={{ objectFit: "contain", background: "#fff", border: "1px solid var(--bdr)" }} />
-              {invoiceCompany.logoDataUrl && <Button variant="secondary" onClick={() => saveInvoiceCompany({ logoDataUrl: null })}>Вернуть текущий логотип</Button>}
-            </div>
           </Card>
         </>
       )}

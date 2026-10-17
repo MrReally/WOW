@@ -11,8 +11,9 @@ import { nameFormatForInput, nameFormatFromInput } from "../warehouse/cables.ts"
 import { BackupManager } from "./components/BackupManager.tsx";
 import { FleetManager } from "./components/FleetManager.tsx";
 import { FullExport } from "./components/FullExport.tsx";
+import { InvoiceCompanySettings } from "./components/InvoiceCompanySettings.tsx";
 
-type SettingsTab = "fleet" | "roles" | "rates" | "telegram" | "cables" | "data" | "general";
+type SettingsTab = "fleet" | "roles" | "estimate" | "rates" | "telegram" | "cables" | "data" | "general";
 
 export function SettingsPage() {
   const { theme, toggle } = useTheme();
@@ -50,7 +51,16 @@ export function SettingsPage() {
 
   return (
     <div className="stack settings-page">
-      <div className="design-tabs settings-tabs" role="tablist">{([{id:"fleet",label:"Автопарк"},{id:"roles",label:"Права"},{id:"rates",label:"Курсы"},{id:"telegram",label:"Telegram"},{id:"cables",label:"Кабели"},{id:"data",label:"Данные"},{id:"general",label:"Прочее"}] as const).map(item=><button key={item.id} className={tab===item.id?"is-active":""} onClick={()=>setTab(item.id)}>{item.label}</button>)}</div>
+      <div className="design-tabs settings-tabs" role="tablist">{([
+        { id: "fleet", label: "Автопарк" },
+        { id: "roles", label: "Права" },
+        ...(can("finance.manage") ? [{ id: "estimate" as const, label: "Смета" }] : []),
+        { id: "rates", label: "Курсы" },
+        { id: "telegram", label: "Telegram" },
+        { id: "cables", label: "Кабели" },
+        { id: "data", label: "Данные" },
+        { id: "general", label: "Прочее" },
+      ] as const).map(item => <button key={item.id} className={tab === item.id ? "is-active" : ""} onClick={() => setTab(item.id)}>{item.label}</button>)}</div>
       {tab === "general" && <>
       <SectionTitle>Оформление</SectionTitle>
       <Card>
@@ -96,6 +106,8 @@ export function SettingsPage() {
       </>}
 
       {tab === "roles" && (can("roles.manage") ? <RoleEditor /> : <EmptySettings title="У вас нет доступа к ролям" />)}
+
+      {tab === "estimate" && (can("finance.manage") ? <InvoiceCompanySettings /> : <EmptySettings title="У вас нет доступа к настройкам сметы" />)}
 
       {tab === "fleet" && (can("finance.manage", "projects.manage") ? <><SectionTitle>Автопарк</SectionTitle><FleetManager /></> : <EmptySettings title="У вас нет доступа к автопарку" />)}
 
