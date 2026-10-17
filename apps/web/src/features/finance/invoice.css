@@ -280,16 +280,17 @@
 }
 
 @media (max-width: 700px) {
-  .invoice-workspace { padding-bottom: 76px; }
+  .invoice-workspace { padding-bottom: 156px; }
   .invoice-merge-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
   .invoice-bottom-actions {
     position: fixed;
+    z-index: 41;
     left: max(10px, env(safe-area-inset-left));
     right: max(10px, env(safe-area-inset-right));
-    bottom: max(10px, env(safe-area-inset-bottom));
+    bottom: calc(88px + env(safe-area-inset-bottom));
   }
 }
 
