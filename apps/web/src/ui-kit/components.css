@@ -1895,6 +1895,43 @@ input[type="checkbox"]:not(.toggle-switch):disabled { cursor: default; opacity: 
   .warehouse-model-actions .btn:last-child { grid-column: 1 / -1; }
 }
 
+.workspace-switcher { display: flex; flex-direction: column; gap: 18px; }
+.workspace-switcher__section { display: flex; flex-direction: column; gap: 6px; }
+.workspace-switcher__heading { padding: 0 16px; color: var(--label-secondary); font-size: 13px; text-transform: uppercase; }
+.workspace-switcher__group { overflow: hidden; border-radius: 16px; background: var(--sheet-group-bg); }
+.workspace-switcher__row {
+  width: 100%;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--separator-strong);
+  background: transparent;
+  color: var(--label-primary);
+  font: inherit;
+  text-align: left;
+}
+button.workspace-switcher__row { cursor: pointer; transition: opacity var(--dur-fast), background var(--dur-base) var(--ease-ios); }
+button.workspace-switcher__row:active { opacity: .6; background: var(--row-selected-bg); }
+.workspace-switcher__row[data-last="true"],
+.workspace-switcher__row--current { border-bottom: 0; }
+.workspace-switcher__row .ws-chip {
+  border: 0;
+  border-radius: 8px;
+  background: var(--ws-c);
+  box-shadow: none;
+  color: var(--label-on-accent);
+}
+.workspace-switcher__copy { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 2px; }
+.workspace-switcher__copy strong,
+.workspace-switcher__copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-switcher__copy strong { font-size: 15px; font-weight: 500; }
+.workspace-switcher__copy small { color: var(--label-secondary); font-size: 13px; }
+.workspace-switcher__check { width: 20px; height: 20px; flex: 0 0 20px; fill: none; stroke: var(--blue-text); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.workspace-switcher__chevron { flex: 0 0 auto; color: var(--label-quaternary); font-size: 22px; font-weight: 300; line-height: 1; }
+
 @media (min-width:900px) {
   .design-tabs { margin-left:0; margin-right:0; border:1px solid var(--separator); border-radius:16px; }
   .finance-page,.settings-page,.contractors-page,.venues-page { max-width:1080px; margin:0 auto; }

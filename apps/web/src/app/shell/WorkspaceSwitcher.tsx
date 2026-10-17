@@ -1,93 +1,64 @@
 import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import type { People } from "@sever/contracts";
-import { Sheet, WSChip, Avatar, Chip, SectionHead, Button } from "../../ui-kit/index.ts";
-import { api, clearToken } from "../../lib/api.ts";
+import { Sheet, WSChip, Chip } from "../../ui-kit/index.ts";
 import { useSession } from "../session.ts";
 import { workspacesFor, WORKSPACE_COPY, type Workspace } from "../workspaces.ts";
 import { useI18n } from "../i18n.tsx";
-import { personInitials, personName } from "../../lib/people.ts";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  user: People.UserDTO;
   current: Workspace;
   crewApplicationsCount: number;
 }
 
-export function WorkspaceSwitcher({ open, onClose, user, current, crewApplicationsCount }: Props) {
+export function WorkspaceSwitcher({ open, onClose, current, crewApplicationsCount }: Props) {
   const navigate = useNavigate();
-  const qc = useQueryClient();
   const { can } = useSession();
   const { locale, t } = useI18n();
   const all = workspacesFor(can);
-  const others = all.filter((w) => w.id !== current.id);
-  const copy = (w: Workspace) => WORKSPACE_COPY[w.id]?.[locale] ?? w;
+  const others = all.filter((workspace) => workspace.id !== current.id);
+  const copy = (workspace: Workspace) => WORKSPACE_COPY[workspace.id]?.[locale] ?? workspace;
 
-  const go = (w: Workspace) => {
-    navigate(w.route);
-    onClose();
-  };
-
-  const logout = async () => {
-    try {
-      await api.post("/api/auth/logout", {});
-    } catch {
-      /* ignore */
-    }
-    clearToken();
-    qc.invalidateQueries();
+  const go = (workspace: Workspace) => {
+    navigate(workspace.route);
     onClose();
   };
 
   return (
     <Sheet open={open} onClose={onClose}>
-      {/* Account */}
-      <div className="row" style={{ padding: "4px 4px 16px", gap: 13 }}>
-        <Avatar initials={personInitials(user)} src={user.usePhotoAsAvatar ? user.photoUrl : null} size={46} />
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>{personName(user)}</div>
-          <div className="t-label" style={{ marginTop: 2, letterSpacing: "0.06em" }}>
-            {user.roleName} · {all.length} {locale === "ru" ? "workspaces" : t("common.workspaces")}
-          </div>
-        </div>
-        <Button variant="ghost" onClick={logout}>{t("app.logout")}</Button>
-      </div>
-
-      <SectionHead label={t("workspace.current")} />
-      <div
-        className="card card--tappable"
-        onClick={() => go(current)}
-        style={{ padding: 0, overflow: "hidden" }}
-      >
-        <div className="row" style={{ padding: "16px 16px 14px", gap: 13 }}>
-          <WSChip glyph={current.glyph} tone={current.tone} size={50} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="ws-bar__name" style={{ fontSize: 21 }}>{copy(current).name}</div>
-            <div className="card__subtitle">{copy(current).sub}</div>
-          </div>
-          {current.id === "crew" && crewApplicationsCount > 0 ? <Chip label={String(crewApplicationsCount)} tone="warn" /> : <Chip label="LIVE" tone="ok" />}
-        </div>
-      </div>
-
-      <SectionHead label={t("workspace.other")} meta={`${others.length} ${t("workspace.available")}`} />
-      <div>
-        {others.map((w) => (
-          <div key={w.id} className="lrow card--tappable" style={{ padding: "13px 4px" }} onClick={() => go(w)}>
-            <WSChip glyph={w.glyph} tone={w.tone} size={40} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="lrow__title">{copy(w).name}</div>
-              <div className="lrow__detail" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {copy(w).sub}
-              </div>
+      <div className="workspace-switcher">
+        <section className="workspace-switcher__section">
+          <div className="workspace-switcher__heading">{t("workspace.current")}</div>
+          <div className="workspace-switcher__group">
+            <div className="workspace-switcher__row workspace-switcher__row--current">
+              <WSChip glyph={current.glyph} tone={current.tone} size={30} />
+              <span className="workspace-switcher__copy">
+                <strong>{copy(current).name}</strong>
+                <small>{copy(current).sub}</small>
+              </span>
+              <svg className="workspace-switcher__check" viewBox="0 0 24 24" aria-label="Выбран">
+                <path d="M5 12.5 9.2 17 19 7" />
+              </svg>
             </div>
-            {w.id === "crew" && crewApplicationsCount > 0 && <Chip label={String(crewApplicationsCount)} tone="warn" />}
-            <svg width="8" height="13" viewBox="0 0 8 13" fill="none">
-              <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="var(--text3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
           </div>
-        ))}
+        </section>
+
+        <section className="workspace-switcher__section">
+          <div className="workspace-switcher__heading">{t("workspace.other")}</div>
+          <div className="workspace-switcher__group">
+            {others.map((workspace, index) => (
+              <button key={workspace.id} type="button" className="workspace-switcher__row" data-last={index === others.length - 1 || undefined} onClick={() => go(workspace)}>
+                <WSChip glyph={workspace.glyph} tone={workspace.tone} size={30} />
+                <span className="workspace-switcher__copy">
+                  <strong>{copy(workspace).name}</strong>
+                  <small>{copy(workspace).sub}</small>
+                </span>
+                {workspace.id === "crew" && crewApplicationsCount > 0 && <Chip label={String(crewApplicationsCount)} tone="warn" />}
+                <span className="workspace-switcher__chevron" aria-hidden="true">›</span>
+              </button>
+            ))}
+          </div>
+        </section>
       </div>
     </Sheet>
   );

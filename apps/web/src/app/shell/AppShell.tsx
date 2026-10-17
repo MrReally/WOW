@@ -230,7 +230,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         <WorkspaceSwitcher
           open={switcherOpen}
           onClose={() => setSwitcherOpen(false)}
-          user={user}
           current={ws}
           crewApplicationsCount={crewApplicationsCount}
         />
