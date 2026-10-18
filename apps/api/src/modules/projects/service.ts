@@ -971,7 +971,7 @@ export function createProjectsService(
              dress_code_label=$9, dress_code_uniform=$10,
              finance_tracked=$11, dry_rental=$12, note=$13,
              operation_stage=CASE
-               WHEN $12=true AND operation_stage='mount' THEN 'show'
+               WHEN $12=true AND operation_stage IN ('delivery','mount') THEN 'show'
                WHEN $12=true AND operation_stage='dismantle' THEN 'return'
                ELSE operation_stage
              END
@@ -1071,8 +1071,8 @@ export function createProjectsService(
     async setOperationStage(id, stage, actorId) {
       const existing = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
       if (!existing) throw NotFound("project", id);
-      if (existing.dry_rental && (stage === "mount" || stage === "dismantle")) {
-        throw BadRequest("в сухой аренде нет этапов «Монтаж» и «Демонтаж»");
+      if (existing.dry_rental && (stage === "delivery" || stage === "mount" || stage === "dismantle")) {
+        throw BadRequest("в сухой аренде нет этапов «Доставка», «Монтаж» и «Демонтаж»");
       }
       if (existing.operation_stage === stage) return projectDTO(existing);
       const isForward = PROJECT_CHECKLIST_GROUPS.indexOf(stage) > PROJECT_CHECKLIST_GROUPS.indexOf(existing.operation_stage);
@@ -1215,8 +1215,8 @@ export function createProjectsService(
     async setOperationUnitMark(input) {
       const project = await this.getProject(input.projectId);
       if (!project) throw NotFound("project", input.projectId);
-      if (project.dryRental && (input.stage === "mount" || input.stage === "dismantle")) {
-        throw BadRequest("в сухой аренде нет этапов «Монтаж» и «Демонтаж»");
+      if (project.dryRental && (input.stage === "delivery" || input.stage === "mount" || input.stage === "dismantle")) {
+        throw BadRequest("в сухой аренде нет этапов «Доставка», «Монтаж» и «Демонтаж»");
       }
       if (input.status === "held_in_reserve") {
         if (input.stage !== "mount") throw BadRequest("эксплуатационный запас отмечается на этапе «Монтаж»");
@@ -1529,7 +1529,7 @@ export function createProjectsService(
       const hasDefault = (item: { group: Projects.ProjectChecklistGroup; title: string }) =>
         rows.some((row) => row.group_key === item.group && row.title === item.title);
       const applicableDefaults = project.dryRental
-        ? defaultChecklist.filter((item) => item.group !== "mount" && item.group !== "dismantle")
+        ? defaultChecklist.filter((item) => item.group !== "delivery" && item.group !== "mount" && item.group !== "dismantle")
         : defaultChecklist;
       const missingDefaults = applicableDefaults.filter((item) => !hasDefault(item));
       if (missingDefaults.length > 0) {
@@ -1545,7 +1545,7 @@ export function createProjectsService(
         rows = await loadChecklist(projectId);
       }
       return rows
-        .filter((row) => !project.dryRental || (row.group_key !== "mount" && row.group_key !== "dismantle"))
+        .filter((row) => !project.dryRental || (row.group_key !== "delivery" && row.group_key !== "mount" && row.group_key !== "dismantle"))
         .map(checklistDTO);
     },
     async createChecklistItem(input) {

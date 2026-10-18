@@ -5,13 +5,13 @@ export const PROJECT_STAGE_ORDER: Projects.ProjectChecklistGroup[] = ["prep", "p
 
 export function projectStageOrder(dryRental: boolean): Projects.ProjectChecklistGroup[] {
   return dryRental
-    ? PROJECT_STAGE_ORDER.filter((stage) => stage !== "mount" && stage !== "dismantle")
+    ? PROJECT_STAGE_ORDER.filter((stage) => stage !== "delivery" && stage !== "mount" && stage !== "dismantle")
     : PROJECT_STAGE_ORDER;
 }
 
 export function ProjectStageProgress({ stage, complete, dryRental = false, compact = false }: { stage: Projects.ProjectChecklistGroup; complete: boolean; dryRental?: boolean; compact?: boolean }) {
   const stages = projectStageOrder(dryRental);
-  const normalizedStage = dryRental && stage === "mount" ? "show" : dryRental && stage === "dismantle" ? "return" : stage;
+  const normalizedStage = dryRental && (stage === "delivery" || stage === "mount") ? "show" : dryRental && stage === "dismantle" ? "return" : stage;
   const activeIndex = stages.indexOf(normalizedStage);
   return <div className={`project-stage-progress${compact ? " project-stage-progress--compact" : ""}`} style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }} aria-label="Складской оборот">
     {stages.map((item, index) => {
