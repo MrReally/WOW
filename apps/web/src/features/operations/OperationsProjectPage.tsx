@@ -22,6 +22,7 @@ import {
   useProjectTasks,
   useProjectTimings,
   useRelocateReturnedUnit,
+  useReverseReturnedUnit,
   useSetOperationStage,
   useSetOperationUnitMark,
   useUpdateProjectTask,
@@ -427,6 +428,7 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
   const issueUnits = useIssueResolvedUnits();
   const returnUnits = useReturnUnits();
   const relocateReturnedUnit = useRelocateReturnedUnit(projectId);
+  const reverseReturn = useReverseReturnedUnit(projectId);
   const journal = useProjectEquipmentJournal(projectId);
   const issueQuantity = useIssueProjectQuantity();
   const returnQuantity = useReturnProjectQuantity();
@@ -500,7 +502,10 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
               : "Собрать";
   const actions = stageMarkActions[stage] ?? [];
   const markUnit = (unitId: string, status: Projects.OperationUnitMarkStatus, active: boolean, note?: string | null) => {
-    if (stage === "return" && status === "returned" && active) return;
+    if (stage === "return" && status === "returned" && active) {
+      reverseReturn.mutate({ unitId });
+      return;
+    }
     if (active) {
       clearMark.mutate({ stage, unitId, status });
       return;
@@ -563,7 +568,7 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
                         { status: "mounted", label: "✓", tone: "ok" },
                       ] : actions}
                       kitComponents={(models.data?.find((model) => model.id === modelId)?.requiredComponentModelIds ?? []).map((componentId) => ({ id: componentId, name: modelName(componentId) }))}
-                      disabled={setMark.isPending || clearMark.isPending || changeStatus.isPending || markBroken.isPending || issueUnits.isPending || returnUnits.isPending || relocateReturnedUnit.isPending}
+                      disabled={setMark.isPending || clearMark.isPending || changeStatus.isPending || markBroken.isPending || issueUnits.isPending || returnUnits.isPending || relocateReturnedUnit.isPending || reverseReturn.isPending}
                       onOpen={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
                       onMark={(status, active, note) => unit && markUnit(unit.id, status, active, note)}
                       onKitComponentsChange={async (componentIds) => {

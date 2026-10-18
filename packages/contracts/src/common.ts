@@ -48,6 +48,7 @@ export type Permission =
   | "clients.manage"
   | "finance.view"
   | "finance.manage"
+  | "telegram.finance.transactions"
   | "operations.finance.view"
   | "operations.finance.manage"
   | "operations.payroll.view"
@@ -108,6 +109,7 @@ export const PERMISSIONS: PermissionMeta[] = [
   { key: "clients.manage", group: "Планирование", label: "Управлять клиентами" },
   { key: "finance.view", group: "Финансы", label: "Видеть финансы" },
   { key: "finance.manage", group: "Финансы", label: "Транзакции, счета, курсы" },
+  { key: "telegram.finance.transactions", group: "Финансы", label: "Проводить транзакции через Telegram-бота" },
   { key: "operations.finance.view", group: "Operations · финансы", label: "Видеть оплату клиента в Operations" },
   { key: "operations.finance.manage", group: "Operations · финансы", label: "Вносить оплату клиента в Operations" },
   { key: "operations.payroll.view", group: "Operations · выплаты", label: "Видеть людей и ставки проекта в Operations" },

@@ -21,6 +21,7 @@ const actionLabel: Record<Equipment.JournalAction, string> = {
   issued: "Выдача",
   returned: "Возврат",
   return_incomplete: "Некомплект",
+  return_reversed: "Отмена возврата",
   sent_to_repair: "В ремонт",
   back_from_repair: "Из ремонта",
   sent_to_contractor: "Подрядчику",

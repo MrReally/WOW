@@ -93,6 +93,19 @@ export function useRelocateReturnedUnit(projectId: string | null) {
   });
 }
 
+export function useReverseReturnedUnit(projectId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ unitId }: { unitId: string }) =>
+      api.post<Equipment.EquipmentUnitDTO>(`/api/operations/return/${unitId}/reverse`, { projectId }),
+    meta: { successMessage: "Возврат отменён" },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["equipment"] });
+      qc.invalidateQueries({ queryKey: ["projects", "operation-unit-marks", projectId] });
+    },
+  });
+}
+
 function invalidateOps(qc: ReturnType<typeof useQueryClient>, projectId?: string | null) {
   qc.invalidateQueries({ queryKey: ["projects", "tasks", projectId] });
   qc.invalidateQueries({ queryKey: ["projects", "checklist", projectId] });

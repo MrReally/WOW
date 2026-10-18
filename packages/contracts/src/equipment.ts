@@ -194,6 +194,7 @@ export type JournalAction =
   | "issued" // выдано на проект
   | "returned" // возвращено полностью
   | "return_incomplete" // возврат с некомплектом
+  | "return_reversed" // возврат отменён, единица снова на проекте
   | "sent_to_repair"
   | "back_from_repair"
   | "sent_to_contractor"
@@ -251,6 +252,13 @@ export interface ReturnResult {
   missing: ID[];
   /** Set when missing.length > 0; problem id surfaced to Apex. */
   problemId: ID | null;
+}
+
+export interface ReverseReturnInput {
+  projectId: ID;
+  unitId: ID;
+  actorId: ID;
+  note?: string;
 }
 
 export interface ProjectTurnoverReviewLineDTO {
@@ -455,6 +463,7 @@ export interface EquipmentService {
   // Operations (Tech phone flow + warehouse)
   issueUnits(input: IssueUnitsInput): Promise<EquipmentUnitDTO[]>;
   returnUnits(input: ReturnUnitsInput): Promise<ReturnResult>;
+  reverseReturn(input: ReverseReturnInput): Promise<EquipmentUnitDTO>;
   changeStatus(unitId: ID, toStatus: UnitStatus, actorId: ID, note?: string): Promise<EquipmentUnitDTO>;
 
   /** Count of units currently on a given project (for finance/apex). */

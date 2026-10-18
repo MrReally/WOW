@@ -1000,9 +1000,10 @@ export function createEquipmentService(
       return keys.map(key => {
         const entries = rows.filter(r => (r.unit_id ? `u:${r.unit_id}` : `m:${r.model_id}`) === key);
         const issued = entries.find(r => r.action === "issued");
-        const returned = [...entries].reverse().find(r => r.action === "returned" || r.action === "return_incomplete");
+        const latestMovement = [...entries].reverse().find(r => r.action === "issued" || r.action === "returned" || r.action === "return_incomplete" || r.action === "return_reversed");
+        const returned = latestMovement?.action === "returned" || latestMovement?.action === "return_incomplete" ? latestMovement : undefined;
         const status = [...entries].reverse().find(r => r.to_status === "lost" || r.to_status === "in_repair");
-        return { unitId: entries[0]?.unit_id ?? null, modelId: entries[0]?.model_id ?? null, qty: Math.max(1, entries.filter(r=>r.action==="issued").reduce((n,r)=>n+(r.qty??1),0)), fromWarehouseId: issued?.from_warehouse_id ?? issued?.warehouse_id ?? null, toWarehouseId: returned?.to_warehouse_id ?? returned?.warehouse_id ?? null, outcome: status?.to_status === "lost" ? "lost" as const : status?.to_status === "in_repair" ? "broken" as const : returned ? "returned" as const : "missing" as const, notes: entries.map(r=>r.note).filter((x):x is string=>!!x) };
+        return { unitId: entries[0]?.unit_id ?? null, modelId: entries[0]?.model_id ?? null, qty: entries[0]?.unit_id ? 1 : Math.max(1, entries.filter(r=>r.action==="issued").reduce((n,r)=>n+(r.qty??1),0)), fromWarehouseId: issued?.from_warehouse_id ?? issued?.warehouse_id ?? null, toWarehouseId: returned?.to_warehouse_id ?? returned?.warehouse_id ?? null, outcome: status?.to_status === "lost" ? "lost" as const : status?.to_status === "in_repair" ? "broken" as const : returned ? "returned" as const : "missing" as const, notes: entries.map(r=>r.note).filter((x):x is string=>!!x) };
       });
     },
 
@@ -1431,6 +1432,57 @@ export function createEquipmentService(
       }
 
       return { returned: input.returnedUnitIds, missing, problemId };
+    },
+
+    async reverseReturn(input) {
+      return tx(async (client) => {
+        const unit = await one<UnitRow>(
+          client,
+          `SELECT * FROM equipment.units WHERE id=$1 FOR UPDATE`,
+          [input.unitId]
+        );
+        if (!unit) throw NotFound("unit", input.unitId);
+
+        const latestMovement = await one<{ action: Equipment.JournalAction; project_id: string | null }>(
+          client,
+          `SELECT action, project_id
+             FROM equipment.journal
+            WHERE unit_id=$1
+              AND action IN ('issued','returned','return_incomplete','return_reversed')
+            ORDER BY at DESC, id DESC
+            LIMIT 1`,
+          [input.unitId]
+        );
+
+        // The physical move may have succeeded while the client was waiting to
+        // clear its UI mark. Treat that exact retry as a successful no-op.
+        if (unit.status === "on_project" && unit.current_project_id === input.projectId && latestMovement?.action === "return_reversed") {
+          return unitDTO(unit);
+        }
+        if (unit.status !== "in_stock") throw BadRequest("отменить можно только возврат единицы, находящейся на складе");
+        if (!latestMovement || latestMovement.project_id !== input.projectId || (latestMovement.action !== "returned" && latestMovement.action !== "return_incomplete")) {
+          throw BadRequest("последний возврат единицы не относится к этому проекту");
+        }
+
+        const updated = await one<UnitRow>(
+          client,
+          `UPDATE equipment.units SET status='on_project', current_project_id=$2 WHERE id=$1 RETURNING *`,
+          [input.unitId, input.projectId]
+        );
+        await appendJournal(client, {
+          unitId: input.unitId,
+          action: "return_reversed",
+          fromStatus: "in_stock",
+          toStatus: "on_project",
+          projectId: input.projectId,
+          warehouseId: unit.warehouse_id,
+          fromWarehouseId: unit.warehouse_id,
+          actorId: input.actorId,
+          note: input.note ?? null,
+        });
+        await syncProjectKitProblems(client, input.projectId);
+        return unitDTO(updated!);
+      });
     },
 
     async changeStatus(unitId, toStatus, actorId, note) {

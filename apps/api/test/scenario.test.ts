@@ -1274,9 +1274,27 @@ describe("Tech pickup/return → некомплект", () => {
     await wiring.operations.service.post(recovery.id, tech.id);
     expect((await wiring.equipment.service.getUnit(unit.id))?.status).toBe("in_stock");
 
+    await expect(wiring.operations.service.reverseReturn(project.id, unit.id, tech.id)).rejects.toThrow(/этапе «Возврат»/);
+    await wiring.projects.service.setOperationStage(project.id, "return", tech.id);
+    await wiring.projects.service.setOperationUnitMark({ projectId: project.id, stage: "return", unitId: unit.id, status: "returned", actorId: tech.id });
+    await wiring.operations.service.reverseReturn(project.id, unit.id, tech.id);
+    expect((await wiring.equipment.service.getUnit(unit.id))?.status).toBe("on_project");
+    expect((await wiring.projects.service.listOperationUnitMarks(project.id)).some(mark => mark.unitId === unit.id && mark.stage === "return" && mark.status === "returned")).toBe(false);
+    expect((await wiring.equipment.service.getUnitJournal(unit.id)).at(-1)).toEqual(expect.objectContaining({
+      action: "return_reversed",
+      projectId: project.id,
+      fromStatus: "in_stock",
+      toStatus: "on_project",
+      note: "Отмена возврата · этап: Возврат [return]",
+    }));
+    await wiring.operations.service.reverseReturn(project.id, unit.id, tech.id);
+    expect((await wiring.equipment.service.getUnitJournal(unit.id)).filter(entry => entry.action === "return_reversed")).toHaveLength(1);
+    expect((await wiring.equipment.service.projectTurnoverReview(project.id)).find(entry => entry.unitId === unit.id)?.outcome).toBe("missing");
+
     const quantityType = await wiring.equipment.service.createType({ name: `DOC-Q-${Date.now()}`, trackingMode: "quantity" });
     const quantityModel = await wiring.equipment.service.createModel({ typeId: quantityType.id, name: "Document Cable", unitCostEUR: 1, dailyPriceEUR: 1 });
     await wiring.equipment.service.setModelStockTotal(quantityModel.id, 10);
+    await wiring.projects.service.setOperationStage(project.id, "pickup", tech.id);
     const quantityIssue = await wiring.operations.service.create({ kind: "issue", projectId: project.id, unitIds: [], quantityLines: [{ modelId: quantityModel.id, qty: 4 }] }, tech.id);
     await wiring.operations.service.post(quantityIssue.id, tech.id);
     expect((await wiring.equipment.service.modelStock(quantityModel.id)).inStock).toBe(6);
