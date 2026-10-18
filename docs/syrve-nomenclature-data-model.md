@@ -297,6 +297,15 @@ Examples:
 | Wireless Mic Kit | 2 × microphone, 1 × receiver, 1 × charging case |
 | Lighting Stand Kit | 1 × stand, 1 × T-bar, 4 × bolts |
 
+Current shipped slice: a kit is not a separate equipment type. An equipment
+model stores the model IDs that form its required composition. Operations can
+expand that composition on each physical unit, persist per-component checks
+independently for preparation and dismantling, and automatically mark the unit
+ready/collected when every component is checked. The same composition is shown
+and, with catalog-management permission, edited from the unit card. Quantities,
+optional lines, substitutions, effective-dated equipment recipes and physical
+component attachment are still proposed extensions below, not shipped behavior.
+
 Important modelling rules:
 
 - a kit has its own SKU/identity if users operate it as a business object;

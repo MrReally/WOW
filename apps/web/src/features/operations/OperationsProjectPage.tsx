@@ -32,7 +32,7 @@ import { MapRouteButton } from "./components/MapRouteButton.tsx";
 type OperationsTab = "turnover" | "timing" | "finance";
 
 const stageLabel: Record<Projects.ProjectChecklistGroup, string> = {
-  prep: "Подготовка",
+  prep: "Сбор",
   pickup: "Забор",
   delivery: "Доставка",
   mount: "Монтаж",
@@ -48,6 +48,7 @@ const taskStatusLabel: Record<Projects.ProjectTaskStatus, string> = {
 };
 
 const markLabel: Record<Projects.OperationUnitMarkStatus, string> = {
+  kit_checked: "комплект",
   ready: "готово",
   packed: "сложено",
   picked: "забрано",
@@ -97,6 +98,14 @@ function nextStage(stage: Projects.ProjectChecklistGroup, stageOrder: Projects.P
 function previousStage(stage: Projects.ProjectChecklistGroup, stageOrder: Projects.ProjectChecklistGroup[]): Projects.ProjectChecklistGroup | null {
   const i = stageOrder.indexOf(stage);
   return i > 0 ? stageOrder[i - 1]! : null;
+}
+
+export function kitCompletionStatus(stage: Projects.ProjectChecklistGroup): "ready" | "collected" | null {
+  return stage === "prep" ? "ready" : stage === "dismantle" ? "collected" : null;
+}
+
+export function isKitComplete(componentIds: string[], requiredIds: string[]): boolean {
+  return requiredIds.length > 0 && requiredIds.every((id) => componentIds.includes(id));
 }
 
 function currentTiming(list: Projects.TimingDTO[]) {
@@ -488,7 +497,7 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
             ? "Доставка"
             : stage === "pickup"
               ? "Забрать"
-              : "Подготовить";
+              : "Собрать";
   const actions = stageMarkActions[stage] ?? [];
   const markUnit = (unitId: string, status: Projects.OperationUnitMarkStatus, active: boolean, note?: string | null) => {
     if (stage === "return" && status === "returned" && active) return;
@@ -557,6 +566,24 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
                       disabled={setMark.isPending || clearMark.isPending || changeStatus.isPending || markBroken.isPending || issueUnits.isPending || returnUnits.isPending || relocateReturnedUnit.isPending}
                       onOpen={() => unit && navigate(`/warehouse/units/${unit.id}`, { state: { from: `/operations/projects/${projectId}` } })}
                       onMark={(status, active, note) => unit && markUnit(unit.id, status, active, note)}
+                      onKitComponentsChange={async (componentIds) => {
+                        const componentStatus = kitCompletionStatus(stage);
+                        if (!unit || !componentStatus) return;
+                        const componentMark = unitMarks.find((mark) => mark.status === "kit_checked");
+                        const requiredIds = models.data?.find((item) => item.id === modelId)?.requiredComponentModelIds ?? [];
+                        const componentComplete = isKitComplete(componentIds, requiredIds);
+                        if (componentIds.length > 0) {
+                          await setMark.mutateAsync({ stage, unitId: unit.id, status: "kit_checked", note: componentIds.join(",") });
+                        } else if (componentMark) {
+                          await clearMark.mutateAsync({ stage, unitId: unit.id, status: "kit_checked" });
+                        }
+                        const overallMark = unitMarks.some((mark) => mark.status === componentStatus);
+                        if (componentComplete && !overallMark) {
+                          await setMark.mutateAsync({ stage, unitId: unit.id, status: componentStatus });
+                        } else if (!componentComplete && overallMark) {
+                          await clearMark.mutateAsync({ stage, unitId: unit.id, status: componentStatus });
+                        }
+                      }}
                       returnLocations={stage === "return" ? unitReturnLocations : []}
                       selectedLocation={selectedLocation}
                       onSelectLocation={location => {
@@ -666,6 +693,7 @@ function UnitStageRow({
   disabled,
   onOpen,
   onMark,
+  onKitComponentsChange,
   returnLocations,
   selectedLocation,
   onSelectLocation,
@@ -679,23 +707,37 @@ function UnitStageRow({
   disabled: boolean;
   onOpen: () => void;
   onMark: (status: Projects.OperationUnitMarkStatus, active: boolean, note?: string | null) => void;
+  onKitComponentsChange: (componentIds: string[]) => Promise<void>;
   returnLocations: { value: string; label: string }[];
   selectedLocation: string;
   onSelectLocation: (location: string) => void;
 }) {
   const missingMark = marks.find((mark) => mark.status === "missing");
+  const componentMark = marks.find((mark) => mark.status === "kit_checked");
   const [editingMissing, setEditingMissing] = useState(false);
+  const [kitExpanded, setKitExpanded] = useState(false);
+  const [checkedComponentIds, setCheckedComponentIds] = useState<string[]>(() => componentMark?.note?.split(",").filter(Boolean) ?? []);
   const [editingBroken, setEditingBroken] = useState(false);
   const [brokenDescription, setBrokenDescription] = useState("");
   const [missingIds, setMissingIds] = useState<string[]>(() => missingMark?.note?.split(",").filter(Boolean) ?? []);
   useEffect(() => setMissingIds(missingMark?.note?.split(",").filter(Boolean) ?? []), [missingMark?.note]);
+  useEffect(() => setCheckedComponentIds(componentMark?.note?.split(",").filter(Boolean) ?? []), [componentMark?.note]);
   const activeStatuses = new Set(marks.map((mark) => mark.status));
   const missingNames = kitComponents.filter((item) => missingIds.includes(item.id)).map((item) => item.name);
-  const markText = marks.length > 0 ? marks.map((mark) => mark.status === "missing" && missingNames.length ? `нет: ${missingNames.join(", ")}` : mark.status === "broken" && mark.note ? `ремонт: ${mark.note}` : mark.status === "mounted" && isReserve ? "запас использован" : markLabel[mark.status]).join(" · ") : "не отмечено";
-  const hasProblem = marks.some((mark) => mark.status === "lost" || mark.status === "broken" || mark.status === "missing" || mark.status === "left");
+  const visibleMarks = marks.filter((mark) => mark.status !== "kit_checked");
+  const visibleMarkLabels = visibleMarks.map((mark) => mark.status === "missing" && missingNames.length ? `нет: ${missingNames.join(", ")}` : mark.status === "broken" && mark.note ? `ремонт: ${mark.note}` : mark.status === "mounted" && isReserve ? "запас использован" : markLabel[mark.status]);
+  if (checkedComponentIds.length > 0 && checkedComponentIds.length < kitComponents.length) visibleMarkLabels.push(`комплект ${checkedComponentIds.length}/${kitComponents.length}`);
+  const markText = visibleMarkLabels.length > 0 ? visibleMarkLabels.join(" · ") : "не отмечено";
+  const hasProblem = visibleMarks.some((mark) => mark.status === "lost" || mark.status === "broken" || mark.status === "missing" || mark.status === "left");
+  const canCheckKit = kitComponents.length > 0 && (actions.some((action) => action.status === "ready") || actions.some((action) => action.status === "collected"));
+  const toggleKitComponent = async (componentId: string) => {
+    const next = checkedComponentIds.includes(componentId) ? checkedComponentIds.filter((id) => id !== componentId) : [...checkedComponentIds, componentId];
+    setCheckedComponentIds(next);
+    await onKitComponentsChange(next);
+  };
   return (
     <div className="stack" style={{ gap: 8 }}>
-      <div className="row row--between" style={{ width: "100%", gap: 8 }}>
+      <div className="row row--between" style={{ width: "100%", gap: 8, flexWrap: "wrap" }}>
         <button
           style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: unit ? "pointer" : "default" }}
           disabled={!unit}
@@ -704,11 +746,21 @@ function UnitStageRow({
           <p className="card__title" style={{ fontSize: 16 }}>{unit?.assetTag ?? "Не найдено"}</p>
           <p className="card__subtitle">{modelName}{isReserve ? " · ЭКСПЛУАТАЦИОННЫЙ ЗАПАС" : ""}</p>
         </button>
-        <Chip label={markText} tone={marks.length > 0 ? (hasProblem ? "warn" : "ok") : "neutral"} />
+        {kitComponents.length > 0 && <button className="chip chip--neutral" style={{ border: "none", cursor: "pointer" }} aria-expanded={kitExpanded} aria-label={kitExpanded ? "Скрыть состав комплекта" : "Показать состав комплекта"} onClick={() => setKitExpanded((value) => !value)}>{kitExpanded ? "▾" : "▸"} комплект</button>}
+        <Chip label={markText} tone={visibleMarks.length > 0 ? (hasProblem ? "warn" : "ok") : "neutral"} />
       </div>
+      {kitExpanded && kitComponents.length > 0 && (
+        <div className="card card--flat" style={{ padding: 10 }}>
+          <div className="row row--between"><p className="card__subtitle">Состав комплекта</p><Chip label={`${checkedComponentIds.length}/${kitComponents.length}`} tone={checkedComponentIds.length === kitComponents.length ? "ok" : "neutral"} /></div>
+          <div className="stack" style={{ gap: 7, marginTop: 8 }}>
+            {kitComponents.map((item) => <label key={item.id} className="row" style={{ opacity: canCheckKit ? 1 : 0.72 }}><input type="checkbox" checked={checkedComponentIds.includes(item.id)} disabled={!canCheckKit || disabled} onChange={() => void toggleKitComponent(item.id)} /> <span>{item.name}</span></label>)}
+          </div>
+          {!canCheckKit && <p className="card__subtitle" style={{ marginTop: 8 }}>Отметки доступны на этапах сбора и демонтажа.</p>}
+        </div>
+      )}
       <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
         {unit && returnLocations.length > 0 && <Select value={selectedLocation} disabled={disabled} onChange={e => onSelectLocation(e.target.value)} options={returnLocations} />}
-        {unit && actions.map((action) => {
+        {unit && actions.filter((action) => !(kitComponents.length > 0 && (action.status === "ready" || action.status === "collected"))).map((action) => {
           const active = activeStatuses.has(action.status);
           return (
             <button

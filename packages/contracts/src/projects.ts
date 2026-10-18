@@ -327,6 +327,7 @@ export interface ProjectOperationEventDTO {
 }
 
 export type OperationUnitMarkStatus =
+  | "kit_checked" // internal per-stage checklist progress; checked component ids are stored in note
   | "ready"
   | "packed"
   | "picked"
@@ -341,6 +342,7 @@ export type OperationUnitMarkStatus =
   | "returned";
 
 export const OPERATION_UNIT_MARK_STATUSES: OperationUnitMarkStatus[] = [
+  "kit_checked",
   "ready",
   "packed",
   "picked",

@@ -9,6 +9,7 @@ import {
   useUnit, useUnitJournal, useChangeStatus, useUpdateUnit,
   useModels, useTypes, useUnitRepairs, useProjectsForOps, usePeopleNames,
   useWarehouses,
+  useUpdateModel,
   useInstallUnit, useUninstallUnit,
 } from "./hooks.ts";
 import { useVenues } from "../plans/hooks.ts";
@@ -66,10 +67,13 @@ export function UnitDetailPage() {
   const [returnWarehouseId, setReturnWarehouseId] = useState("");
   const changeStatus = useChangeStatus();
   const updateUnit = useUpdateUnit();
+  const updateModel = useUpdateModel();
 
   const [serialDraft, setSerialDraft] = useState("");
   const [assetTagDraft, setAssetTagDraft] = useState("");
   const [notesDraft, setNotesDraft] = useState("");
+  const [kitEditing, setKitEditing] = useState(false);
+  const [kitDraft, setKitDraft] = useState<string[]>([]);
   useEffect(() => {
     if (unit.data) {
       setAssetTagDraft(unit.data.assetTag);
@@ -77,6 +81,10 @@ export function UnitDetailPage() {
       setNotesDraft(unit.data.notes ?? "");
     }
   }, [unit.data?.id, unit.data?.assetTag, unit.data?.serial, unit.data?.notes]);
+  const selectedModel = unit.data ? (models.data ?? []).find((item) => item.id === unit.data!.modelId) ?? null : null;
+  useEffect(() => {
+    setKitDraft(selectedModel?.requiredComponentModelIds ?? []);
+  }, [selectedModel?.id, selectedModel?.requiredComponentModelIds]);
 
   const journalEntries = useMemo(() => {
     let currentWarehouseId: string | null = null;
@@ -97,7 +105,8 @@ export function UnitDetailPage() {
   if (!unit.data) return null;
   const u = unit.data;
 
-  const model = (models.data ?? []).find((m) => m.id === u.modelId) ?? null;
+  const model = selectedModel;
+  const kitComponents = (model?.requiredComponentModelIds ?? []).map((componentId) => (models.data ?? []).find((item) => item.id === componentId)).filter((item): item is Equipment.EquipmentModelDTO => !!item);
   const type = model ? (types.data ?? []).find((t) => t.id === model.typeId) ?? null : null;
   const cable = model ? cableAttrs(model) : null;
   const projectName = u.currentProjectId ? (projects.data ?? []).find((p) => p.id === u.currentProjectId)?.name ?? null : null;
@@ -156,6 +165,21 @@ export function UnitDetailPage() {
             <InfoRow label="Сторона B" value={`${cable.sideBQty}x ${cable.sideBConnector}`} />
           </>
         )}
+      </Card>
+
+      <Card>
+        <div className="row row--between">
+          <SectionTitle>Комплект оборудования</SectionTitle>
+          {canCatalog && model && <Button variant="secondary" onClick={() => setKitEditing((value) => !value)}>{kitEditing ? "Закрыть" : "Редактировать"}</Button>}
+        </div>
+        {!kitEditing && (kitComponents.length > 0 ? <div className="stack" style={{ gap: 7, marginTop: 8 }}>{kitComponents.map((component) => <div key={component.id} className="row row--between"><span>{component.name}</span><span className="card__subtitle">обязательно</span></div>)}</div> : <p className="card__subtitle">Для этой модели комплект пока не задан.</p>)}
+        {kitEditing && model && <>
+          <p className="card__subtitle">Выберите всё, что должно проверяться вместе с каждым прибором этой модели.</p>
+          <div className="stack" style={{ gap: 7, maxHeight: 320, overflow: "auto", marginTop: 10 }}>
+            {(models.data ?? []).filter((item) => item.id !== model.id && !item.archivedAt).map((item) => <label key={item.id} className="row"><input type="checkbox" checked={kitDraft.includes(item.id)} onChange={() => setKitDraft((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])} /> <span>{item.name}{item.manufacturer ? ` · ${item.manufacturer}` : ""}</span></label>)}
+          </div>
+          <Button block style={{ marginTop: 10 }} disabled={updateModel.isPending} onClick={() => updateModel.mutate({ id: model.id, input: { requiredComponentModelIds: kitDraft } }, { onSuccess: () => setKitEditing(false) })}>Сохранить комплект</Button>
+        </>}
       </Card>
 
       {/* Unit-specific particulars */}
