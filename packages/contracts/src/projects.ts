@@ -53,6 +53,8 @@ export interface ProjectDTO {
   warehouseTurnoverCompletedAt: ISODateTime | null;
   /** False excludes a legacy/project exception from client and contractor debt tracking. */
   financeTracked: boolean;
+  /** Equipment-only rental. Operations skips mount and dismantle stages. */
+  dryRental: boolean;
   /** Opaque id of the venue (venues module, later phase). */
   venueId: ID | null;
   dressCodeOptionId: ID | null;
@@ -80,6 +82,7 @@ export interface CreateProjectInput {
   dressCodeUniform?: boolean;
   note?: string | null;
   financeTracked?: boolean;
+  dryRental?: boolean;
 }
 
 export interface UpdateProjectInput {
@@ -93,6 +96,7 @@ export interface UpdateProjectInput {
   dressCodeUniform?: boolean;
   note?: string | null;
   financeTracked?: boolean;
+  dryRental?: boolean;
 }
 
 export interface DuplicateProjectInput {

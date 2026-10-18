@@ -28,6 +28,7 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
   const [starts, setStarts] = useState("");
   const [ends, setEnds] = useState("");
   const [note, setNote] = useState("");
+  const [dryRental, setDryRental] = useState(false);
   const [recurring, setRecurring] = useState(false);
   const [frequency, setFrequency] = useState<"daily" | "weekly" | "monthly">("weekly");
   const [interval, setInterval] = useState("1");
@@ -48,12 +49,13 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
         name,
         clientId,
         venueId: venueId || null,
+        dryRental,
         ...(canViewNote ? { note: note.trim() || null } : {}),
         ...(validRange ? { startsAt: isoFromLocal(starts), endsAt: isoFromLocal(ends) } : {}),
       },
       {
         onSuccess: (project) => {
-          const finish = () => { setName(""); setNote(""); setRecurring(false); onClose(); };
+          const finish = () => { setName(""); setNote(""); setDryRental(false); setRecurring(false); onClose(); };
           if (!recurring || !project.startsAt) return finish();
           const weekday = new Date(project.startsAt).getDay() || 7;
           createSeries.mutate({
@@ -93,6 +95,10 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
           options={[{ value: "", label: "— не выбрана —" }, ...(venues.data ?? []).filter((v) => v.isVenue).map((v) => ({ value: v.id, label: v.name }))]}
         />
       </Field>
+      <label className="row" style={{ justifyContent: "flex-start", gap: 8 }}>
+        <input type="checkbox" checked={dryRental} onChange={(event) => setDryRental(event.target.checked)} />
+        <span>Сухая аренда</span>
+      </label>
       {!venueFormOpen ? (
         <Button variant="ghost" onClick={() => setVenueFormOpen(true)}>+ Площадка</Button>
       ) : (

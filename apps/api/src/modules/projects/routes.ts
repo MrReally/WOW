@@ -21,6 +21,7 @@ const projectSchema = z.object({
   dressCodeUniform: z.boolean().optional(),
   note: z.string().nullable().optional(),
   financeTracked: z.boolean().optional(),
+  dryRental: z.boolean().optional(),
 });
 const statusSchema = z.object({ status: z.enum(PROJECT_STATUSES as [string, ...string[]]) });
 const operationStageSchema = z.object({ stage: z.enum(PROJECT_CHECKLIST_GROUPS as [string, ...string[]]) });
@@ -41,6 +42,7 @@ const updateProjectSchema = z.object({
   dressCodeUniform: z.boolean().optional(),
   note: z.string().nullable().optional(),
   financeTracked: z.boolean().optional(),
+  dryRental: z.boolean().optional(),
 });
 const duplicateProjectSchema = z.object({
   name: z.string().trim().min(1),

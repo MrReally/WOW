@@ -11,6 +11,7 @@ import { filterProjectsByStatuses, splitMobileProjects } from "./projectList.ts"
 import { useProjectSearch } from "../../lib/useProjectSearch.ts";
 import { configuredDate } from "../../lib/dateFormat.ts";
 import { PlanningAgendaView, PlanningCalendarView } from "./components/PlanningViews.tsx";
+import { ProjectStageProgress } from "./components/ProjectStageProgress.tsx";
 
 type PlanningView = "journal" | "agenda" | "calendar";
 
@@ -19,9 +20,10 @@ type ProjectCardProps = {
   clientName: (id: string) => string;
   onOpen: () => void;
   canViewNote: boolean;
+  venueName: string | null;
 };
 
-function ProjectCard({ project, clientName, onOpen, canViewNote }: ProjectCardProps) {
+function ProjectCard({ project, clientName, onOpen, canViewNote, venueName }: ProjectCardProps) {
   return (
     <Card onClick={onOpen}>
       <div className="row row--between">
@@ -35,6 +37,8 @@ function ProjectCard({ project, clientName, onOpen, canViewNote }: ProjectCardPr
       <p className="card__subtitle" style={{ marginTop: "var(--space-2)" }}>
         {dateRange(project.startsAt, project.endsAt)}
       </p>
+      {venueName && <p className="card__subtitle">📍 {venueName}</p>}
+      <ProjectStageProgress stage={project.operationStage} complete={!!project.warehouseTurnoverCompletedAt} dryRental={project.dryRental} compact />
       {canViewNote && project.note && <p className="project-note project-note--preview">📝 {project.note}</p>}
     </Card>
   );
@@ -64,6 +68,7 @@ export function ProjectsPage() {
   const clientName = (id: string) => (clients.data ?? []).find((c) => c.id === id)?.name ?? "—";
   const list = search.filteredProjects;
   const mobileProjects = splitMobileProjects(list);
+  const journalProjects = archiveMode === "archive" ? mobileProjects.archived : mobileProjects.active;
   const filters: Projects.ProjectStatus[] = ["draft", "confirmed", "in_progress", "awaiting_payment"];
   const toggleStatusFilter = (status: Projects.ProjectStatus) => {
     setStatusFilters((current) => current.includes(status)
@@ -130,13 +135,14 @@ export function ProjectsPage() {
       ) : (
         <>
         <div className="stack mobile-project-list">
-          {list.map((project) => (
+          {journalProjects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}
               clientName={clientName}
               onOpen={() => navigate(`/projects/${project.id}`)}
               canViewNote={canViewNote}
+              venueName={project.venueId ? (venues.data ?? []).find((venue) => venue.id === project.venueId)?.name ?? null : null}
             />
           ))}
         </div>
@@ -148,6 +154,7 @@ export function ProjectsPage() {
                 <th>Клиент</th>
                 <th>Начало</th>
                 <th>Окончание</th>
+                <th>Складской оборот</th>
                 <th>Статус</th>
                 <th aria-label="Открыть" />
               </tr>
@@ -155,10 +162,11 @@ export function ProjectsPage() {
             <tbody>
               {mobileProjects.active.map((p) => (
                 <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
-                  <td><strong>{p.name}</strong><small>{p.seriesId ? `↻ Регулярный · #${p.id.slice(0, 8)}` : canViewNote && p.note ? `📝 ${p.note}` : `#${p.id.slice(0, 8)}`}</small></td>
+                  <td><strong>{p.name}</strong><small>{p.venueId ? `📍 ${(venues.data ?? []).find((venue) => venue.id === p.venueId)?.name ?? "—"}` : p.seriesId ? `↻ Регулярный · #${p.id.slice(0, 8)}` : canViewNote && p.note ? `📝 ${p.note}` : `#${p.id.slice(0, 8)}`}</small></td>
                   <td>{clientName(p.clientId)}</td>
                   <td className="data-table__mono">{p.startsAt ? configuredDate(p.startsAt) : "—"}</td>
                   <td className="data-table__mono">{p.endsAt ? configuredDate(p.endsAt) : "—"}</td>
+                  <td><ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} dryRental={p.dryRental} compact /></td>
                   <td><StatusBadge tone={projectStatusTone[p.status]}>{projectStatusLabel[p.status]}</StatusBadge></td>
                   <td className="data-table__arrow">→</td>
                 </tr>
@@ -172,10 +180,11 @@ export function ProjectsPage() {
                 <tbody>
                   {mobileProjects.archived.map((p) => (
                     <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
-                      <td><strong>{p.name}</strong><small>{canViewNote && p.note ? `📝 ${p.note}` : `#${p.id.slice(0, 8)}`}</small></td>
+                      <td><strong>{p.name}</strong><small>{p.venueId ? `📍 ${(venues.data ?? []).find((venue) => venue.id === p.venueId)?.name ?? "—"}` : canViewNote && p.note ? `📝 ${p.note}` : `#${p.id.slice(0, 8)}`}</small></td>
                       <td>{clientName(p.clientId)}</td>
                       <td className="data-table__mono">{p.startsAt ? configuredDate(p.startsAt) : "—"}</td>
                       <td className="data-table__mono">{p.endsAt ? configuredDate(p.endsAt) : "—"}</td>
+                      <td><ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} dryRental={p.dryRental} compact /></td>
                       <td><StatusBadge tone={projectStatusTone[p.status]}>{projectStatusLabel[p.status]}</StatusBadge></td>
                       <td className="data-table__arrow">→</td>
                     </tr>

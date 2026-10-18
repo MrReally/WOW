@@ -460,7 +460,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             </>;
           })()}
         </div>}
-        <ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} />
+        <ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} dryRental={p.dryRental} />
+        {p.dryRental && <p className="card__subtitle" style={{ marginTop: 4 }}>Сухая аренда · без монтажа и демонтажа</p>}
         {(p.dressCodeLabel || p.dressCodeUniform) && <p className="card__subtitle" style={{ marginTop: 4 }}>👔 {[p.dressCodeLabel, p.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}</p>}
         {canViewNote && p.note && <p className="project-note" style={{ marginTop: "var(--space-3)" }}>📝 {p.note}</p>}
         {canManage && <div className="project-status-chips" aria-label="Статус проекта">{PROJECT_STATUSES.map((status) => <button key={status} className={p.status === status ? "is-active" : ""} onClick={() => setStatus.mutate({ id: p.id, status })}>{projectStatusLabel[status]}</button>)}</div>}

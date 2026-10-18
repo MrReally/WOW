@@ -1,11 +1,13 @@
 import type { Projects } from "@sever/contracts";
 
-type ProjectListItem = Pick<Projects.ProjectDTO, "status" | "startsAt">;
+type ProjectListItem = Pick<Projects.ProjectDTO, "status" | "startsAt" | "endsAt" | "warehouseTurnoverCompletedAt" | "createdAt">;
 type CalendarProject = Pick<Projects.ProjectDTO, "startsAt" | "endsAt">;
 
 const ARCHIVED_STATUSES = new Set<Projects.ProjectStatus>(["completed", "cancelled"]);
 
 const startsAtTime = (project: Pick<Projects.ProjectDTO, "startsAt">) => project.startsAt ? Date.parse(project.startsAt) : Number.POSITIVE_INFINITY;
+export const projectRecencyTime = (project: Pick<Projects.ProjectDTO, "startsAt" | "endsAt" | "warehouseTurnoverCompletedAt" | "createdAt">) =>
+  Date.parse(project.warehouseTurnoverCompletedAt ?? project.endsAt ?? project.startsAt ?? project.createdAt);
 
 export function splitMobileProjects<T extends ProjectListItem>(projects: readonly T[]) {
   const active = projects
@@ -13,7 +15,7 @@ export function splitMobileProjects<T extends ProjectListItem>(projects: readonl
     .sort((a, b) => startsAtTime(a) - startsAtTime(b));
   const archived = projects
     .filter((project) => ARCHIVED_STATUSES.has(project.status))
-    .sort((a, b) => startsAtTime(b) - startsAtTime(a));
+    .sort((a, b) => projectRecencyTime(b) - projectRecencyTime(a));
 
   return { active, archived };
 }

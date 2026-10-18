@@ -903,6 +903,17 @@ select optgroup {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .project-stage-progress__item--done { color: color-mix(in srgb, var(--accent) 55%, var(--text3)); }
+.project-stage-progress--compact {
+  width: min(230px, 100%);
+  gap: 3px;
+  margin-top: 7px;
+}
+.project-stage-progress--compact .project-stage-progress__icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  font-size: 10px;
+}
 .timeline-now {
   display: flex;
   align-items: center;

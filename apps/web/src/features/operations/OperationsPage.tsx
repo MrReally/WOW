@@ -7,6 +7,7 @@ import { useMyProjects, useOperationVenues } from "./hooks.ts";
 import { MapRouteButton } from "./components/MapRouteButton.tsx";
 import { ProjectStageProgress } from "../projects/components/ProjectStageProgress.tsx";
 import { projectStagePresentation } from "../../lib/labels.ts";
+import { projectRecencyTime } from "../projects/projectList.ts";
 
 function isLive(p: Projects.ProjectDTO): boolean {
   const now = Date.now();
@@ -17,6 +18,7 @@ function operationsProjectSort(a: Projects.ProjectDTO, b: Projects.ProjectDTO): 
   const aDone = a.status === "completed";
   const bDone = b.status === "completed";
   if (aDone !== bDone) return aDone ? 1 : -1;
+  if (aDone && bDone) return projectRecencyTime(b) - projectRecencyTime(a);
   return (a.startsAt ? Date.parse(a.startsAt) : Number.POSITIVE_INFINITY) - (b.startsAt ? Date.parse(b.startsAt) : Number.POSITIVE_INFINITY);
 }
 
@@ -44,8 +46,8 @@ export function OperationsPage() {
     <div className="stack operations-home">
       {lead ? <Card className="operations-live-card" onClick={() => navigate(`/operations/projects/${lead.id}`)}>
         <div className="operations-live-head"><span>{current ? "ТЕКУЩАЯ ОПЕРАЦИЯ" : "БЛИЖАЙШАЯ ОПЕРАЦИЯ"}</span><Chip label={projectStagePresentation[lead.operationStage].label.toLowerCase()} tone="info" /></div>
-        <div><p className="operations-live-title">{lead.name}</p>{leadVenue && <div className="operations-live-venue">📍 {[leadVenue.name, leadVenue.address].filter(Boolean).join(" · ")} <MapRouteButton venue={leadVenue} /></div>}</div>
-        <ProjectStageProgress stage={lead.operationStage} complete={Boolean(lead.warehouseTurnoverCompletedAt)} />
+        <div><p className="operations-live-title">{lead.name}</p>{leadVenue && <div className="operations-live-venue">📍 {leadVenue.name} <MapRouteButton venue={leadVenue} /></div>}</div>
+        <ProjectStageProgress stage={lead.operationStage} complete={Boolean(lead.warehouseTurnoverCompletedAt)} dryRental={lead.dryRental} />
         <Button block onClick={(event) => { event.stopPropagation(); navigate(`/operations/projects/${lead.id}`); }}>Открыть оборот</Button>
       </Card> : <Card><EmptyState title="Нет проектов в работе" hint="Проект появится здесь после подтверждения в Planning" /><Button block variant="secondary" onClick={() => navigate("/projects")}>Открыть Planning</Button></Card>}
 
@@ -61,9 +63,10 @@ export function OperationsPage() {
                 <div style={{ minWidth: 0 }}>
                   <p className="card__title">{p.name}</p>
                   <p className="card__subtitle">{dateRange(p.startsAt, p.endsAt)}</p>
-                  {p.venueId && venueById.get(p.venueId) && <div className="row" style={{ gap: 6 }}><p className="card__subtitle" style={{ minWidth: 0 }}>📍 {[venueById.get(p.venueId)?.name, venueById.get(p.venueId)?.address].filter(Boolean).join(" · ")}</p><MapRouteButton venue={venueById.get(p.venueId)!} /></div>}
+                  {p.venueId && venueById.get(p.venueId) && <div className="row" style={{ gap: 6 }}><p className="card__subtitle" style={{ minWidth: 0 }}>📍 {venueById.get(p.venueId)?.name}</p><MapRouteButton venue={venueById.get(p.venueId)!} /></div>}
+                  <ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} dryRental={p.dryRental} compact />
                 </div>
-                <Chip label={p.warehouseTurnoverCompletedAt ? "завершён" : projectStagePresentation[p.operationStage].label.toLowerCase()} tone={p.warehouseTurnoverCompletedAt ? "ok" : projectStatusTone[p.status]} />
+                <Chip label={projectStatusLabel[p.status]} tone={projectStatusTone[p.status]} />
               </div>
               <span className="more-chevron">›</span>
             </button>

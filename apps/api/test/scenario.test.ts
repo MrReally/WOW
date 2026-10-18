@@ -604,6 +604,19 @@ describe("Tech pickup/return → некомплект", () => {
     expect(reopened.status).toBe("in_progress");
   });
 
+  it("skips mount and dismantle stages for dry rentals", async () => {
+    const actor = await makeTech("Dry rental");
+    const client = await wiring.projects.service.createClient({ name: `Dry ${Date.now()}` });
+    const project = await wiring.projects.service.createProject({ name: "Dry rental", clientId: client.id, dryRental: true });
+
+    expect(project.dryRental).toBe(true);
+    await wiring.projects.service.setOperationStage(project.id, "delivery", actor.id);
+    await expect(wiring.projects.service.setOperationStage(project.id, "mount", actor.id)).rejects.toThrow(/сухой аренде/);
+    await expect(wiring.projects.service.setOperationStage(project.id, "show", actor.id)).resolves.toMatchObject({ operationStage: "show" });
+    await expect(wiring.projects.service.setOperationStage(project.id, "dismantle", actor.id)).rejects.toThrow(/сухой аренде/);
+    await expect(wiring.projects.service.setOperationStage(project.id, "return", actor.id)).resolves.toMatchObject({ operationStage: "return" });
+  });
+
   it("opens a repair with its description in Apex and resolves it when repair closes", async () => {
     const actor = await makeTech("Repair Tech");
     const type = await wiring.equipment.service.createType({ name: `Repair-${Date.now()}`, trackingMode: "serial" });

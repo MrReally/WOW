@@ -9,7 +9,7 @@ import { useSession } from "../../app/session.ts";
 import { useAllUnits, useAssignments, useContractorItems, useEquipmentModels, useIssueProjectQuantity, useIssueResolvedUnits, usePeople, useProject, useProjectEquipmentJournal, useProjectInvoice, useProjectVenues, useReservations, useReturnProjectQuantity, useSetProjectFinanceTracking, useUpdateAssignment } from "../projects/hooks.ts";
 import { useAccounts, useCreateTransaction, useTransactions, useUpdateTransaction, useVoidTransaction } from "../finance/hooks.ts";
 import { useContractors } from "../contractors/hooks.ts";
-import { PROJECT_STAGE_ORDER, ProjectStageProgress } from "../projects/components/ProjectStageProgress.tsx";
+import { projectStageOrder, ProjectStageProgress } from "../projects/components/ProjectStageProgress.tsx";
 import { useChangeStatus, useReturnUnits, useWarehouses } from "../warehouse/hooks.ts";
 import {
   useClearOperationUnitMark,
@@ -28,8 +28,6 @@ import {
 } from "./hooks.ts";
 import { isUnitVisibleForProject } from "../projects/reservationUnitAvailability.ts";
 import { MapRouteButton } from "./components/MapRouteButton.tsx";
-
-const stageOrder = PROJECT_STAGE_ORDER;
 
 type OperationsTab = "turnover" | "timing" | "finance";
 
@@ -91,12 +89,12 @@ const stageMarkActions: Partial<Record<Projects.ProjectChecklistGroup, { status:
   ],
 };
 
-function nextStage(stage: Projects.ProjectChecklistGroup): Projects.ProjectChecklistGroup | null {
+function nextStage(stage: Projects.ProjectChecklistGroup, stageOrder: Projects.ProjectChecklistGroup[]): Projects.ProjectChecklistGroup | null {
   const i = stageOrder.indexOf(stage);
   return i >= 0 && i < stageOrder.length - 1 ? stageOrder[i + 1]! : null;
 }
 
-function previousStage(stage: Projects.ProjectChecklistGroup): Projects.ProjectChecklistGroup | null {
+function previousStage(stage: Projects.ProjectChecklistGroup, stageOrder: Projects.ProjectChecklistGroup[]): Projects.ProjectChecklistGroup | null {
   const i = stageOrder.indexOf(stage);
   return i > 0 ? stageOrder[i - 1]! : null;
 }
@@ -137,8 +135,9 @@ export function OperationsProjectPage() {
   if (!project.data) return <EmptyState title="Проект не найден" />;
 
   const activeStage = project.data.operationStage ?? "prep";
-  const upcomingStage = nextStage(activeStage);
-  const rollbackStage = previousStage(activeStage);
+  const stageOrder = projectStageOrder(project.data.dryRental);
+  const upcomingStage = nextStage(activeStage, stageOrder);
+  const rollbackStage = previousStage(activeStage, stageOrder);
   const seesWholeTiming = !!user?.operationsShowAllProjects || can("projects.timing.viewAll", "projects.timing.manage");
   const allTimings = timings.data ?? [];
   const myTimings = allTimings.filter(timing => !!user && timing.assigneeIds.includes(user.id));
@@ -155,13 +154,14 @@ export function OperationsProjectPage() {
           <div style={{ minWidth: 0 }}>
             <p className="card__title">{project.data.name}</p>
             <p className="card__subtitle">{dateRange(project.data.startsAt, project.data.endsAt)}</p>
-            {venue && <div className="row" style={{ gap: 6 }}><p className="card__subtitle" style={{ minWidth: 0 }}>📍 {[venue.name, venue.address].filter(Boolean).join(" · ")}</p><MapRouteButton venue={venue} /></div>}
+            {venue && <div className="row" style={{ gap: 6 }}><p className="card__subtitle" style={{ minWidth: 0 }}>📍 {venue.name}</p><MapRouteButton venue={venue} /></div>}
+            {project.data.dryRental && <p className="card__subtitle">Сухая аренда</p>}
             {(project.data.dressCodeLabel || project.data.dressCodeUniform) && <p className="card__subtitle">👔 {[project.data.dressCodeLabel, project.data.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}</p>}
             {canViewProjectNote && project.data.note && <p className="project-note">📝 {project.data.note}</p>}
           </div>
           <Chip label={projectStatusLabel[project.data.status]} tone={projectStatusTone[project.data.status]} />
         </div>
-        <ProjectStageProgress stage={activeStage} complete={!!project.data.warehouseTurnoverCompletedAt} />
+        <ProjectStageProgress stage={activeStage} complete={!!project.data.warehouseTurnoverCompletedAt} dryRental={project.data.dryRental} />
       </Card>
 
       <div className="segmented-control operations-project-tabs" role="tablist" aria-label="Operations">

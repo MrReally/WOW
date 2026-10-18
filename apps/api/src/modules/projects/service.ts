@@ -27,6 +27,7 @@ interface ProjectRow {
   operation_stage: Projects.ProjectChecklistGroup;
   warehouse_turnover_completed_at: Date | null;
   finance_tracked: boolean;
+  dry_rental: boolean;
   venue_id: string | null;
   dress_code_option_id: string | null;
   dress_code_label: string | null;
@@ -211,6 +212,7 @@ const projectDTO = (r: ProjectRow): Projects.ProjectDTO => ({
   operationStage: r.operation_stage ?? "prep",
   warehouseTurnoverCompletedAt: r.warehouse_turnover_completed_at ? r.warehouse_turnover_completed_at.toISOString() : null,
   financeTracked: r.finance_tracked ?? true,
+  dryRental: r.dry_rental ?? false,
   venueId: r.venue_id,
   dressCodeOptionId: r.dress_code_option_id,
   dressCodeLabel: r.dress_code_label,
@@ -405,6 +407,7 @@ const stageRequiredMarks: Partial<Record<Projects.ProjectChecklistGroup, Project
 const seriesProjectFields: (keyof Projects.UpdateProjectInput)[] = [
   "name", "clientId", "startsAt", "endsAt", "venueId", "dressCodeOptionId",
   "dressCodeLabel", "dressCodeUniform", "note", "financeTracked",
+  "dryRental",
 ];
 
 function projectBaseline(project: Projects.ProjectDTO): Record<string, unknown> {
@@ -684,9 +687,9 @@ export function createProjectsService(
       const name = await renderedProjectName(baseName, client.name, input.venueId ?? null, startsAt, endsAt);
       const row = await one<ProjectRow>(
         db,
-        `INSERT INTO projects.projects (name, base_name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, note)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-        [name, baseName, input.clientId, input.venueId ?? null, startsAt, endsAt, input.dressCodeOptionId ?? null, input.dressCodeLabel ?? null, input.dressCodeUniform ?? false, input.financeTracked ?? true, input.note?.trim() || null]
+        `INSERT INTO projects.projects (name, base_name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, dry_rental, note)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        [name, baseName, input.clientId, input.venueId ?? null, startsAt, endsAt, input.dressCodeOptionId ?? null, input.dressCodeLabel ?? null, input.dressCodeUniform ?? false, input.financeTracked ?? true, input.dryRental ?? false, input.note?.trim() || null]
       );
       return projectDTO(row!);
     },
@@ -701,9 +704,9 @@ export function createProjectsService(
       const sourceRefMap: Record<string, string> = {};
       await tx(async (client) => {
         created = await one<ProjectRow>(client,
-          `INSERT INTO projects.projects (name, base_name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, note)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10) RETURNING *`,
-          [name, baseName, source.client_id, source.venue_id, input.startsAt, input.endsAt, source.dress_code_option_id, source.dress_code_label, source.dress_code_uniform, source.note]
+          `INSERT INTO projects.projects (name, base_name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, dry_rental, note)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,$11) RETURNING *`,
+          [name, baseName, source.client_id, source.venue_id, input.startsAt, input.endsAt, source.dress_code_option_id, source.dress_code_label, source.dress_code_uniform, source.dry_rental, source.note]
         );
         const newId = created!.id;
         const sourceRoles = await query<ProjectRoleRow>(client, `SELECT * FROM projects.project_roles WHERE project_id=$1 ORDER BY created_at`, [id]);
@@ -966,13 +969,19 @@ export function createProjectsService(
              name=$2, base_name=$3, client_id=$4, venue_id=$5,
              starts_at=$6, ends_at=$7, dress_code_option_id=$8,
              dress_code_label=$9, dress_code_uniform=$10,
-             finance_tracked=$11, note=$12
+             finance_tracked=$11, dry_rental=$12, note=$13,
+             operation_stage=CASE
+               WHEN $12=true AND operation_stage='mount' THEN 'show'
+               WHEN $12=true AND operation_stage='dismantle' THEN 'return'
+               ELSE operation_stage
+             END
            WHERE id=$1 RETURNING *`,
           [id, name, baseName, clientId, venueId, startsAt, endsAt,
             input.dressCodeOptionId === undefined ? existing.dressCodeOptionId : input.dressCodeOptionId,
             input.dressCodeLabel === undefined ? existing.dressCodeLabel : input.dressCodeLabel,
             input.dressCodeUniform === undefined ? existing.dressCodeUniform : input.dressCodeUniform,
             input.financeTracked === undefined ? existing.financeTracked : input.financeTracked,
+            input.dryRental === undefined ? existing.dryRental : input.dryRental,
             input.note === undefined ? existing.note : input.note?.trim() || null]
         );
         if (startsAt !== existing.startsAt || endsAt !== existing.endsAt) {
@@ -1001,6 +1010,16 @@ export function createProjectsService(
       }
       if (existing.dressCodeLabel !== updated.dressCodeLabel || existing.dressCodeUniform !== updated.dressCodeUniform) {
         await bus.publish({ type: "project.dress_code.changed", projectId: id, roleId: null, at: new Date().toISOString() });
+      }
+      if (existing.operationStage !== updated.operationStage) {
+        await bus.publish({
+          type: "project.operation_stage.changed",
+          projectId: id,
+          fromStage: existing.operationStage,
+          toStage: updated.operationStage,
+          actorId: null,
+          at: new Date().toISOString(),
+        });
       }
       return updated;
     },
@@ -1052,6 +1071,9 @@ export function createProjectsService(
     async setOperationStage(id, stage, actorId) {
       const existing = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
       if (!existing) throw NotFound("project", id);
+      if (existing.dry_rental && (stage === "mount" || stage === "dismantle")) {
+        throw BadRequest("в сухой аренде нет этапов «Монтаж» и «Демонтаж»");
+      }
       if (existing.operation_stage === stage) return projectDTO(existing);
       const isForward = PROJECT_CHECKLIST_GROUPS.indexOf(stage) > PROJECT_CHECKLIST_GROUPS.indexOf(existing.operation_stage);
       if (isForward) {
@@ -1193,6 +1215,9 @@ export function createProjectsService(
     async setOperationUnitMark(input) {
       const project = await this.getProject(input.projectId);
       if (!project) throw NotFound("project", input.projectId);
+      if (project.dryRental && (input.stage === "mount" || input.stage === "dismantle")) {
+        throw BadRequest("в сухой аренде нет этапов «Монтаж» и «Демонтаж»");
+      }
       if (input.status === "held_in_reserve") {
         if (input.stage !== "mount") throw BadRequest("эксплуатационный запас отмечается на этапе «Монтаж»");
         const reserve = await one<ReservationRow>(
@@ -1503,7 +1528,10 @@ export function createProjectsService(
       let rows = await loadChecklist(projectId);
       const hasDefault = (item: { group: Projects.ProjectChecklistGroup; title: string }) =>
         rows.some((row) => row.group_key === item.group && row.title === item.title);
-      const missingDefaults = defaultChecklist.filter((item) => !hasDefault(item));
+      const applicableDefaults = project.dryRental
+        ? defaultChecklist.filter((item) => item.group !== "mount" && item.group !== "dismantle")
+        : defaultChecklist;
+      const missingDefaults = applicableDefaults.filter((item) => !hasDefault(item));
       if (missingDefaults.length > 0) {
         await tx(async (client) => {
           for (const item of missingDefaults) {
@@ -1516,7 +1544,9 @@ export function createProjectsService(
         });
         rows = await loadChecklist(projectId);
       }
-      return rows.map(checklistDTO);
+      return rows
+        .filter((row) => !project.dryRental || (row.group_key !== "mount" && row.group_key !== "dismantle"))
+        .map(checklistDTO);
     },
     async createChecklistItem(input) {
       const project = await this.getProject(input.projectId);
