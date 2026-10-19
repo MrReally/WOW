@@ -777,6 +777,13 @@ export interface ProjectAssignmentPaymentUpdatedEvent {
   at: ISODateTime;
 }
 
+export interface ProjectContractorItemsChangedEvent {
+  type: "project.contractor_items.changed";
+  projectId: ID;
+  contractorId: ID;
+  at: ISODateTime;
+}
+
 export interface ProjectStatusChangedEvent {
   type: "project.status.changed";
   projectId: ID;
@@ -852,6 +859,7 @@ export type ProjectsEvent =
   | ProjectOperationStageChangedEvent
   | ProjectWarehouseTurnoverCompletedEvent
   | ProjectAssignmentPaymentUpdatedEvent
+  | ProjectContractorItemsChangedEvent
   | ProjectPingCreatedEvent
   | ProjectPingConfirmedEvent
   | ProjectPingDeclinedEvent;

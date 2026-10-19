@@ -150,6 +150,7 @@ export function createModules(bus: EventBus = new EventBus()) {
   };
   bus.on("project.warehouse_turnover.completed", event => completeProjectWhenSettled(event.projectId, event.actorId));
   bus.on("project.assignment.payment.updated", event => completeProjectWhenSettled(event.projectId));
+  bus.on("project.contractor_items.changed", event => completeProjectWhenSettled(event.projectId));
   bus.on("finance.transaction.created", syncProjectPayment);
   bus.on("finance.transaction.created", event => event.projectId ? completeProjectWhenSettled(event.projectId) : undefined);
   bus.on("finance.transaction.changed", syncProjectPayment);
@@ -879,9 +880,23 @@ export function createModules(bus: EventBus = new EventBus()) {
     return setInterval(() => void dispatchClientFollowupNotifications(), 60_000);
   }
 
+  async function reconcileSettledProjects() {
+    const awaiting = (await projects.service.listProjects()).filter(project =>
+      project.status === "awaiting_payment" && project.warehouseTurnoverCompletedAt
+    );
+    const results = await Promise.allSettled(awaiting.map(project => completeProjectWhenSettled(project.id)));
+    for (const [index, result] of results.entries()) {
+      if (result.status === "rejected") {
+        // A malformed legacy project must not prevent the API from starting;
+        // keep it awaiting payment and surface the failed reconciliation.
+        console.error(`[settlement] failed to reconcile project ${awaiting[index]?.id}:`, result.reason);
+      }
+    }
+  }
+
   const modules = [appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, supplies, operations, transport, audit];
 
-  return { bus, appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, supplies, operations, transport, audit, apex, billing, modules, authorizeFinanceProject, handleTelegramCallback, startReminderScheduler, startProjectProblemScheduler, startClientFollowupScheduler };
+  return { bus, appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, supplies, operations, transport, audit, apex, billing, modules, authorizeFinanceProject, handleTelegramCallback, startReminderScheduler, startProjectProblemScheduler, startClientFollowupScheduler, reconcileSettledProjects };
 }
 
 export type Wiring = ReturnType<typeof createModules>;

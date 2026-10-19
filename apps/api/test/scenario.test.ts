@@ -604,6 +604,64 @@ describe("Tech pickup/return → некомплект", () => {
     expect(reopened.status).toBe("in_progress");
   });
 
+  it("completes a settled project when the last contractor item is returned", async () => {
+    const { projects, equipment, finance } = wiring;
+    const client = await projects.service.createClient({ name: `Settlement ${Date.now()}` });
+    const project = await projects.service.createProject({
+      name: "Contractor return settlement",
+      clientId: client.id,
+      financeTracked: true,
+    });
+    const contractor = await equipment.service.createContractor({ name: `Settlement contractor ${Date.now()}` });
+    const item = await projects.service.addContractorItem({
+      projectId: project.id,
+      contractorId: contractor.id,
+      kind: "equipment",
+      name: "Subrent fixture",
+      qty: 1,
+      priceEUR: 0,
+      costEUR: 25,
+    });
+    const account = await finance.service.createAccount({ name: `Settlement EUR ${Date.now()}`, currency: "EUR" });
+
+    await projects.service.setOperationStage(project.id, "return");
+    await projects.service.completeWarehouseTurnover(project.id);
+    await finance.service.createTransaction({
+      accountId: account.id,
+      projectId: project.id,
+      contractorId: contractor.id,
+      kind: "expense",
+      category: "other",
+      amount: 25,
+      currency: "EUR",
+    });
+    expect((await projects.service.getProject(project.id))?.status).toBe("awaiting_payment");
+
+    await projects.service.returnContractorItem(item.id);
+
+    expect((await projects.service.getProject(project.id))?.status).toBe("completed");
+  });
+
+  it("reconciles projects that were already settled before startup", async () => {
+    const { projects } = wiring;
+    const client = await projects.service.createClient({ name: `Stale settlement ${Date.now()}` });
+    const project = await projects.service.createProject({
+      name: "Previously settled project",
+      clientId: client.id,
+      financeTracked: true,
+    });
+    await pool.query(
+      `UPDATE projects.projects
+       SET status='awaiting_payment', warehouse_turnover_completed_at=now()
+       WHERE id=$1`,
+      [project.id]
+    );
+
+    await wiring.reconcileSettledProjects();
+
+    expect((await projects.service.getProject(project.id))?.status).toBe("completed");
+  });
+
   it("skips delivery, mount and dismantle stages for dry rentals", async () => {
     const actor = await makeTech("Dry rental");
     const client = await wiring.projects.service.createClient({ name: `Dry ${Date.now()}` });

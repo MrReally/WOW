@@ -2006,6 +2006,9 @@ export function createProjectsService(
         `UPDATE projects.contractor_items SET returned_at=COALESCE(returned_at, now()) WHERE project_id=$1 AND contractor_id=$2 AND kind='equipment' RETURNING *`,
         [projectId, contractorId]
       );
+      if (rows.length) {
+        await bus.publish({ type: "project.contractor_items.changed", projectId, contractorId, at: new Date().toISOString() });
+      }
       return rows.map(contractorItemDTO);
     },
     async setContractorItemsPaid(projectId, contractorId, paid) {
@@ -2023,6 +2026,7 @@ export function createProjectsService(
         [id]
       );
       if (!row) throw NotFound("contractor item", id);
+      await bus.publish({ type: "project.contractor_items.changed", projectId: row.project_id, contractorId: row.contractor_id, at: new Date().toISOString() });
       return contractorItemDTO(row);
     },
     async removeContractorItem(id) {

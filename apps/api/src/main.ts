@@ -32,6 +32,10 @@ async function main() {
     }
   }
 
+  // Repair projects that became fully settled before all settlement-changing
+  // operations emitted a completion recheck event.
+  await wiring.reconcileSettledProjects();
+
   await app.listen({ port: env.port, host: "0.0.0.0" });
 
   // Telegram notifications bot (long polling). No-op without a token.
