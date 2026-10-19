@@ -932,6 +932,12 @@ export function createEquipmentService(
         inRepair: by("in_repair"),
       };
     },
+    async listModelStocks(warehouseId) {
+      const models = await this.listModels();
+      const tracked = models.filter(model => model.trackingMode === "quantity" || model.trackingMode === "cable");
+      const rows = await Promise.all(tracked.map(model => this.modelStock(model.id, warehouseId)));
+      return rows.filter(row => row.total > 0 || row.onProjects > 0);
+    },
 
     // ── Quantity (cable) stock + moves ──
     async transferUnit(unitId, warehouseId, actorId, note, zoneId) {

@@ -44,6 +44,7 @@ import { ImportSheet } from "./components/ImportSheet.tsx";
 import { CableMoveSheet, CableRow } from "./components/CableMoveSheet.tsx";
 import { CableCreateSheet } from "./components/CableCreateSheet.tsx";
 import { OpsSheet } from "./components/OpsSheet.tsx";
+import { InventoryWindow } from "./components/InventoryWindow.tsx";
 import { AddressInput } from "../places/AddressInput.tsx";
 import { useCreateVenue, useUpdateVenue, useVenues } from "../plans/hooks.ts";
 
@@ -699,6 +700,7 @@ export function WarehousePage() {
   return (
     <div className="stack warehouse-mobile-page">
       {warehouseTabs}
+      <InventoryWindow warehouses={warehouseList} models={allModels} />
       {activeTab === "dashboard" && categorySelector}
       {activeTab === "dashboard" && (
         <>

@@ -275,3 +275,5 @@ export function useResetData() {
     onSuccess: () => qc.invalidateQueries(),
   });
 }
+export function useInventorySettings(enabled=true){return useQuery({enabled,queryKey:["app-settings","inventory"],queryFn:()=>api.get<AppSettings.InventorySettingsDTO>("/api/app-settings/inventory")});}
+export function useSetInventorySettings(){const qc=useQueryClient();return useMutation({mutationFn:(input:AppSettings.InventorySettingsDTO)=>api.put<AppSettings.InventorySettingsDTO>("/api/app-settings/inventory",input),onSuccess:()=>qc.invalidateQueries({queryKey:["app-settings","inventory"]}),meta:{successMessage:"Настройка инвентаризации сохранена"}});}

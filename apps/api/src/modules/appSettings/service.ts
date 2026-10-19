@@ -67,6 +67,14 @@ export function createAppSettingsService(db: Sql, bus: EventBus): AppSettings.Ap
       const row = await one<{ project_id: string }>(db, `INSERT INTO app_settings.client_followup_notification_deliveries(project_id,project_starts_at,trigger_kind,interval_minutes) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING project_id`, [projectId, projectStartsAt, triggerKind, intervalMinutes]);
       return !!row;
     },
+    async getInventorySettings() {
+      const row = await one<{ allow_incomplete_zone_completion: boolean }>(db, `SELECT allow_incomplete_zone_completion FROM app_settings.inventory WHERE id=1`);
+      return { allowIncompleteZoneCompletion: row?.allow_incomplete_zone_completion ?? false };
+    },
+    async updateInventorySettings(input) {
+      const row = await one<{ allow_incomplete_zone_completion: boolean }>(db, `INSERT INTO app_settings.inventory(id,allow_incomplete_zone_completion,updated_at) VALUES(1,$1,now()) ON CONFLICT(id) DO UPDATE SET allow_incomplete_zone_completion=EXCLUDED.allow_incomplete_zone_completion,updated_at=now() RETURNING allow_incomplete_zone_completion`, [input.allowIncompleteZoneCompletion]);
+      return { allowIncompleteZoneCompletion: row!.allow_incomplete_zone_completion };
+    },
     async listDressCodeOptions(includeArchived = false) {
       return (await query<DressCodeRow>(db, `SELECT id,label,active,sort_order FROM app_settings.dress_code_options ${includeArchived ? "" : "WHERE active"} ORDER BY sort_order,label`)).map(dressCodeDTO);
     },

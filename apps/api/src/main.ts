@@ -43,6 +43,7 @@ async function main() {
   wiring.startReminderScheduler();
   wiring.startProjectProblemScheduler();
   wiring.startClientFollowupScheduler();
+  wiring.startInventoryScheduler();
 
   const shutdown = async () => {
     await app.close();

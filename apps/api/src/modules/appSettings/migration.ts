@@ -1,5 +1,10 @@
 export const appSettingsMigration = `
 CREATE SCHEMA IF NOT EXISTS app_settings;
+CREATE TABLE IF NOT EXISTS app_settings.inventory (
+  id integer PRIMARY KEY CHECK (id=1),
+  allow_incomplete_zone_completion boolean NOT NULL DEFAULT false,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS app_settings.date_time (
   id          integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),

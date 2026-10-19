@@ -12,8 +12,11 @@ const dressCodeSchema = z.object({ label: z.string().trim().min(1) });
 const problemNotificationSchema = z.object({ intervalsMinutes: z.array(z.number().int().min(5).max(525600)).max(24) });
 const clientFollowupNotificationSchema = z.object({ draftIntervalsMinutes: z.array(z.number().int().min(5).max(525600)).max(24), confirmedIntervalsMinutes: z.array(z.number().int().min(5).max(525600)).max(24) });
 const projectNameTemplateSchema = z.object({ template: z.string().trim().min(1).max(240).refine(value => value.includes("[name]"), "шаблон должен содержать [name]") });
+const inventorySettingsSchema = z.object({ allowIncompleteZoneCompletion: z.boolean() });
 
 export function registerAppSettingsRoutes(app: FastifyInstance, ctx: RouteContext, service: AppSettings.AppSettingsService) {
+  app.get("/api/app-settings/inventory", async req => { const auth=await ctx.auth(req); requirePermission(auth,"warehouse.inventory.manage","roles.manage"); return service.getInventorySettings(); });
+  app.put("/api/app-settings/inventory", async req => { const auth=await ctx.auth(req); requirePermission(auth,"roles.manage"); return service.updateInventorySettings(inventorySettingsSchema.parse(req.body)); });
   app.get("/api/app-settings/date-time", async () => service.getDateTimeSettings());
   app.put("/api/app-settings/date-time", async (req) => {
     const auth = await ctx.auth(req);

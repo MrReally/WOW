@@ -4,7 +4,7 @@ import { CURRENCIES, DATE_FORMATS, formatDateValue, formatProjectName, formatTim
 import { Card, Button, SectionTitle, Input, Select, Loading } from "../../ui-kit/index.ts";
 import { useTheme } from "../../app/theme.tsx";
 import { useSession } from "../../app/session.ts";
-import { useAllCalendarFeed, useClientFollowupNotificationSettings, useCreateDressCodeOption, useDateTimeSettings, useDressCodeOptions, useFxRates, useProjectNameTemplateSettings, useProjectProblemNotificationSettings, useSetClientFollowupNotificationSettings, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetProjectNameTemplateSettings, useSetProjectProblemNotificationSettings, useSetTelegramInboxSettings, useTelegramInboxSettings, useUpdateDressCodeOption } from "./hooks.ts";
+import { useAllCalendarFeed, useClientFollowupNotificationSettings, useCreateDressCodeOption, useDateTimeSettings, useDressCodeOptions, useFxRates, useInventorySettings, useProjectNameTemplateSettings, useProjectProblemNotificationSettings, useSetClientFollowupNotificationSettings, useSetDateTimeSettings, useSetFxRate, useResetData, useResetStatus, useSetInventorySettings, useSetProjectNameTemplateSettings, useSetProjectProblemNotificationSettings, useSetTelegramInboxSettings, useTelegramInboxSettings, useUpdateDressCodeOption } from "./hooks.ts";
 import { RoleEditor } from "./components/RoleEditor.tsx";
 import { useCableSettings, useSetCableSettings } from "../warehouse/hooks.ts";
 import { nameFormatForInput, nameFormatFromInput } from "../warehouse/cables.ts";
@@ -75,6 +75,8 @@ export function SettingsPage() {
       {can("roles.manage") && <ProjectProblemNotificationSettings />}
 
       {can("roles.manage") && <ClientFollowupNotificationSettings />}
+
+      {can("roles.manage") && <InventoryGlobalSettings />}
 
       {can("projects.manage") && <DressCodeSettings />}
 
@@ -350,6 +352,8 @@ function ClientFollowupNotificationSettings() {
     <Button variant="secondary" disabled={save.isPending || settings.isLoading} onClick={() => save.mutate({ draftIntervalsMinutes: drafts, confirmedIntervalsMinutes: confirmed })}>Сохранить</Button>
   </div></Card></>;
 }
+
+function InventoryGlobalSettings(){const settings=useInventorySettings();const save=useSetInventorySettings();const [allow,setAllow]=useState(false);useEffect(()=>{if(settings.data)setAllow(settings.data.allowIncompleteZoneCompletion);},[settings.data]);return <><SectionTitle>Инвентаризация</SectionTitle><Card><div className="stack" style={{gap:10}}><label className="row"><input type="checkbox" checked={allow} onChange={e=>setAllow(e.target.checked)}/><span>Разрешить шефу завершать процесс с незакрытыми зонами</span></label><p className="card__subtitle">Такой документ будет отмечен как частичный и сможет получить отдельное дополнение позже.</p><Button variant="secondary" disabled={save.isPending||settings.isLoading} onClick={()=>save.mutate({allowIncompleteZoneCompletion:allow})}>Сохранить</Button></div></Card></>;}
 
 function IntervalEditor({ title, values, onChange }: { title: string; values: number[]; onChange: (values: number[]) => void }) {
   const [amount, setAmount] = useState("1");

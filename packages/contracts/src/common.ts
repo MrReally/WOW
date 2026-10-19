@@ -34,6 +34,11 @@ export type Permission =
   | "warehouse.unit.status"
   | "warehouse.costs.view"
   | "warehouse.import"
+  | "warehouse.inventory.participate"
+  | "warehouse.inventory.manage"
+  | "warehouse.inventory.claim-zone"
+  | "warehouse.inventory.add-serial"
+  | "warehouse.inventory.add-model"
   | "supplies.view"
   | "supplies.move"
   | "supplies.catalog.manage"
@@ -95,6 +100,11 @@ export const PERMISSIONS: PermissionMeta[] = [
   { key: "warehouse.issue", group: "Склад", label: "Выдавать и принимать оборудование" },
   { key: "warehouse.unit.status", group: "Склад", label: "Менять статус единиц (ремонт, утеря)" },
   { key: "warehouse.costs.view", group: "Склад", label: "Видеть стоимость ремонтов и сервисов" },
+  { key: "warehouse.inventory.participate", group: "Склад · инвентаризация", label: "Участвовать в инвентаризации" },
+  { key: "warehouse.inventory.manage", group: "Склад · инвентаризация", label: "Шеф инвентаризации: создавать, назначать и проводить" },
+  { key: "warehouse.inventory.claim-zone", group: "Склад · инвентаризация", label: "Самостоятельно занимать свободную зону" },
+  { key: "warehouse.inventory.add-serial", group: "Склад · инвентаризация", label: "Добавлять серийную единицу существующей модели" },
+  { key: "warehouse.inventory.add-model", group: "Склад · инвентаризация", label: "Добавлять оборудование другой существующей модели" },
   { key: "supplies.view", group: "Расходники", label: "Видеть остатки расходников" },
   { key: "supplies.move", group: "Расходники", label: "Проводить расход, списание и корректировку" },
   { key: "supplies.catalog.manage", group: "Расходники", label: "Управлять категориями, позициями и ёмкостями" },
@@ -142,6 +152,7 @@ export interface AuthContext {
   telegramId: string | null;
   email: string | null;
   displayName: string;
+  nickname: string | null;
   roleId: ID | null;
   roleName: string;
   isOwner: boolean;

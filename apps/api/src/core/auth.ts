@@ -52,6 +52,7 @@ function toContext(su: People.SessionUser): AuthContext {
     telegramId: su.user.telegramId,
     email: su.user.email,
     displayName: su.user.displayName,
+    nickname: su.user.nickname,
     roleId: su.user.roleId,
     roleName: su.user.roleName,
     isOwner,

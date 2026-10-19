@@ -28,6 +28,8 @@ Desktop Backoffice не создаёт отдельную БД, отдельны
 | equipment | repairs | id, unit_id, status, problem, vendor, est_cost_eur, cost_eur, resolution, outcome, opened_by, opened_at, closed_by, closed_at | — |
 | equipment | handovers | id, unit_id, contractor_id, status, reason, note, cost_eur, expected_return, sent_by, sent_at, returned_by, returned_at | — |
 | equipment | problems | id, kind, severity, title, detail, refs, resolved, created_at, resolved_at | — |
+| operations | inventory_processes / inventory_zone_work / inventory_entries | склад, снимок ожидаемых строк, статус/полнота, блокировки зон, append-only вводы и исправления | Параллельная построчная инвентаризация; итог ссылается на обычный operations.documents |
+| operations | inventory_schedules | warehouse_id, frequency, interval_days, launch_time, time_zone, hide_expected, next_run_at, active | Регулярный запуск; одновременно не более одного открытого процесса на склад |
 | projects | clients | id, name, contacts, created_at | — |
 | projects | projects | id, name, client_id, status, venue_id, operation_stage, starts_at, ends_at, created_at | — |
 | projects | reservations | id, project_id, model_id, qty, starts_at, ends_at, resolved_unit_ids, created_at | — |

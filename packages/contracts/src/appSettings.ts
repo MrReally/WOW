@@ -70,6 +70,11 @@ export interface ClientFollowupNotificationSettingsDTO {
   confirmedIntervalsMinutes: number[];
 }
 
+export interface InventorySettingsDTO {
+  /** Chief may finish a process while some zones still contain uncounted lines. */
+  allowIncompleteZoneCompletion: boolean;
+}
+
 export interface AppSettingsService {
   getDateTimeSettings(): Promise<DateTimeSettingsDTO>;
   updateDateTimeSettings(input: UpdateDateTimeSettingsInput): Promise<DateTimeSettingsDTO>;
@@ -81,6 +86,8 @@ export interface AppSettingsService {
   claimProjectProblemNotification(projectId: string, projectStartsAt: string, intervalMinutes: number): Promise<boolean>;
   getClientFollowupNotificationSettings(): Promise<ClientFollowupNotificationSettingsDTO>;
   updateClientFollowupNotificationSettings(input: ClientFollowupNotificationSettingsDTO): Promise<ClientFollowupNotificationSettingsDTO>;
+  getInventorySettings(): Promise<InventorySettingsDTO>;
+  updateInventorySettings(input: InventorySettingsDTO): Promise<InventorySettingsDTO>;
   claimClientFollowupNotification(projectId: string, projectStartsAt: string, triggerKind: "draft" | "confirmed", intervalMinutes: number): Promise<boolean>;
   listDressCodeOptions(includeArchived?: boolean): Promise<DressCodeOptionDTO[]>;
   createDressCodeOption(input: { label: string }): Promise<DressCodeOptionDTO>;

@@ -1,11 +1,13 @@
-import type { Equipment, Operations, Projects, Venues } from "@sever/contracts";
+import type { AppSettings, Equipment, Operations, Projects, Venues } from "@sever/contracts";
 import { one, query, type Sql } from "../../core/db.js";
 import { BadRequest, NotFound } from "../../core/errors.js";
+import { createInventoryService } from "./inventoryService.js";
 type Row={id:string;number:string;kind:Operations.OperationDocumentKind;status:Operations.OperationDocumentStatus;payload:Operations.OperationPayload;document_at:Date;version:number;created_by:string;created_at:Date;updated_by:string;updated_at:Date;posted_at:Date|null;reversed_at:Date|null};
 type RevisionRow={id:string;document_id:string;version:number;action:Operations.OperationRevisionAction;payload:Operations.OperationPayload;document_at:Date;actor_id:string;created_at:Date};
 const dto=(r:Row):Operations.OperationDocumentDTO=>({id:r.id,number:r.number,kind:r.kind,status:r.status,payload:r.payload,documentAt:r.document_at.toISOString(),version:r.version,createdBy:r.created_by,createdAt:r.created_at.toISOString(),updatedBy:r.updated_by,updatedAt:r.updated_at.toISOString(),postedAt:r.posted_at?.toISOString()??null,reversedAt:r.reversed_at?.toISOString()??null});
 const revisionDto=(r:RevisionRow):Operations.OperationRevisionDTO=>({id:r.id,documentId:r.document_id,version:r.version,action:r.action,payload:r.payload,documentAt:r.document_at.toISOString(),actorId:r.actor_id,createdAt:r.created_at.toISOString()});
-export function createOperationsService(db:Sql,equipment:Equipment.EquipmentService,projects:Projects.ProjectsService,venues:Venues.VenuesService):Operations.OperationsService{
+export function createOperationsService(db:Sql,equipment:Equipment.EquipmentService,projects:Projects.ProjectsService,venues:Venues.VenuesService,settings:AppSettings.AppSettingsService):Operations.OperationsService{
+ const inventory=createInventoryService(db,equipment,settings);
  const load=async(id:string)=>one<Row>(db,`SELECT * FROM operations.documents WHERE id=$1`,[id]);
  const enrich=async(payload:Operations.OperationPayload)=>{let enriched=payload;if(payload.kind==="transfer"){const unit=await equipment.getUnit(payload.unitId);if(!unit)throw NotFound("unit",payload.unitId);enriched={...payload,fromWarehouseId:unit.warehouseId};}if(payload.kind==="inventory"){enriched={...payload,lines:await Promise.all(payload.lines.map(async line=>{const unit=await equipment.getUnit(line.unitId);if(!unit)throw NotFound("unit",line.unitId);return{...line,beforeStatus:unit.status};}))};}return enriched;};
  const revision=(documentId:string,version:number,action:Operations.OperationRevisionAction,payload:Operations.OperationPayload,documentAt:Date,actorId:string)=>query(db,`INSERT INTO operations.document_revisions(document_id,version,action,payload,document_at,actor_id) VALUES($1,$2,$3,$4,$5,$6)`,[documentId,version,action,JSON.stringify(payload),documentAt,actorId]);
@@ -40,6 +42,7 @@ export function createOperationsService(db:Sql,equipment:Equipment.EquipmentServ
   for(const line of payload.lines){if(reverse){if(line.beforeStatus)await equipment.changeStatus(line.unitId,line.beforeStatus,actorId,"Сторно инвентаризации");}else if(!line.present)await equipment.changeStatus(line.unitId,"lost",actorId,payload.note??"Не найдено при инвентаризации");}
  };
  return {
+  ...inventory,
   async list(){return(await query<Row>(db,`SELECT * FROM operations.documents ORDER BY document_at DESC,created_at DESC LIMIT 500`)).map(dto);},
   async get(id){const r=await load(id);return r?dto(r):null;},
   async history(id){return(await query<RevisionRow>(db,`SELECT * FROM operations.document_revisions WHERE document_id=$1 ORDER BY created_at DESC`,[id])).map(revisionDto);},

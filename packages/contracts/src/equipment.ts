@@ -444,6 +444,7 @@ export interface EquipmentService {
   /** Cross-unit append-only movement projection for Backoffice reports. */
   listJournal(filter?: { limit?: number; projectId?: ID; warehouseId?: ID }): Promise<JournalEntryDTO[]>;
   modelStock(modelId: ID, warehouseId?: ID | null): Promise<ModelStockDTO>;
+  listModelStocks(warehouseId?: ID): Promise<ModelStockDTO[]>;
   transferUnit(unitId: ID, warehouseId: ID, actorId: ID, note?: string | null, zoneId?: ID | null): Promise<EquipmentUnitDTO>;
   installUnit(unitId: ID, venueId: ID, actorId: ID, note?: string | null): Promise<EquipmentUnitDTO>;
   uninstallUnit(unitId: ID, warehouseId: ID, actorId: ID, note?: string | null): Promise<EquipmentUnitDTO>;
