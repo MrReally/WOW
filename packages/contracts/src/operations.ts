@@ -6,12 +6,13 @@ export type OperationDocumentStatus = "draft" | "posted" | "reversed";
 export interface InventoryLine { unitId: ID; present: boolean; beforeStatus?: UnitStatus; result?: InventorySerialResult; comment?: string | null }
 export interface InventoryQuantityLine { modelId:ID; zoneId:ID|null; expectedQty:number; actualQty:number }
 export interface InventoryAddedUnitLine { modelId:ID; unitId:ID; zoneId:ID|null; assetTag:string; serial:string|null }
+export interface InventoryCorrectionLine { lineKey:string; serialResult:InventorySerialResult|null; actualQty:number|null; actorId:ID; actorName:string; createdAt:ISODateTime }
 export interface QuantityOperationLine { modelId: ID; warehouseId?: ID | null; qty: number }
 export type OperationPayload =
   | { kind: "issue"; projectId: ID; unitIds: ID[]; reservationId?: ID | null; quantityLines?: QuantityOperationLine[]; note?: string | null }
   | { kind: "return"; projectId: ID; returnedUnitIds: ID[]; expectedUnitIds: ID[]; warehouseId?: ID | null; venueId?: ID | null; quantityLines?: QuantityOperationLine[]; note?: string | null }
   | { kind: "transfer"; unitId: ID; warehouseId: ID; fromWarehouseId?: ID | null; note?: string | null }
-  | { kind: "inventory"; warehouseId?: ID | null; lines: InventoryLine[]; quantityLines?:InventoryQuantityLine[]; addedUnits?:InventoryAddedUnitLine[]; note?: string | null };
+  | { kind: "inventory"; warehouseId?: ID | null; lines: InventoryLine[]; quantityLines?:InventoryQuantityLine[]; addedUnits?:InventoryAddedUnitLine[]; corrections?:InventoryCorrectionLine[]; note?: string | null };
 export type OperationDocumentInput = OperationPayload & { documentAt?: ISODateTime };
 export interface OperationDocumentDTO { id: ID; number: string; kind: OperationDocumentKind; status: OperationDocumentStatus; payload: OperationPayload; documentAt: ISODateTime; version: number; createdBy: ID; createdAt: ISODateTime; updatedBy: ID; updatedAt: ISODateTime; postedAt: ISODateTime | null; reversedAt: ISODateTime | null }
 export type OperationRevisionAction="created"|"edited"|"posted"|"reversed";
