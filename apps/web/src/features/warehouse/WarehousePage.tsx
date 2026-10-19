@@ -301,6 +301,7 @@ export function WarehousePage() {
   const [editModel, setEditModel] = useState<Equipment.EquipmentModelDTO | null>(null);
   const [editType, setEditType] = useState<Equipment.EquipmentTypeDTO | null>(null);
   const [typeSheetOpen, setTypeSheetOpen] = useState(false);
+  const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [warehouseForm, setWarehouseForm] = useState<{ mode: "create" | "edit"; id?: string } | null>(null);
   const [warehouseNameDraft, setWarehouseNameDraft] = useState("");
@@ -406,6 +407,12 @@ export function WarehousePage() {
     setExpandedStockModels((prev) => {
       const next = new Set(prev);
       next.has(modelId) ? next.delete(modelId) : next.add(modelId);
+      return next;
+    });
+  const toggleType = (typeId: string) =>
+    setExpandedTypes((prev) => {
+      const next = new Set(prev);
+      next.has(typeId) ? next.delete(typeId) : next.add(typeId);
       return next;
     });
   const repairCount = (openRepairs.data ?? []).length + (openHandovers.data ?? []).length;
@@ -541,14 +548,41 @@ export function WarehousePage() {
         <SectionHead label="Типы" meta={`${types.data?.length ?? 0}`} />
         <div className="card warehouse-type-list">
           {(types.data ?? []).map((type, index) => {
-            const typeModels = allModels.filter(model => model.typeId === type.id).length;
+            const typeModels = allModels.filter(model => model.typeId === type.id);
+            const expanded = expandedTypes.has(type.id);
+            const modelsId = `warehouse-type-${type.id}-models`;
             const accounting = type.trackingMode === "serial" ? "По серийным единицам" : type.trackingMode === "cable" ? "Кабель" : "Количество";
             const allocation = type.reservationAssignmentMode === "operations" ? "по факту в Operations" : type.reservationAssignmentMode === "planning" ? "распределять заранее" : "выбирать в каждой модели";
-            return <button key={type.id} type="button" className="warehouse-type-row" data-last={index === (types.data?.length ?? 0) - 1 || undefined} onClick={() => { setEditType(type); setTypeSheetOpen(true); }}>
-              <span><strong>{type.name}</strong><small>{accounting} · {allocation}</small></span>
-              <span className="warehouse-type-row__count">{typeModels}</span>
-              <span className="warehouse-model-row__chevron" aria-hidden="true" />
-            </button>;
+            return <div key={type.id} className="warehouse-type-group" data-last={index === (types.data?.length ?? 0) - 1 || undefined}>
+              <div className="warehouse-type-row">
+                <button
+                  type="button"
+                  className="warehouse-type-row__toggle"
+                  aria-expanded={expanded}
+                  aria-controls={modelsId}
+                  onClick={() => toggleType(type.id)}
+                >
+                  <span className="warehouse-type-row__copy"><strong>{type.name}</strong><small>{accounting} · {allocation}</small></span>
+                  <span className="warehouse-type-row__count">{typeModels.length}</span>
+                </button>
+                <button
+                  type="button"
+                  className="warehouse-type-row__settings"
+                  aria-label={`Настройки типа «${type.name}»`}
+                  onClick={() => { setEditType(type); setTypeSheetOpen(true); }}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M9.8 3.4h4.4l.7 2.1c.5.2 1 .5 1.5.9l2.2-.5 2.2 3.8-1.5 1.6a8 8 0 010 1.8l1.5 1.6-2.2 3.8-2.2-.5c-.5.4-1 .7-1.5.9l-.7 2.1H9.8l-.7-2.1a8 8 0 01-1.5-.9l-2.2.5-2.2-3.8 1.5-1.6a8 8 0 010-1.8L3.2 9.7l2.2-3.8 2.2.5c.5-.4 1-.7 1.5-.9l.7-2.1z" />
+                    <circle cx="12" cy="12.2" r="2.7" />
+                  </svg>
+                </button>
+              </div>
+              {expanded && <div id={modelsId} className="warehouse-type-models" role="region" aria-label={`Модели типа «${type.name}»`}>
+                {typeModels.length > 0
+                  ? typeModels.map((model, modelIndex) => <ModelRow key={model.id} model={model} last={modelIndex === typeModels.length - 1} onEdit={() => setEditModel(model)} />)
+                  : <p className="warehouse-type-models__empty">У этого типа пока нет моделей</p>}
+              </div>}
+            </div>;
           })}
         </div>
       </>}
