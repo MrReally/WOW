@@ -19,6 +19,16 @@ export function useProjectTimings(projectId: string | null) {
     queryFn: () => api.get<Projects.TimingDTO[]>(`/api/projects/${projectId}/timings`),
   });
 }
+export function useContractorOrders(projectId:string|null,enabled=true) {
+  return useQuery({enabled:!!projectId&&enabled,queryKey:["projects","contractor-orders",projectId],queryFn:()=>api.get<Projects.ContractorOrderDTO[]>(`/api/projects/${projectId}/contractor-orders`)});
+}
+function contractorOrderMutation(path:(input:{orderId:string;lineId?:string})=>string,method:"put"|"post") {
+  return () => { const qc=useQueryClient(); return useMutation({mutationFn:(input:{orderId:string;lineId?:string;active?:boolean})=>method==="put"?api.put<Projects.ContractorOrderDTO>(path(input),{active:input.active}):api.post<Projects.ContractorOrderDTO>(path(input),{}),onSuccess:()=>{qc.invalidateQueries({queryKey:["projects","contractor-orders"]});qc.invalidateQueries({queryKey:["projects"]});}}); };
+}
+export const useSetContractorOrderLineReceived=contractorOrderMutation(i=>`/api/contractor-orders/${i.orderId}/lines/${i.lineId}/received`,"put");
+export const useCompleteContractorOrderReceipt=contractorOrderMutation(i=>`/api/contractor-orders/${i.orderId}/receipt/complete`,"post");
+export const useSetContractorOrderLineReturned=contractorOrderMutation(i=>`/api/contractor-orders/${i.orderId}/lines/${i.lineId}/returned`,"put");
+export const useCompleteContractorOrderReturn=contractorOrderMutation(i=>`/api/contractor-orders/${i.orderId}/return/complete`,"post");
 
 export function useProjectTasks(projectId: string | null) {
   return useQuery({

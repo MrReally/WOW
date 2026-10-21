@@ -302,10 +302,44 @@ ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS returned_at times
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'equipment';
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS booked boolean NOT NULL DEFAULT false;
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS paid_at timestamptz;
+ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS order_id uuid;
 ALTER TABLE projects.contractor_items DROP CONSTRAINT IF EXISTS contractor_items_kind_check;
 ALTER TABLE projects.contractor_items ADD CONSTRAINT contractor_items_kind_check CHECK (kind IN ('equipment','delivery','setup'));
 CREATE INDEX IF NOT EXISTS contractor_items_project_idx ON projects.contractor_items(project_id);
 CREATE INDEX IF NOT EXISTS contractor_items_contractor_idx ON projects.contractor_items(contractor_id);
+
+CREATE TABLE IF NOT EXISTS projects.contractor_orders (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id            uuid NOT NULL REFERENCES projects.projects(id),
+  contractor_id         uuid NOT NULL,
+  warehouse_id          uuid,
+  name                  text NOT NULL,
+  fulfillment_mode      text NOT NULL CHECK (fulfillment_mode IN ('dry_rental','contractor_delivery')),
+  supplier_price_eur    numeric(12,2) NOT NULL CHECK (supplier_price_eur >= 0),
+  client_price_eur      numeric(12,2) NOT NULL CHECK (client_price_eur >= 0),
+  delivery_at           timestamptz,
+  pickup_at             timestamptz,
+  booked                boolean NOT NULL DEFAULT false,
+  receipt_completed_at  timestamptz,
+  return_completed_at   timestamptz,
+  delivery_timing_id    uuid,
+  pickup_timing_id      uuid,
+  created_at            timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS contractor_orders_project_idx ON projects.contractor_orders(project_id);
+CREATE INDEX IF NOT EXISTS contractor_orders_contractor_idx ON projects.contractor_orders(contractor_id);
+
+CREATE TABLE IF NOT EXISTS projects.contractor_order_lines (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id        uuid NOT NULL REFERENCES projects.contractor_orders(id) ON DELETE CASCADE,
+  catalog_item_id uuid NOT NULL,
+  name            text NOT NULL,
+  qty             integer NOT NULL CHECK (qty > 0),
+  received_at     timestamptz,
+  returned_at     timestamptz
+);
+CREATE INDEX IF NOT EXISTS contractor_order_lines_order_idx ON projects.contractor_order_lines(order_id);
+CREATE UNIQUE INDEX IF NOT EXISTS contractor_items_order_idx ON projects.contractor_items(order_id) WHERE order_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS projects.problems (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),

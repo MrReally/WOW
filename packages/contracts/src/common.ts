@@ -58,6 +58,9 @@ export type Permission =
   | "operations.finance.manage"
   | "operations.payroll.view"
   | "operations.payroll.manage"
+  | "operations.contractor_turnover.view"
+  | "operations.contractor_turnover.manage"
+  | "contractors.secret.view"
   | "venues.view"
   | "venues.manage"
   | "venues.archive"
@@ -124,6 +127,9 @@ export const PERMISSIONS: PermissionMeta[] = [
   { key: "operations.finance.manage", group: "Operations · финансы", label: "Вносить оплату клиента в Operations" },
   { key: "operations.payroll.view", group: "Operations · выплаты", label: "Видеть людей и ставки проекта в Operations" },
   { key: "operations.payroll.manage", group: "Operations · выплаты", label: "Отмечать выплаты людям в Operations" },
+  { key: "operations.contractor_turnover.view", group: "Operations · подрядчики", label: "Видеть приёмку и возврат оборудования подрядчиков" },
+  { key: "operations.contractor_turnover.manage", group: "Operations · подрядчики", label: "Проводить приёмку и возврат оборудования подрядчиков" },
+  { key: "contractors.secret.view", group: "Подрядчики", label: "Видеть секретные комментарии складов подрядчиков" },
   { key: "venues.view", group: "Площадки", label: "Видеть пространство Venues" },
   { key: "venues.manage", group: "Площадки и планы", label: "Управлять площадками" },
   { key: "venues.archive", group: "Площадки", label: "Архивировать и восстанавливать площадки" },

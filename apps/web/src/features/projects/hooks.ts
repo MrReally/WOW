@@ -316,6 +316,19 @@ export function useContractorItemHistory(contractorId: string) {
 export function useContractors() {
   return useQuery({ queryKey: ["equipment", "contractors"], queryFn: () => api.get<Equipment.ContractorDTO[]>("/api/equipment/contractors") });
 }
+export function useContractorCatalog() {
+  return useQuery({queryKey:["contractors","equipment"],queryFn:()=>api.get<import("@sever/contracts").Contractors.ContractorEquipmentDTO[]>("/api/contractors/equipment")});
+}
+export function useContractorWarehouses() {
+  return useQuery({queryKey:["contractors","warehouses"],queryFn:()=>api.get<import("@sever/contracts").Contractors.ContractorWarehouseDTO[]>("/api/contractors/warehouses")});
+}
+export function useContractorOrders(projectId:string) {
+  return useQuery({queryKey:["projects","contractor-orders",projectId],queryFn:()=>api.get<Projects.ContractorOrderDTO[]>(`/api/projects/${projectId}/contractor-orders`)});
+}
+export function useCreateContractorOrder() {
+  const qc=useQueryClient();
+  return useMutation({mutationFn:(input:Projects.CreateContractorOrderInput)=>api.post<Projects.ContractorOrderDTO>("/api/contractor-orders",input),meta:{successMessage:"Заказ подрядчику создан"},onSuccess:()=>{invalidateProjects(qc);qc.invalidateQueries({queryKey:["projects","contractor-orders"]});qc.invalidateQueries({queryKey:["projects","contractor-items"]});qc.invalidateQueries({queryKey:["projects","timings"]});}});
+}
 export function useAddContractorItem() {
   const qc = useQueryClient();
   return useMutation({

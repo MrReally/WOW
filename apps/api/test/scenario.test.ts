@@ -915,6 +915,31 @@ describe("Tech pickup/return → некомплект", () => {
     expect((await wiring.contractors.service.listEquipment(contractor.id)).find(item => item.id===equipment.id)?.availableQty).toBe(2);
   });
 
+  it("creates a packaged contractor order from catalog and closes its independent turnover", async () => {
+    const contractor=await wiring.equipment.service.createContractor({name:`Package supplier ${Date.now()}`});
+    const warehouse=await wiring.contractors.service.createWarehouse({contractorId:contractor.id,name:"Zemun",address:"Industrijska 12",latitude:44.84,longitude:20.38,secretComment:"alarm 1234"});
+    const fixture=await wiring.contractors.service.createEquipment({contractorId:contractor.id,name:"Beam 230",maxQty:4,dryRentalCostEUR:30,deliveredCostEUR:40,warehouseId:warehouse.id});
+    const client=await wiring.projects.service.createClient({name:`Package client ${Date.now()}`});
+    const project=await wiring.projects.service.createProject({name:"Supplier package",clientId:client.id,financeTracked:false});
+    const deliveryAt=new Date(Date.now()+3_600_000).toISOString(),pickupAt=new Date(Date.now()+7_200_000).toISOString();
+
+    await expect(wiring.projects.service.createContractorOrder({projectId:project.id,contractorId:contractor.id,warehouseId:warehouse.id,name:"Light package",fulfillmentMode:"dry_rental",supplierPriceEUR:150,clientPriceEUR:240,lines:[{catalogItemId:fixture.id,name:fixture.name,qty:5}]})).rejects.toThrow(/максимум 4/);
+    const order=await wiring.projects.service.createContractorOrder({projectId:project.id,contractorId:contractor.id,warehouseId:warehouse.id,name:"Light package",fulfillmentMode:"contractor_delivery",supplierPriceEUR:150,clientPriceEUR:240,deliveryAt,pickupAt,lines:[{catalogItemId:fixture.id,name:fixture.name,qty:3}]});
+    expect(order.lines).toEqual([expect.objectContaining({catalogItemId:fixture.id,qty:3,receivedAt:null,returnedAt:null})]);
+    expect((await wiring.projects.service.listTimings(project.id)).filter(item=>item.title.includes("Light package"))).toHaveLength(2);
+    expect((await wiring.billing.projectInvoice(project.id)).contractorCostEUR).toBe(150);
+    await pool.query(`UPDATE projects.projects SET status='awaiting_payment', warehouse_turnover_completed_at=now() WHERE id=$1`,[project.id]);
+    await wiring.reconcileSettledProjects();
+    expect((await wiring.projects.service.getProject(project.id))?.status).toBe("awaiting_payment");
+
+    await wiring.projects.service.setContractorOrderLineReceived(order.id,order.lines[0]!.id,true);
+    expect((await wiring.projects.service.completeContractorOrderReceipt(order.id)).receiptCompletedAt).toBeTruthy();
+    await wiring.projects.service.setContractorOrderLineReturned(order.id,order.lines[0]!.id,true);
+    expect((await wiring.projects.service.completeContractorOrderReturn(order.id)).returnCompletedAt).toBeTruthy();
+    expect((await wiring.projects.service.listContractorItems(project.id)).find(item=>item.id===order.contractorItemId)?.returnedAt).toBeTruthy();
+    expect((await wiring.projects.service.getProject(project.id))?.status).toBe("completed");
+  });
+
   it("technical plans: versioning clones elements and tracks the current version", async () => {
     const { plans, projects } = wiring;
     const client = await projects.service.createClient({ name: `Plan Client ${Date.now()}` });

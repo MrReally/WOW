@@ -1,8 +1,16 @@
 # Заявки с сайта → SEVER App: состояние API и контракт интеграции
 
-Проверено по коду 19.10.2026. **Этот документ обязателен к обновлению при каждом изменении описанных здесь маршрутов, DTO, прав, авторизации или логики заказа.** Правило также закреплено в корневом `AGENTS.md`. Примеры ниже относятся к текущему коду, а не к обещанному публичному API.
+Проверено по коду 21.10.2026. **Этот документ обязателен к обновлению при каждом изменении описанных здесь маршрутов, DTO, прав, авторизации или логики заказа.** Правило также закреплено в корневом `AGENTS.md`. Примеры ниже относятся к текущему коду, а не к обещанному публичному API.
 
 ## Что работает сейчас
+
+### Заказы подрядчикам и их оборот
+
+Каталог подрядчика хранится отдельно от собственного склада SEVER. Каталожная позиция может содержать известный максимум количества (nullable, если поставщик не раскрывает наличие), цену сухой аренды, цену с доставкой, склад подрядчика и примечание. Склады подрядчика содержат адрес и/или координаты, обычный комментарий и секретный комментарий; `secretComment` возвращается только с правом `contractors.secret.view`.
+
+`POST /api/contractor-orders` создаёт пакетный заказ подрядчику: несколько каталожных строк с количествами, одну общую цену подрядчика, одну цену клиенту, склад и режим `dry_rental` либо `contractor_delivery`. При доставке подрядчиком обязательны `deliveryAt` и `pickupAt`; сервис создаёт два 30-минутных тайминга проекта. Цена подрядчика сохраняется как полный коммерческий итог: для `contractor_delivery` она включает доставку и последующий забор, для `dry_rental` — стоимость сухой аренды. Одновременно создаётся одна совместимая `contractor_item` с количеством 1, поэтому существующие billing, долг подрядчику и клиентская смета получают пакет одной строкой, а физические позиции остаются детализацией заказа.
+
+Приёмка и возврат не зависят от `operationStage`. Пользователь с `operations.contractor_turnover.manage` отмечает каждую строку отдельно и затем завершает приёмку либо возврат. Завершить этап нельзя, пока не отмечены все строки; после завершения приёмки её нельзя переписать, после завершения возврата связанная подрядная позиция получает `returnedAt`. Просмотр защищён отдельным правом `operations.contractor_turnover.view`. Любой незакрытый оборот подрядчика блокирует автоматическое завершение проекта. Для проекта с финансовым учётом дополнительно требуется оплата подрядчика; ручной возврат связанной коммерческой строки запрещён, поэтому обойти поштучный оборот старым маршрутом нельзя.
 
 ### Финансовые правила заказа
 
@@ -47,6 +55,13 @@ SEVER хранит клиента, проект (заказ в операцио�
 | Заменить строки сметы | `PUT /api/projects/:id/estimate-lines` | `{lines: SaveProjectEstimateLineInput[]}` → строки сметы | `finance.manage` |
 | Установить общую скидку | `PUT /api/projects/:id/estimate-settings` | `{totalDiscountType: "percent", totalDiscountValue: 14}` → настройки; тип: `percent`, `fixed_rsd` или `fixed_eur` | `finance.manage` |
 | Рассчитать доставку | `POST /api/transport/route-quote` | адреса, `vehicleId`, необязательная ручная цена топлива и километраж → топливо, амортизация и `totalCostEUR` | одно из `finance.view`, `projects.view` |
+| Список каталога подрядчиков | `GET /api/contractors/equipment` | `ContractorEquipmentDTO[]`: максимум, цены сухой аренды/с доставкой, склад | одно из прав чтения подрядчиков |
+| Создать/изменить позицию каталога | `POST /api/contractors/equipment`, `PATCH /api/contractors/equipment/:id` | `CreateContractorEquipmentInput` / частичное обновление | одно из прав управления планированием/каталогом |
+| Склады подрядчиков | `GET/POST /api/contractors/warehouses`, `PATCH /api/contractors/warehouses/:id` | адрес, координаты, комментарии; секрет скрывается без отдельного права | чтение/управление подрядчиками; секрет — `contractors.secret.view` |
+| Создать пакетный заказ подрядчику | `POST /api/contractor-orders` | `CreateContractorOrderInput` → `ContractorOrderDTO` и строка экономики проекта | `projects.reservation.manage` |
+| Получить заказы проекта | `GET /api/projects/:id/contractor-orders` | пакетные заказы с физическими строками и состоянием оборота | проектные права либо `operations.contractor_turnover.view/manage` |
+| Отметить строку принятой/возвращённой | `PUT /api/contractor-orders/:orderId/lines/:lineId/received`, `.../returned` | `{active:boolean}` → заказ | `operations.contractor_turnover.manage` |
+| Завершить приёмку/возврат | `POST /api/contractor-orders/:id/receipt/complete`, `.../return/complete` | проверяет все строки; возврат закрывает связанную подрядную позицию | `operations.contractor_turnover.manage` |
 
 Источники истины: `apps/api/src/modules/projects/routes.ts`, `apps/api/src/modules/projects/service.ts`, `apps/api/src/modules/operations/routes.ts`, `apps/api/src/modules/operations/service.ts`, `apps/api/src/modules/finance/routes.ts`, `apps/api/src/modules/finance/service.ts`, `apps/api/src/modules/transport/routes.ts`, `apps/api/src/modules/transport/service.ts`, `apps/api/src/core/auth.ts`, `packages/contracts/src/projects.ts`, `packages/contracts/src/operations.ts`, `packages/contracts/src/finance.ts`, `packages/contracts/src/transport.ts`.
 

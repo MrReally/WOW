@@ -15,6 +15,7 @@ import {
   Textarea,
 } from "../../ui-kit/index.ts";
 import { useI18n } from "../../app/i18n.tsx";
+import { useSession } from "../../app/session.ts";
 import {
   useContractors,
   useContractorHistory,
@@ -25,6 +26,8 @@ import {
   useCreateContractorVehicle,
   useContractorEquipmentDirectory,
   useCreateContractorEquipment,
+  useContractorWarehouses,
+  useCreateContractorWarehouse,
   useOpenContractorItems,
   useProjects,
   useReturnContractorItem,
@@ -41,6 +44,8 @@ const totalClient = (item: Projects.ContractorItemDTO) => item.priceEUR * item.q
 const totalCost = (item: Projects.ContractorItemDTO) => item.costEUR * item.qty;
 
 export function ContractorsPage() {
+  const { can } = useSession();
+  const canViewWarehouseSecrets = can("contractors.secret.view");
   const contractors = useContractors();
   const projects = useProjects();
   const openItems = useOpenContractorItems();
@@ -52,6 +57,8 @@ export function ContractorsPage() {
   const createVehicle = useCreateContractorVehicle();
   const contractorEquipment = useContractorEquipmentDirectory();
   const createEquipment = useCreateContractorEquipment();
+  const contractorWarehouses = useContractorWarehouses();
+  const createWarehouse = useCreateContractorWarehouse();
   const markReturned = useReturnContractorItem();
   const { t, eur, locale } = useI18n();
   const directoryLabels = directoryCopy[locale];
@@ -78,7 +85,16 @@ export function ContractorsPage() {
   const [equipmentName, setEquipmentName] = useState("");
   const [equipmentQty, setEquipmentQty] = useState("1");
   const [equipmentCost, setEquipmentCost] = useState("");
+  const [equipmentDeliveredCost, setEquipmentDeliveredCost] = useState("");
+  const [equipmentMaxQty, setEquipmentMaxQty] = useState("");
+  const [equipmentWarehouseId, setEquipmentWarehouseId] = useState("");
   const [equipmentNote, setEquipmentNote] = useState("");
+  const [warehouseName,setWarehouseName]=useState("");
+  const [warehouseAddress,setWarehouseAddress]=useState("");
+  const [warehouseLat,setWarehouseLat]=useState("");
+  const [warehouseLng,setWarehouseLng]=useState("");
+  const [warehouseComment,setWarehouseComment]=useState("");
+  const [warehouseSecret,setWarehouseSecret]=useState("");
 
   const list = contractors.data ?? [];
   const open = openItems.data ?? [];
@@ -204,6 +220,11 @@ export function ContractorsPage() {
 
           <SectionTitle>{directoryLabels.directory}</SectionTitle>
           <Card>
+            <p className="card__title">Склады подрядчика</p>
+            <div className="row" style={{marginTop:10,flexWrap:"wrap"}}><Field label="Название"><Input value={warehouseName} onChange={e=>setWarehouseName(e.target.value)} /></Field><Field label="Адрес"><Input value={warehouseAddress} onChange={e=>setWarehouseAddress(e.target.value)} /></Field><Field label="Широта"><Input type="number" value={warehouseLat} onChange={e=>setWarehouseLat(e.target.value)} /></Field><Field label="Долгота"><Input type="number" value={warehouseLng} onChange={e=>setWarehouseLng(e.target.value)} /></Field><Field label="Комментарий"><Input value={warehouseComment} onChange={e=>setWarehouseComment(e.target.value)} /></Field>{canViewWarehouseSecrets&&<Field label="Секретный комментарий"><Input value={warehouseSecret} onChange={e=>setWarehouseSecret(e.target.value)} placeholder="Контакт, код сигнализации…" /></Field>}<Button disabled={!warehouseName.trim()||createWarehouse.isPending} onClick={()=>createWarehouse.mutate({contractorId:selected.id,name:warehouseName.trim(),address:warehouseAddress.trim()||null,latitude:warehouseLat?Number(warehouseLat):null,longitude:warehouseLng?Number(warehouseLng):null,comment:warehouseComment.trim()||null,secretComment:canViewWarehouseSecrets?warehouseSecret.trim()||null:undefined},{onSuccess:()=>{setWarehouseName("");setWarehouseAddress("");setWarehouseLat("");setWarehouseLng("");setWarehouseComment("");setWarehouseSecret("");}})}>+</Button></div>
+            <div className="stack" style={{gap:6,marginTop:10}}>{(contractorWarehouses.data??[]).filter(w=>w.contractorId===selected.id).map(w=><div className="lrow" key={w.id}><span><strong>{w.name}</strong><small>{[w.address,w.comment].filter(Boolean).join(" · ")||"Без адреса"}</small>{w.secretComment&&<small style={{color:"var(--warn)"}}>Секретно: {w.secretComment}</small>}</span><span className="card__subtitle">{w.latitude!=null&&w.longitude!=null?`${w.latitude}, ${w.longitude}`:"—"}</span></div>)}</div>
+          </Card>
+          <Card>
             <p className="card__title">{directoryLabels.people}</p>
             <div className="row" style={{ marginTop: 10, flexWrap:"wrap" }}>
               <Field label={directoryLabels.lastName}><Input value={personLastName} onChange={(event) => setPersonLastName(event.target.value)} /></Field>
@@ -234,8 +255,8 @@ export function ContractorsPage() {
           </Card>
           <Card>
             <p className="card__title">{directoryLabels.equipment}</p>
-            <div className="row" style={{ marginTop:10, flexWrap:"wrap" }}><Field label={directoryLabels.itemName}><Input value={equipmentName} onChange={event => setEquipmentName(event.target.value)} /></Field><Field label={directoryLabels.qty}><Input type="number" min="0" value={equipmentQty} onChange={event => setEquipmentQty(event.target.value)} /></Field><Field label={directoryLabels.cost}><Input type="number" min="0" step="0.01" value={equipmentCost} onChange={event => setEquipmentCost(event.target.value)} /></Field><Field label={directoryLabels.note}><Input value={equipmentNote} onChange={event => setEquipmentNote(event.target.value)} /></Field><Button disabled={!equipmentName.trim() || createEquipment.isPending} onClick={() => createEquipment.mutate({ contractorId:selected.id, name:equipmentName.trim(), availableQty:Math.max(0, Number(equipmentQty) || 0), defaultCostEUR:equipmentCost ? Number(equipmentCost) : null, note:equipmentNote.trim() || null }, { onSuccess:() => { setEquipmentName(""); setEquipmentQty("1"); setEquipmentCost(""); setEquipmentNote(""); } })}>+</Button></div>
-            {(contractorEquipment.data ?? []).filter(item => item.contractorId === selected.id).length === 0 ? <p className="card__subtitle">{directoryLabels.noEquipment}</p> : <div className="stack" style={{ gap:6, marginTop:10 }}>{(contractorEquipment.data ?? []).filter(item => item.contractorId === selected.id).map(item => <div key={item.id} className="row row--between"><span>{item.name} × {item.availableQty}</span><span className="card__subtitle">{item.defaultCostEUR == null ? item.note || "—" : eur(item.defaultCostEUR)}</span></div>)}</div>}
+            <div className="row" style={{ marginTop:10, flexWrap:"wrap" }}><Field label={directoryLabels.itemName}><Input value={equipmentName} onChange={event => setEquipmentName(event.target.value)} /></Field><Field label="Максимум (если известен)"><Input type="number" min="0" value={equipmentMaxQty} onChange={event => setEquipmentMaxQty(event.target.value)} /></Field><Field label="Сухая аренда, €"><Input type="number" min="0" step="0.01" value={equipmentCost} onChange={event => setEquipmentCost(event.target.value)} /></Field><Field label="С доставкой, €"><Input type="number" min="0" step="0.01" value={equipmentDeliveredCost} onChange={event => setEquipmentDeliveredCost(event.target.value)} /></Field><Field label="Склад"><select value={equipmentWarehouseId} onChange={e=>setEquipmentWarehouseId(e.target.value)}><option value="">Без склада</option>{(contractorWarehouses.data??[]).filter(w=>w.contractorId===selected.id).map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></Field><Field label={directoryLabels.note}><Input value={equipmentNote} onChange={event => setEquipmentNote(event.target.value)} /></Field><Button disabled={!equipmentName.trim() || createEquipment.isPending} onClick={() => createEquipment.mutate({ contractorId:selected.id, name:equipmentName.trim(), availableQty:Math.max(0, Number(equipmentQty) || 0), maxQty:equipmentMaxQty?Number(equipmentMaxQty):null, defaultCostEUR:equipmentCost ? Number(equipmentCost) : null, dryRentalCostEUR:equipmentCost?Number(equipmentCost):null, deliveredCostEUR:equipmentDeliveredCost?Number(equipmentDeliveredCost):null,warehouseId:equipmentWarehouseId||null,note:equipmentNote.trim() || null }, { onSuccess:() => { setEquipmentName(""); setEquipmentQty("1"); setEquipmentMaxQty(""); setEquipmentCost("");setEquipmentDeliveredCost("");setEquipmentWarehouseId(""); setEquipmentNote(""); } })}>+</Button></div>
+            {(contractorEquipment.data ?? []).filter(item => item.contractorId === selected.id).length === 0 ? <p className="card__subtitle">{directoryLabels.noEquipment}</p> : <div className="stack" style={{ gap:6, marginTop:10 }}>{(contractorEquipment.data ?? []).filter(item => item.contractorId === selected.id).map(item => <div key={item.id} className="row row--between"><span>{item.name}{item.maxQty==null?"":` · до ${item.maxQty}`}</span><span className="card__subtitle">сухая {item.dryRentalCostEUR==null?"—":eur(item.dryRentalCostEUR)} · с доставкой {item.deliveredCostEUR==null?"—":eur(item.deliveredCostEUR)}</span></div>)}</div>}
           </Card>
 
           <SectionTitle>{t("contractors.needReturn")}</SectionTitle>
@@ -251,9 +272,7 @@ export function ContractorsPage() {
                   item={item}
                   projectName={projectName(item.projectId)}
                   action={
-                    <Button variant="secondary" disabled={markReturned.isPending} onClick={() => markReturned.mutate(item.id)}>
-                      {t("contractors.return")}
-                    </Button>
+                    item.orderId ? <StatusBadge tone="info">Через Operations</StatusBadge> : <Button variant="secondary" disabled={markReturned.isPending} onClick={() => markReturned.mutate(item.id)}>{t("contractors.return")}</Button>
                   }
                 />
               ))}

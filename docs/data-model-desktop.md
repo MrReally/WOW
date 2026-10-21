@@ -25,6 +25,8 @@ Desktop Backoffice не создаёт отдельную БД, отдельны
 | equipment | journal | id, unit_id, model_id, qty, action, from_status, to_status, project_id, warehouse_id, from_warehouse_id, to_warehouse_id, actor_id, note, at | — |
 | equipment | model_stock | model_id, warehouse_id, <span style="background:#fef08a;color:#713f12;padding:2px 5px">zone_id</span>, total_qty | <span style="background:#fef08a;color:#713f12;padding:2px 5px">zone_id — необязательное место кабеля/количественного остатка</span> |
 | equipment | contractors | id, name, contacts, created_at | — |
+| contractors | equipment | id, contractor_id, name, available_qty (legacy), max_qty, default_cost_eur (legacy), dry_rental_cost_eur, delivered_cost_eur, warehouse_id, note, created_at | — |
+| contractors | warehouses | id, contractor_id, name, address, latitude, longitude, comment, secret_comment, created_at | — |
 | equipment | repairs | id, unit_id, status, problem, vendor, est_cost_eur, cost_eur, resolution, outcome, opened_by, opened_at, closed_by, closed_at | — |
 | equipment | handovers | id, unit_id, contractor_id, status, reason, note, cost_eur, expected_return, sent_by, sent_at, returned_by, returned_at | — |
 | equipment | problems | id, kind, severity, title, detail, refs, resolved, created_at, resolved_at | — |
@@ -42,6 +44,8 @@ Desktop Backoffice не создаёт отдельную БД, отдельны
 | projects | project_reminders | id, project_id, offset_minutes, recipient_mode, user_ids, note, sent_at, created_by_user_id, created_at, title | — |
 | projects | project_pings | id, project_id, user_id, reminder_id, message, status, responded_at, created_by_user_id, created_at, title | — |
 | projects | contractor_items | id, project_id, contractor_id, kind, name, qty, price_eur, cost_eur, note, returned_at, created_at | — |
+| projects | contractor_orders | id, project_id, contractor_id, warehouse_id, name, fulfillment_mode, supplier_price_eur, client_price_eur, delivery_at, pickup_at, booked, receipt_completed_at, return_completed_at, delivery_timing_id, pickup_timing_id, created_at | — |
+| projects | contractor_order_lines | id, order_id, catalog_item_id, name, qty, received_at, returned_at | — |
 | projects | operation_events | id, project_id, from_stage, to_stage, actor_id, created_at | — |
 | projects | operation_unit_marks | id, project_id, stage, unit_id, status, actor_id, note, created_at, updated_at | — |
 | projects | problems | id, kind, severity, title, detail, refs, resolved, created_at, resolved_at | — |

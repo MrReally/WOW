@@ -35,5 +35,24 @@ CREATE TABLE IF NOT EXISTS contractors.equipment (
   note             text,
   created_at       timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE contractors.equipment ADD COLUMN IF NOT EXISTS max_qty integer CHECK (max_qty >= 0);
+ALTER TABLE contractors.equipment ADD COLUMN IF NOT EXISTS dry_rental_cost_eur numeric(12,2) CHECK (dry_rental_cost_eur >= 0);
+ALTER TABLE contractors.equipment ADD COLUMN IF NOT EXISTS delivered_cost_eur numeric(12,2) CHECK (delivered_cost_eur >= 0);
+ALTER TABLE contractors.equipment ADD COLUMN IF NOT EXISTS warehouse_id uuid;
 CREATE INDEX IF NOT EXISTS contractor_equipment_contractor_idx ON contractors.equipment(contractor_id);
+
+CREATE TABLE IF NOT EXISTS contractors.warehouses (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  contractor_id  uuid NOT NULL,
+  name           text NOT NULL,
+  address        text,
+  latitude       double precision,
+  longitude      double precision,
+  comment        text,
+  secret_comment text,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  CHECK (latitude IS NULL OR (latitude >= -90 AND latitude <= 90)),
+  CHECK (longitude IS NULL OR (longitude >= -180 AND longitude <= 180))
+);
+CREATE INDEX IF NOT EXISTS contractor_warehouses_contractor_idx ON contractors.warehouses(contractor_id);
 `;

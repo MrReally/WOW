@@ -392,12 +392,12 @@ export function registerEquipmentRoutes(
   });
   app.post("/api/equipment/contractors", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "warehouse.catalog.manage");
+    requirePermission(auth, "warehouse.catalog.manage", "projects.reservation.manage");
     return service.createContractor(contractorSchema.parse(req.body));
   });
   app.patch<{ Params: { id: string } }>("/api/equipment/contractors/:id", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "warehouse.catalog.manage");
+    requirePermission(auth, "warehouse.catalog.manage", "projects.reservation.manage");
     return service.updateContractor(req.params.id, updateContractorSchema.parse(req.body));
   });
 

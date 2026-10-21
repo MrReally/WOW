@@ -13,9 +13,15 @@ import {
   useRemoveContractorItem,
   useReturnContractorItem,
   useCreateContractor,
+  useContractorCatalog,
+  useContractorWarehouses,
+  useContractorOrders,
+  useCreateContractorOrder,
 } from "../hooks.ts";
 import { useAccounts } from "../../finance/hooks.ts";
 import { AddTransactionSheet } from "../../finance/components/AddTransactionSheet.tsx";
+import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
+import { isoFromLocal } from "../../../lib/datetime.ts";
 
 const ITEM_KINDS: Projects.ContractorItemKind[] = ["equipment", "delivery", "setup"];
 
@@ -39,6 +45,10 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
   const remove = useRemoveContractorItem();
   const markReturned = useReturnContractorItem();
   const createContractor = useCreateContractor();
+  const catalog=useContractorCatalog();
+  const supplierWarehouses=useContractorWarehouses();
+  const orders=useContractorOrders(projectId);
+  const createOrder=useCreateContractorOrder();
 
   const [contractorId, setContractorId] = useState("");
   const [kind, setKind] = useState<Projects.ContractorItemKind>("equipment");
@@ -50,9 +60,17 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
   const [newContractorName, setNewContractorName] = useState("");
   const [newContractorContacts, setNewContractorContacts] = useState("");
   const [editing, setEditing] = useState<Projects.ContractorItemDTO | null>(null);
+  const [orderName,setOrderName]=useState("");
+  const [orderWarehouseId,setOrderWarehouseId]=useState("");
+  const [fulfillmentMode,setFulfillmentMode]=useState<Projects.ContractorFulfillmentMode>("dry_rental");
+  const [supplierTotal,setSupplierTotal]=useState("");
+  const [clientTotal,setClientTotal]=useState("");
+  const [deliveryAt,setDeliveryAt]=useState("");
+  const [pickupAt,setPickupAt]=useState("");
+  const [catalogQty,setCatalogQty]=useState<Record<string,string>>({});
 
   const list = contractors.data ?? [];
-  const rows = items.data ?? [];
+  const rows = (items.data ?? []).filter(item=>!item.orderId);
   const contractorName = (id: string) => list.find((contractor) => contractor.id === id)?.name ?? "—";
   const selectedContractorId = contractorId || list[0]?.id || "";
   const history = useContractorItemHistory(selectedContractorId);
@@ -60,6 +78,12 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
     value === "delivery" ? t("contractors.kindDelivery") : value === "setup" ? t("contractors.kindSetup") : t("contractors.kindEquipment");
   const itemName = name.trim() || (kind === "equipment" ? "" : kindName(kind));
   const contractorIds = [...new Set(rows.map((item) => item.contractorId))];
+  const contractorCatalog=(catalog.data??[]).filter(item=>item.contractorId===selectedContractorId&&(!orderWarehouseId||item.warehouseId===orderWarehouseId));
+  const warehouses=(supplierWarehouses.data??[]).filter(item=>item.contractorId===selectedContractorId);
+  const selectedCatalog=contractorCatalog.filter(item=>(Number(catalogQty[item.id])||0)>0);
+  const exceedsKnownMaximum=selectedCatalog.some(item=>item.maxQty!=null&&(Number(catalogQty[item.id])||0)>item.maxQty);
+  const suggestedSupplier=selectedCatalog.reduce((sum,item)=>sum+(Number(catalogQty[item.id])||0)*(fulfillmentMode==="dry_rental"?(item.dryRentalCostEUR??item.defaultCostEUR??0):(item.deliveredCostEUR??item.defaultCostEUR??0)),0);
+  const submitOrder=()=>createOrder.mutate({projectId,contractorId:selectedContractorId,warehouseId:orderWarehouseId||null,name:orderName.trim()||selectedCatalog.map(item=>item.name).join(" + "),fulfillmentMode,supplierPriceEUR:Number(supplierTotal||suggestedSupplier)||0,clientPriceEUR:Number(clientTotal)||0,deliveryAt:fulfillmentMode==="contractor_delivery"&&deliveryAt?isoFromLocal(deliveryAt):null,pickupAt:fulfillmentMode==="contractor_delivery"&&pickupAt?isoFromLocal(pickupAt):null,booked:false,lines:selectedCatalog.map(item=>({catalogItemId:item.id,name:item.name,qty:Number(catalogQty[item.id])}))},{onSuccess:()=>{setOrderName("");setSupplierTotal("");setClientTotal("");setDeliveryAt("");setPickupAt("");setCatalogQty({});}});
 
   const submit = () => add.mutate({
     projectId,
@@ -74,6 +98,7 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
 
   return (
     <div className="stack">
+      {(orders.data??[]).map(order=><Card key={order.id}><div className="row row--between"><div><p className="card__title">{order.name}</p><p className="card__subtitle">{contractorName(order.contractorId)} · {order.fulfillmentMode==="dry_rental"?"Сухая аренда":"Доставка подрядчиком"}</p></div><StatusBadge tone={order.returnCompletedAt?"ok":order.receiptCompletedAt?"info":"neutral"}>{order.returnCompletedAt?"Оборот закрыт":order.receiptCompletedAt?"Принято":"Ожидает приёмки"}</StatusBadge></div><div className="stack" style={{gap:4,marginTop:8}}>{order.lines.map(line=><div className="row row--between" key={line.id}><span>{line.name} × {line.qty}</span><span className="card__subtitle">{line.returnedAt?"возвращено":line.receivedAt?"принято":"ожидается"}</span></div>)}</div><p className="card__subtitle" style={{marginTop:8}}>Подрядчику {eur(order.supplierPriceEUR)} · клиенту {eur(order.clientPriceEUR)}{order.deliveryAt?` · доставка ${dateTime(order.deliveryAt)}`:""}{order.pickupAt?` · забор ${dateTime(order.pickupAt)}`:""}</p></Card>)}
       {rows.length === 0 ? <EmptyState title={t("contractors.empty")} /> : contractorIds.map((id) => {
         const group = rows.filter((item) => item.contractorId === id);
         const allBooked = group.every((item) => item.booked);
@@ -154,6 +179,21 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
           </Card>
         );
       })}
+
+      {canManage && list.length>0 && <Card>
+        <p className="card__title">Заказ из каталога подрядчика</p>
+        <p className="card__subtitle">Несколько приборов можно объединить в один набор с общей ценой.</p>
+        <Field label="Подрядчик"><Select value={selectedContractorId} onChange={event=>{setContractorId(event.target.value);setOrderWarehouseId("");setCatalogQty({});}} options={list.map(item=>({value:item.id,label:item.name}))}/></Field>
+        {warehouses.length>0&&<Field label="Склад подрядчика"><Select value={orderWarehouseId} onChange={event=>{setOrderWarehouseId(event.target.value);setCatalogQty({});}} options={[{value:"",label:"Все склады"},...warehouses.map(item=>({value:item.id,label:item.name}))]}/></Field>}
+        <Field label="Название набора"><Input value={orderName} onChange={event=>setOrderName(event.target.value)} placeholder="Комплект света"/></Field>
+        <Field label="Исполнение"><Select value={fulfillmentMode} onChange={event=>setFulfillmentMode(event.target.value as Projects.ContractorFulfillmentMode)} options={[{value:"dry_rental",label:"Сухая аренда — забираем сами"},{value:"contractor_delivery",label:"Подрядчик доставляет и забирает"}]}/></Field>
+        <div className="stack" style={{gap:6,marginTop:8}}>{contractorCatalog.map(item=>{const qty=Number(catalogQty[item.id])||0;return <div className="lrow" key={item.id}><label className="row" style={{flex:1,gap:8}}><input type="checkbox" checked={qty>0} onChange={event=>setCatalogQty(current=>({...current,[item.id]:event.target.checked?"1":""}))}/><span><strong>{item.name}</strong><small>{item.maxQty==null?"Количество неизвестно":`максимум ${item.maxQty}`} · сухая {eur(item.dryRentalCostEUR??item.defaultCostEUR??0)} · с доставкой {eur(item.deliveredCostEUR??item.defaultCostEUR??0)}</small></span></label>{qty>0&&<Input type="number" min="1" max={item.maxQty??undefined} value={catalogQty[item.id]} onChange={event=>setCatalogQty(current=>({...current,[item.id]:event.target.value}))}/>}</div>;})}</div>
+        {contractorCatalog.length===0&&<p className="card__subtitle" style={{marginTop:8}}>В каталоге выбранного подрядчика пока нет оборудования.</p>}
+        {fulfillmentMode==="contractor_delivery"&&<div className="row"><Field label="Доставка на проект"><ConfiguredDateTimeInput value={deliveryAt} onChange={setDeliveryAt}/></Field><Field label="Забор с проекта"><ConfiguredDateTimeInput value={pickupAt} onChange={setPickupAt}/></Field></div>}
+        <div className="row"><Field label={`Цена подрядчика, €${suggestedSupplier?` · каталог ${eur(suggestedSupplier)}`:""}`}><Input type="number" min="0" value={supplierTotal} onChange={event=>setSupplierTotal(event.target.value)} placeholder={suggestedSupplier?String(suggestedSupplier):"0"}/></Field><Field label="Цена клиенту, €"><Input type="number" min="0" value={clientTotal} onChange={event=>setClientTotal(event.target.value)}/></Field></div>
+        {exceedsKnownMaximum&&<p className="card__subtitle" style={{color:"var(--danger)"}}>Количество превышает известный максимум подрядчика.</p>}
+        <Button block disabled={!selectedContractorId||selectedCatalog.length===0||exceedsKnownMaximum||createOrder.isPending||(fulfillmentMode==="contractor_delivery"&&(!deliveryAt||!pickupAt))} onClick={submitOrder}>Создать заказ подрядчику</Button>
+      </Card>}
 
       {canManage && <Card>
         <div className="row row--between">

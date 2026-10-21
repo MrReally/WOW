@@ -34,6 +34,7 @@ import { BadRequest, Forbidden, NotFound } from "./core/errors.js";
 export function createModules(bus: EventBus = new EventBus()) {
   const people = createPeopleModule(pool, bus);
   const equipment = createEquipmentModule(pool, bus);
+  const contractors = createContractorsModule(pool);
   const appSettings = createAppSettingsModule(pool, bus);
   const venues = createVenuesModule(pool);
   const projects = createProjectsModule(
@@ -43,6 +44,7 @@ export function createModules(bus: EventBus = new EventBus()) {
     (modelIds) => Promise.all(modelIds.map((modelId) => equipment.service.getModel(modelId))),
     appSettings.service,
     async (venueId) => venueId ? (await venues.service.get(venueId))?.name ?? null : null,
+    async (ids) => (await contractors.service.listEquipment()).filter(item=>ids.includes(item.id)).map(item=>({id:item.id,maxQty:item.maxQty})),
   );
   bus.on("app_settings.project_name_template.updated", async () => projects.service.refreshProjectNames());
   const authorizeFinanceProject = async (auth: AuthContext, projectId: string) => {
@@ -77,7 +79,6 @@ export function createModules(bus: EventBus = new EventBus()) {
   const operations = createOperationsModule(pool, equipment.service, projects.service, venues.service, appSettings.service);
   const audit = createAuditModule(pool);
   const transport = createTransportModule(pool);
-  const contractors = createContractorsModule(pool);
 
   setTelegramMessageLogger(async (message) => {
     await people.service.logTelegramDialogMessage(message);
@@ -112,6 +113,8 @@ export function createModules(bus: EventBus = new EventBus()) {
   const completeProjectWhenSettled = async (projectId: string, actorId: string | null = null) => {
     const project = await projects.service.getProject(projectId);
     if (!project?.warehouseTurnoverCompletedAt || project.status === "completed") return;
+    const contractorOrders = await projects.service.listContractorOrders(projectId);
+    if (contractorOrders.some(order => !order.returnCompletedAt)) return;
     if (!project.financeTracked) {
       await projects.service.setStatus(projectId, "completed", actorId);
       return;

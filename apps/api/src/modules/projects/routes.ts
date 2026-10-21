@@ -126,6 +126,14 @@ const updateContractorItemSchema = contractorItemSchema.omit({ projectId: true }
 const contractorBookedSchema = z.object({ projectId: z.string().uuid(), contractorId: z.string().uuid(), booked: z.boolean() });
 const contractorGroupSchema = z.object({ projectId: z.string().uuid(), contractorId: z.string().uuid() });
 const contractorPaidSchema = contractorGroupSchema.extend({ paid: z.boolean() });
+const contractorOrderSchema = z.object({
+  projectId:z.string().uuid(), contractorId:z.string().uuid(), warehouseId:z.string().uuid().nullable().optional(),
+  name:z.string().trim().min(1), fulfillmentMode:z.enum(["dry_rental","contractor_delivery"]),
+  supplierPriceEUR:z.number().nonnegative(), clientPriceEUR:z.number().nonnegative(),
+  deliveryAt:z.string().datetime().nullable().optional(), pickupAt:z.string().datetime().nullable().optional(), booked:z.boolean().optional(),
+  lines:z.array(z.object({catalogItemId:z.string().uuid(),name:z.string().trim().min(1),qty:z.number().int().positive()})).min(1),
+});
+const contractorOrderLineStateSchema = z.object({ active:z.boolean() });
 const projectRoleSchema = z.object({
   dressCodeEnabled: z.boolean().optional(),
   projectId: z.string().uuid(),
@@ -608,6 +616,12 @@ export function registerProjectsRoutes(
     requirePermission(auth, "projects.reservation.manage");
     return service.returnContractorItem(req.params.id);
   });
+  app.get<{Params:{id:string}}>("/api/projects/:id/contractor-orders", async req => { const auth=await ctx.auth(req); requirePermission(auth,"projects.view","projects.reservation.manage","operations.contractor_turnover.view","operations.contractor_turnover.manage"); return service.listContractorOrders(req.params.id); });
+  app.post("/api/contractor-orders", async req => { const auth=await ctx.auth(req); requirePermission(auth,"projects.reservation.manage"); return service.createContractorOrder(contractorOrderSchema.parse(req.body) as Projects.CreateContractorOrderInput); });
+  app.put<{Params:{orderId:string;lineId:string}}>("/api/contractor-orders/:orderId/lines/:lineId/received", async req => { const auth=await ctx.auth(req); requirePermission(auth,"operations.contractor_turnover.manage"); const body=contractorOrderLineStateSchema.parse(req.body); return service.setContractorOrderLineReceived(req.params.orderId,req.params.lineId,body.active); });
+  app.post<{Params:{id:string}}>("/api/contractor-orders/:id/receipt/complete", async req => { const auth=await ctx.auth(req); requirePermission(auth,"operations.contractor_turnover.manage"); return service.completeContractorOrderReceipt(req.params.id); });
+  app.put<{Params:{orderId:string;lineId:string}}>("/api/contractor-orders/:orderId/lines/:lineId/returned", async req => { const auth=await ctx.auth(req); requirePermission(auth,"operations.contractor_turnover.manage"); const body=contractorOrderLineStateSchema.parse(req.body); return service.setContractorOrderLineReturned(req.params.orderId,req.params.lineId,body.active); });
+  app.post<{Params:{id:string}}>("/api/contractor-orders/:id/return/complete", async req => { const auth=await ctx.auth(req); requirePermission(auth,"operations.contractor_turnover.manage"); return service.completeContractorOrderReturn(req.params.id); });
 
   // ── Problems ──
   app.get<{ Querystring: { includeResolved?: string } }>("/api/projects-problems", async (req) => {

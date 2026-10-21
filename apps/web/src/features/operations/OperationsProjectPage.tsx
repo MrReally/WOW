@@ -26,11 +26,16 @@ import {
   useSetOperationStage,
   useSetOperationUnitMark,
   useUpdateProjectTask,
+  useContractorOrders,
+  useSetContractorOrderLineReceived,
+  useCompleteContractorOrderReceipt,
+  useSetContractorOrderLineReturned,
+  useCompleteContractorOrderReturn,
 } from "./hooks.ts";
 import { isUnitVisibleForProject } from "../projects/reservationUnitAvailability.ts";
 import { MapRouteButton } from "./components/MapRouteButton.tsx";
 
-type OperationsTab = "turnover" | "timing" | "finance";
+type OperationsTab = "turnover" | "contractors" | "timing" | "finance";
 
 const stageLabel: Record<Projects.ProjectChecklistGroup, string> = {
   prep: "Сбор",
@@ -134,6 +139,10 @@ export function OperationsProjectPage() {
   );
   const canListPeople = can("people.view", "operations.payroll.view", "operations.payroll.manage");
   const canViewProjectNote = can("projects.note.view");
+  const canViewContractorTurnover=can("operations.contractor_turnover.view","operations.contractor_turnover.manage");
+  const canManageContractorTurnover=can("operations.contractor_turnover.manage");
+  const contractorOrders=useContractorOrders(id,canViewContractorTurnover);
+  const contractorDirectory=useContractors();
   const canOpenPlan = can("plans.view", "plans.manage");
   const canOpenProject = can("projects.view");
   const people = usePeople(canListPeople);
@@ -177,10 +186,11 @@ export function OperationsProjectPage() {
       <div className="segmented-control operations-project-tabs" role="tablist" aria-label="Operations">
         {([
           { id: "turnover", label: "Оборот" },
+          { id: "contractors", label: "Подряд" },
           { id: "timing", label: "Тайминг" },
           { id: "finance", label: "Финансы" },
         ] as const)
-          .filter(tab => tab.id !== "finance" || can("operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage"))
+          .filter(tab => (tab.id !== "finance" || can("operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage")) && (tab.id!=="contractors"||canViewContractorTurnover))
           .map(tab => (
             <button
               key={tab.id}
@@ -228,10 +238,19 @@ export function OperationsProjectPage() {
         />
       )}
 
+      {activeTab==="contractors"&&canViewContractorTurnover&&<ContractorTurnoverPanel orders={contractorOrders.data??[]} contractors={contractorDirectory.data??[]} canManage={canManageContractorTurnover}/>}
+
       {activeTab === "finance" && (can("operations.finance.view", "operations.finance.manage") || can("operations.payroll.view", "operations.payroll.manage")) && <OperationsFinancePanel project={project.data} canClientView={can("operations.finance.view", "operations.finance.manage")} canClientManage={can("operations.finance.manage")} canPayrollView={can("operations.payroll.view", "operations.payroll.manage")} canPayrollManage={can("operations.payroll.manage")} />}
 
     </div>
   );
+}
+
+function ContractorTurnoverPanel({orders,contractors,canManage}:{orders:Projects.ContractorOrderDTO[];contractors:Equipment.ContractorDTO[];canManage:boolean}) {
+  const receive=useSetContractorOrderLineReceived(),completeReceipt=useCompleteContractorOrderReceipt(),returnLine=useSetContractorOrderLineReturned(),completeReturn=useCompleteContractorOrderReturn();
+  const contractorName=(id:string)=>contractors.find(item=>item.id===id)?.name??"Подрядчик";
+  if(!orders.length)return <EmptyState title="Заказов подрядчикам в проекте нет"/>;
+  return <div className="stack"><SectionHead label="Оборот подрядчиков"/>{orders.map(order=>{const allReceived=order.lines.every(line=>!!line.receivedAt),allReturned=order.lines.every(line=>!!line.returnedAt);return <Card key={order.id}><div className="row row--between"><div><p className="card__title">{order.name}</p><p className="card__subtitle">{contractorName(order.contractorId)} · {order.fulfillmentMode==="dry_rental"?"забираем сами":"доставляет подрядчик"}</p></div><Chip label={order.returnCompletedAt?"оборот закрыт":order.receiptCompletedAt?"принято":"приёмка"} tone={order.returnCompletedAt?"ok":order.receiptCompletedAt?"accent":"warn"}/></div><div className="stack" style={{gap:8,marginTop:12}}>{order.lines.map(line=><div className="lrow" key={line.id}><span><strong>{line.name}</strong><small>Количество: {line.qty}</small></span>{!order.receiptCompletedAt?<label className="chip chip--neutral"><input type="checkbox" checked={!!line.receivedAt} disabled={!canManage||receive.isPending} onChange={e=>receive.mutate({orderId:order.id,lineId:line.id,active:e.target.checked})}/> принято</label>:<label className="chip chip--neutral"><input type="checkbox" checked={!!line.returnedAt} disabled={!canManage||!!order.returnCompletedAt||returnLine.isPending} onChange={e=>returnLine.mutate({orderId:order.id,lineId:line.id,active:e.target.checked})}/> возвращено</label>}</div>)}</div>{canManage&&!order.receiptCompletedAt&&<Button block style={{marginTop:12}} disabled={!allReceived||completeReceipt.isPending} onClick={()=>completeReceipt.mutate({orderId:order.id})}>Завершить приёмку</Button>}{canManage&&order.receiptCompletedAt&&!order.returnCompletedAt&&<Button block style={{marginTop:12}} disabled={!allReturned||completeReturn.isPending} onClick={()=>completeReturn.mutate({orderId:order.id})}>Завершить возврат подрядчику</Button>}</Card>;})}</div>;
 }
 
 function OperationsTimingPanel({

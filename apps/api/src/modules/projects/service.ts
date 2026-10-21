@@ -174,6 +174,7 @@ interface ContractorItemRow {
   id: string;
   project_id: string;
   contractor_id: string;
+  order_id: string | null;
   kind: Projects.ContractorItemKind;
   name: string;
   qty: number;
@@ -185,6 +186,13 @@ interface ContractorItemRow {
   booked: boolean;
   created_at: Date;
 }
+interface ContractorOrderRow {
+  id:string; project_id:string; contractor_id:string; warehouse_id:string|null; name:string;
+  fulfillment_mode:Projects.ContractorFulfillmentMode; supplier_price_eur:string; client_price_eur:string;
+  delivery_at:Date|null; pickup_at:Date|null; booked:boolean; receipt_completed_at:Date|null; return_completed_at:Date|null;
+  delivery_timing_id:string|null; pickup_timing_id:string|null; created_at:Date;
+}
+interface ContractorOrderLineRow { id:string; order_id:string; catalog_item_id:string; name:string; qty:number; received_at:Date|null; returned_at:Date|null }
 interface ProblemRow {
   id: string;
   kind: Problem["kind"];
@@ -360,6 +368,7 @@ const contractorItemDTO = (r: ContractorItemRow): Projects.ContractorItemDTO => 
   id: r.id,
   projectId: r.project_id,
   contractorId: r.contractor_id,
+  orderId: r.order_id ?? null,
   kind: r.kind,
   name: r.name,
   qty: r.qty,
@@ -371,6 +380,7 @@ const contractorItemDTO = (r: ContractorItemRow): Projects.ContractorItemDTO => 
   booked: r.booked ?? false,
   createdAt: r.created_at.toISOString(),
 });
+const contractorOrderLineDTO = (r:ContractorOrderLineRow):Projects.ContractorOrderLineDTO => ({ id:r.id,orderId:r.order_id,catalogItemId:r.catalog_item_id,name:r.name,qty:r.qty,receivedAt:r.received_at?.toISOString()??null,returnedAt:r.returned_at?.toISOString()??null });
 const problemDTO = (r: ProblemRow): Problem => ({
   id: r.id,
   kind: r.kind,
@@ -452,6 +462,7 @@ export function createProjectsService(
   loadEquipmentModels: (modelIds: string[]) => Promise<(Equipment.EquipmentModelDTO | null)[]>,
   appSettings?: AppSettings.AppSettingsService,
   loadVenueName: (venueId: string | null) => Promise<string | null> = async () => null,
+  loadContractorCatalogItems: (ids:string[])=>Promise<{id:string;maxQty:number|null}[]> = async()=>[],
 ): Projects.ProjectsService {
   async function renderedProjectName(baseName: string, clientName: string, venueId: string | null, startsAt: string | null, endsAt: string | null) {
     const [template, dateTime, location] = await Promise.all([
@@ -576,6 +587,22 @@ export function createProjectsService(
         reservation.ends_at.toISOString()
       );
     }
+  }
+
+  async function contractorOrderDTO(row: ContractorOrderRow, client: Sql = db): Promise<Projects.ContractorOrderDTO> {
+    const [lines, item] = await Promise.all([
+      query<ContractorOrderLineRow>(client, `SELECT * FROM projects.contractor_order_lines WHERE order_id=$1 ORDER BY name`, [row.id]),
+      one<{id:string}>(client, `SELECT id FROM projects.contractor_items WHERE order_id=$1`, [row.id]),
+    ]);
+    return {
+      id:row.id, projectId:row.project_id, contractorId:row.contractor_id, warehouseId:row.warehouse_id,
+      contractorItemId:item?.id ?? "", name:row.name, fulfillmentMode:row.fulfillment_mode,
+      supplierPriceEUR:Number(row.supplier_price_eur), clientPriceEUR:Number(row.client_price_eur),
+      deliveryAt:row.delivery_at?.toISOString()??null, pickupAt:row.pickup_at?.toISOString()??null, booked:row.booked,
+      receiptCompletedAt:row.receipt_completed_at?.toISOString()??null, returnCompletedAt:row.return_completed_at?.toISOString()??null,
+      deliveryTimingId:row.delivery_timing_id, pickupTimingId:row.pickup_timing_id,
+      lines:lines.map(contractorOrderLineDTO), createdAt:row.created_at.toISOString(),
+    };
   }
 
   async function loadChecklist(projectId: ID): Promise<ProjectChecklistRow[]> {
@@ -1966,8 +1993,8 @@ export function createProjectsService(
     async addContractorItem(input) {
       const row = await one<ContractorItemRow>(
         db,
-        `INSERT INTO projects.contractor_items (project_id, contractor_id, kind, name, qty, price_eur, cost_eur, note, returned_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        `INSERT INTO projects.contractor_items (project_id, contractor_id, kind, name, qty, price_eur, cost_eur, note, returned_at, paid_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CASE WHEN $7::numeric=0 THEN now() ELSE NULL END) RETURNING *`,
         [
           input.projectId,
           input.contractorId,
@@ -1985,6 +2012,7 @@ export function createProjectsService(
     async updateContractorItem(id, input) {
       const existing = await one<ContractorItemRow>(db, `SELECT * FROM projects.contractor_items WHERE id=$1`, [id]);
       if (!existing) throw NotFound("contractor item", id);
+      if (existing.order_id) throw BadRequest("пакетный заказ нельзя изменить как ручную позицию");
       const row = await one<ContractorItemRow>(
         db,
         `UPDATE projects.contractor_items SET contractor_id=$2, kind=$3, name=$4, qty=$5, price_eur=$6, cost_eur=$7, note=$8, booked=$9 WHERE id=$1 RETURNING *`,
@@ -2003,7 +2031,7 @@ export function createProjectsService(
     async returnContractorItems(projectId, contractorId) {
       const rows = await query<ContractorItemRow>(
         db,
-        `UPDATE projects.contractor_items SET returned_at=COALESCE(returned_at, now()) WHERE project_id=$1 AND contractor_id=$2 AND kind='equipment' RETURNING *`,
+        `UPDATE projects.contractor_items SET returned_at=COALESCE(returned_at, now()) WHERE project_id=$1 AND contractor_id=$2 AND kind='equipment' AND order_id IS NULL RETURNING *`,
         [projectId, contractorId]
       );
       if (rows.length) {
@@ -2020,6 +2048,9 @@ export function createProjectsService(
       return rows.map(contractorItemDTO);
     },
     async returnContractorItem(id) {
+      const existing=await one<ContractorItemRow>(db,`SELECT * FROM projects.contractor_items WHERE id=$1`,[id]);
+      if (!existing) throw NotFound("contractor item", id);
+      if(existing?.order_id)throw BadRequest("возврат пакетного заказа проводится через оборот подрядчика в Operations");
       const row = await one<ContractorItemRow>(
         db,
         `UPDATE projects.contractor_items SET returned_at=COALESCE(returned_at, now()) WHERE id=$1 RETURNING *`,
@@ -2030,6 +2061,9 @@ export function createProjectsService(
       return contractorItemDTO(row);
     },
     async removeContractorItem(id) {
+      const existing=await one<ContractorItemRow>(db,`SELECT * FROM projects.contractor_items WHERE id=$1`,[id]);
+      if (!existing) throw NotFound("contractor item", id);
+      if(existing?.order_id)throw BadRequest("пакетный заказ нельзя удалить как ручную позицию");
       await query(db, `DELETE FROM projects.contractor_items WHERE id=$1`, [id]);
     },
     async contractorDebts() {
@@ -2044,6 +2078,65 @@ export function createProjectsService(
       return rows
         .map((r) => ({ contractorId: r.contractor_id, debtEUR: Math.round(Number(r.debt) * 100) / 100 }))
         .filter((d) => d.debtEUR > 0);
+    },
+    async listContractorOrders(projectId) {
+      const rows=await query<ContractorOrderRow>(db,`SELECT * FROM projects.contractor_orders WHERE project_id=$1 ORDER BY created_at`,[projectId]);
+      return Promise.all(rows.map(row=>contractorOrderDTO(row)));
+    },
+    async createContractorOrder(input) {
+      if (!input.lines.length) throw BadRequest("добавьте хотя бы одну позицию каталога");
+      const catalogItems=await loadContractorCatalogItems(input.lines.map(line=>line.catalogItemId));
+      for(const line of input.lines){const item=catalogItems.find(candidate=>candidate.id===line.catalogItemId);if(!item)throw BadRequest(`позиция каталога ${line.catalogItemId} не найдена`);if(item.maxQty!=null&&line.qty>item.maxQty)throw BadRequest(`количество ${line.name} превышает известный максимум ${item.maxQty}`);}
+      if (input.fulfillmentMode === "contractor_delivery" && (!input.deliveryAt || !input.pickupAt)) throw BadRequest("для доставки подрядчиком укажите доставку и забор");
+      if (input.deliveryAt && input.pickupAt && Date.parse(input.pickupAt) <= Date.parse(input.deliveryAt)) throw BadRequest("забор должен быть позже доставки");
+      const created=await tx(async client=>{
+        const row=await one<ContractorOrderRow>(client,`INSERT INTO projects.contractor_orders (project_id,contractor_id,warehouse_id,name,fulfillment_mode,supplier_price_eur,client_price_eur,delivery_at,pickup_at,booked) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,[input.projectId,input.contractorId,input.warehouseId??null,input.name.trim(),input.fulfillmentMode,input.supplierPriceEUR,input.clientPriceEUR,input.deliveryAt??null,input.pickupAt??null,input.booked??false]);
+        let deliveryTimingId:string|null=null,pickupTimingId:string|null=null;
+        if (input.fulfillmentMode === "contractor_delivery") {
+          const deliveryEnd=new Date(Date.parse(input.deliveryAt!)+30*60_000).toISOString();
+          const pickupEnd=new Date(Date.parse(input.pickupAt!)+30*60_000).toISOString();
+          deliveryTimingId=(await one<{id:string}>(client,`INSERT INTO projects.timings (project_id,title,starts_at,ends_at) VALUES ($1,$2,$3,$4) RETURNING id`,[input.projectId,`Доставка подрядчика: ${input.name.trim()}`,input.deliveryAt,deliveryEnd]))!.id;
+          pickupTimingId=(await one<{id:string}>(client,`INSERT INTO projects.timings (project_id,title,starts_at,ends_at) VALUES ($1,$2,$3,$4) RETURNING id`,[input.projectId,`Забор подрядчиком: ${input.name.trim()}`,input.pickupAt,pickupEnd]))!.id;
+          await query(client,`UPDATE projects.contractor_orders SET delivery_timing_id=$2,pickup_timing_id=$3 WHERE id=$1`,[row!.id,deliveryTimingId,pickupTimingId]);
+        }
+        await query(client,`INSERT INTO projects.contractor_items (project_id,contractor_id,kind,name,qty,price_eur,cost_eur,note,booked,order_id,paid_at) VALUES ($1,$2,'equipment',$3,1,$4,$5,$6,$7,$8,CASE WHEN $5::numeric=0 THEN now() ELSE NULL END)`,[input.projectId,input.contractorId,input.name.trim(),input.clientPriceEUR,input.supplierPriceEUR,input.fulfillmentMode==='contractor_delivery'?'Цена подрядчика включает доставку':'Сухая аренда у подрядчика',input.booked??false,row!.id]);
+        for (const line of input.lines) await query(client,`INSERT INTO projects.contractor_order_lines (order_id,catalog_item_id,name,qty) VALUES ($1,$2,$3,$4)`,[row!.id,line.catalogItemId,line.name.trim(),line.qty]);
+        return one<ContractorOrderRow>(client,`SELECT * FROM projects.contractor_orders WHERE id=$1`,[row!.id]);
+      });
+      return contractorOrderDTO(created!);
+    },
+    async setContractorOrderLineReceived(orderId,lineId,received) {
+      const order=await one<ContractorOrderRow>(db,`SELECT * FROM projects.contractor_orders WHERE id=$1`,[orderId]);
+      if (!order) throw NotFound("contractor order",orderId);
+      if (order.receipt_completed_at) throw BadRequest("приёмка уже завершена");
+      const line=await one<ContractorOrderLineRow>(db,`UPDATE projects.contractor_order_lines SET received_at=CASE WHEN $3 THEN COALESCE(received_at,now()) ELSE NULL END WHERE id=$1 AND order_id=$2 RETURNING *`,[lineId,orderId,received]);
+      if (!line) throw NotFound("contractor order line",lineId);
+      return contractorOrderDTO(order);
+    },
+    async completeContractorOrderReceipt(orderId) {
+      const missing=await one<{count:string}>(db,`SELECT COUNT(*)::text AS count FROM projects.contractor_order_lines WHERE order_id=$1 AND received_at IS NULL`,[orderId]);
+      if (Number(missing?.count??0)>0) throw BadRequest("сначала примите каждую позицию");
+      const row=await one<ContractorOrderRow>(db,`UPDATE projects.contractor_orders SET receipt_completed_at=COALESCE(receipt_completed_at,now()) WHERE id=$1 RETURNING *`,[orderId]);
+      if (!row) throw NotFound("contractor order",orderId);
+      return contractorOrderDTO(row);
+    },
+    async setContractorOrderLineReturned(orderId,lineId,returned) {
+      const order=await one<ContractorOrderRow>(db,`SELECT * FROM projects.contractor_orders WHERE id=$1`,[orderId]);
+      if (!order) throw NotFound("contractor order",orderId);
+      if (!order.receipt_completed_at) throw BadRequest("сначала завершите приёмку");
+      if (order.return_completed_at) throw BadRequest("возврат уже завершён");
+      const line=await one<ContractorOrderLineRow>(db,`UPDATE projects.contractor_order_lines SET returned_at=CASE WHEN $3 THEN COALESCE(returned_at,now()) ELSE NULL END WHERE id=$1 AND order_id=$2 RETURNING *`,[lineId,orderId,returned]);
+      if (!line) throw NotFound("contractor order line",lineId);
+      return contractorOrderDTO(order);
+    },
+    async completeContractorOrderReturn(orderId) {
+      const missing=await one<{count:string}>(db,`SELECT COUNT(*)::text AS count FROM projects.contractor_order_lines WHERE order_id=$1 AND returned_at IS NULL`,[orderId]);
+      if (Number(missing?.count??0)>0) throw BadRequest("сначала верните каждую позицию");
+      const row=await one<ContractorOrderRow>(db,`UPDATE projects.contractor_orders SET return_completed_at=COALESCE(return_completed_at,now()) WHERE id=$1 RETURNING *`,[orderId]);
+      if (!row) throw NotFound("contractor order",orderId);
+      const item=await one<ContractorItemRow>(db,`UPDATE projects.contractor_items SET returned_at=COALESCE(returned_at,now()) WHERE order_id=$1 RETURNING *`,[orderId]);
+      if (item) await bus.publish({type:"project.contractor_items.changed",projectId:item.project_id,contractorId:item.contractor_id,at:new Date().toISOString()});
+      return contractorOrderDTO(row);
     },
 
     // ── Problems ──

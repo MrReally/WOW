@@ -71,6 +71,20 @@ export function useCreateContractorEquipment() {
   return useMutation({ mutationFn:(input:Contractors.CreateContractorEquipmentInput) => api.post<Contractors.ContractorEquipmentDTO>("/api/contractors/equipment", input), onSuccess:() => qc.invalidateQueries({ queryKey:["contractors", "equipment"] }) });
 }
 
+export function useUpdateContractorEquipment() {
+  const qc=useQueryClient();
+  return useMutation({ mutationFn:({id,input}:{id:string;input:Contractors.UpdateContractorEquipmentInput})=>api.patch<Contractors.ContractorEquipmentDTO>(`/api/contractors/equipment/${id}`,input), onSuccess:()=>qc.invalidateQueries({queryKey:["contractors","equipment"]}) });
+}
+
+export function useContractorWarehouses(enabled=true) {
+  return useQuery({enabled,queryKey:["contractors","warehouses"],queryFn:()=>api.get<Contractors.ContractorWarehouseDTO[]>("/api/contractors/warehouses")});
+}
+
+export function useCreateContractorWarehouse() {
+  const qc=useQueryClient();
+  return useMutation({mutationFn:(input:Contractors.CreateContractorWarehouseInput)=>api.post<Contractors.ContractorWarehouseDTO>("/api/contractors/warehouses",input),onSuccess:()=>qc.invalidateQueries({queryKey:["contractors","warehouses"]})});
+}
+
 export function useContractorHistory(contractorId: string) {
   return useQuery({
     enabled: !!contractorId,

@@ -13,8 +13,9 @@ export function createProjectsModule(
   loadEquipmentModels: (modelIds: string[]) => Promise<(Equipment.EquipmentModelDTO | null)[]>,
   appSettings: AppSettings.AppSettingsService,
   loadVenueName: (venueId: string | null) => Promise<string | null>,
+  loadContractorCatalogItems: (ids: string[]) => Promise<{id:string;maxQty:number|null}[]>,
 ): SeverModule<Projects.ProjectsService> {
-  const service = createProjectsService(db, bus, loadEquipmentUnits, loadEquipmentModels, appSettings, loadVenueName);
+  const service = createProjectsService(db, bus, loadEquipmentUnits, loadEquipmentModels, appSettings, loadVenueName, loadContractorCatalogItems);
   return {
     name: "projects",
     migration: projectsMigration,

@@ -537,6 +537,8 @@ export interface ContractorItemDTO {
   projectId: ID;
   /** Opaque id of the contractor (equipment.contractors) — the source. */
   contractorId: ID;
+  /** Package order that owns this commercial line; null for legacy/manual items. */
+  orderId: ID | null;
   kind: ContractorItemKind;
   name: string;
   qty: number;
@@ -574,6 +576,54 @@ export type UpdateContractorItemInput = Partial<Omit<AddContractorItemInput, "pr
 export interface ContractorDebtDTO {
   contractorId: ID;
   debtEUR: number;
+}
+
+export type ContractorFulfillmentMode = "dry_rental" | "contractor_delivery";
+
+export interface ContractorOrderLineDTO {
+  id: ID;
+  orderId: ID;
+  catalogItemId: ID;
+  name: string;
+  qty: number;
+  receivedAt: ISODateTime | null;
+  returnedAt: ISODateTime | null;
+}
+
+/** A supplier package: detailed physical lines with one commercial total. */
+export interface ContractorOrderDTO {
+  id: ID;
+  projectId: ID;
+  contractorId: ID;
+  warehouseId: ID | null;
+  contractorItemId: ID;
+  name: string;
+  fulfillmentMode: ContractorFulfillmentMode;
+  supplierPriceEUR: number;
+  clientPriceEUR: number;
+  deliveryAt: ISODateTime | null;
+  pickupAt: ISODateTime | null;
+  booked: boolean;
+  receiptCompletedAt: ISODateTime | null;
+  returnCompletedAt: ISODateTime | null;
+  deliveryTimingId: ID | null;
+  pickupTimingId: ID | null;
+  lines: ContractorOrderLineDTO[];
+  createdAt: ISODateTime;
+}
+
+export interface CreateContractorOrderInput {
+  projectId: ID;
+  contractorId: ID;
+  warehouseId?: ID | null;
+  name: string;
+  fulfillmentMode: ContractorFulfillmentMode;
+  supplierPriceEUR: number;
+  clientPriceEUR: number;
+  deliveryAt?: ISODateTime | null;
+  pickupAt?: ISODateTime | null;
+  booked?: boolean;
+  lines: { catalogItemId: ID; name: string; qty: number }[];
 }
 
 // ── Public service contract ──────────────────────────────────────────────────
@@ -674,6 +724,12 @@ export interface ProjectsService {
   removeContractorItem(id: ID): Promise<void>;
   /** Owed-to-contractor totals (cost × qty) grouped by contractor. */
   contractorDebts(): Promise<ContractorDebtDTO[]>;
+  listContractorOrders(projectId: ID): Promise<ContractorOrderDTO[]>;
+  createContractorOrder(input: CreateContractorOrderInput): Promise<ContractorOrderDTO>;
+  setContractorOrderLineReceived(orderId: ID, lineId: ID, received: boolean): Promise<ContractorOrderDTO>;
+  completeContractorOrderReceipt(orderId: ID): Promise<ContractorOrderDTO>;
+  setContractorOrderLineReturned(orderId: ID, lineId: ID, returned: boolean): Promise<ContractorOrderDTO>;
+  completeContractorOrderReturn(orderId: ID): Promise<ContractorOrderDTO>;
 
   // Problems detected by this module (reservation conflicts).
   listProblems(opts?: { includeResolved?: boolean }): Promise<Problem[]>;
