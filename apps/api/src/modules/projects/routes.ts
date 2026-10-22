@@ -83,8 +83,10 @@ const timingSchema = z.object({
   startsAt: z.string().datetime(),
   endsAt: z.string().datetime(),
   assigneeIds: z.array(z.string().uuid()).optional(),
+  roleIds: z.array(z.string().uuid()).optional(),
 });
 const timingAssigneesSchema = z.object({ userIds: z.array(z.string().uuid()) });
+const timingRolesSchema = z.object({ roleIds: z.array(z.string().uuid()) });
 const updateTimingSchema = z.object({
   title: z.string().min(1).optional(),
   startsAt: z.string().datetime().optional(),
@@ -377,6 +379,11 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.timing.manage");
     return service.setTimingAssignees(req.params.id, timingAssigneesSchema.parse(req.body).userIds);
+  });
+  app.put<{ Params: { id: string } }>("/api/timings/:id/roles", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.timing.manage");
+    return service.setTimingRoles(req.params.id, timingRolesSchema.parse(req.body).roleIds);
   });
   app.patch<{ Params: { id: string } }>("/api/timings/:id", async (req) => {
     const auth = await ctx.auth(req);

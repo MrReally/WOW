@@ -237,6 +237,8 @@ export interface TimingDTO {
   endsAt: ISODateTime;
   /** People (assignment user ids) responsible for this block. */
   assigneeIds: ID[];
+  /** Project roles responsible for this block, including roles with no people assigned. */
+  roleIds: ID[];
 }
 
 export interface AddTimingInput {
@@ -245,6 +247,7 @@ export interface AddTimingInput {
   startsAt: ISODateTime;
   endsAt: ISODateTime;
   assigneeIds?: ID[];
+  roleIds?: ID[];
 }
 
 export interface UpdateTimingInput {
@@ -399,9 +402,13 @@ export interface ProjectRoleDTO {
   requiredCount: number;
   /** Planned per-person rate in EUR; null = unset / by agreement. */
   rateEUR: number | null;
-  /** Role-specific engagement window; null pair = use the project window. */
+  /** Explicit role-specific engagement window; null pair = derive the effective window. */
   startsAt: ISODateTime | null;
   endsAt: ISODateTime | null;
+  /** Effective window: manual role window, linked-event bounds, then project window. */
+  effectiveStartsAt: ISODateTime | null;
+  effectiveEndsAt: ISODateTime | null;
+  timingSource: "manual" | "events" | "project" | "unset";
   createdAt: ISODateTime;
 }
 
@@ -677,6 +684,7 @@ export interface ProjectsService {
   addTiming(input: AddTimingInput): Promise<TimingDTO>;
   updateTiming(id: ID, input: UpdateTimingInput): Promise<TimingDTO>;
   setTimingAssignees(timingId: ID, userIds: ID[]): Promise<TimingDTO>;
+  setTimingRoles(timingId: ID, roleIds: ID[]): Promise<TimingDTO>;
   deleteTiming(id: ID): Promise<void>;
   listTasks(projectId: ID, opts?: { forUserId?: ID }): Promise<ProjectTaskDTO[]>;
   createTask(input: CreateProjectTaskInput): Promise<ProjectTaskDTO>;

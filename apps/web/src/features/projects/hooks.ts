@@ -219,7 +219,7 @@ export function useDeleteReservation() {
 export function useAddTiming() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { projectId: string; title: string; startsAt: string; endsAt: string; assigneeIds?: string[] }) =>
+    mutationFn: (input: Projects.AddTimingInput) =>
       api.post("/api/timings", input),
     meta: { successMessage: "Тайминг добавлен" },
     onSuccess: () => invalidateProjects(qc),
@@ -241,6 +241,15 @@ export function useSetTimingAssignees() {
   return useMutation({
     mutationFn: ({ timingId, userIds }: { timingId: string; userIds: string[] }) =>
       api.put(`/api/timings/${timingId}/assignees`, { userIds }),
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
+export function useSetTimingRoles() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ timingId, roleIds }: { timingId: string; roleIds: string[] }) =>
+      api.put(`/api/timings/${timingId}/roles`, { roleIds }),
     onSuccess: () => invalidateProjects(qc),
   });
 }

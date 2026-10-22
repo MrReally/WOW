@@ -24,6 +24,7 @@ import {
   useAddTiming,
   useUpdateTiming,
   useSetTimingAssignees,
+  useSetTimingRoles,
   useDeleteTiming,
   useAddAssignment,
   useRemoveAssignment,
@@ -189,6 +190,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const addTiming = useAddTiming();
   const updateTiming = useUpdateTiming();
   const setTimingAssignees = useSetTimingAssignees();
+  const setTimingRoles = useSetTimingRoles();
   const deleteTiming = useDeleteTiming();
   const addAssignment = useAddAssignment();
   const removeAssignment = useRemoveAssignment();
@@ -667,6 +669,11 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             .filter((a) => a.status === "added" || a.status === "accepted")
             .map((a) => a.userId);
           const candidates = onProject.filter((uid) => !t.assigneeIds.includes(uid));
+          const roleCandidates = (projectRoles.data ?? []).filter((role) => !t.roleIds.includes(role.id));
+          const roleRecipientIds = (assignments.data ?? [])
+            .filter((assignment) => t.roleIds.includes(assignment.roleId ?? "") && (assignment.status === "added" || assignment.status === "accepted"))
+            .map((assignment) => assignment.userId);
+          const timingRecipientCount = new Set([...t.assigneeIds, ...roleRecipientIds]).size;
           const timingReminders = (reminders.data ?? []).filter((reminder) => reminder.timingId === t.id && !reminder.sentAt);
           const timingOffsets = timingReminders.map((reminder) => reminder.offsetMinutes);
           return (
@@ -695,7 +702,21 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                 </div>
               </div>
               <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                {t.assigneeIds.length === 0 && <span className="card__subtitle">Никого не назначено</span>}
+                {t.assigneeIds.length === 0 && t.roleIds.length === 0 && <span className="card__subtitle">Никого и ни одной роли не назначено</span>}
+                {t.roleIds.map((roleId) => {
+                  const role = (projectRoles.data ?? []).find((item) => item.id === roleId);
+                  return (
+                    <button
+                      key={roleId}
+                      className="chip chip--info"
+                      style={{ cursor: "pointer", border: "1px solid var(--bdr)" }}
+                      title="Убрать роль из события"
+                      onClick={() => setTimingRoles.mutate({ timingId: t.id, roleIds: t.roleIds.filter((id) => id !== roleId) })}
+                    >
+                      Роль: {role?.title ?? roleId} ✕
+                    </button>
+                  );
+                })}
                 {t.assigneeIds.map((uid) => (
                   <button
                     key={uid}
@@ -719,9 +740,20 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   </div>
                 </div>
               )}
+              {roleCandidates.length > 0 && (
+                <div className="row" style={{ marginTop: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <Select
+                      value=""
+                      onChange={(e) => e.target.value && setTimingRoles.mutate({ timingId: t.id, roleIds: [...t.roleIds, e.target.value] })}
+                      options={[{ value: "", label: "+ добавить роль в событие" }, ...roleCandidates.map((role) => ({ value: role.id, label: role.title }))]}
+                    />
+                  </div>
+                </div>
+              )}
               <div className="row row--between" style={{ marginTop: 8, alignItems: "flex-start" }}>
                 <label className="row" style={{ gap: 8 }}>
-                  <input className="toggle-switch" type="checkbox" checked={timingOffsets.length > 0} disabled={t.assigneeIds.length === 0 || createReminder.isPending || deleteReminder.isPending} onChange={(e) => void setTimingReminderOffsets(t, e.target.checked ? [60] : [])} />
+                  <input className="toggle-switch" type="checkbox" checked={timingOffsets.length > 0} disabled={timingRecipientCount === 0 || createReminder.isPending || deleteReminder.isPending} onChange={(e) => void setTimingReminderOffsets(t, e.target.checked ? [60] : [])} />
                   <span>Пинг в ТГ</span>
                 </label>
                 {timingOffsets.length > 0 && (
@@ -837,6 +869,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                       {openSeats > 0 && <Chip label={`мест ${openSeats}`} tone="neutral" />}
                       {closed && <Chip label="закрыто" tone="ok" />}
                       {role.rateEUR != null && <Chip label={`${role.requiredCount * role.rateEUR} €`} tone="neutral" />}
+                      {role.timingSource === "events" && <Chip label="время по событиям" tone="info" />}
                     </div>
                   </div>
                   <div className="row" style={{ gap: 8 }}>
@@ -846,8 +879,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                         <RoleEngagementPicker
                           startsAt={role.startsAt}
                           endsAt={role.endsAt}
-                          fallbackStartsAt={p.startsAt}
-                          fallbackEndsAt={p.endsAt}
+                          fallbackStartsAt={role.effectiveStartsAt}
+                          fallbackEndsAt={role.effectiveEndsAt}
                           disabled={updateProjectRole.isPending}
                           onSave={(startsAt, endsAt) => updateProjectRole.mutateAsync({ id: role.id, input: { startsAt, endsAt } })}
                         />

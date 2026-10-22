@@ -434,8 +434,8 @@ export function createModules(bus: EventBus = new EventBus()) {
     if (!(await notifications.service.isEnabled(e.userId, "assigned"))) return;
     const role = roles.find((item) => item.id === assignment.roleId);
     const venue = project.venueId ? await venues.service.get(project.venueId) : null;
-    const engagementStartsAt = role?.startsAt ?? project.startsAt;
-    const engagementEndsAt = role?.endsAt ?? project.endsAt;
+    const engagementStartsAt = role?.effectiveStartsAt ?? project.startsAt;
+    const engagementEndsAt = role?.effectiveEndsAt ?? project.endsAt;
     const displayDateTime = (value: string | null) => value ? formatDateTimeValue(value, dateTimeSettings, "ru-RU") : "дата не указана";
     // In-app record so it shows in their inbox too.
     const invitation = {
@@ -704,7 +704,7 @@ export function createModules(bus: EventBus = new EventBus()) {
     const display = (value: string | null | undefined) => value ? formatDateTimeValue(value, dateTimeSettings, "ru-RU") : "дата не указана";
     const rate = assignment.rateEUR != null ? `${assignment.rateEUR} €` : "по договорённости";
     return accept
-      ? [`✅ <b>Приглашение принято</b>`, `«${project?.name ?? ""}»`, `🎚 Роль: ${assignment.roleNote ?? "—"}`, `🕒 ${display(acceptedRole?.startsAt ?? project?.startsAt)} — ${display(acceptedRole?.endsAt ?? project?.endsAt)}`, `📍 ${venue ? `${venue.name}${venue.address ? ` · ${venue.address}` : ""}` : "—"}`, ...(assignment.dressCodeEnabled && (project?.dressCodeLabel || project?.dressCodeUniform) ? [`👔 ${[project?.dressCodeLabel, project?.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}`] : []), `💶 Ставка: ${rate}`, `Подробности — в приложении.`].join("\n")
+      ? [`✅ <b>Приглашение принято</b>`, `«${project?.name ?? ""}»`, `🎚 Роль: ${assignment.roleNote ?? "—"}`, `🕒 ${display(acceptedRole?.effectiveStartsAt ?? project?.startsAt)} — ${display(acceptedRole?.effectiveEndsAt ?? project?.endsAt)}`, `📍 ${venue ? `${venue.name}${venue.address ? ` · ${venue.address}` : ""}` : "—"}`, ...(assignment.dressCodeEnabled && (project?.dressCodeLabel || project?.dressCodeUniform) ? [`👔 ${[project?.dressCodeLabel, project?.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}`] : []), `💶 Ставка: ${rate}`, `Подробности — в приложении.`].join("\n")
       : `❌ Вы отклонили участие в проекте «${project?.name ?? ""}».`;
   }
 
@@ -724,7 +724,12 @@ export function createModules(bus: EventBus = new EventBus()) {
         .filter((a) => a.status === "added" || a.status === "accepted")
         .map((a) => a.userId);
       const timing = reminder.timingId ? timings.find((item) => item.id === reminder.timingId) : null;
-      const recipientIds = timing ? timing.assigneeIds : reminder.recipientMode === "selected" ? reminder.userIds : dynamicIds;
+      const timingRoleUserIds = timing
+        ? assignments
+            .filter((assignment) => timing.roleIds.includes(assignment.roleId ?? "") && (assignment.status === "added" || assignment.status === "accepted"))
+            .map((assignment) => assignment.userId)
+        : [];
+      const recipientIds = timing ? [...timing.assigneeIds, ...timingRoleUserIds] : reminder.recipientMode === "selected" ? reminder.userIds : dynamicIds;
       for (const userId of [...new Set(recipientIds)]) {
         await projects.service.createPing({
           projectId: reminder.projectId,

@@ -134,7 +134,7 @@ describe("Tech pickup/return → некомплект", () => {
     const unit = await equipment.service.createUnit({ modelId: model.id, assetTag: `COPY-${Date.now()}` });
     const reservation = await projects.service.createReservation({ projectId: source.id, modelId: model.id, qty: 1, startsAt: start, endsAt: end });
     await projects.service.resolveReservation(reservation.id, [unit.id]);
-    await projects.service.addTiming({ projectId: source.id, title: "Монтаж", startsAt: new Date("2026-08-10T08:00:00.000Z").toISOString(), endsAt: new Date("2026-08-10T09:00:00.000Z").toISOString(), assigneeIds: [person.id] });
+    await projects.service.addTiming({ projectId: source.id, title: "Монтаж", startsAt: new Date("2026-08-10T08:00:00.000Z").toISOString(), endsAt: new Date("2026-08-10T09:00:00.000Z").toISOString(), assigneeIds: [person.id], roleIds: [role.id] });
     const contractor = await equipment.service.createContractor({ name: `Copy contractor ${Date.now()}` });
     const contractorItem = await projects.service.addContractorItem({ projectId: source.id, contractorId: contractor.id, name: "Пульт", qty: 1, priceEUR: 200, costEUR: 120 });
     await projects.service.updateContractorItem(contractorItem.id, { booked: true });
@@ -146,10 +146,11 @@ describe("Tech pickup/return → некомплект", () => {
     const copy = await projects.service.duplicateProject(source.id, { name: "Copy", startsAt: newStart, endsAt: new Date("2026-09-02T10:00:00.000Z").toISOString() });
     expect(copy.status).toBe("draft");
     expect(await projects.service.listAssignments(copy.id)).toEqual([]);
-    expect(await projects.service.listProjectRoles(copy.id)).toEqual([expect.objectContaining({ title: "Световик", requiredCount: 2, rateEUR: 180 })]);
+    const copiedRoles = await projects.service.listProjectRoles(copy.id);
+    expect(copiedRoles).toEqual([expect.objectContaining({ title: "Световик", requiredCount: 2, rateEUR: 180 })]);
     const copiedReservations = await projects.service.listReservations(copy.id);
     expect(copiedReservations).toEqual([expect.objectContaining({ modelId: model.id, resolvedUnitIds: [], startsAt: newStart })]);
-    expect(await projects.service.listTimings(copy.id)).toEqual([expect.objectContaining({ title: "Монтаж", startsAt: new Date("2026-09-01T08:00:00.000Z").toISOString(), assigneeIds: [] })]);
+    expect(await projects.service.listTimings(copy.id)).toEqual([expect.objectContaining({ title: "Монтаж", startsAt: new Date("2026-09-01T08:00:00.000Z").toISOString(), assigneeIds: [], roleIds: [copiedRoles[0]!.id] })]);
     expect(await projects.service.listContractorItems(copy.id)).toEqual([expect.objectContaining({ name: "Пульт", booked: false, returnedAt: null, paidAt: null })]);
     expect(await finance.service.listProjectEstimateLines(copy.id)).toEqual([expect.objectContaining({ name: "Комплект", priceEUR: 500, costEUR: 220, sourceRefId: copiedReservations[0]!.id })]);
     expect(await plans.service.getCurrentPlan(copy.id)).toEqual(expect.objectContaining({ elements: [expect.objectContaining({ modelId: model.id, unitId: null })] }));
@@ -1062,6 +1063,61 @@ describe("Tech pickup/return → некомплект", () => {
     await projects.service.setTimingAssignees(t1.id, [alice.id, bob.id]);
     const bobView = await projects.service.listTimings(project.id, { forUserId: bob.id });
     expect(bobView.some((t) => t.id === t1.id)).toBe(true);
+  });
+
+  it("timing roles include empty roles and derive their engagement window", async () => {
+    const { projects } = wiring;
+    const client = await projects.service.createClient({ name: `Timing roles ${Date.now()}` });
+    const project = await projects.service.createProject({
+      name: "Role timing project", clientId: client.id,
+      startsAt: "2026-10-20T08:00:00.000Z", endsAt: "2026-10-22T20:00:00.000Z",
+    });
+    const role = await projects.service.createProjectRole({
+      projectId: project.id, title: "Свет", requiredCount: 2,
+    });
+    const later = await projects.service.addTiming({
+      projectId: project.id, title: "Демонтаж",
+      startsAt: "2026-10-22T18:00:00.000Z", endsAt: "2026-10-22T20:00:00.000Z",
+      roleIds: [role.id],
+    });
+    const earlier = await projects.service.addTiming({
+      projectId: project.id, title: "Монтаж",
+      startsAt: "2026-10-20T10:00:00.000Z", endsAt: "2026-10-20T13:00:00.000Z",
+    });
+    await projects.service.setTimingRoles(earlier.id, [role.id]);
+
+    expect(await projects.service.listTimings(project.id)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: later.id, roleIds: [role.id], assigneeIds: [] }),
+      expect.objectContaining({ id: earlier.id, roleIds: [role.id], assigneeIds: [] }),
+    ]));
+    expect(await projects.service.listProjectRoles(project.id)).toEqual([
+      expect.objectContaining({
+        id: role.id,
+        startsAt: null,
+        endsAt: null,
+        effectiveStartsAt: "2026-10-20T10:00:00.000Z",
+        effectiveEndsAt: "2026-10-22T20:00:00.000Z",
+        timingSource: "events",
+      }),
+    ]);
+
+    await projects.service.updateProjectRole(role.id, {
+      startsAt: "2026-10-21T09:00:00.000Z", endsAt: "2026-10-21T17:00:00.000Z",
+    });
+    expect((await projects.service.listProjectRoles(project.id))[0]).toEqual(expect.objectContaining({
+      effectiveStartsAt: "2026-10-21T09:00:00.000Z", timingSource: "manual",
+    }));
+    await projects.service.updateProjectRole(role.id, { startsAt: null, endsAt: null });
+    expect((await projects.service.listProjectRoles(project.id))[0]).toEqual(expect.objectContaining({
+      effectiveStartsAt: "2026-10-20T10:00:00.000Z", timingSource: "events",
+    }));
+
+    const roleMember = await makeTech("Role timing member");
+    await projects.service.addAssignment({ projectId: project.id, roleId: role.id, userId: roleMember.id });
+    expect((await projects.service.listTimings(project.id, { forUserId: roleMember.id })).map((timing) => timing.id)).toEqual([
+      earlier.id,
+      later.id,
+    ]);
   });
 
   it("invitations: invite → accept/decline via the bot handler path", async () => {

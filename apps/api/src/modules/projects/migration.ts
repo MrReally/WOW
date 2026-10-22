@@ -198,6 +198,15 @@ ALTER TABLE projects.project_roles ADD CONSTRAINT project_roles_engagement_range
 );
 CREATE INDEX IF NOT EXISTS project_roles_project_idx ON projects.project_roles(project_id, created_at);
 
+-- Roles responsible for a timing block. Unlike people assignments, this keeps
+-- an unfilled staffing role visible in the event plan.
+CREATE TABLE IF NOT EXISTS projects.timing_roles (
+  timing_id uuid NOT NULL REFERENCES projects.timings(id) ON DELETE CASCADE,
+  role_id   uuid NOT NULL REFERENCES projects.project_roles(id) ON DELETE CASCADE,
+  PRIMARY KEY (timing_id, role_id)
+);
+CREATE INDEX IF NOT EXISTS timing_roles_role_idx ON projects.timing_roles(role_id);
+
 CREATE TABLE IF NOT EXISTS projects.assignments (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL REFERENCES projects.projects(id),

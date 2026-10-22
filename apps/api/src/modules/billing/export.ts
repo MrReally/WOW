@@ -346,7 +346,7 @@ export async function createFullExportCsv(deps: ExportDeps, canViewProjectNotes:
 
     const isActiveAssignment = (assignment: Projects.AssignmentDTO) => assignment.status === "added" || assignment.status === "accepted";
     const laborSources: Array<{ id: string; roleId: string | null; title: string; comment: string | null; qty: number; rate: number; startsAt: string | null; endsAt: string | null; assignments: Projects.AssignmentDTO[]; billable: boolean; createdAt: string }> = roles.length
-      ? roles.map((role) => ({ id: role.id, roleId: role.id, title: role.title, comment: role.comment, qty: role.requiredCount, rate: role.rateEUR ?? 0, startsAt: role.startsAt, endsAt: role.endsAt, assignments: assignments.filter((assignment) => assignment.roleId === role.id), billable: true, createdAt: role.createdAt }))
+      ? roles.map((role) => ({ id: role.id, roleId: role.id, title: role.title, comment: role.comment, qty: role.requiredCount, rate: role.rateEUR ?? 0, startsAt: role.effectiveStartsAt, endsAt: role.effectiveEndsAt, assignments: assignments.filter((assignment) => assignment.roleId === role.id), billable: true, createdAt: role.createdAt }))
       : assignments.map((assignment) => ({ id: assignment.id, roleId: assignment.roleId, title: assignment.roleNote || "Участник", comment: null, qty: 1, rate: assignment.rateEUR ?? 0, startsAt: project.startsAt, endsAt: project.endsAt, assignments: [assignment], billable: isActiveAssignment(assignment), createdAt: assignment.createdAt }));
     for (const labor of laborSources) {
       const saved = estimatesBySource.get(labor.id);

@@ -75,6 +75,7 @@ interface TimingRow {
   starts_at: Date;
   ends_at: Date;
   assignee_ids?: string[];
+  role_ids?: string[];
 }
 interface ProjectTaskRow {
   id: string;
@@ -127,6 +128,10 @@ interface ProjectRoleRow {
   starts_at: Date | null;
   ends_at: Date | null;
   created_at: Date;
+  event_starts_at?: Date | null;
+  event_ends_at?: Date | null;
+  project_starts_at?: Date | null;
+  project_ends_at?: Date | null;
 }
 interface AssignmentRow {
   cancellation_reason: Projects.InviteCancelledEvent["reason"] | null;
@@ -269,6 +274,7 @@ const timingDTO = (r: TimingRow): Projects.TimingDTO => ({
   startsAt: r.starts_at.toISOString(),
   endsAt: r.ends_at.toISOString(),
   assigneeIds: r.assignee_ids ?? [],
+  roleIds: r.role_ids ?? [],
 });
 const taskDTO = (r: ProjectTaskRow): Projects.ProjectTaskDTO => ({
   id: r.id,
@@ -320,6 +326,9 @@ const projectRoleDTO = (r: ProjectRoleRow): Projects.ProjectRoleDTO => ({
   rateEUR: r.rate_eur === null ? null : Number(r.rate_eur),
   startsAt: r.starts_at ? r.starts_at.toISOString() : null,
   endsAt: r.ends_at ? r.ends_at.toISOString() : null,
+  effectiveStartsAt: (r.starts_at ?? r.event_starts_at ?? r.project_starts_at)?.toISOString() ?? null,
+  effectiveEndsAt: (r.ends_at ?? r.event_ends_at ?? r.project_ends_at)?.toISOString() ?? null,
+  timingSource: r.starts_at && r.ends_at ? "manual" : r.event_starts_at && r.event_ends_at ? "events" : r.project_starts_at && r.project_ends_at ? "project" : "unset",
   createdAt: r.created_at.toISOString(),
 });
 const assignmentDTO = (r: AssignmentRow): Projects.AssignmentDTO => ({
@@ -464,6 +473,36 @@ export function createProjectsService(
   loadVenueName: (venueId: string | null) => Promise<string | null> = async () => null,
   loadContractorCatalogItems: (ids:string[])=>Promise<{id:string;maxQty:number|null}[]> = async()=>[],
 ): Projects.ProjectsService {
+  async function loadTiming(id: string, sql: Sql = db): Promise<TimingRow | null> {
+    return one<TimingRow>(
+      sql,
+      `SELECT t.*,
+              ARRAY(SELECT ta.user_id FROM projects.timing_assignees ta WHERE ta.timing_id=t.id ORDER BY ta.user_id) AS assignee_ids,
+              ARRAY(SELECT tr.role_id FROM projects.timing_roles tr WHERE tr.timing_id=t.id ORDER BY tr.role_id) AS role_ids
+       FROM projects.timings t WHERE t.id=$1`,
+      [id],
+    );
+  }
+
+  async function loadProjectRole(id: string, sql: Sql = db): Promise<ProjectRoleRow | null> {
+    return one<ProjectRoleRow>(
+      sql,
+      `SELECT r.*,
+              bounds.event_starts_at, bounds.event_ends_at,
+              p.starts_at AS project_starts_at, p.ends_at AS project_ends_at
+       FROM projects.project_roles r
+       JOIN projects.projects p ON p.id=r.project_id
+       LEFT JOIN LATERAL (
+         SELECT MIN(t.starts_at) AS event_starts_at, MAX(t.ends_at) AS event_ends_at
+         FROM projects.timing_roles tr
+         JOIN projects.timings t ON t.id=tr.timing_id
+         WHERE tr.role_id=r.id
+       ) bounds ON true
+       WHERE r.id=$1`,
+      [id],
+    );
+  }
+
   async function renderedProjectName(baseName: string, clientName: string, venueId: string | null, startsAt: string | null, endsAt: string | null) {
     const [template, dateTime, location] = await Promise.all([
       appSettings?.getProjectNameTemplateSettings() ?? Promise.resolve({ template: DEFAULT_PROJECT_NAME_TEMPLATE }),
@@ -767,6 +806,17 @@ export function createProjectsService(
             [newId, timing.title, new Date(timing.starts_at.getTime() + shiftMs).toISOString(), new Date(timing.ends_at.getTime() + shiftMs).toISOString()]
           );
           timingMap.set(timing.id, inserted!.id);
+        }
+        const sourceTimingRoles = await query<{ timing_id: string; role_id: string }>(client,
+          `SELECT tr.timing_id, tr.role_id
+           FROM projects.timing_roles tr
+           JOIN projects.timings t ON t.id=tr.timing_id
+           WHERE t.project_id=$1`, [id]);
+        for (const link of sourceTimingRoles) {
+          const timingId = timingMap.get(link.timing_id);
+          const roleId = sourceRefMap[link.role_id];
+          if (timingId && roleId) await query(client,
+            `INSERT INTO projects.timing_roles (timing_id, role_id) VALUES ($1,$2)`, [timingId, roleId]);
         }
         const sourceTasks = await query<ProjectTaskRow>(client, `SELECT * FROM projects.project_tasks WHERE project_id=$1 ORDER BY created_at`, [id]);
         for (const task of sourceTasks) {
@@ -1421,16 +1471,22 @@ export function createProjectsService(
       let mineClause = "";
       if (opts?.forUserId) {
         params.push(opts.forUserId);
-        mineClause = `AND EXISTS (SELECT 1 FROM projects.timing_assignees x WHERE x.timing_id = t.id AND x.user_id = $2)`;
+        mineClause = `AND (
+          EXISTS (SELECT 1 FROM projects.timing_assignees x WHERE x.timing_id=t.id AND x.user_id=$2)
+          OR EXISTS (
+            SELECT 1 FROM projects.timing_roles tr
+            JOIN projects.assignments a ON a.role_id=tr.role_id
+            WHERE tr.timing_id=t.id AND a.user_id=$2 AND a.status IN ('added','accepted')
+          )
+        )`;
       }
       const rows = await query<TimingRow>(
         db,
         `SELECT t.*,
-                COALESCE(array_agg(ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}') AS assignee_ids
+                ARRAY(SELECT ta.user_id FROM projects.timing_assignees ta WHERE ta.timing_id=t.id ORDER BY ta.user_id) AS assignee_ids,
+                ARRAY(SELECT tr.role_id FROM projects.timing_roles tr WHERE tr.timing_id=t.id ORDER BY tr.role_id) AS role_ids
          FROM projects.timings t
-         LEFT JOIN projects.timing_assignees ta ON ta.timing_id = t.id
          WHERE t.project_id = $1 ${mineClause}
-         GROUP BY t.id
          ORDER BY t.starts_at`,
         params
       );
@@ -1438,6 +1494,13 @@ export function createProjectsService(
     },
     async addTiming(input) {
       assertRange(input.startsAt, input.endsAt);
+      const roleIds = [...new Set(input.roleIds ?? [])];
+      if (roleIds.length) {
+        const valid = await query<{ id: string }>(db,
+          `SELECT id FROM projects.project_roles WHERE project_id=$1 AND id=ANY($2::uuid[])`,
+          [input.projectId, roleIds]);
+        if (valid.length !== roleIds.length) throw BadRequest("все роли события должны принадлежать его проекту");
+      }
       const row = await one<TimingRow>(
         db,
         `INSERT INTO projects.timings (project_id, title, starts_at, ends_at)
@@ -1448,7 +1511,10 @@ export function createProjectsService(
       for (const uid of assignees) {
         await query(db, `INSERT INTO projects.timing_assignees (timing_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [row!.id, uid]);
       }
-      return timingDTO({ ...row!, assignee_ids: assignees });
+      for (const roleId of roleIds) {
+        await query(db, `INSERT INTO projects.timing_roles (timing_id, role_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [row!.id, roleId]);
+      }
+      return timingDTO({ ...row!, assignee_ids: assignees, role_ids: roleIds });
     },
     async updateTiming(id, input) {
       const existing = await one<TimingRow>(db, `SELECT * FROM projects.timings WHERE id=$1`, [id]);
@@ -1461,8 +1527,7 @@ export function createProjectsService(
         `UPDATE projects.timings SET title=$2, starts_at=$3, ends_at=$4 WHERE id=$1 RETURNING *`,
         [id, input.title ?? existing.title, startsAt, endsAt]
       );
-      const assignees = await query<{ user_id: string }>(db, `SELECT user_id FROM projects.timing_assignees WHERE timing_id=$1`, [id]);
-      return timingDTO({ ...row!, assignee_ids: assignees.map((x) => x.user_id) });
+      return timingDTO((await loadTiming(row!.id))!);
     },
     async setTimingAssignees(timingId, userIds) {
       const timing = await one<TimingRow>(db, `SELECT * FROM projects.timings WHERE id=$1`, [timingId]);
@@ -1474,7 +1539,25 @@ export function createProjectsService(
           await query(client, `INSERT INTO projects.timing_assignees (timing_id, user_id) VALUES ($1,$2)`, [timingId, uid]);
         }
       });
-      return timingDTO({ ...timing, assignee_ids: unique });
+      return timingDTO((await loadTiming(timingId))!);
+    },
+    async setTimingRoles(timingId, roleIds) {
+      const timing = await one<TimingRow>(db, `SELECT * FROM projects.timings WHERE id=$1`, [timingId]);
+      if (!timing) throw NotFound("timing", timingId);
+      const unique = [...new Set(roleIds)];
+      if (unique.length) {
+        const valid = await query<{ id: string }>(db,
+          `SELECT id FROM projects.project_roles WHERE project_id=$1 AND id=ANY($2::uuid[])`,
+          [timing.project_id, unique]);
+        if (valid.length !== unique.length) throw BadRequest("все роли события должны принадлежать его проекту");
+      }
+      await tx(async (client) => {
+        await query(client, `DELETE FROM projects.timing_roles WHERE timing_id=$1`, [timingId]);
+        for (const roleId of unique) {
+          await query(client, `INSERT INTO projects.timing_roles (timing_id, role_id) VALUES ($1,$2)`, [timingId, roleId]);
+        }
+      });
+      return timingDTO((await loadTiming(timingId))!);
     },
     async deleteTiming(id) {
       await query(db, `DELETE FROM projects.timings WHERE id=$1`, [id]);
@@ -1619,7 +1702,18 @@ export function createProjectsService(
       if (!project) throw NotFound("project", projectId);
       const rows = await query<ProjectRoleRow>(
         db,
-        `SELECT * FROM projects.project_roles WHERE project_id=$1 ORDER BY created_at`,
+        `SELECT r.*,
+                bounds.event_starts_at, bounds.event_ends_at,
+                p.starts_at AS project_starts_at, p.ends_at AS project_ends_at
+         FROM projects.project_roles r
+         JOIN projects.projects p ON p.id=r.project_id
+         LEFT JOIN LATERAL (
+           SELECT MIN(t.starts_at) AS event_starts_at, MAX(t.ends_at) AS event_ends_at
+           FROM projects.timing_roles tr
+           JOIN projects.timings t ON t.id=tr.timing_id
+           WHERE tr.role_id=r.id
+         ) bounds ON true
+         WHERE r.project_id=$1 ORDER BY r.created_at`,
         [projectId]
       );
       return rows.map(projectRoleDTO);
@@ -1636,7 +1730,7 @@ export function createProjectsService(
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
         [input.projectId, input.title.trim(), input.comment?.trim() || null, input.requiredCount, input.rateEUR ?? null, startsAt, endsAt, input.dressCodeEnabled ?? false]
       );
-      return projectRoleDTO(row!);
+      return projectRoleDTO((await loadProjectRole(row!.id))!);
     },
     async updateProjectRole(id, input) {
       const existing = await one<ProjectRoleRow>(db, `SELECT * FROM projects.project_roles WHERE id=$1`, [id]);
@@ -1677,7 +1771,7 @@ export function createProjectsService(
       if (input.title !== undefined || input.comment !== undefined || input.rateEUR !== undefined || input.startsAt !== undefined || input.endsAt !== undefined) {
         await bus.publish({ type: "project.role.updated", projectId: existing.project_id, roleId: id, at: new Date().toISOString() });
       }
-      return projectRoleDTO(row!);
+      return projectRoleDTO((await loadProjectRole(row!.id))!);
     },
     async deleteProjectRole(id) {
       const existing = await one<ProjectRoleRow>(db, `SELECT * FROM projects.project_roles WHERE id=$1`, [id]);
