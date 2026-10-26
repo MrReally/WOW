@@ -52,6 +52,9 @@ export function Sheet({ open, title, onClose, children }: SheetProps) {
     <div className="sheet__backdrop" onClick={onClose}>
       <div
         className="sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         onClick={(e) => e.stopPropagation()}
         onFocusCapture={keepDatePickerInView}
         style={{ transform: dragY ? `translateY(${dragY}px)` : undefined }}

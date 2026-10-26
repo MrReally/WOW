@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Button, Field } from "../../../ui-kit/index.ts";
+import { useEffect, useState } from "react";
+import { Button, Field, Sheet } from "../../../ui-kit/index.ts";
 import { isoFromLocal, toLocalInput } from "../../../lib/datetime.ts";
 import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
 
@@ -44,14 +43,10 @@ export function RoleEngagementPicker({
   disabled = false,
   onSave,
 }: RoleEngagementPickerProps) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [draftStartsAt, setDraftStartsAt] = useState("");
   const [draftEndsAt, setDraftEndsAt] = useState("");
   const [saving, setSaving] = useState(false);
-  const [menuStyle, setMenuStyle] = useState<Record<string, number>>({});
   const active = !!startsAt && !!endsAt;
   const duration = engagementDuration(draftStartsAt, draftEndsAt);
 
@@ -65,55 +60,14 @@ export function RoleEngagementPicker({
     setOpen(false);
   };
 
-  const positionMenu = () => {
-    const trigger = triggerRef.current;
-    if (!trigger) return;
-
-    const rect = trigger.getBoundingClientRect();
-    const edge = 10;
-    const gap = 8;
-    const desiredHeight = 360;
-    const below = window.innerHeight - rect.bottom - edge - gap;
-    const above = rect.top - edge - gap;
-    const placeAbove = below < desiredHeight && above > below;
-    setMenuStyle({
-      right: Math.max(edge, window.innerWidth - rect.right),
-      width: Math.min(310, window.innerWidth - edge * 2),
-      maxHeight: Math.max(160, Math.min(desiredHeight, placeAbove ? above : below)),
-      ...(placeAbove ? { bottom: window.innerHeight - rect.top + gap } : { top: rect.bottom + gap }),
-    });
-  };
-
   useEffect(() => {
     if (!open) resetDraft();
-  }, [open, startsAt, endsAt, fallbackStartsAt, fallbackEndsAt]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) close();
-    };
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", positionMenu);
-    window.addEventListener("scroll", positionMenu, true);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", positionMenu);
-      window.removeEventListener("scroll", positionMenu, true);
-    };
   }, [open, startsAt, endsAt, fallbackStartsAt, fallbackEndsAt]);
 
   const toggle = () => {
     if (open) close();
     else {
       resetDraft();
-      positionMenu();
       setOpen(true);
     }
   };
@@ -131,9 +85,8 @@ export function RoleEngagementPicker({
   };
 
   return (
-    <div className="role-engagement-picker" ref={rootRef}>
+    <div className="role-engagement-picker">
       <button
-        ref={triggerRef}
         type="button"
         className={`icon-btn ${active ? "icon-btn--active" : ""}`}
         aria-label={active ? "Изменить время занятости" : "Указать время занятости"}
@@ -145,8 +98,8 @@ export function RoleEngagementPicker({
       >
         <ClockIcon />
       </button>
-      {open && createPortal(
-        <div ref={menuRef} className="role-engagement-picker__menu" style={menuStyle} role="dialog" aria-label="Время занятости">
+      <Sheet open={open} onClose={close} title="Время занятости">
+        <div className="role-engagement-sheet">
           <Field label="Начало работы">
             <ConfiguredDateTimeInput aria-label="Начало работы" value={draftStartsAt} disabled={saving} onChange={setDraftStartsAt} />
           </Field>
@@ -162,9 +115,8 @@ export function RoleEngagementPicker({
               {saving ? "Сохраняем…" : "Сохранить"}
             </Button>
           </div>
-        </div>,
-        document.body,
-      )}
+        </div>
+      </Sheet>
     </div>
   );
 }

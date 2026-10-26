@@ -25,19 +25,18 @@ describe("TimingReminderPicker", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Когда напомнить" })).toBeNull());
   });
 
-  it("closes on an outside click and discards the draft selection", async () => {
+  it("closes from the sheet backdrop and discards the draft selection", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(
       <div>
         <TimingReminderPicker options={options} value={[60]} onSave={onSave} />
-        <button type="button">Вне поля</button>
       </div>,
     );
 
     await user.click(screen.getByRole("button", { name: "Когда напомнить · 1" }));
     await user.click(screen.getByRole("checkbox", { name: "За 15 минут" }));
-    await user.click(screen.getByRole("button", { name: "Вне поля" }));
+    await user.click(document.querySelector(".sheet__backdrop")!);
 
     expect(screen.queryByRole("dialog", { name: "Когда напомнить" })).toBeNull();
     expect(onSave).not.toHaveBeenCalled();
