@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "../../../ui-kit/index.ts";
 
 interface TimingReminderOption {
@@ -15,9 +16,30 @@ interface TimingReminderPickerProps {
 
 export function TimingReminderPicker({ options, value, disabled = false, onSave }: TimingReminderPickerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<Record<string, number>>({});
+
+  const positionMenu = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const edge = 10;
+    const gap = 8;
+    const desiredHeight = 250;
+    const below = window.innerHeight - rect.bottom - edge - gap;
+    const above = rect.top - edge - gap;
+    const placeAbove = below < desiredHeight && above > below;
+    setMenuStyle({
+      right: Math.max(edge, window.innerWidth - rect.right),
+      maxHeight: Math.max(120, Math.min(desiredHeight, placeAbove ? above : below)),
+      ...(placeAbove ? { bottom: window.innerHeight - rect.top + gap } : { top: rect.bottom + gap }),
+    });
+  };
 
   const closeWithoutSaving = () => {
     setDraft(value);
@@ -32,7 +54,8 @@ export function TimingReminderPicker({ options, value, disabled = false, onSave 
     if (!open) return;
 
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) closeWithoutSaving();
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) closeWithoutSaving();
     };
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") closeWithoutSaving();
@@ -40,9 +63,13 @@ export function TimingReminderPicker({ options, value, disabled = false, onSave 
 
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
     };
   }, [open, value]);
 
@@ -52,6 +79,7 @@ export function TimingReminderPicker({ options, value, disabled = false, onSave 
       return;
     }
     setDraft(value);
+    positionMenu();
     setOpen(true);
   };
 
@@ -70,6 +98,7 @@ export function TimingReminderPicker({ options, value, disabled = false, onSave 
   return (
     <div className="timing-reminder-picker" ref={rootRef}>
       <button
+        ref={triggerRef}
         type="button"
         className="btn btn--secondary"
         aria-haspopup="dialog"
@@ -79,8 +108,8 @@ export function TimingReminderPicker({ options, value, disabled = false, onSave 
       >
         Когда напомнить · {value.length}
       </button>
-      {open && (
-        <div className="timing-reminder-picker__menu" role="dialog" aria-label="Когда напомнить">
+      {open && createPortal(
+        <div ref={menuRef} className="timing-reminder-picker__menu" style={menuStyle} role="dialog" aria-label="Когда напомнить">
           <div className="stack timing-reminder-picker__options">
             {options.map((option) => (
               <label className="row timing-reminder-picker__option" key={option.minutes}>
@@ -99,7 +128,8 @@ export function TimingReminderPicker({ options, value, disabled = false, onSave 
           <Button block disabled={saving} onClick={() => void save()}>
             {saving ? "Сохраняем…" : "Сохранить"}
           </Button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
