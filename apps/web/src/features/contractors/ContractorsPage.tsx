@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Equipment, Projects } from "@sever/contracts";
+import type { Contractors, Equipment, Projects } from "@sever/contracts";
 import {
   Button,
   Card,
@@ -34,6 +34,7 @@ import {
   useReturnContractorItem,
   useUpdateContractor,
 } from "./hooks.ts";
+import { contractorMatches } from "../../lib/search.ts";
 
 const directoryCopy = {
   ru: { directory:"Справочник подрядчика", people:"Сотрудники", vehicles:"Машины", equipment:"Оборудование", firstName:"Имя", lastName:"Фамилия", patronymic:"Отчество", phone:"Телефон", telegram:"Telegram", document:"Номер документа", photo:"Фото (URL)", make:"Марка", model:"Модель", color:"Цвет", plate:"Гос. номер", itemName:"Название", qty:"Количество", cost:"Обычная цена, €", note:"Примечание", noPeople:"Сотрудников пока нет", noVehicles:"Машин пока нет", noEquipment:"Оборудования пока нет" },
@@ -91,7 +92,7 @@ export function ContractorsPage() {
   const [equipmentMaxQty, setEquipmentMaxQty] = useState("");
   const [equipmentWarehouseId, setEquipmentWarehouseId] = useState("");
   const [equipmentNote, setEquipmentNote] = useState("");
-  const [editingEquipment, setEditingEquipment] = useState<Equipment.ContractorEquipmentDTO | null>(null);
+  const [editingEquipment, setEditingEquipment] = useState<Contractors.ContractorEquipmentDTO | null>(null);
   const [warehouseName,setWarehouseName]=useState("");
   const [warehouseAddress,setWarehouseAddress]=useState("");
   const [warehouseLat,setWarehouseLat]=useState("");
@@ -124,9 +125,7 @@ export function ContractorsPage() {
   });
 
   const filteredContractors = list.filter((c) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return [c.name, c.contacts].some((value) => value?.toLowerCase().includes(q));
+    return contractorMatches(c, query);
   });
 
   const submitNew = () =>

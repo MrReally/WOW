@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Equipment, Finance, Projects } from "@sever/contracts";
+import type { Finance, Projects } from "@sever/contracts";
 import { Button, Card, Chip, Field, Input, Select, Sheet, Textarea } from "../../../ui-kit/index.ts";
 import { eur } from "../../../lib/labels.ts";
 import { api } from "../../../lib/api.ts";
@@ -15,6 +15,9 @@ import {
   useCreateReservation,
   useEquipmentModelAvailability,
   useEquipmentModels,
+  useEquipmentStorageZones,
+  useEquipmentTypes,
+  useAllUnits,
 } from "../hooks.ts";
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
@@ -24,6 +27,7 @@ import { useSession } from "../../../app/session.ts";
 import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
 import { isoFromLocal } from "../../../lib/datetime.ts";
 import { ProjectNoteField } from "./ProjectNoteField.tsx";
+import { equipmentModelMatches } from "../../../lib/search.ts";
 
 type StepId = "name" | "client" | "venue" | "time" | "reservations" | "crew" | "contractors" | "finance" | "finish";
 
@@ -80,6 +84,9 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const clients = useClients();
   const venues = useVenues();
   const models = useEquipmentModels();
+  const equipmentTypes = useEquipmentTypes();
+  const equipmentUnits = useAllUnits();
+  const equipmentZones = useEquipmentStorageZones();
   const contractors = useContractors();
   const createClient = useCreateClient();
   const createVenue = useCreateVenue();
@@ -105,6 +112,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const [starts, setStarts] = useState("");
   const [ends, setEnds] = useState("");
   const [reservationDrafts, setReservationDrafts] = useState<ReservationDraft[]>([]);
+  const [reservationSearch, setReservationSearch] = useState("");
   const [reservationsAreReserve, setReservationsAreReserve] = useState(false);
   const [crewDrafts, setCrewDrafts] = useState<CrewDraft[]>([{ title: "", comment: "", count: "1", rate: "", startsAt: null, endsAt: null }]);
   const [contractorDrafts, setContractorDrafts] = useState<ContractorDraft[]>([{ contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }]);
@@ -121,6 +129,12 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const availabilityStartsAt = validRange ? isoFromLocal(starts) : "";
   const availabilityEndsAt = validRange ? isoFromLocal(ends) : "";
   const modelAvailability = useEquipmentModelAvailability(models.data ?? [], availabilityStartsAt, availabilityEndsAt);
+  const visibleReservationModels = useMemo(() => {
+    const query = reservationSearch.trim().toLocaleLowerCase("ru-RU");
+    if (!query) return models.data ?? [];
+    const data = { models: models.data ?? [], types: equipmentTypes.data ?? [], units: equipmentUnits.data ?? [], zones: equipmentZones.data ?? [] };
+    return (models.data ?? []).filter((model) => equipmentModelMatches(model, query, data));
+  }, [equipmentTypes.data, equipmentUnits.data, equipmentZones.data, models.data, reservationSearch]);
   const selectedClientName = clients.data?.find((c) => c.id === clientId)?.name ?? clientName;
   const totals = useMemo(() => {
     const extrasClient = financeDrafts.reduce((sum, line) => sum + (Number(line.client) || 0), 0);
@@ -149,6 +163,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       setStarts("");
       setEnds("");
       setReservationDrafts([]);
+      setReservationSearch("");
       setReservationsAreReserve(false);
       setCrewDrafts([{ title: "", comment: "", count: "1", rate: "", startsAt: null, endsAt: null }]);
       setContractorDrafts([{ contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }]);
@@ -299,8 +314,15 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
 
       {step.id === "reservations" && (
         <WizardScreen title="Брони">
+          <Input
+            type="search"
+            value={reservationSearch}
+            onChange={(event) => setReservationSearch(event.target.value)}
+            placeholder="Модель, производитель, тип, номер, зона, разъём"
+            aria-label="Поиск оборудования для брони"
+          />
           <div className="reservation-picker" aria-label="Выбор оборудования">
-            {(models.data ?? []).map((model, index) => {
+            {visibleReservationModels.map((model, index) => {
               const draft = reservationDrafts.find((item) => item.modelId === model.id);
               const quantity = Number(draft?.qty) || 0;
               const availability = modelAvailability.data?.[model.id];
@@ -331,6 +353,9 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
             })}
             {!models.isLoading && !(models.data ?? []).length && (
               <p className="reservation-picker__empty">В каталоге пока нет моделей оборудования</p>
+            )}
+            {!models.isLoading && !!(models.data ?? []).length && !visibleReservationModels.length && (
+              <p className="reservation-picker__empty">По вашему запросу ничего не найдено</p>
             )}
           </div>
           <label className="reservation-picker__reserve">
@@ -475,8 +500,4 @@ function QuantityStepper({ label, value, max, onChange }: { label: string; value
       <button type="button" aria-label={`Увеличить количество: ${label}`} disabled={value >= max} onClick={() => onChange(Math.min(max, value + 1))}>+</button>
     </div>
   );
-}
-
-function modelLabel(model: Equipment.EquipmentModelDTO) {
-  return model.manufacturer ? `${model.name} · ${model.manufacturer}` : model.name;
 }

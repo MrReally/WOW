@@ -12,6 +12,10 @@ export function useOperationVenues() {
   return useQuery({ queryKey: ["venues"], queryFn: () => api.get<Venues.VenueDTO[]>("/api/venues") });
 }
 
+export function useOperationClients() {
+  return useQuery({ queryKey: ["clients"], queryFn: () => api.get<Projects.ClientDTO[]>("/api/clients") });
+}
+
 export function useProjectTimings(projectId: string | null) {
   return useQuery({
     enabled: !!projectId,

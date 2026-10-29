@@ -33,14 +33,15 @@ const venue: Venues.VenueDTO = {
   addressVerified: false,
   createdAt: "2026-01-01T00:00:00.000Z",
 };
+const clients: Projects.ClientDTO[] = [{ id: "client-1", name: "Клиент Acme", contacts: null, createdAt: "2026-01-01T00:00:00.000Z" }];
 
 describe("project search", () => {
-  it.each(["фестиваль", "БЕЛГРАД", "чарноевича", "21.08.2026", "21.08", "2026-08-21"])(
+  it.each(["фестиваль", "БЕЛГРАД", "чарноевича", "21.08.2026", "21.08", "2026-08-21", "acme"])(
     "finds an event by %s",
-    (query) => expect(filterProjectsBySearch([project()], [venue], query)).toHaveLength(1),
+    (query) => expect(filterProjectsBySearch([project()], [venue], clients, query)).toHaveLength(1),
   );
 
   it("returns no unrelated events", () => {
-    expect(filterProjectsBySearch([project()], [venue], "Нови-Сад")).toEqual([]);
+    expect(filterProjectsBySearch([project()], [venue], clients, "Нови-Сад")).toEqual([]);
   });
 });

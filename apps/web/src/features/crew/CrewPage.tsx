@@ -5,6 +5,7 @@ import type { Equipment, People, Projects } from "@sever/contracts";
 import { Card, Button, SectionHead, Field, Input, Select, Textarea, Loading, EmptyState, Chip, Sheet } from "../../ui-kit/index.ts";
 import { useSession } from "../../app/session.ts";
 import { api } from "../../lib/api.ts";
+import { personMatches } from "../../lib/search.ts";
 import { getToken } from "../../lib/api.ts";
 import { dateRange, dateTime } from "../../lib/labels.ts";
 import { useArchiveUser, useBotInfo, useCreateUser, useDeleteUserPermanently, usePeople, useResetPassword, useRoles, useUnlinkTelegram, useUpdateUser } from "../settings/hooks.ts";
@@ -218,7 +219,7 @@ export function CrewPage() {
   const deleteUserPermanently = useDeleteUserPermanently();
   const [selectedId, setSelectedId] = useState("");
   const [draft, setDraft] = useState<People.UpdateUserInput>({});
-  const [newPerson, setNewPerson] = useState({ name: "", email: "", telegram: "", roleId: "" });
+  const [newPerson, setNewPerson] = useState({ name: "", email: "", telegram: "", phone: "", roleId: "" });
   const [isAddingPerson, setIsAddingPerson] = useState(false);
   const [copiedTelegramLinkFor, setCopiedTelegramLinkFor] = useState<string | null>(null);
   const [revealedPassword, setRevealedPassword] = useState<{ who: string; pw: string } | null>(null);
@@ -252,7 +253,7 @@ export function CrewPage() {
   const filteredPeople = list.filter((person) => {
     const query = crewQuery.trim().toLowerCase();
     const matchesRole = roleFilter === "all" || person.roleName === roleFilter;
-    const matchesQuery = !query || [personName(person), person.roleName, person.telegramUsername, person.email].some((value) => value?.toLowerCase().includes(query));
+    const matchesQuery = personMatches(person, query);
     return matchesRole && matchesQuery;
   });
   const actionHistory = useQuery({
@@ -272,6 +273,7 @@ export function CrewPage() {
       lastName: selected.lastName,
       patronymic: selected.patronymic,
       nickname: selected.nickname,
+      phone: selected.phone,
       email: selected.email,
       telegramUsername: telegramFieldValue(selected.telegramUsername),
       roleId: selected.roleId ?? undefined,
@@ -324,6 +326,7 @@ export function CrewPage() {
         lastName: draft.lastName || null,
         patronymic: draft.patronymic || null,
         nickname: draft.nickname || null,
+        phone: draft.phone || null,
         email: draft.email || null,
         telegramId: selected.telegramId,
         telegramUsername: draft.telegramUsername?.trim() || null,
@@ -462,7 +465,7 @@ export function CrewPage() {
             </Card>
           )}
           <Button variant="secondary" onClick={() => setIsAddingPerson(true)}>Добавить человека</Button>
-          <Sheet open={isAddingPerson} onClose={() => { setIsAddingPerson(false); setNewPerson({ name: "", email: "", telegram: "", roleId: "" }); }} title="Новый человек">
+          <Sheet open={isAddingPerson} onClose={() => { setIsAddingPerson(false); setNewPerson({ name: "", email: "", telegram: "", phone: "", roleId: "" }); }} title="Новый человек">
               <Field label="Имя">
                 <Input value={newPerson.name} onChange={(e) => setNewPerson((p) => ({ ...p, name: e.target.value }))} placeholder="Имя Фамилия" />
               </Field>
@@ -474,6 +477,9 @@ export function CrewPage() {
                   <Input value={newPerson.telegram} onChange={(e) => setNewPerson((p) => ({ ...p, telegram: e.target.value }))} placeholder="@username" />
                 </Field>
               </div>
+              <Field label="Телефон">
+                <Input type="tel" value={newPerson.phone} onChange={(e) => setNewPerson((p) => ({ ...p, phone: e.target.value }))} />
+              </Field>
               <Field label="Роль">
                 <Select value={newRoleId} onChange={(e) => setNewPerson((p) => ({ ...p, roleId: e.target.value }))} options={roleOptions} />
               </Field>
@@ -482,10 +488,10 @@ export function CrewPage() {
                 disabled={!newPerson.name || (!newPerson.email && !newPerson.telegram) || !newRoleId || createUser.isPending}
                 onClick={() =>
                   createUser.mutate(
-                    { displayName: newPerson.name, roleId: newRoleId, email: newPerson.email || null, telegramUsername: newPerson.telegram || null } as People.CreateUserInput,
+                    { displayName: newPerson.name, roleId: newRoleId, email: newPerson.email || null, telegramUsername: newPerson.telegram || null, phone: newPerson.phone || null } as People.CreateUserInput,
                     {
                       onSuccess: (res) => {
-                        setNewPerson({ name: "", email: "", telegram: "", roleId: "" });
+                        setNewPerson({ name: "", email: "", telegram: "", phone: "", roleId: "" });
                         setIsAddingPerson(false);
                         setSelectedId(res.user.id);
                         if (res.temporaryPassword) setRevealedPassword({ who: personName(res.user), pw: res.temporaryPassword });
@@ -585,6 +591,9 @@ export function CrewPage() {
             <Input value={draft.telegramUsername ?? ""} onChange={(e) => setDraft((d) => ({ ...d, telegramUsername: e.target.value }))} placeholder="@username" />
           </Field>
         </div>
+        <Field label="Телефон">
+          <Input type="tel" value={draft.phone ?? ""} onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))} />
+        </Field>
         {canManagePeople && (
           <div className="row row--between">
             <div>

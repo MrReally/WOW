@@ -5,6 +5,7 @@ import { useSession } from "../../app/session.ts";
 import { useI18n } from "../../app/i18n.tsx";
 import { projectStatusTone } from "../../lib/labels.ts";
 import { useGlobalSearchData } from "./hooks.ts";
+import { filterProjectsBySearch } from "../../lib/useProjectSearch.ts";
 
 export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [query, setQuery] = useState("");
@@ -15,20 +16,8 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
   const data = useGlobalSearchData(open && canSearchProjects);
 
   const rows = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("ru");
-    if (!q) return [];
-    const clients = new Map((data.clients.data ?? []).map((client) => [client.id, client.name]));
-    const venues = new Map((data.venues.data ?? []).map((venue) => [venue.id, venue.name]));
-    return (data.projects.data ?? []).filter((project) => {
-      const haystack = [
-        project.name,
-        clients.get(project.clientId) ?? "",
-        project.venueId ? venues.get(project.venueId) ?? "" : "",
-        project.startsAt ?? "",
-        project.endsAt ?? "",
-      ].join(" ").toLocaleLowerCase("ru");
-      return haystack.includes(q);
-    }).slice(0, 30);
+    if (!query.trim()) return [];
+    return filterProjectsBySearch(data.projects.data ?? [], data.venues.data ?? [], data.clients.data ?? [], query).slice(0, 30);
   }, [data.clients.data, data.projects.data, data.venues.data, query]);
 
   const loading = data.projects.isLoading || data.clients.isLoading || data.venues.isLoading;

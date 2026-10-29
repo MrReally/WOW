@@ -3,15 +3,18 @@ import type { Equipment } from "@sever/contracts";
 import { Sheet, Field, Input, Select, Button } from "../../../ui-kit/index.ts";
 import { extensionAssetTagPrefix, extensionConnectorDefault, formatCableModel, formatExtensionModel } from "../cables.ts";
 import { useCableSettings, useCategories, useCreateModel, useCreateType, useCreateUnit, useModelStockAtWarehouse, useSetModelStock, useWarehouses } from "../hooks.ts";
+import { equipmentModelMatches } from "../../../lib/search.ts";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   types: Equipment.EquipmentTypeDTO[];
   models: Equipment.EquipmentModelDTO[];
+  units?: Equipment.EquipmentUnitDTO[];
+  zones?: Equipment.StorageZoneDTO[];
 }
 
-export function AddModelSheet({ open, onClose, types, models }: Props) {
+export function AddModelSheet({ open, onClose, types, models, units = [], zones = [] }: Props) {
   const createType = useCreateType();
   const createModel = useCreateModel();
   const createUnit = useCreateUnit();
@@ -79,6 +82,9 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
     return `${base}${mode}`;
   };
   const selectedModel = models.find((m) => m.id === effModelId);
+  const matchingModels = modelSearch.trim()
+    ? models.filter((model) => equipmentModelMatches(model, modelSearch, { models, types, units, zones }))
+    : models;
   const serialModels = models.filter((m) => m.trackingMode === "serial");
   const countedModels = models.filter((m) => m.trackingMode === "quantity" || m.trackingMode === "cable");
   const warehouseList = warehouses.data ?? [];
@@ -332,11 +338,11 @@ export function AddModelSheet({ open, onClose, types, models }: Props) {
                 if (selectedModel) setModelSearch(modelLabel(selectedModel));
               }}
               list="warehouse-unit-models"
-              placeholder="Начните вводить модель"
+              placeholder="Модель, производитель, тип, номер, серийник, зона, разъём"
               autoComplete="off"
             />
             <datalist id="warehouse-unit-models">
-              {models.map((m) => (
+              {matchingModels.map((m) => (
                 <option key={m.id} value={modelLabel(m)} />
               ))}
             </datalist>

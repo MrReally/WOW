@@ -37,6 +37,7 @@ export interface UserDTO {
   lastName: string | null;
   patronymic: string | null;
   nickname: string | null;
+  phone: string | null;
   /** Hourly rate in EUR for assignment costing (techs). null if not set. */
   hourlyRateEUR: number | null;
   /** Hidden protected account for recovery/developer access. */
@@ -69,6 +70,7 @@ export interface CreateUserInput {
   lastName?: string | null;
   patronymic?: string | null;
   nickname?: string | null;
+  phone?: string | null;
   documentNumber?: string | null;
   documentPhotoUrl?: string | null;
   languages?: string | null;
@@ -91,6 +93,7 @@ export interface UpdateUserInput {
   lastName?: string | null;
   patronymic?: string | null;
   nickname?: string | null;
+  phone?: string | null;
   documentNumber?: string | null;
   documentPhotoUrl?: string | null;
   languages?: string | null;

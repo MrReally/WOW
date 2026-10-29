@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { matchesSearch } from "../../lib/search.ts";
 
 export interface RegisterColumn<T> {
   id: string;
@@ -20,7 +21,7 @@ interface SavedView {
   filters: ColumnFilter[];
 }
 
-export function Register<T>({ id, rows, columns, rowKey, onOpen, empty = "Нет записей", toolbar, externalQuery = "" }: {
+export function Register<T>({ id, rows, columns, rowKey, onOpen, empty = "Нет записей", toolbar, externalQuery = "", searchValues }: {
   id: string;
   rows: T[];
   columns: RegisterColumn<T>[];
@@ -29,6 +30,7 @@ export function Register<T>({ id, rows, columns, rowKey, onOpen, empty = "Нет
   empty?: string;
   toolbar?: ReactNode;
   externalQuery?: string;
+  searchValues?: (row: T) => readonly unknown[];
 }) {
   const storageKey = `sever.backoffice.register.${id}`;
   const initial = (() => {
@@ -49,7 +51,7 @@ export function Register<T>({ id, rows, columns, rowKey, onOpen, empty = "Нет
 
   const filtered = useMemo(() => {
     const needle = [query, externalQuery].filter(Boolean).join(" ").trim().toLocaleLowerCase();
-    let next = needle ? rows.filter((row) => columns.some((column) => String(column.value(row)).toLocaleLowerCase().includes(needle))) : [...rows];
+    let next = needle ? rows.filter((row) => searchValues ? matchesSearch(needle, searchValues(row)) : columns.some((column) => String(column.value(row)).toLocaleLowerCase().includes(needle))) : [...rows];
     for (const filter of filters) {
       const column = columns.find((item) => item.id === filter.id);
       const value = filter.value.trim().toLocaleLowerCase();
@@ -58,7 +60,7 @@ export function Register<T>({ id, rows, columns, rowKey, onOpen, empty = "Нет
     const column = sortDirection ? columns.find((item) => item.id === sortId) : null;
     if (column) next.sort((a, b) => String(column.value(a)).localeCompare(String(column.value(b)), "ru", { numeric: true }) * (sortDirection === "desc" ? -1 : 1));
     return next;
-  }, [columns, externalQuery, filters, query, rows, sortDirection, sortId]);
+  }, [columns, externalQuery, filters, query, rows, searchValues, sortDirection, sortId]);
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify({ name: "Моё представление", query, sortId, sortDirection, visible, filters } satisfies SavedView));

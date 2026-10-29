@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { Projects, Venues } from "@sever/contracts";
 import { configuredDate } from "./dateFormat.ts";
 
-type SearchableProject = Pick<Projects.ProjectDTO, "name" | "venueId" | "startsAt" | "endsAt">;
+type SearchableProject = Pick<Projects.ProjectDTO, "name" | "clientId" | "venueId" | "startsAt" | "endsAt">;
 
 function normalize(value: string): string {
   return value.toLocaleLowerCase("ru-RU").replace(/\s+/g, " ").trim();
@@ -22,16 +22,20 @@ function dateSearchValues(value: string | null): string[] {
 export function filterProjectsBySearch<T extends SearchableProject>(
   projects: readonly T[],
   venues: readonly Venues.VenueDTO[],
+  clients: readonly Projects.ClientDTO[],
   query: string,
 ): T[] {
   const needle = normalize(query);
   if (!needle) return [...projects];
 
   const venuesById = new Map(venues.map((venue) => [venue.id, venue]));
+  const clientsById = new Map(clients.map((client) => [client.id, client]));
   return projects.filter((project) => {
     const venue = project.venueId ? venuesById.get(project.venueId) : undefined;
+    const client = clientsById.get(project.clientId);
     const haystack = normalize([
       project.name,
+      client?.name,
       venue?.name,
       venue?.address,
       ...dateSearchValues(project.startsAt),
@@ -44,12 +48,13 @@ export function filterProjectsBySearch<T extends SearchableProject>(
 export function useProjectSearch<T extends SearchableProject>(
   projects: readonly T[],
   venues: readonly Venues.VenueDTO[],
+  clients: readonly Projects.ClientDTO[],
 ) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const filteredProjects = useMemo(
-    () => filterProjectsBySearch(projects, venues, query),
-    [projects, venues, query],
+    () => filterProjectsBySearch(projects, venues, clients, query),
+    [clients, projects, venues, query],
   );
 
   const toggle = () => {

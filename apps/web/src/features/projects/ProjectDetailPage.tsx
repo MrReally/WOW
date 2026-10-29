@@ -17,6 +17,8 @@ import {
   useProjectRoles,
   usePeople,
   useEquipmentModels,
+  useEquipmentStorageZones,
+  useEquipmentTypes,
   useSetProjectStatus,
   useAnnounceProjectStatus,
   useCreateReservation,
@@ -66,6 +68,7 @@ import { ISSUED_RESERVATION_DELETE_ERROR, issuedUnitsForReservation } from "./re
 import { type InvoiceMessageLang } from "./invoiceMessage.ts";
 import { useInvoiceMessageCopy } from "./useInvoiceMessageCopy.ts";
 import { PassListSheet } from "./components/PassListSheet.tsx";
+import { equipmentModelMatches, personMatches, type EquipmentSearchData } from "../../lib/search.ts";
 
 const ASSIGN_STATUS: Record<Projects.AssignmentStatus, { label: string; tone: "ok" | "info" | "warn" | "neutral" }> = {
   added: { label: "в команде", tone: "ok" },
@@ -168,6 +171,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const projectRoles = useProjectRoles(id);
   const people = usePeople(canViewPeople);
   const models = useEquipmentModels();
+  const equipmentTypes = useEquipmentTypes();
+  const equipmentZones = useEquipmentStorageZones();
   const allUnits = useAllUnits();
   const invoice = useProjectInvoice(id, canFinance);
   const serverInvoiceVersions = useInvoiceVersions(id, canFinance);
@@ -597,6 +602,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             <div style={{ flex: 2 }}>
               <ModelAutocomplete
                 models={models.data ?? []}
+                searchData={{ models: models.data ?? [], types: equipmentTypes.data ?? [], units: allUnits.data ?? [], zones: equipmentZones.data ?? [] }}
                 value={resModel}
                 query={resModelQuery}
                 debouncedQuery={debouncedResModelQuery}
@@ -1286,7 +1292,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
 
       <ResolveReservationSheet
         reservation={resolving}
-        modelName={resolving ? modelName(resolving.modelId) : ""}
+        model={resolving ? (models.data ?? []).find((model) => model.id === resolving.modelId) ?? null : null}
         onClose={() => setResolving(null)}
       />
       <EditProjectSheet open={editOpen} project={p} clients={clients.data ?? []} onClose={() => setEditOpen(false)} />
@@ -1566,8 +1572,7 @@ function CandidatePicker({
     .filter((p) => !selectedIds.includes(p.id))
     .filter((p) => {
       if (!q) return true;
-      const hay = [p.nickname, p.displayName, p.email, p.telegramUsername].filter(Boolean).join(" ").toLocaleLowerCase();
-      return hay.includes(q);
+      return personMatches(p, q);
     })
     .slice(0, 8);
 
@@ -1631,22 +1636,9 @@ function ReservationAvailabilityLine({
   );
 }
 
-function normalizeSearch(value: string): string {
-  return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-}
-
-function modelMatches(model: Equipment.EquipmentModelDTO, query: string): boolean {
-  const q = normalizeSearch(query);
-  if (!q) return false;
-  const hay = normalizeSearch(model.name);
-  const compactHay = hay.replace(/\s+/g, "");
-  const compactQ = q.replace(/\s+/g, "");
-  if (compactQ && compactHay.includes(compactQ)) return true;
-  return q.split(/\s+/).every((part) => hay.includes(part));
-}
-
 function ModelAutocomplete({
   models,
+  searchData,
   value,
   query,
   debouncedQuery,
@@ -1656,6 +1648,7 @@ function ModelAutocomplete({
   onSelect,
 }: {
   models: Equipment.EquipmentModelDTO[];
+  searchData: EquipmentSearchData;
   value: string;
   query: string;
   debouncedQuery: string;
@@ -1669,8 +1662,8 @@ function ModelAutocomplete({
   const [activeIndex, setActiveIndex] = useState(0);
   const selected = models.find((model) => model.id === value) ?? null;
   const results = useMemo(
-    () => models.filter((model) => modelMatches(model, debouncedQuery)).slice(0, 8),
-    [debouncedQuery, models]
+    () => models.filter((model) => debouncedQuery.trim() && equipmentModelMatches(model, debouncedQuery, searchData)).slice(0, 8),
+    [debouncedQuery, models, searchData]
   );
   const searching = query.trim() !== debouncedQuery.trim();
   const showList = open && query.trim().length > 0;
@@ -1712,7 +1705,7 @@ function ModelAutocomplete({
         aria-expanded={showList}
         aria-controls="equipment-model-results"
         aria-activedescendant={showList && results[activeIndex] ? `equipment-model-${results[activeIndex].id}` : undefined}
-        placeholder="Найти модель"
+        placeholder="Модель, производитель, тип, номер, зона, разъём"
       />
       {selected && (
         <div className="row" style={{ gap: 6, marginTop: 6 }}>

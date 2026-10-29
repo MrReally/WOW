@@ -46,6 +46,7 @@ import { CableCreateSheet } from "./components/CableCreateSheet.tsx";
 import { OpsSheet } from "./components/OpsSheet.tsx";
 import { InventoryWindow } from "./components/InventoryWindow.tsx";
 import { AddressInput } from "../places/AddressInput.tsx";
+import { equipmentModelMatches, equipmentUnitMatches } from "../../lib/search.ts";
 import { useCreateVenue, useUpdateVenue, useVenues } from "../plans/hooks.ts";
 
 type ZoneDraft = StorageZoneDraftInput;
@@ -379,14 +380,12 @@ export function WarehousePage() {
   const query = search.trim().toLowerCase();
   const activeStorageZones = (storageZones.data ?? []).filter((zone) => zone.active);
   const storageZoneById = new Map(activeStorageZones.map((zone) => [zone.id, zone]));
+  const equipmentSearchData = { models: allModels, types: types.data ?? [], units: allUnits, zones: activeStorageZones };
   const modelMatches = (m: Equipment.EquipmentModelDTO) =>
-    !query || [m.name, m.manufacturer ?? "", getTypeName(m.typeId), m.trackingMode === "cable" ? formatCableModel(m, cableSettings.data?.nameFormat) : ""].some((v) => v.toLowerCase().includes(query));
+    equipmentModelMatches(m, query, equipmentSearchData);
   const stockModelMatches = (m: Equipment.EquipmentModelDTO) =>
-    !query || m.name.toLowerCase().includes(query);
-  const unitMatches = (u: Equipment.EquipmentUnitDTO) => {
-    const m = allModels.find((x) => x.id === u.modelId);
-    return !query || [u.assetTag, u.serial ?? "", storageZoneById.get(u.zoneId ?? "")?.code ?? "", m?.name ?? "", m?.manufacturer ?? "", getTypeName(m?.typeId)].some((v) => v.toLowerCase().includes(query));
-  };
+    equipmentModelMatches(m, query, equipmentSearchData);
+  const unitMatches = (u: Equipment.EquipmentUnitDTO) => equipmentUnitMatches(u, query, equipmentSearchData);
   const serialModels = visibleModels.filter((m) => m.trackingMode === "serial" && modelMatches(m));
   const quantityModels = visibleModels.filter((m) => m.trackingMode === "quantity" && modelMatches(m));
   const cableModels = visibleModels.filter((m) => m.trackingMode === "cable" && modelMatches(m));
@@ -423,7 +422,7 @@ export function WarehousePage() {
       <Field label="Поиск по складу">
         <span className="warehouse-search-field">
           <span className="warehouse-search-field__icon" aria-hidden="true" />
-          <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, номер, серийник, код зоны" />
+          <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, производитель, тип, номер, серийник, зона, разъём" />
         </span>
       </Field>
     </div>
@@ -431,7 +430,7 @@ export function WarehousePage() {
   const stockSearchField = (
     <span className="warehouse-search-field warehouse-stock-search">
       <span className="warehouse-search-field__icon" aria-hidden="true" />
-      <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель или тип" />
+      <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, производитель, тип, номер, серийник, зона, разъём" />
     </span>
   );
   const warehouseSelector = (
@@ -535,7 +534,7 @@ export function WarehousePage() {
     <div className="warehouse-models-section">
       <span className="warehouse-search-field warehouse-stock-search">
         <span className="warehouse-search-field__icon" aria-hidden="true" />
-        <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Начните вводить модель" />
+        <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, производитель, тип, номер, серийник, зона, разъём" />
       </span>
       {canEdit && (
         <div className="warehouse-model-actions">
@@ -618,7 +617,7 @@ export function WarehousePage() {
       <SectionHead label="Кабели" />
       <span className="warehouse-search-field warehouse-stock-search">
         <span className="warehouse-search-field__icon" aria-hidden="true" />
-        <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Разъём, длина, тип" />
+        <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, производитель, тип, номер, серийник, зона, разъём" />
       </span>
       {cableModels.length === 0 ? (
         <EmptyState title="Нет кабелей" />
@@ -775,7 +774,7 @@ export function WarehousePage() {
 
       {canEdit && (
         <>
-          <AddModelSheet open={addOpen} onClose={() => setAddOpen(false)} types={types.data ?? []} models={allModels} />
+          <AddModelSheet open={addOpen} onClose={() => setAddOpen(false)} types={types.data ?? []} models={allModels} units={allUnits} zones={activeStorageZones} />
           <ImportSheet open={importOpen} onClose={() => setImportOpen(false)} />
         </>
       )}

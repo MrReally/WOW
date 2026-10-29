@@ -7,13 +7,21 @@ import { ProjectWizardSheet } from "../src/features/projects/components/ProjectW
 const mocks = vi.hoisted(() => ({
   createProject: vi.fn(),
   loadInvoice: vi.fn(),
+  equipmentModels: [
+    { id: "model-shure", name: "SM58", manufacturer: "Shure" },
+    { id: "model-sennheiser", name: "e 835", manufacturer: "Sennheiser" },
+    { id: "model-yamaha", name: "DXR12", manufacturer: "Yamaha" },
+  ],
   idleMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 vi.mock("../src/features/projects/hooks.ts", () => ({
   useClients: () => ({ data: [{ id: "client-1", name: "Клиент" }] }),
   useVenues: () => ({ data: [] }),
-  useEquipmentModels: () => ({ data: [] }),
+  useEquipmentModels: () => ({ data: mocks.equipmentModels, isLoading: false }),
+  useEquipmentTypes: () => ({ data: [] }),
+  useEquipmentStorageZones: () => ({ data: [] }),
+  useAllUnits: () => ({ data: [] }),
   useEquipmentModelAvailability: () => ({ data: {}, isLoading: false }),
   useContractors: () => ({ data: [] }),
   useCreateClient: mocks.idleMutation,
@@ -85,5 +93,35 @@ describe("ProjectWizardSheet completion", () => {
     expect(screen.queryByRole("button", { name: "Создать проект" })).toBeNull();
     expect(await screen.findByText(/часть дополнительных данных не сохранилась/i)).toBeTruthy();
     expect(mocks.createProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("filters reservation models by model name or manufacturer", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter>
+        <ProjectWizardSheet open onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.type(screen.getByPlaceholderText("Villa Viko · 12/06"), "Новый проект");
+    await user.click(screen.getByRole("button", { name: "Дальше" }));
+    await user.selectOptions(screen.getByRole("combobox"), "client-1");
+    await user.click(screen.getByRole("button", { name: "Дальше" }));
+    await user.click(screen.getByRole("button", { name: "Пропустить" }));
+    await user.click(screen.getByRole("button", { name: "Пропустить" }));
+
+    const search = screen.getByRole("searchbox", { name: "Поиск оборудования для брони" });
+    expect(screen.getByText("SM58")).toBeTruthy();
+    expect(screen.getByText("e 835")).toBeTruthy();
+
+    await user.type(search, "shure");
+    expect(screen.getByText("SM58")).toBeTruthy();
+    expect(screen.queryByText("e 835")).toBeNull();
+
+    await user.clear(search);
+    await user.type(search, "dxr");
+    expect(screen.getByText("DXR12")).toBeTruthy();
+    expect(screen.queryByText("SM58")).toBeNull();
   });
 });

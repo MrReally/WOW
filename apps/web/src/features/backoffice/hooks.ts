@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ApexDashboardDTO, Audit, Catalog, Equipment, Finance, Notifications, Operations, People, Permission, Problem, Projects } from "@sever/contracts";
+import type { ApexDashboardDTO, Audit, Catalog, Equipment, Finance, Notifications, Operations, People, Permission, Problem, Projects, Venues } from "@sever/contracts";
 import { api } from "../../lib/api.ts";
 import { useCreateTransaction } from "../finance/hooks.ts";
 
@@ -45,6 +45,7 @@ export function useBackofficeData(can: (...permissions: Permission[]) => boolean
   const apex = useQuery({ enabled: can("apex.view"), queryKey: ["bo", "apex"], queryFn: () => api.get<ApexDashboardDTO>("/api/apex/dashboard") });
   const projects = useQuery({ enabled: planning, queryKey: ["bo", "projects"], queryFn: () => api.get<Projects.ProjectDTO[]>("/api/projects") });
   const clients = useQuery({ enabled: planning, queryKey: ["bo", "clients"], queryFn: () => api.get<Projects.ClientDTO[]>("/api/clients") });
+  const venues = useQuery({ enabled: planning, queryKey: ["bo", "venues"], queryFn: () => api.get<Venues.VenueDTO[]>("/api/venues") });
   const people = useQuery({ enabled: peopleAccess, queryKey: ["bo", "people"], queryFn: () => api.get<People.UserDTO[]>("/api/people?status=all") });
   const roles = useQuery({ enabled: peopleAccess, queryKey: ["bo", "roles"], queryFn: () => api.get<People.RoleDTO[]>("/api/roles") });
   const contractors = useQuery({ enabled: warehouse, queryKey: ["bo", "contractors"], queryFn: () => api.get<Equipment.ContractorDTO[]>("/api/equipment/contractors") });
@@ -57,7 +58,7 @@ export function useBackofficeData(can: (...permissions: Permission[]) => boolean
   const openHandovers = useQuery({ enabled:warehouse, queryKey:["bo","handovers","open"], queryFn:()=>api.get<Equipment.HandoverDTO[]>("/api/equipment/handovers/open") });
   const notifications = useQuery({ queryKey:["bo","notifications"], queryFn:()=>api.get<Notifications.NotificationDTO[]>("/api/notifications") });
   const audit = useQuery({ enabled:can("roles.manage"), queryKey:["bo","audit"], queryFn:()=>api.get<Audit.AuditEntryDTO[]>("/api/audit") });
-  return { models, types, categories, units, warehouses, storageZones, journal, problems, apex, projects, clients, people, roles, contractors, contractorItems, accounts, transactions, catalog, documents, openRepairs, openHandovers, notifications, audit };
+  return { models, types, categories, units, warehouses, storageZones, journal, problems, apex, projects, clients, venues, people, roles, contractors, contractorItems, accounts, transactions, catalog, documents, openRepairs, openHandovers, notifications, audit };
 }
 
 export function useCatalogItemDetail(itemId?: string) {

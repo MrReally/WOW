@@ -1,9 +1,12 @@
 import { useMemo, useRef, useState } from "react";
 import type { Equipment } from "@sever/contracts";
+import { equipmentUnitMatches } from "../../lib/search.ts";
 
 interface Props {
   units: Equipment.EquipmentUnitDTO[];
   models: Equipment.EquipmentModelDTO[];
+  types?: Equipment.EquipmentTypeDTO[];
+  zones?: Equipment.StorageZoneDTO[];
   onSelect: (unit: Equipment.EquipmentUnitDTO) => void;
   disabled?: boolean;
   ariaLabel: string;
@@ -15,7 +18,7 @@ const SCANNER_MAX_KEY_INTERVAL_MS = 35;
 const SCANNER_MAX_BURST_MS = 500;
 const SCANNER_MIN_CODE_LENGTH = 4;
 
-export function EquipmentUnitSearch({ units, models, onSelect, disabled = false, ariaLabel, placeholder = "Производитель, модель или номер" }: Props) {
+export function EquipmentUnitSearch({ units, models, types = [], zones = [], onSelect, disabled = false, ariaLabel, placeholder = "Модель, производитель, тип, номер, серийник, зона, разъём" }: Props) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const burst = useRef({ startedAt: 0, lastAt: 0, characters: 0 });
@@ -23,11 +26,8 @@ export function EquipmentUnitSearch({ units, models, onSelect, disabled = false,
   const needle = normalize(query);
   const matches = useMemo(() => {
     if (!needle) return [];
-    return units.filter((unit) => {
-      const model = modelById.get(unit.modelId);
-      return [unit.assetTag, unit.serial, model?.manufacturer, model?.name].some((value) => normalize(value).includes(needle));
-    }).slice(0, 8);
-  }, [modelById, needle, units]);
+    return units.filter((unit) => equipmentUnitMatches(unit, needle, { models, types, units, zones })).slice(0, 8);
+  }, [models, needle, types, units, zones]);
 
   const choose = (unit: Equipment.EquipmentUnitDTO) => {
     onSelect(unit);

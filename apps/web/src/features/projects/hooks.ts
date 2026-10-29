@@ -20,6 +20,14 @@ export function useEquipmentModels() {
   });
 }
 
+export function useEquipmentTypes() {
+  return useQuery({ queryKey: ["equipment", "types"], queryFn: () => api.get<Equipment.EquipmentTypeDTO[]>("/api/equipment/types") });
+}
+
+export function useEquipmentStorageZones() {
+  return useQuery({ queryKey: ["equipment", "storage-zones", "all"], queryFn: () => api.get<Equipment.StorageZoneDTO[]>("/api/equipment/storage-zones") });
+}
+
 export function useEquipmentModelAvailability(
   models: Equipment.EquipmentModelDTO[],
   startsAt: string,

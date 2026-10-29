@@ -3,7 +3,7 @@ import type { Projects } from "@sever/contracts";
 import { Card, Button, SectionHead, Chip, Loading, ErrorState, EmptyState, ProjectSearch } from "../../ui-kit/index.ts";
 import { dateRange, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
 import { useProjectSearch } from "../../lib/useProjectSearch.ts";
-import { useMyProjects, useOperationVenues } from "./hooks.ts";
+import { useMyProjects, useOperationClients, useOperationVenues } from "./hooks.ts";
 import { MapRouteButton } from "./components/MapRouteButton.tsx";
 import { ProjectStageProgress } from "../projects/components/ProjectStageProgress.tsx";
 import { projectStagePresentation } from "../../lib/labels.ts";
@@ -26,11 +26,12 @@ export function OperationsPage() {
   const navigate = useNavigate();
   const projects = useMyProjects();
   const venues = useOperationVenues();
+  const clients = useOperationClients();
   const allProjects = (projects.data ?? [])
     .filter((p) => p.status !== "cancelled")
     .slice()
     .sort(operationsProjectSort);
-  const search = useProjectSearch(allProjects, venues.data ?? []);
+  const search = useProjectSearch(allProjects, venues.data ?? [], clients.data ?? []);
 
   if (projects.isLoading) return <Loading />;
   if (projects.error) return <ErrorState error={projects.error} onRetry={projects.refetch} />;

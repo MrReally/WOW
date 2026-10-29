@@ -60,7 +60,7 @@ export function ProjectsPage() {
   const allProjects = projects.data ?? [];
   const scopedProjects = allProjects.filter((project) => archiveMode === "work" ? !["completed", "cancelled"].includes(project.status) : ["completed", "cancelled"].includes(project.status));
   const statusProjects = filterProjectsByStatuses(scopedProjects, statusFilters);
-  const search = useProjectSearch(statusProjects, venues.data ?? []);
+  const search = useProjectSearch(statusProjects, venues.data ?? [], clients.data ?? []);
 
   if (projects.isLoading) return <Loading />;
   if (projects.error) return <ErrorState error={projects.error} onRetry={projects.refetch} />;

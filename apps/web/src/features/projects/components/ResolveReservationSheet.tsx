@@ -1,20 +1,24 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Projects } from "@sever/contracts";
+import type { Equipment, Projects } from "@sever/contracts";
 import { Sheet, Button, Chip, Loading, Field, Input } from "../../../ui-kit/index.ts";
-import { useInStockUnits, useOverlappingReservations, useProjects, useResolveReservation } from "../hooks.ts";
+import { useEquipmentStorageZones, useEquipmentTypes, useInStockUnits, useOverlappingReservations, useProjects, useResolveReservation } from "../hooks.ts";
 import { getReservationUnitAvailability, isUnitVisibleForProject } from "../reservationUnitAvailability.ts";
+import { equipmentUnitMatches } from "../../../lib/search.ts";
 
 interface Props {
   reservation: Projects.ReservationDTO | null;
-  modelName: string;
+  model: Equipment.EquipmentModelDTO | null;
   onClose: () => void;
 }
 
 // Warehouse prep: turn a model-level reservation (qty) into concrete units.
-export function ResolveReservationSheet({ reservation, modelName, onClose }: Props) {
+export function ResolveReservationSheet({ reservation, model, onClose }: Props) {
+  const modelName = model?.name ?? "Оборудование";
   const navigate = useNavigate();
   const units = useInStockUnits(reservation?.modelId ?? "");
+  const types = useEquipmentTypes();
+  const zones = useEquipmentStorageZones();
   const overlapping = useOverlappingReservations(reservation);
   const projects = useProjects();
   const resolve = useResolveReservation();
@@ -53,7 +57,7 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
   const q = search.trim().toLowerCase();
   const project = (projects.data ?? []).find((item) => item.id === reservation.projectId);
   const visibleUnits = (units.data ?? []).filter((unit) => isUnitVisibleForProject(unit, project));
-  const list = visibleUnits.filter((u) => !q || [u.assetTag, u.serial ?? "", modelName].some((v) => v.toLowerCase().includes(q)));
+  const list = visibleUnits.filter((unit) => equipmentUnitMatches(unit, q, { models: model ? [model] : [], types: types.data ?? [], units: visibleUnits, zones: zones.data ?? [] }));
   const visibleUnitIds = new Set(visibleUnits.map((unit) => unit.id));
   const effectiveSelected = new Set([...selected].filter((unitId) => visibleUnitIds.has(unitId)));
   const enough = effectiveSelected.size === reservation.qty;
@@ -64,7 +68,7 @@ export function ResolveReservationSheet({ reservation, modelName, onClose }: Pro
         Нужно {reservation.qty} ед. Выбери конкретные единицы. Выбрано {effectiveSelected.size}.
       </p>
       <Field label="Поиск">
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, номер, серийник" />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Модель, производитель, тип, номер, серийник, зона, разъём" />
       </Field>
       {units.isLoading || overlapping.isLoading || projects.isLoading ? (
         <Loading />

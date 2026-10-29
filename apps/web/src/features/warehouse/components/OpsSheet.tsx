@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Equipment } from "@sever/contracts";
 import { Sheet, Field, Input, Button, Loading } from "../../../ui-kit/index.ts";
-import { useUnits, useWarehouses, useTransferUnit } from "../hooks.ts";
+import { useStorageZones, useTypes, useUnits, useWarehouses, useTransferUnit } from "../hooks.ts";
+import { equipmentUnitMatches } from "../../../lib/search.ts";
 
 interface Props {
   open: boolean;
@@ -21,6 +22,8 @@ export function OpsSheet({ open, onClose, models }: Props) {
   const [search, setSearch] = useState("");
   const transfer = useTransferUnit();
   const warehouses = useWarehouses();
+  const types = useTypes();
+  const zones = useStorageZones();
   const inStock = useUnits(fromWarehouseId ? { status: "in_stock", warehouseId: fromWarehouseId } : undefined);
 
   const modelName = useMemo(() => {
@@ -28,8 +31,7 @@ export function OpsSheet({ open, onClose, models }: Props) {
     return (id: string) => map.get(id) ?? id;
   }, [models]);
   const normalizedSearch = search.trim().toLocaleLowerCase();
-  const units = (inStock.data ?? []).filter((unit) => !normalizedSearch || [unit.assetTag, unit.serial ?? "", modelName(unit.modelId)]
-    .some((value) => value.toLocaleLowerCase().includes(normalizedSearch)));
+  const units = (inStock.data ?? []).filter((unit) => equipmentUnitMatches(unit, normalizedSearch, { models, types: types.data ?? [], units: inStock.data ?? [], zones: zones.data ?? [] }));
 
   useEffect(() => {
     const list = warehouses.data ?? [];
@@ -88,7 +90,7 @@ export function OpsSheet({ open, onClose, models }: Props) {
         </div>
 
         <div className="transfer-sheet__search">
-          <Input aria-label="Поиск оборудования" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Модель, номер, серийник" />
+          <Input aria-label="Поиск оборудования" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Модель, производитель, тип, номер, серийник, зона, разъём" />
         </div>
 
         <div className="transfer-sheet__summary">
