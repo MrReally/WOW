@@ -15,6 +15,7 @@ const CASH_CATEGORIES = new Set<Finance.TxCategory>([
   "purchase",
   "repair",
   "salary",
+  "adjustment",
   "other",
 ]);
 
@@ -44,6 +45,7 @@ interface TxRow {
   currency: Currency;
   fx_rate_to_eur: string;
   amount_eur: string;
+  adjustment_balance_after: string | null;
   note: string | null;
   created_by: string | null;
   updated_by: string | null;
@@ -128,6 +130,7 @@ const txDTO = (r: TxRow): Finance.TransactionDTO => ({
   currency: r.currency,
   fxRateToEUR: Number(r.fx_rate_to_eur),
   amountEUR: Number(r.amount_eur),
+  adjustmentBalanceAfter: r.adjustment_balance_after == null ? null : Number(r.adjustment_balance_after),
   note: r.note,
   createdByUserId: r.created_by,
   updatedByUserId: r.updated_by,
@@ -237,6 +240,41 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
       if (!row) throw NotFound("account", id);
       return accountDTO(row);
     },
+    async adjustAccountBalance(input) {
+      if (!Number.isFinite(input.targetBalance) || Math.abs(input.targetBalance) >= 1_000_000_000_000 || Math.abs(input.targetBalance * 100 - Math.round(input.targetBalance * 100)) > 0.000001) {
+        throw BadRequest("целевой остаток должен быть не более двух знаков после запятой");
+      }
+      const adjusted = await tx(async (client) => {
+        if (input.requestKey) {
+          await query(client, `SELECT pg_advisory_xact_lock(hashtextextended($1, 2))`, [input.requestKey]);
+          const existing = await one<TxRow>(client, `SELECT * FROM finance.transactions WHERE request_key=$1`, [input.requestKey]);
+          if (existing) {
+            if (existing.account_id !== input.accountId || existing.category !== "adjustment" || Number(existing.adjustment_balance_after) !== input.targetBalance || existing.note !== (input.note ?? null) || existing.created_by !== (input.createdByUserId ?? null)) {
+              throw Conflict("ключ повторной корректировки уже использован с другими данными");
+            }
+            return existing;
+          }
+        }
+        const account = await one<AccountRow>(client, `SELECT * FROM finance.accounts WHERE id=$1 FOR UPDATE`, [input.accountId]);
+        if (!account) throw NotFound("account", input.accountId);
+        const delta = Math.round((input.targetBalance - Number(account.balance)) * 100) / 100;
+        if (delta === 0) throw BadRequest("целевой остаток уже установлен на счёте");
+        const amount = Math.abs(delta);
+        const rate = await currentRate(account.currency);
+        const row = await one<TxRow>(client,
+          `INSERT INTO finance.transactions
+            (account_id, kind, category, amount, currency, fx_rate_to_eur, amount_eur, adjustment_balance_after, note, created_by, request_key)
+           VALUES ($1,$2,'adjustment',$3,$4,$5,ROUND($3::numeric*$5::numeric,2),$6,$7,$8,$9)
+           RETURNING *`,
+          [input.accountId, delta > 0 ? "income" : "expense", amount, account.currency, rate, input.targetBalance, input.note ?? null, input.createdByUserId ?? null, input.requestKey ?? null]
+        );
+        await query(client, `UPDATE finance.accounts SET balance=$2 WHERE id=$1`, [input.accountId, input.targetBalance]);
+        return row!;
+      });
+      const dto = txDTO(adjusted);
+      await bus.publish({ type: "finance.transaction.created", transactionId: dto.id, projectId: null, unitId: null, amountEUR: dto.amountEUR, assignmentId: null, contractorId: null, at: new Date().toISOString() });
+      return dto;
+    },
 
     // ── Transactions ──
     async listTransactions(filter) {
@@ -261,6 +299,7 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
     },
     async createTransaction(input) {
       if (!Number.isFinite(input.amount) || input.amount <= 0 || input.amount >= 1_000_000_000_000 || Math.abs(input.amount * 100 - Math.round(input.amount * 100)) > 0.000001) throw BadRequest("сумма должна быть положительной, не более двух знаков после запятой");
+      if (input.category === "adjustment") throw BadRequest("корректировка остатка проводится отдельной командой");
       const incomeCategories = ["rental_revenue", "prepayment", "debt_settlement"];
       if (input.category !== "other" && (incomeCategories.includes(input.category) ? input.kind !== "income" : input.kind !== "expense")) throw BadRequest("категория не соответствует направлению операции");
       if (input.assignmentId && (input.category !== "salary" || !input.projectId || input.contractorId)) throw BadRequest("выплата команде требует проекта и категории зарплата");
@@ -335,6 +374,7 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
         const previous = await one<TxRow>(client, `SELECT * FROM finance.transactions WHERE id=$1 FOR UPDATE`, [id]);
         if (!previous) throw NotFound("transaction", id);
         if (previous.voided_at) throw BadRequest("отменённую транзакцию нельзя редактировать");
+        if (previous.category === "adjustment") throw BadRequest("корректировку остатка нельзя редактировать; сторнируйте её и создайте новую");
         if (input.amount * Number(previous.fx_rate_to_eur) >= 1_000_000_000_000) throw BadRequest("сумма в EUR превышает допустимый размер");
         const account = await one<AccountRow>(client, `SELECT * FROM finance.accounts WHERE id=$1`, [input.accountId]);
         if (!account) throw NotFound("account", input.accountId);

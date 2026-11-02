@@ -8,6 +8,10 @@ import { BadRequest, NotFound } from "../../core/errors.js";
 
 const fullRead = (auth: AuthContext) => auth.permissions.some(p => p === "finance.view" || p === "finance.manage");
 function requireTransactionWrite(auth: AuthContext, transaction: Pick<Finance.CreateTransactionInput, "category" | "kind" | "projectId" | "assignmentId" | "contractorId">) {
+  if (transaction.category === "adjustment") {
+    requirePermission(auth, "finance.account.adjust");
+    return;
+  }
   if (auth.permissions.includes("finance.manage")) return;
   if (!transaction.projectId) throw BadRequest("операция в Operations требует проекта");
   if (transaction.category === "salary" && transaction.kind === "expense" && transaction.assignmentId) {
@@ -28,6 +32,7 @@ const accountSchema = z.object({
   currency: z.enum(CURRENCIES as [string, ...string[]]),
 });
 const accountUpdateSchema = z.object({ name: z.string().trim().min(1) });
+const accountAdjustmentSchema = z.object({ requestKey: z.string().uuid().optional(), targetBalance: z.number(), note: z.string().trim().max(500).nullable().optional() });
 const txSchema = z.object({
   requestKey: z.string().uuid().optional(),
   accountId: z.string().uuid(),
@@ -43,6 +48,7 @@ const txSchema = z.object({
     "purchase",
     "repair",
     "salary",
+    "adjustment",
     "other",
   ]),
   amount: z.number().positive(),
@@ -143,6 +149,12 @@ export function registerFinanceRoutes(
     requirePermission(auth, "finance.manage");
     return service.updateAccount(req.params.id, accountUpdateSchema.parse(req.body));
   });
+  app.post<{ Params: { id: string } }>("/api/finance/accounts/:id/adjust", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.account.adjust");
+    const body = accountAdjustmentSchema.parse(req.body);
+    return service.adjustAccountBalance({ ...body, accountId: req.params.id, createdByUserId: auth.userId });
+  });
 
   // ── Transactions ──
   app.get<{ Querystring: { projectId?: string; unitId?: string; includeVoided?: string } }>(
@@ -174,6 +186,7 @@ export function registerFinanceRoutes(
     const auth = await ctx.auth(req);
     const transaction = (await service.listTransactions({ includeVoided: true })).find(item => item.id === req.params.id);
     if (!transaction) throw NotFound("transaction", req.params.id);
+    if (transaction.category === "adjustment") throw BadRequest("корректировку остатка нельзя редактировать; сторнируйте её и создайте новую");
     requireTransactionWrite(auth, transaction);
     if (transaction.projectId) await authorizeProject?.(auth, transaction.projectId);
     return service.updateTransaction(req.params.id, txUpdateSchema.parse(req.body), auth.userId);

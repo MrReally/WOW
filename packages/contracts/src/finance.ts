@@ -33,6 +33,7 @@ export type TxCategory =
   | "purchase"
   | "repair"
   | "salary"
+  | "adjustment"
   | "other";
 
 export interface TransactionDTO {
@@ -53,6 +54,8 @@ export interface TransactionDTO {
   currency: Currency;
   fxRateToEUR: number; // snapshot taken at creation
   amountEUR: number; // frozen: amount * fxRateToEUR
+  /** Account balance established by this adjustment; null for ordinary entries. */
+  adjustmentBalanceAfter: number | null;
   note: string | null;
   /** Who recorded it (people id), null for legacy/system entries. */
   createdByUserId: ID | null;
@@ -83,6 +86,16 @@ export interface UpdateTransactionInput {
   accountId: ID;
   amount: number;
   note?: string | null;
+}
+
+export interface AdjustAccountBalanceInput {
+  /** Stable UUID reused when retrying the same adjustment. */
+  requestKey?: ID;
+  accountId: ID;
+  /** Desired balance after the adjustment, in the account's currency. */
+  targetBalance: number;
+  note?: string | null;
+  createdByUserId?: ID | null;
 }
 
 // ── Payback per unit ─────────────────────────────────────────────────────────
@@ -325,6 +338,7 @@ export interface FinanceService {
   listAccounts(): Promise<AccountDTO[]>;
   createAccount(input: { name: string; currency: Currency }): Promise<AccountDTO>;
   updateAccount(id: ID, input: UpdateAccountInput): Promise<AccountDTO>;
+  adjustAccountBalance(input: AdjustAccountBalanceInput): Promise<TransactionDTO>;
 
   // Transactions
   listTransactions(filter?: { projectId?: ID; unitId?: ID; includeVoided?: boolean }): Promise<TransactionDTO[]>;

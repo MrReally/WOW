@@ -165,6 +165,19 @@ export function useUpdateAccount() {
   });
 }
 
+export function useAdjustAccountBalance() {
+  const qc = useQueryClient();
+  const attempt = useRef<{ fingerprint: string; requestKey: string } | null>(null);
+  return useMutation({
+    mutationFn: ({ accountId, ...input }: Finance.AdjustAccountBalanceInput) => {
+      const fingerprint = JSON.stringify({ accountId, ...input });
+      if (attempt.current?.fingerprint !== fingerprint) attempt.current = { fingerprint, requestKey: crypto.randomUUID() };
+      return api.post<Finance.TransactionDTO>(`/api/finance/accounts/${accountId}/adjust`, { ...input, requestKey: input.requestKey ?? attempt.current.requestKey });
+    },
+    onSuccess: () => { attempt.current = null; invalidate(qc); },
+  });
+}
+
 export function useSetFxRate() {
   const qc = useQueryClient();
   return useMutation({

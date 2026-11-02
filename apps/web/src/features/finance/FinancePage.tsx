@@ -10,6 +10,7 @@ import { toast } from "../../lib/toastBus.ts";
 import { personName } from "../../lib/people.ts";
 import { transactionCategoryLabel as categoryLabel } from "../../lib/labels.ts";
 import { TransactionActions } from "./components/TransactionActions.tsx";
+import { AdjustAccountSheet } from "./components/AdjustAccountSheet.tsx";
 
 type FinanceTab = "summary" | "transactions" | "debts" | "payback" | "accounts";
 
@@ -28,6 +29,7 @@ export function FinancePage() {
   const { can, user } = useSession();
   const { t, eur, money, dateTime } = useI18n();
   const canManage = can("finance.manage");
+  const canAdjustAccounts = can("finance.account.adjust");
   const people = usePeopleNames(can("people.view", "finance.view", "finance.manage"));
   const [tab, setTab] = useState<FinanceTab>("summary");
   const [period, setPeriod] = useState<"week" | "month" | "quarter">("month");
@@ -37,6 +39,7 @@ export function FinancePage() {
   const [accountCurrency, setAccountCurrency] = useState<Finance.AccountDTO["currency"]>("EUR");
   const [editingAccountId, setEditingAccountId] = useState("");
   const [editingAccountName, setEditingAccountName] = useState("");
+  const [adjustingAccount, setAdjustingAccount] = useState<Finance.AccountDTO | null>(null);
   const authorName = (uid: string | null) => {
     if (!uid) return `${t("finance.addedBy")}: ${t("common.system")}`;
     return `${t("finance.addedBy")}: ${personName((people.data ?? []).find((u) => u.id === uid), uid.slice(0, 8))}`;
@@ -85,7 +88,8 @@ export function FinancePage() {
     <Card key={row.id} className="finance-transaction" style={row.voidedAt ? { opacity: 0.55 } : undefined}>
       <div className="row row--between"><div style={{ minWidth: 0 }}><p className="card__title">{categoryLabel[row.category] ?? row.category}{row.note ? ` · ${row.note}` : ""}</p><p className="card__subtitle">{row.projectId ? projectName(row.projectId) : "без проекта"} · {dateTime(row.createdAt)} · {(accounts.data ?? []).find(account => account.id === row.accountId)?.name ?? "счёт удалён"} · {authorName(row.createdByUserId)}{row.voidedAt ? " · отменена" : row.updatedAt ? ` · изменена ${dateTime(row.updatedAt)}` : ""}</p></div><div className={`finance-transaction__amount ${row.kind === "income" ? "is-income" : "is-expense"}`}>{row.kind === "income" ? "+" : "−"}{money(row.amount, row.currency)}{row.currency !== "EUR" && <small>{eur(row.amountEUR)} @ {row.fxRateToEUR}</small>}</div></div>
       {row.replacesTransactionId && <p className="card__subtitle">Исправление операции {row.replacesTransactionId.slice(0, 8)}</p>}
-      {canManage && <TransactionActions transaction={row} accounts={accounts.data ?? []} pending={updateTransaction.isPending || voidTransaction.isPending} onSave={input => updateTransaction.mutateAsync({ id: row.id, input })} onVoid={() => voidTransaction.mutateAsync(row.id)} />}
+      {row.adjustmentBalanceAfter != null && <p className="card__subtitle">Остаток после корректировки: {money(row.adjustmentBalanceAfter, row.currency)}</p>}
+      {(row.category === "adjustment" ? canAdjustAccounts : canManage) && <TransactionActions transaction={row} accounts={accounts.data ?? []} pending={updateTransaction.isPending || voidTransaction.isPending} canEdit={row.category !== "adjustment"} onSave={input => updateTransaction.mutateAsync({ id: row.id, input })} onVoid={() => voidTransaction.mutateAsync(row.id)} />}
     </Card>
   ));
 
@@ -113,7 +117,7 @@ export function FinancePage() {
 
       {tab === "payback" && <><Card className="finance-profit-card"><p className="card__title">Окупаемость оборудования</p><p className="card__subtitle">Фактические начисления аренды сохраняются в транзакциях и карточках проектов.</p><div className="finance-profit-card__value">{eur(totalIncome)}</div><p className="card__subtitle">Начисленная выручка по текущему журналу</p></Card><EmptyState title="Детализация находится в Warehouse" hint="Откройте модель оборудования, чтобы увидеть стоимость замены и аренду в сутки."/></>}
 
-      {tab === "accounts" && <><div className="row row--between"><SectionTitle>{t("finance.accounts")}</SectionTitle>{canManage&&<Button onClick={()=>setAccountFormOpen(value=>!value)}>+ Счёт</Button>}</div>{accountFormOpen&&canManage&&<Card><p className="card__title">Новый счёт</p><Field label="Название"><Input value={accountName} onChange={event=>setAccountName(event.target.value)} placeholder="Касса / Bank / Wise"/></Field><Field label="Валюта"><Select value={accountCurrency} onChange={event=>setAccountCurrency(event.target.value as Finance.AccountDTO["currency"])} options={CURRENCIES.map(currency=>({value:currency,label:currency}))}/></Field><div className="row" style={{marginTop:8}}><Button block disabled={!accountName.trim()||createAccount.isPending} onClick={saveAccount}>Сохранить</Button><Button variant="secondary" block onClick={()=>setAccountFormOpen(false)}>Отмена</Button></div></Card>}{!(accounts.data??[]).length?<EmptyState title={t("finance.noAccounts")}/>:<div className="stack">{(accounts.data??[]).map(account=><Card key={account.id}><div className="row row--between">{editingAccountId===account.id?<Input value={editingAccountName} onChange={event=>setEditingAccountName(event.target.value)}/>:<p className="card__title">{account.name}</p>}<span className="metric__value">{money(account.balance,account.currency)}</span></div>{canManage&&<div className="row" style={{marginTop:8}}>{editingAccountId===account.id?<><Button disabled={!editingAccountName.trim()||updateAccount.isPending} onClick={()=>updateAccount.mutate({id:account.id,name:editingAccountName.trim()},{onSuccess:()=>setEditingAccountId("")})}>Сохранить</Button><Button variant="ghost" onClick={()=>setEditingAccountId("")}>Отмена</Button></>:<Button variant="ghost" onClick={()=>{setEditingAccountId(account.id);setEditingAccountName(account.name);}}>Изменить счёт</Button>}</div>}</Card>)}</div>}</>}
+      {tab === "accounts" && <><div className="row row--between"><SectionTitle>{t("finance.accounts")}</SectionTitle>{canManage&&<Button onClick={()=>setAccountFormOpen(value=>!value)}>+ Счёт</Button>}</div>{accountFormOpen&&canManage&&<Card><p className="card__title">Новый счёт</p><Field label="Название"><Input value={accountName} onChange={event=>setAccountName(event.target.value)} placeholder="Касса / Bank / Wise"/></Field><Field label="Валюта"><Select value={accountCurrency} onChange={event=>setAccountCurrency(event.target.value as Finance.AccountDTO["currency"])} options={CURRENCIES.map(currency=>({value:currency,label:currency}))}/></Field><div className="row" style={{marginTop:8}}><Button block disabled={!accountName.trim()||createAccount.isPending} onClick={saveAccount}>Сохранить</Button><Button variant="secondary" block onClick={()=>setAccountFormOpen(false)}>Отмена</Button></div></Card>}{!(accounts.data??[]).length?<EmptyState title={t("finance.noAccounts")}/>:<div className="stack">{(accounts.data??[]).map(account=><Card key={account.id}><div className="row row--between">{editingAccountId===account.id?<Input value={editingAccountName} onChange={event=>setEditingAccountName(event.target.value)}/>:<p className="card__title">{account.name}</p>}<span className="metric__value">{money(account.balance,account.currency)}</span></div>{(canManage||canAdjustAccounts)&&<div className="row" style={{marginTop:8}}>{editingAccountId===account.id?<><Button disabled={!editingAccountName.trim()||updateAccount.isPending} onClick={()=>updateAccount.mutate({id:account.id,name:editingAccountName.trim()},{onSuccess:()=>setEditingAccountId("")})}>Сохранить</Button><Button variant="ghost" onClick={()=>setEditingAccountId("")}>Отмена</Button></>:<>{canManage&&<Button variant="ghost" onClick={()=>{setEditingAccountId(account.id);setEditingAccountName(account.name);}}>Изменить счёт</Button>}{canAdjustAccounts&&<Button variant="secondary" onClick={()=>setAdjustingAccount(account)}>Корректировка</Button>}</>}</div>}</Card>)}</div>}</>}
 
       <AddTransactionSheet
         open={txOpen}
@@ -123,6 +127,7 @@ export function FinancePage() {
         currentUserId={user?.id ?? null}
         canManage={canManage}
       />
+      <AdjustAccountSheet account={adjustingAccount} onClose={() => setAdjustingAccount(null)} />
     </div>
   );
 }

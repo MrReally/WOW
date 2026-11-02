@@ -44,6 +44,7 @@ ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS voided_by uuid;
 ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS voided_at timestamptz;
 ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS replaces_transaction_id uuid REFERENCES finance.transactions(id);
 ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS request_key uuid;
+ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS adjustment_balance_after numeric(14,2);
 CREATE UNIQUE INDEX IF NOT EXISTS tx_request_key_idx ON finance.transactions(request_key) WHERE request_key IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS tx_replacement_idx ON finance.transactions(replaces_transaction_id) WHERE replaces_transaction_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS tx_assignment_idx ON finance.transactions(assignment_id);

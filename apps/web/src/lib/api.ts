@@ -4,7 +4,7 @@ const DEMO = import.meta.env.VITE_DEMO_MODE === "true" || new URLSearchParams(wi
 type DemoStore = Record<string, unknown>;
 const DEMO_KEY = "sever.demo.store.v2";
 const demoSeed: DemoStore = {
-  "/api/people/me": { user: { id: "demo-owner", email: "demo@sever.local", displayName: "Алексей Воронцов", firstName: "Алексей", lastName: "Воронцов", mustChangePassword: false, active: true, hourlyRateEUR: 22, usePhotoAsAvatar: false, photoUrl: null }, permissions: ["apex.view","operations.view","operations.contractor_turnover.view","operations.contractor_turnover.manage","contractors.secret.view","warehouse.view","supplies.view","supplies.move","supplies.catalog.manage","supplies.purchase.manage","venues.view","venues.manage","venues.archive","venues.delete","projects.view","projects.manage","projects.reservation.manage","plans.view","plans.manage","people.view","people.manage","roles.manage","finance.view","finance.manage","backoffice.access","people.applications.review","telegram.inbox.manage"], isOwner: true },
+  "/api/people/me": { user: { id: "demo-owner", email: "demo@sever.local", displayName: "Алексей Воронцов", firstName: "Алексей", lastName: "Воронцов", mustChangePassword: false, active: true, hourlyRateEUR: 22, usePhotoAsAvatar: false, photoUrl: null }, permissions: ["apex.view","operations.view","operations.contractor_turnover.view","operations.contractor_turnover.manage","contractors.secret.view","warehouse.view","supplies.view","supplies.move","supplies.catalog.manage","supplies.purchase.manage","venues.view","venues.manage","venues.archive","venues.delete","projects.view","projects.manage","projects.reservation.manage","plans.view","plans.manage","people.view","people.manage","roles.manage","finance.view","finance.manage","finance.account.adjust","backoffice.access","people.applications.review","telegram.inbox.manage"], isOwner: true },
   "/api/projects": [
     { id:"p-aurora", name:"Aurora Festival 2026", code:"PRJ-26041", status:"active", clientId:"c-acme", clientName:"Acme Events", venueId:"v-fort", venueName:"Белградская крепость", startAt:"2026-10-12T09:00:00Z", endAt:"2026-10-15T23:00:00Z", budgetEUR:42000, financeTracked:true },
     { id:"p-theatre", name:"Городской театр — премьера", code:"PRJ-26038", status:"confirmed", clientId:"c-theatre", clientName:"Городской театр", venueId:"v-theatre", venueName:"Главная сцена", startAt:"2026-10-20T12:00:00Z", endAt:"2026-10-22T23:00:00Z", budgetEUR:18500, financeTracked:true },
@@ -64,6 +64,11 @@ function demoResponse<T>(method: string, path: string, body?: unknown): T {
     }
     if(key.includes("/reservations")||key.includes("/assignments")||key.includes("/timings")||key.includes("/journal")||key.includes("/plans"))return[]as T;
     return(value??[])as T;
+  }
+  const adjustmentMatch=key.match(/^\/api\/finance\/accounts\/([^/]+)\/adjust$/);
+  if(method==="POST"&&adjustmentMatch){
+    const accounts=demoArray<Record<string,unknown>>(store,"/api/finance/accounts"),account=accounts.find(row=>row.id===adjustmentMatch[1]);
+    if(account){const before=Number(account.balance),after=Number(input.targetBalance),delta=Math.round((after-before)*100)/100,transaction={id:demoId("tx"),accountId:account.id,projectId:null,unitId:null,assignmentId:null,contractorId:null,kind:delta>0?"income":"expense",category:"adjustment",amount:Math.abs(delta),currency:account.currency,fxRateToEUR:1,amountEUR:Math.abs(delta),adjustmentBalanceAfter:after,note:input.note??null,createdByUserId:"demo-owner",updatedByUserId:null,updatedAt:null,voidedByUserId:null,voidedAt:null,createdAt:now};account.balance=after;demoArray<Record<string,unknown>>(store,"/api/finance/transactions").unshift(transaction);saveDemoStore(store);return transaction as T;}
   }
   if(method==="POST"&&key==="/api/catalog/categories"){
     const category={id:demoId("cat"),name:String(input.name??"Новая категория"),active:true,sortOrder:demoArray<unknown>(store,key).length*10+10,createdAt:now};

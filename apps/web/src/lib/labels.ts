@@ -7,7 +7,7 @@ import { configuredDateTime, configuredDateRange } from "./dateFormat.ts";
 export const transactionCategoryLabel: Record<Finance.TxCategory, string> = {
   rental_revenue: "Начисление аренды (без движения денег)",
   prepayment: "Предоплата", debt_settlement: "Оплата клиента",
-  purchase: "Закупка", repair: "Ремонт", salary: "Зарплата", other: "Прочее",
+  purchase: "Закупка", repair: "Ремонт", salary: "Зарплата", adjustment: "Корректировка", other: "Прочее",
 };
 
 export const unitStatusLabel: Record<Equipment.UnitStatus, string> = {

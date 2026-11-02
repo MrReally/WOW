@@ -2,10 +2,11 @@ import { useState } from "react";
 import type { Finance } from "@sever/contracts";
 import { Button, Field, Input, Select } from "../../../ui-kit/index.ts";
 
-export function TransactionActions({ transaction, accounts, pending, onSave, onVoid }: {
+export function TransactionActions({ transaction, accounts, pending, canEdit = true, onSave, onVoid }: {
   transaction: Finance.TransactionDTO;
   accounts: Finance.AccountDTO[];
   pending: boolean;
+  canEdit?: boolean;
   onSave: (input: Finance.UpdateTransactionInput) => Promise<unknown>;
   onVoid: () => Promise<unknown>;
 }) {
@@ -27,7 +28,7 @@ export function TransactionActions({ transaction, accounts, pending, onSave, onV
       <Field label="Комментарий"><Input value={note} onChange={e => setNote(e.target.value)} /></Field>
       <p className="card__subtitle">Исправление сохранится отдельной операцией с исходным курсом. Оригинал останется в истории отменённых.</p>
       <div className="row"><Button disabled={pending || !(Number(amount) > 0)} onClick={() => void act(() => onSave({ accountId, amount: Number(amount), note }))}>Сохранить исправление</Button><Button variant="ghost" disabled={pending} onClick={() => setEditing(false)}>Отмена</Button></div>
-    </> : <div className="row"><Button variant="ghost" disabled={pending} onClick={() => setEditing(true)}>Исправить</Button><Button variant="ghost" disabled={pending} onClick={() => { if (confirm("Отменить операцию? Её движение по счёту будет сторнировано, запись останется в истории.")) void act(onVoid); }}>Сторнировать</Button></div>}
+    </> : <div className="row">{canEdit && <Button variant="ghost" disabled={pending} onClick={() => setEditing(true)}>Исправить</Button>}<Button variant="ghost" disabled={pending} onClick={() => { if (confirm("Отменить операцию? Её движение по счёту будет сторнировано, запись останется в истории.")) void act(onVoid); }}>Сторнировать</Button></div>}
     {error && <p role="alert">{error}</p>}
   </div>;
 }

@@ -13,11 +13,12 @@ async function request(permissions: Permission[], method: "GET" | "POST", url: s
   const createTransaction = vi.fn(async (input: unknown) => input);
   const listTransactions = vi.fn(async () => [{ id: "payroll", category: "salary" }, { id: "client", category: "prepayment" }]);
   const listAccounts = vi.fn(async () => [{ id: accountId, name: "Bank", currency: "EUR", balance: 500 }]);
+  const adjustAccountBalance = vi.fn(async (input: unknown) => input);
   app.setErrorHandler((error, _req, reply) => reply.code((error as { status?: number }).status ?? 400).send({ message: error.message }));
-  registerFinanceRoutes(app, { auth: async () => ({ permissions, userId: assignmentId } as AuthContext) }, { createTransaction, listTransactions, listAccounts } as unknown as Finance.FinanceService, authorizeProject);
+  registerFinanceRoutes(app, { auth: async () => ({ permissions, userId: assignmentId } as AuthContext) }, { createTransaction, listTransactions, listAccounts, adjustAccountBalance } as unknown as Finance.FinanceService, authorizeProject);
   const response = await app.inject({ method, url, ...(payload ? { payload } : {}) });
   await app.close();
-  return { response, createTransaction, listTransactions };
+  return { response, createTransaction, listTransactions, adjustAccountBalance };
 }
 
 describe("finance permission boundaries", () => {
@@ -66,5 +67,13 @@ describe("finance permission boundaries", () => {
     const result = await request(["finance.manage"], "GET", "/api/finance/transactions");
     expect(result.response.statusCode).toBe(200);
     expect(result.response.json()).toHaveLength(2);
+  });
+  it("requires the dedicated permission for account adjustments", async () => {
+    const denied = await request(["finance.manage"], "POST", `/api/finance/accounts/${accountId}/adjust`, { targetBalance: 475 });
+    expect(denied.response.statusCode).toBe(403);
+    expect(denied.adjustAccountBalance).not.toHaveBeenCalled();
+    const allowed = await request(["finance.account.adjust"], "POST", `/api/finance/accounts/${accountId}/adjust`, { targetBalance: 475 });
+    expect(allowed.response.statusCode).toBe(200);
+    expect(allowed.adjustAccountBalance).toHaveBeenCalledWith(expect.objectContaining({ accountId, targetBalance: 475, createdByUserId: assignmentId }));
   });
 });
