@@ -45,6 +45,7 @@ export type Permission =
   | "supplies.purchase.manage"
   | "projects.view"
   | "projects.manage"
+  | "projects.complete.override"
   | "projects.reservation.manage"
   | "projects.timing.manage"
   | "projects.timing.viewAll"
@@ -115,6 +116,7 @@ export const PERMISSIONS: PermissionMeta[] = [
   { key: "supplies.purchase.manage", group: "Расходники", label: "Принимать закупки и управлять пополнением" },
   { key: "projects.view", group: "Планирование", label: "Видеть проекты" },
   { key: "projects.manage", group: "Планирование", label: "Создавать/редактировать проекты" },
+  { key: "projects.complete.override", group: "Планирование", label: "Закрывать проект с автоматическим урегулированием обязательств" },
   { key: "projects.reservation.manage", group: "Планирование", label: "Брони и распределение" },
   { key: "projects.timing.manage", group: "Планирование", label: "Тайминги — создавать и редактировать" },
   { key: "projects.timing.viewAll", group: "Планирование", label: "Видеть весь тайминг (параллельные процессы)" },

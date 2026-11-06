@@ -7,6 +7,7 @@ import { pool } from "./core/db.js";
 import { EventBus } from "./core/eventBus.js";
 import type { RouteContext } from "./core/module.js";
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 
 import { createPeopleModule } from "./modules/people/index.js";
 import { createEquipmentModule } from "./modules/equipment/index.js";
@@ -27,9 +28,10 @@ import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
 import { editTelegramMessage, sendTelegramDocument, sendTelegramMessage, sendTelegramPhoto, setTelegramMessageLogger } from "./core/telegram.js";
-import { formatDateTimeValue, formatDateValue, type AuthContext, type Notifications, type People, type Projects } from "@sever/contracts";
+import { formatDateTimeValue, formatDateValue, projectRentalDays, type AuthContext, type Notifications, type People, type Projects } from "@sever/contracts";
 import type { DomainEvent } from "./core/eventBus.js";
 import { BadRequest, Forbidden, NotFound } from "./core/errors.js";
+import { requirePermission } from "./core/auth.js";
 
 export function createModules(bus: EventBus = new EventBus()) {
   const people = createPeopleModule(pool, bus);
@@ -60,6 +62,11 @@ export function createModules(bus: EventBus = new EventBus()) {
     if (input.contractorId && !(await projects.service.listContractorItems(input.projectId!)).some(item => item.contractorId === input.contractorId)) throw BadRequest("подрядчик не имеет позиций в проекте");
   }, authorizeFinanceProject);
   bus.on("reservation.deleted", async (event) => {
+    await finance.service.removeProjectEstimateLinesBySourceRef(event.reservationId);
+  });
+  bus.on("reservation.updated", async (event) => {
+    // A source-linked automatic estimate line contains a snapshot of quantity
+    // and amount. Drop that snapshot so billing regenerates it from the new reservation.
     await finance.service.removeProjectEstimateLinesBySourceRef(event.reservationId);
   });
   bus.on("project.duplicated", async (event) => {
@@ -143,8 +150,10 @@ export function createModules(bus: EventBus = new EventBus()) {
       await projects.service.updateAssignment(event.assignmentId, { paidEUR });
     }
     if (event.contractorId) {
+      const project = await projects.service.getProject(event.projectId);
       const items = (await projects.service.listContractorItems(event.projectId)).filter(item => item.contractorId === event.contractorId);
-      const dueEUR = items.reduce((sum, item) => sum + item.costEUR * item.qty, 0);
+      const days = projectRentalDays(project?.startsAt ?? null, project?.endsAt ?? null);
+      const dueEUR = items.reduce((sum, item) => sum + item.costEUR * item.qty * (item.pricingMode === "per_day" ? days : 1), 0);
       const paidEUR = transactions
         .filter(transaction => transaction.contractorId === event.contractorId && transaction.kind === "expense")
         .reduce((sum, transaction) => sum + transaction.amountEUR, 0);
@@ -921,6 +930,88 @@ export function registerAllRoutes(
   ctx: RouteContext
 ): void {
   for (const m of wiring.modules) m.registerRoutes(app, ctx);
+
+  // Manual project completion is coordinated here, rather than in Projects:
+  // the composition root is the only place allowed to combine public services
+  // from finance, equipment and projects.
+  const completionCheck = async (projectId: string) => {
+    const project = await wiring.projects.service.getProject(projectId);
+    if (!project) throw NotFound("project", projectId);
+    const issues: { code: string; title: string; detail: string; autoResolvable: boolean }[] = [];
+    if (!project.warehouseTurnoverCompletedAt) {
+      issues.push({ code: "warehouse_turnover", title: "Не завершён складской оборот", detail: "Сначала проведите возврат собственного оборудования в Operations.", autoResolvable: false });
+    }
+    const orders = await wiring.projects.service.listContractorOrders(projectId);
+    for (const order of orders.filter(order => !order.returnCompletedAt)) {
+      issues.push({
+        code: "contractor_order_return", title: "Не возвращено оборудование подрядчику",
+        detail: `${order.name} · ${order.lines.filter(line => !line.returnedAt).map(line => `${line.name} × ${line.qty}`).join(", ") || "возврат не завершён"}`,
+        autoResolvable: !!order.receiptCompletedAt,
+      });
+    }
+    if (project.financeTracked) {
+      const [invoice, assignments, contractorItems] = await Promise.all([
+        wiring.billing.projectInvoice(projectId), wiring.projects.service.listAssignments(projectId), wiring.projects.service.listContractorItems(projectId),
+      ]);
+      if (invoice.dueEUR > 0.005) issues.push({ code: "client_debt", title: "Не закрыта оплата клиента", detail: `К получению: ${invoice.dueEUR.toFixed(2)} EUR`, autoResolvable: true });
+      for (const assignment of assignments.filter(item => (item.status === "added" || item.status === "accepted") && item.paidEUR + 0.005 < (item.rateEUR ?? 0))) {
+        issues.push({ code: "crew_payment", title: "Не выплачен гонорар", detail: `${assignment.userId} · ${((assignment.rateEUR ?? 0) - assignment.paidEUR).toFixed(2)} EUR`, autoResolvable: true });
+      }
+      const byContractor = new Map<string, typeof contractorItems>();
+      for (const item of contractorItems) byContractor.set(item.contractorId, [...(byContractor.get(item.contractorId) ?? []), item]);
+      for (const [contractorId, items] of byContractor) {
+        const days = projectRentalDays(project.startsAt, project.endsAt);
+        const itemCost = (item: typeof items[number]) => item.costEUR * item.qty * (item.pricingMode === "per_day" ? days : 1);
+        const unpaid = items.filter(item => !item.paidAt && itemCost(item) > 0);
+        if (unpaid.length) issues.push({ code: "contractor_payment", title: "Не оплачен подрядчик", detail: `${unpaid.length} поз. · ${unpaid.reduce((sum, item) => sum + itemCost(item), 0).toFixed(2)} EUR`, autoResolvable: true });
+        const unreturned = items.filter(item => item.kind === "equipment" && !item.orderId && !item.returnedAt);
+        if (unreturned.length) issues.push({ code: "contractor_return", title: "Не возвращено оборудование подрядчику", detail: unreturned.map(item => `${item.name} × ${item.qty}`).join(", "), autoResolvable: true });
+      }
+    }
+    return { project, issues, canComplete: issues.length === 0 };
+  };
+
+  app.get<{ Params: { id: string } }>("/api/projects/:id/completion-check", async req => {
+    const auth = await ctx.auth(req); requirePermission(auth, "projects.manage");
+    const check = await completionCheck(req.params.id);
+    return { ...check, canAutoResolve: auth.permissions.includes("projects.complete.override") && check.issues.every(issue => issue.autoResolvable) };
+  });
+  app.post<{ Params: { id: string } }>("/api/projects/:id/complete-manually", async req => {
+    const auth = await ctx.auth(req); requirePermission(auth, "projects.manage");
+    const body = z.object({ accountId: z.string().uuid().optional() }).parse(req.body);
+    let check = await completionCheck(req.params.id);
+    if (check.issues.length === 0) return wiring.projects.service.setStatus(req.params.id, "completed", auth.userId);
+    requirePermission(auth, "projects.complete.override");
+    if (check.issues.some(issue => !issue.autoResolvable)) throw BadRequest("есть обязательства, которые можно закрыть только вручную", check.issues);
+    if (check.issues.some(issue => issue.autoResolvable) && !body.accountId) throw BadRequest("выберите EUR-счёт для автоматического урегулирования оплат", check.issues);
+    if (body.accountId) {
+      const account = (await wiring.finance.service.listAccounts()).find(item => item.id === body.accountId);
+      if (!account || account.currency !== "EUR") throw BadRequest("для автоматического урегулирования нужен EUR-счёт");
+      const [invoice, assignments, contractorItems] = await Promise.all([
+        wiring.billing.projectInvoice(req.params.id), wiring.projects.service.listAssignments(req.params.id), wiring.projects.service.listContractorItems(req.params.id),
+      ]);
+      if (invoice.dueEUR > 0.005) await wiring.finance.service.createTransaction({ accountId: account.id, projectId: req.params.id, kind: "income", category: "debt_settlement", amount: invoice.dueEUR, currency: "EUR", note: "Ручное завершение проекта: подтверждена оплата клиента", createdByUserId: auth.userId });
+      for (const assignment of assignments.filter(item => (item.status === "added" || item.status === "accepted") && item.paidEUR + 0.005 < (item.rateEUR ?? 0))) {
+        await wiring.finance.service.createTransaction({ accountId: account.id, projectId: req.params.id, assignmentId: assignment.id, kind: "expense", category: "salary", amount: (assignment.rateEUR ?? 0) - assignment.paidEUR, currency: "EUR", note: "Ручное завершение проекта: подтверждена выплата", createdByUserId: auth.userId });
+      }
+      const byContractor = new Map<string, typeof contractorItems>();
+      for (const item of contractorItems) byContractor.set(item.contractorId, [...(byContractor.get(item.contractorId) ?? []), item]);
+      for (const [contractorId, items] of byContractor) {
+        const days = projectRentalDays(check.project.startsAt, check.project.endsAt);
+        const due = items.filter(item => !item.paidAt).reduce((sum, item) => sum + item.costEUR * item.qty * (item.pricingMode === "per_day" ? days : 1), 0);
+        if (due > 0.005) await wiring.finance.service.createTransaction({ accountId: account.id, projectId: req.params.id, contractorId, kind: "expense", category: "other", amount: due, currency: "EUR", note: "Ручное завершение проекта: подтверждена оплата подрядчику", createdByUserId: auth.userId });
+        if (items.some(item => item.kind === "equipment" && !item.orderId && !item.returnedAt)) await wiring.projects.service.returnContractorItems(req.params.id, contractorId);
+      }
+    }
+    for (const order of await wiring.projects.service.listContractorOrders(req.params.id)) {
+      if (order.returnCompletedAt) continue;
+      for (const line of order.lines.filter(line => !line.returnedAt)) await wiring.projects.service.setContractorOrderLineReturned(order.id, line.id, true);
+      await wiring.projects.service.completeContractorOrderReturn(order.id);
+    }
+    check = await completionCheck(req.params.id);
+    if (check.issues.length) throw BadRequest("после урегулирования остались обязательства", check.issues);
+    return wiring.projects.service.setStatus(req.params.id, "completed", auth.userId);
+  });
   registerApexRoutes(app, ctx, wiring.apex);
   registerBillingRoutes(app, ctx, wiring.billing, wiring.appSettings.service, sendTelegramDocument, wiring.authorizeFinanceProject);
 }

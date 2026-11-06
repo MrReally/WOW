@@ -1,5 +1,5 @@
 import type { Equipment, Finance, ID, People, Projects, Venues } from "@sever/contracts";
-import { amountAfterDiscountEUR, discountAmountEUR } from "@sever/contracts";
+import { amountAfterDiscountEUR, discountAmountEUR, projectRentalDays } from "@sever/contracts";
 import { NotFound } from "../../core/errors.js";
 import { createFullExportCsv } from "./export.js";
 
@@ -24,9 +24,6 @@ export interface BillingService {
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
-const daysBetween = (startIso: string, endIso: string) =>
-  Math.max(1, Math.ceil((Date.parse(endIso) - Date.parse(startIso)) / 86_400_000));
-
 export function createBillingService(deps: BillingDeps): BillingService {
   async function projectInvoice(projectId: ID): Promise<Finance.ProjectInvoiceDTO> {
     const project = await deps.projects.getProject(projectId);
@@ -47,7 +44,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
     const rsdRateToEUR = fxRates.find((rate) => rate.currency === "RSD")?.rateToEUR ?? 0;
     const modelMap = new Map(models.map((m) => [m.id, m]));
     const typeName = new Map(types.map((t) => [t.id, t.name]));
-    const projectDays = project.startsAt && project.endsAt ? daysBetween(project.startsAt, project.endsAt) : 1;
+    const projectDays = projectRentalDays(project.startsAt, project.endsAt);
 
     const ownLines: Finance.InvoiceLineDTO[] = reservations.filter((r) => !r.isReserve).map((r) => {
       const m = modelMap.get(r.modelId);
@@ -55,7 +52,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
       return {
         refId: r.id,
         section: (m && typeName.get(m.typeId)) || "Equipment",
-        label: m?.name ?? r.modelId,
+        label: m ? [m.subtype, m.name].filter(Boolean).join(" ") : r.modelId,
         detail: "",
         qty: r.qty,
         unitEUR: price,
@@ -64,17 +61,20 @@ export function createBillingService(deps: BillingDeps): BillingService {
         costEUR: 0,
       };
     });
-    const contractorLines: Finance.InvoiceLineDTO[] = contractorItems.map((it) => ({
-      refId: it.id,
-      section: it.kind === "delivery" ? "Delivery" : it.kind === "setup" ? "Setup" : "Equipment",
-      label: it.name,
-      detail: it.note?.trim() ?? "",
-      qty: it.qty,
-      unitEUR: it.priceEUR,
-      periods: 1,
-      amountEUR: round2(it.priceEUR * it.qty),
-      costEUR: round2(it.costEUR * it.qty),
-    }));
+    const contractorLines: Finance.InvoiceLineDTO[] = contractorItems.map((it) => {
+      const periods = it.pricingMode === "per_day" ? projectDays : 1;
+      return {
+        refId: it.id,
+        section: it.kind === "delivery" ? "Delivery" : it.kind === "setup" ? "Setup" : "Equipment",
+        label: it.name,
+        detail: it.note?.trim() ?? "",
+        qty: it.qty,
+        unitEUR: it.priceEUR,
+        periods,
+        amountEUR: round2(it.priceEUR * it.qty * periods),
+        costEUR: round2(it.costEUR * it.qty * periods),
+      };
+    });
     const derivedRentalLines = [...ownLines, ...contractorLines];
     const contractorCostEUR = round2(contractorLines.reduce((s, l) => s + l.costEUR, 0));
 
@@ -210,7 +210,8 @@ export function createBillingService(deps: BillingDeps): BillingService {
           const payments = transactions.filter(t => t.contractorId === contractorId && t.kind === "expense" && !t.voidedAt);
           const hasLedger = transactions.some(t => t.contractorId === contractorId && t.kind === "expense");
           // Legacy paid markers are respected only where no ledger payment exists.
-          const due = positions.reduce((sum, item) => sum + (hasLedger || !item.paidAt ? item.costEUR * item.qty : 0), 0);
+          const periods = projectRentalDays(project.startsAt, project.endsAt);
+          const due = positions.reduce((sum, item) => sum + (hasLedger || !item.paidAt ? item.costEUR * item.qty * (item.pricingMode === "per_day" ? periods : 1) : 0), 0);
           const paid = payments.reduce((sum, t) => sum + t.amountEUR, 0);
           totals.set(contractorId, (totals.get(contractorId) ?? 0) + Math.max(0, round2(due - paid)));
         }

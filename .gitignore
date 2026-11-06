@@ -11,3 +11,5 @@ coverage/
 pnpm-debug.log*
 .pnpm-store/
 backups/
+.agent-runtime/
+state/

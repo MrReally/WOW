@@ -12,8 +12,8 @@
     "migrate": "tsx src/core/migrate.ts",
     "finance:audit": "tsx src/core/auditFinance.ts",
     "seed": "tsx src/seed.ts",
-    "test": "tsx src/core/prepareTestDb.ts && DATABASE_URL=${TEST_DATABASE_URL:-postgres://sever:sever@localhost:5432/sever_test} vitest run",
-    "test:watch": "tsx src/core/prepareTestDb.ts && DATABASE_URL=${TEST_DATABASE_URL:-postgres://sever:sever@localhost:5432/sever_test} vitest",
+    "test": "node scripts/run-tests.mjs",
+    "test:watch": "node scripts/run-tests.mjs --watch",
     "lint": "tsc -p tsconfig.json --noEmit",
     "boundaries": "depcruise src --config .dependency-cruiser.cjs"
   },

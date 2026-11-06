@@ -37,7 +37,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
   const [dressCodeOptionId, setDressCodeOptionId] = useState(project.dressCodeOptionId ?? "");
   const [dressCodeUniform, setDressCodeUniform] = useState(project.dressCodeUniform);
   const [note, setNote] = useState(project.note ?? "");
-  const [dryRental, setDryRental] = useState(project.dryRental);
+  const [serviceMode, setServiceMode] = useState<Projects.ProjectServiceMode>(project.serviceMode);
   const [scope, setScope] = useState<"only_this" | Projects.ProjectSeriesChangeScope>("only_this");
   const [preview, setPreview] = useState<Projects.ProjectSeriesChangePreviewDTO | null>(null);
   const [resolutions, setResolutions] = useState<Record<string, Projects.ProjectSeriesConflictResolution>>({});
@@ -53,7 +53,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
       setDressCodeOptionId(project.dressCodeOptionId ?? "");
       setDressCodeUniform(project.dressCodeUniform);
       setNote(project.note ?? "");
-      setDryRental(project.dryRental);
+      setServiceMode(project.serviceMode);
       setScope("only_this");
       setPreview(null);
       setResolutions({});
@@ -73,7 +73,7 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
           dressCodeOptionId: dressCodeOptionId || null,
           dressCodeLabel: dressCodes.data?.find(x => x.id === dressCodeOptionId)?.label ?? null,
           dressCodeUniform,
-          dryRental,
+          serviceMode,
           ...(canViewNote ? { note: note.trim() || null } : {}),
     };
     if (!project.seriesId || scope === "only_this") {
@@ -130,7 +130,11 @@ export function EditProjectSheet({ open, project, clients, onClose }: Props) {
           options={[{ value: "", label: "— не выбрана —" }, ...(venues.data ?? []).filter((v) => v.isVenue).map((v) => ({ value: v.id, label: v.name }))]}
         />
       </Field>
-      <label className="row"><input type="checkbox" checked={dryRental} onChange={e => setDryRental(e.target.checked)} /> Сухая аренда</label>
+      <Field label="Формат аренды"><Select value={serviceMode} onChange={e => setServiceMode(e.target.value as Projects.ProjectServiceMode)} options={[
+        { value: "full_service", label: "Полный сервис" },
+        { value: "dry_rental_pickup", label: "Сухая аренда — самовывоз" },
+        { value: "dry_rental_delivery", label: "Сухая аренда — с доставкой" },
+      ]} /></Field>
       {!venueFormOpen ? (
         <Button variant="ghost" onClick={() => setVenueFormOpen(true)}>+ Площадка</Button>
       ) : (

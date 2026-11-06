@@ -108,7 +108,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const [venueGeo, setVenueGeo] = useState<{ placeId: string; latitude: number; longitude: number } | null>(null);
   const [dressCodeOptionId, setDressCodeOptionId] = useState("");
   const [dressCodeUniform, setDressCodeUniform] = useState(false);
-  const [dryRental, setDryRental] = useState(false);
+  const [serviceMode, setServiceMode] = useState<Projects.ProjectServiceMode>("full_service");
   const [starts, setStarts] = useState("");
   const [ends, setEnds] = useState("");
   const [reservationDrafts, setReservationDrafts] = useState<ReservationDraft[]>([]);
@@ -159,7 +159,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
       setVenueGeo(null);
       setDressCodeOptionId("");
       setDressCodeUniform(false);
-      setDryRental(false);
+      setServiceMode("full_service");
       setStarts("");
       setEnds("");
       setReservationDrafts([]);
@@ -203,7 +203,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
         dressCodeOptionId: dressCodeOptionId || null,
         dressCodeLabel: dressCodes.data?.find(x => x.id === dressCodeOptionId)?.label ?? null,
         dressCodeUniform,
-        dryRental,
+        serviceMode,
         ...(canViewNote ? { note: projectNote.trim() || null } : {}),
         ...(validRange ? { startsAt: isoFromLocal(starts), endsAt: isoFromLocal(ends) } : {}),
       });
@@ -299,7 +299,11 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
           )}
           <Field label="Дресс-код"><Select value={dressCodeOptionId} onChange={e => setDressCodeOptionId(e.target.value)} options={[{ value: "", label: "— не выбран —" }, ...(dressCodes.data ?? []).map(x => ({ value: x.id, label: x.label }))]} /></Field>
           <label className="row row--between">В форме SEVER <input className="toggle-switch" type="checkbox" checked={dressCodeUniform} onChange={e => setDressCodeUniform(e.target.checked)} /></label>
-          <label className="row row--between">Сухая аренда <input className="toggle-switch" type="checkbox" checked={dryRental} onChange={e => setDryRental(e.target.checked)} /></label>
+          <Field label="Формат аренды"><Select value={serviceMode} onChange={e => setServiceMode(e.target.value as Projects.ProjectServiceMode)} options={[
+            { value: "full_service", label: "Полный сервис" },
+            { value: "dry_rental_pickup", label: "Сухая аренда — самовывоз" },
+            { value: "dry_rental_delivery", label: "Сухая аренда — с доставкой" },
+          ]} /></Field>
         </WizardScreen>
       )}
 

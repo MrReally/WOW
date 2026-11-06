@@ -215,6 +215,15 @@ export function useCreateReservation() {
   });
 }
 
+export function useUpdateReservation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, qty }: { id: string; qty: number }) => api.patch<Projects.ReservationDTO>(`/api/reservations/${id}`, { qty }),
+    meta: { successMessage: "Количество брони изменено" },
+    onSuccess: () => invalidateProjects(qc),
+  });
+}
+
 export function useDeleteReservation() {
   const qc = useQueryClient();
   return useMutation({

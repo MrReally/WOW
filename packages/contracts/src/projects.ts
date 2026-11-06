@@ -42,6 +42,22 @@ export const PROJECT_WORKFLOW_STATUSES: ProjectStatus[] = [
   "awaiting_payment",
 ];
 
+export type ProjectServiceMode = "full_service" | "dry_rental_pickup" | "dry_rental_delivery";
+
+export function projectServiceSkipsStage(mode: ProjectServiceMode, stage: ProjectChecklistGroup): boolean {
+  return mode === "dry_rental_pickup"
+    ? stage === "delivery" || stage === "mount" || stage === "dismantle"
+    : mode === "dry_rental_delivery"
+      ? stage === "mount" || stage === "dismantle"
+      : false;
+}
+
+export function projectRentalDays(startsAt: ISODateTime | null, endsAt: ISODateTime | null): number {
+  return startsAt && endsAt
+    ? Math.max(1, Math.ceil((Date.parse(endsAt) - Date.parse(startsAt)) / 86_400_000))
+    : 1;
+}
+
 export interface ProjectDTO {
   id: ID;
   name: string;
@@ -53,7 +69,9 @@ export interface ProjectDTO {
   warehouseTurnoverCompletedAt: ISODateTime | null;
   /** False excludes a legacy/project exception from client and contractor debt tracking. */
   financeTracked: boolean;
-  /** Equipment-only rental. Operations skips mount and dismantle stages. */
+  /** Service workflow for delivery/mount/dismantle. */
+  serviceMode: ProjectServiceMode;
+  /** @deprecated Compatibility projection: true for either dry-rental mode. */
   dryRental: boolean;
   /** Opaque id of the venue (venues module, later phase). */
   venueId: ID | null;
@@ -82,6 +100,8 @@ export interface CreateProjectInput {
   dressCodeUniform?: boolean;
   note?: string | null;
   financeTracked?: boolean;
+  serviceMode?: ProjectServiceMode;
+  /** @deprecated Use serviceMode. */
   dryRental?: boolean;
 }
 
@@ -96,6 +116,8 @@ export interface UpdateProjectInput {
   dressCodeUniform?: boolean;
   note?: string | null;
   financeTracked?: boolean;
+  serviceMode?: ProjectServiceMode;
+  /** @deprecated Use serviceMode. */
   dryRental?: boolean;
 }
 
@@ -225,6 +247,10 @@ export interface CreateReservationInput {
   isReserve?: boolean;
   startsAt?: ISODateTime | null;
   endsAt?: ISODateTime | null;
+}
+
+export interface UpdateReservationInput {
+  qty: number;
 }
 
 // ── Timings (schedule blocks within a project) ───────────────────────────────
@@ -538,6 +564,7 @@ export interface CreateProjectReminderInput {
 // not appear in contractor return tracking.
 
 export type ContractorItemKind = "equipment" | "delivery" | "setup";
+export type ContractorPricingMode = "per_day" | "flat_total";
 
 export interface ContractorItemDTO {
   id: ID;
@@ -547,6 +574,8 @@ export interface ContractorItemDTO {
   /** Package order that owns this commercial line; null for legacy/manual items. */
   orderId: ID | null;
   kind: ContractorItemKind;
+  /** Equipment is normally daily; package/service quotes may already be a complete total. */
+  pricingMode: ContractorPricingMode;
   name: string;
   qty: number;
   /** Price charged to the client, per unit. */
@@ -568,6 +597,7 @@ export interface AddContractorItemInput {
   projectId: ID;
   contractorId: ID;
   kind?: ContractorItemKind;
+  pricingMode?: ContractorPricingMode;
   name: string;
   qty: number;
   priceEUR: number;
@@ -668,6 +698,7 @@ export interface ProjectsService {
   // Reservations
   listReservations(projectId: ID): Promise<ReservationDTO[]>;
   createReservation(input: CreateReservationInput): Promise<ReservationDTO>;
+  updateReservation(id: ID, input: UpdateReservationInput): Promise<ReservationDTO>;
   resolveReservation(id: ID, unitIds: ID[]): Promise<ReservationDTO>;
   /** Persist serial units selected at pickup for an Operations-assigned reservation. */
   assignReservationUnits(id: ID, unitIds: ID[]): Promise<ReservationDTO>;
@@ -769,6 +800,13 @@ export interface ReservationConflictEvent {
 
 export interface ReservationDeletedEvent {
   type: "reservation.deleted";
+  reservationId: ID;
+  projectId: ID;
+  at: ISODateTime;
+}
+
+export interface ReservationUpdatedEvent {
+  type: "reservation.updated";
   reservationId: ID;
   projectId: ID;
   at: ISODateTime;
@@ -913,6 +951,7 @@ export type ProjectsEvent =
   | ProjectDuplicatedEvent
   | ReservationConflictEvent
   | ReservationDeletedEvent
+  | ReservationUpdatedEvent
   | ProjectAssignedEvent
   | ProjectUnassignedEvent
   | ProjectInvitedEvent

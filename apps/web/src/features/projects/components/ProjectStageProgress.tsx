@@ -1,17 +1,17 @@
 import { projectStagePresentation as STAGES } from "../../../lib/labels.ts";
-import type { Projects } from "@sever/contracts";
+import { projectServiceSkipsStage, type Projects } from "@sever/contracts";
 
 export const PROJECT_STAGE_ORDER: Projects.ProjectChecklistGroup[] = ["prep", "pickup", "delivery", "mount", "show", "dismantle", "return"];
 
-export function projectStageOrder(dryRental: boolean): Projects.ProjectChecklistGroup[] {
-  return dryRental
-    ? PROJECT_STAGE_ORDER.filter((stage) => stage !== "delivery" && stage !== "mount" && stage !== "dismantle")
-    : PROJECT_STAGE_ORDER;
+export function projectStageOrder(mode: Projects.ProjectServiceMode | boolean): Projects.ProjectChecklistGroup[] {
+  const serviceMode: Projects.ProjectServiceMode = typeof mode === "boolean" ? (mode ? "dry_rental_pickup" : "full_service") : mode;
+  return PROJECT_STAGE_ORDER.filter((stage) => !projectServiceSkipsStage(serviceMode, stage));
 }
 
-export function ProjectStageProgress({ stage, complete, dryRental = false, compact = false }: { stage: Projects.ProjectChecklistGroup; complete: boolean; dryRental?: boolean; compact?: boolean }) {
-  const stages = projectStageOrder(dryRental);
-  const normalizedStage = dryRental && (stage === "delivery" || stage === "mount") ? "show" : dryRental && stage === "dismantle" ? "return" : stage;
+export function ProjectStageProgress({ stage, complete, serviceMode, dryRental = false, compact = false }: { stage: Projects.ProjectChecklistGroup; complete: boolean; serviceMode?: Projects.ProjectServiceMode; dryRental?: boolean; compact?: boolean }) {
+  const effectiveMode = serviceMode ?? (dryRental ? "dry_rental_pickup" : "full_service");
+  const stages = projectStageOrder(effectiveMode);
+  const normalizedStage = projectServiceSkipsStage(effectiveMode, stage) ? (stage === "dismantle" ? "return" : "show") : stage;
   const activeIndex = stages.indexOf(normalizedStage);
   return <div className={`project-stage-progress${compact ? " project-stage-progress--compact" : ""}`} style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }} aria-label="Складской оборот">
     {stages.map((item, index) => {

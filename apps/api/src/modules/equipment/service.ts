@@ -21,6 +21,7 @@ interface ModelRow {
   reservation_assignment_mode: Equipment.ReservationAssignmentMode | null;
   type_reservation_assignment_mode: Equipment.ReservationAssignmentMode | null;
   name: string;
+  subtype: string | null;
   manufacturer: string | null;
   image_url: string | null;
   unit_cost_eur: string;
@@ -119,6 +120,7 @@ const modelDTO = (r: ModelRow): Equipment.EquipmentModelDTO => ({
   reservationAssignmentMode: r.reservation_assignment_mode,
   effectiveReservationAssignmentMode: r.type_reservation_assignment_mode ?? r.reservation_assignment_mode ?? "planning",
   name: r.name,
+  subtype: r.subtype,
   manufacturer: r.manufacturer,
   imageUrl: r.image_url,
   unitCostEUR: Number(r.unit_cost_eur),
@@ -392,6 +394,38 @@ export function createEquipmentService(
     }
   }
 
+  /**
+   * An incomplete-return problem is a live projection, not a permanent
+   * incident log.  The journal remains the audit trail; this problem must
+   * disappear from Apex once every unit that was absent in that return is
+   * physically back in stock.  It is deliberately re-opened if a return is
+   * later reversed.
+   */
+  async function syncIncompleteReturnProblems(client: Sql, projectId: string): Promise<void> {
+    await query(client, `
+      WITH problem_state AS (
+        SELECT p.id,
+          NOT EXISTS (
+            SELECT 1
+            FROM unnest(string_to_array(COALESCE(p.refs->>'missingUnitIds', ''), ',')) AS missing(unit_id)
+            LEFT JOIN equipment.units u ON u.id::text = missing.unit_id
+            WHERE missing.unit_id <> ''
+              AND (u.id IS NULL OR u.status <> 'in_stock' OR u.current_project_id IS NOT NULL)
+          ) AS should_be_resolved
+        FROM equipment.problems p
+        WHERE p.kind='incomplete_return' AND p.refs->>'projectId'=$1
+      )
+      UPDATE equipment.problems p
+      SET resolved=state.should_be_resolved,
+          resolved_at=CASE
+            WHEN state.should_be_resolved THEN COALESCE(p.resolved_at, now())
+            ELSE NULL
+          END
+      FROM problem_state state
+      WHERE p.id=state.id AND p.resolved IS DISTINCT FROM state.should_be_resolved
+    `, [projectId]);
+  }
+
   return {
     // ── Warehouses ──
     async listWarehouses() {
@@ -603,13 +637,14 @@ export function createEquipmentService(
         const inserted = await one<{ id: string }>(
           client,
           `INSERT INTO equipment.models
-             (type_id, category_id, name, manufacturer, image_url, unit_cost_eur, daily_price_eur, attrs, required_component_model_ids, reservation_assignment_mode)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+             (type_id, category_id, name, subtype, manufacturer, image_url, unit_cost_eur, daily_price_eur, attrs, required_component_model_ids, reservation_assignment_mode)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
            RETURNING id`,
           [
             input.typeId,
             categoryId,
             input.name,
+            input.subtype?.trim() || null,
             input.manufacturer ?? null,
             input.imageUrl ?? null,
             input.unitCostEUR,
@@ -664,20 +699,22 @@ export function createEquipmentService(
            type_id          = COALESCE($2, type_id),
            category_id      = $3,
            name             = COALESCE($4, name),
-           manufacturer     = $5,
-           image_url        = $6,
-           unit_cost_eur    = COALESCE($7, unit_cost_eur),
-           daily_price_eur  = COALESCE($8, daily_price_eur),
-           attrs            = $9,
-           required_component_model_ids = $10,
-           archived_at = CASE WHEN $11::boolean IS NULL THEN archived_at WHEN $11 THEN COALESCE(archived_at, now()) ELSE NULL END,
-           reservation_assignment_mode = $12
+           subtype          = $5,
+           manufacturer     = $6,
+           image_url        = $7,
+           unit_cost_eur    = COALESCE($8, unit_cost_eur),
+           daily_price_eur  = COALESCE($9, daily_price_eur),
+           attrs            = $10,
+           required_component_model_ids = $11,
+           archived_at = CASE WHEN $12::boolean IS NULL THEN archived_at WHEN $12 THEN COALESCE(archived_at, now()) ELSE NULL END,
+           reservation_assignment_mode = $13
          WHERE id=$1`,
         [
           id,
           input.typeId ?? null,
           input.categoryId === undefined ? existing.category_id : input.categoryId,
           input.name ?? null,
+          input.subtype === undefined ? existing.subtype : input.subtype?.trim() || null,
           input.manufacturer === undefined ? existing.manufacturer : input.manufacturer,
           input.imageUrl === undefined ? existing.image_url : input.imageUrl,
           input.unitCostEUR ?? null,
@@ -1391,6 +1428,7 @@ export function createEquipmentService(
           });
         }
         await syncProjectKitProblems(client,input.projectId);
+        await syncIncompleteReturnProblems(client, input.projectId);
 
         // Missing units stay on_project; a Problem is raised but nothing blocks.
         if (missing.length === 0) return null;
@@ -1487,6 +1525,7 @@ export function createEquipmentService(
           note: input.note ?? null,
         });
         await syncProjectKitProblems(client, input.projectId);
+        await syncIncompleteReturnProblems(client, input.projectId);
         return unitDTO(updated!);
       });
     },
@@ -1522,6 +1561,9 @@ export function createEquipmentService(
           actorId,
           note: note ?? null,
         });
+        if (unit.current_project_id) {
+          await syncIncompleteReturnProblems(client, unit.current_project_id);
+        }
         if (toStatus === "lost") {
           const model = await one<{ name: string }>(
             client,

@@ -69,6 +69,7 @@ ALTER TABLE equipment.models ADD COLUMN IF NOT EXISTS reservation_assignment_mod
 ALTER TABLE equipment.models DROP CONSTRAINT IF EXISTS models_reservation_assignment_mode_check;
 ALTER TABLE equipment.models ADD CONSTRAINT models_reservation_assignment_mode_check CHECK (reservation_assignment_mode IS NULL OR reservation_assignment_mode IN ('planning','operations'));
 ALTER TABLE equipment.models ADD COLUMN IF NOT EXISTS image_url text;
+ALTER TABLE equipment.models ADD COLUMN IF NOT EXISTS subtype text;
 
 CREATE TABLE IF NOT EXISTS equipment.categories (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -275,4 +276,28 @@ CREATE TABLE IF NOT EXISTS equipment.problems (
   created_at  timestamptz NOT NULL DEFAULT now(),
   resolved_at timestamptz
 );
+
+-- An incomplete-return alert is open only while at least one of its recorded
+-- missing units remains outside stock.  This repairs alerts created before
+-- that lifecycle was synchronized in the service.
+WITH problem_state AS (
+  SELECT p.id,
+    NOT EXISTS (
+      SELECT 1
+      FROM unnest(string_to_array(COALESCE(p.refs->>'missingUnitIds', ''), ',')) AS missing(unit_id)
+      LEFT JOIN equipment.units u ON u.id::text = missing.unit_id
+      WHERE missing.unit_id <> ''
+        AND (u.id IS NULL OR u.status <> 'in_stock' OR u.current_project_id IS NOT NULL)
+    ) AS should_be_resolved
+  FROM equipment.problems p
+  WHERE p.kind='incomplete_return'
+)
+UPDATE equipment.problems p
+SET resolved=state.should_be_resolved,
+    resolved_at=CASE
+      WHEN state.should_be_resolved THEN COALESCE(p.resolved_at, now())
+      ELSE NULL
+    END
+FROM problem_state state
+WHERE p.id=state.id AND p.resolved IS DISTINCT FROM state.should_be_resolved;
 `;

@@ -21,6 +21,7 @@ const projectSchema = z.object({
   dressCodeUniform: z.boolean().optional(),
   note: z.string().nullable().optional(),
   financeTracked: z.boolean().optional(),
+  serviceMode: z.enum(["full_service", "dry_rental_pickup", "dry_rental_delivery"]).optional(),
   dryRental: z.boolean().optional(),
 });
 const statusSchema = z.object({ status: z.enum(PROJECT_STATUSES as [string, ...string[]]) });
@@ -42,6 +43,7 @@ const updateProjectSchema = z.object({
   dressCodeUniform: z.boolean().optional(),
   note: z.string().nullable().optional(),
   financeTracked: z.boolean().optional(),
+  serviceMode: z.enum(["full_service", "dry_rental_pickup", "dry_rental_delivery"]).optional(),
   dryRental: z.boolean().optional(),
 });
 const duplicateProjectSchema = z.object({
@@ -76,6 +78,7 @@ const reservationSchema = z.object({
   startsAt: z.string().datetime().nullable().optional(),
   endsAt: z.string().datetime().nullable().optional(),
 });
+const updateReservationSchema = z.object({ qty: z.number().int().positive() });
 const resolveSchema = z.object({ unitIds: z.array(z.string().uuid()) });
 const timingSchema = z.object({
   projectId: z.string().uuid(),
@@ -118,6 +121,7 @@ const contractorItemSchema = z.object({
   projectId: z.string().uuid(),
   contractorId: z.string().uuid(),
   kind: z.enum(["equipment", "delivery", "setup"]).optional(),
+  pricingMode: z.enum(["per_day", "flat_total"]).optional(),
   name: z.string().min(1),
   qty: z.number().int().positive(),
   priceEUR: z.number().nonnegative(),
@@ -283,6 +287,7 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.manage");
     const body = statusSchema.parse(req.body);
+    if (body.status === "completed") throw BadRequest("завершайте проект через проверку обязательств");
     return service.setStatus(req.params.id, body.status as Projects.ProjectStatus, auth.userId);
   });
   app.post<{ Params: { id: string } }>("/api/projects/:id/status/personnel-announcement", async (req) => {
@@ -348,6 +353,11 @@ export function registerProjectsRoutes(
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.reservation.manage");
     return service.createReservation(reservationSchema.parse(req.body) as Projects.CreateReservationInput);
+  });
+  app.patch<{ Params: { id: string } }>("/api/reservations/:id", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "projects.reservation.manage");
+    return service.updateReservation(req.params.id, updateReservationSchema.parse(req.body));
   });
   app.post<{ Params: { id: string } }>("/api/reservations/:id/resolve", async (req) => {
     const auth = await ctx.auth(req);

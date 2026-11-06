@@ -7,6 +7,7 @@ const model = {
   id: "model-1",
   typeId: type.id,
   trackingMode: "serial",
+  subtype: "Цифровая радиосистема",
   name: "EW 100 G4",
   manufacturer: "Sennheiser",
   imageUrl: null,
@@ -21,7 +22,7 @@ const unit = { id: "unit-1", modelId: model.id, assetTag: "RF-007", serial: "SN-
 const equipment = { models: [model], types: [type], units: [unit], zones: [zone] };
 
 describe("shared search", () => {
-  it.each(["ew 100", "SENNHEISER", "радиосистемы", "rf-007", "sn-abc", "СТЕЛЛАЖ", "rf-01", "bnc", "XLR"])(
+  it.each(["ew 100", "ЦИФРОВАЯ", "SENNHEISER", "радиосистемы", "rf-007", "sn-abc", "СТЕЛЛАЖ", "rf-01", "bnc", "XLR"])(
     "finds equipment by %s without regard to case",
     (query) => {
       expect(equipmentModelMatches(model, query, equipment)).toBe(true);

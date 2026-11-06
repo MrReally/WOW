@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { useLocation, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type { Equipment, Finance, People, Projects, Transport } from "@sever/contracts";
 import { amountAfterDiscountEUR, discountAmountEUR, PROJECT_STATUSES } from "@sever/contracts";
-import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Textarea, Loading, ErrorState, EmptyState } from "../../ui-kit/index.ts";
+import { Card, Button, SectionTitle, StatusBadge, Chip, Select, Field, Input, Textarea, Loading, ErrorState, EmptyState, Sheet } from "../../ui-kit/index.ts";
+import { api } from "../../lib/api.ts";
 import { projectStatusLabel, projectStatusTone, dateRange, dateTime, eur } from "../../lib/labels.ts";
 import { toast } from "../../lib/toastBus.ts";
 import { useSession } from "../../app/session.ts";
@@ -22,6 +23,7 @@ import {
   useSetProjectStatus,
   useAnnounceProjectStatus,
   useCreateReservation,
+  useUpdateReservation,
   useDeleteReservation,
   useAddTiming,
   useUpdateTiming,
@@ -54,6 +56,7 @@ import { TimingReminderPicker } from "./components/TimingReminderPicker.tsx";
 import { RoleEngagementPicker } from "./components/RoleEngagementPicker.tsx";
 import { ContractorEquipment } from "./components/ContractorEquipment.tsx";
 import { ProjectStageProgress } from "./components/ProjectStageProgress.tsx";
+import { useAccounts } from "../finance/hooks.ts";
 import { toLocalInput, isoFromLocal } from "../../lib/datetime.ts";
 import { ConfiguredDateTimeInput } from "../../app/ConfiguredDateTimeInput.tsx";
 import { configuredDate } from "../../lib/dateFormat.ts";
@@ -189,8 +192,10 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const seriesOccurrences = useProjectSeriesOccurrences(project.data?.seriesId ?? null);
 
   const setStatus = useSetProjectStatus();
+  const accounts = useAccounts(canFinance || can("projects.complete.override"));
   const announceStatus = useAnnounceProjectStatus();
   const addReservation = useCreateReservation();
+  const updateReservation = useUpdateReservation();
   const deleteReservation = useDeleteReservation();
   const addTiming = useAddTiming();
   const updateTiming = useUpdateTiming();
@@ -212,6 +217,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [debouncedResModelQuery, setDebouncedResModelQuery] = useState("");
   const [resModelOpen, setResModelOpen] = useState(false);
   const [resQty, setResQty] = useState("1");
+  const [reservationQtyDrafts, setReservationQtyDrafts] = useState<Record<string, string>>({});
   const [resIsReserve, setResIsReserve] = useState(false);
   const selectedReservationAvailability = useReservationAvailability(
     resModel,
@@ -247,6 +253,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [resolving, setResolving] = useState<Projects.ReservationDTO | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [completionCheck, setCompletionCheck] = useState<ProjectCompletionCheck | null>(null);
+  const [completionLoading, setCompletionLoading] = useState(false);
   const [passListOpen, setPassListOpen] = useState(false);
   const [invoiceVersions, setInvoiceVersions] = useState<StoredInvoiceVersion[]>([]);
   const [estimateDrafts, setEstimateDrafts] = useState<FinanceDraftLine[]>([]);
@@ -338,7 +346,10 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const p = project.data;
 
   const clientName = (cid: string) => (clients.data ?? []).find((c) => c.id === cid)?.name ?? "—";
-  const modelName = (mid: string) => (models.data ?? []).find((m) => m.id === mid)?.name ?? mid;
+  const modelName = (mid: string) => {
+    const model = (models.data ?? []).find((item) => item.id === mid);
+    return model?.name ?? mid;
+  };
   const userName = (uid: string) => {
     const user = (people.data ?? []).find((u) => u.id === uid);
     return personName(user, "");
@@ -467,11 +478,19 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             </>;
           })()}
         </div>}
-        <ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} dryRental={p.dryRental} />
-        {p.dryRental && <p className="card__subtitle" style={{ marginTop: 4 }}>Сухая аренда · без доставки, монтажа и демонтажа</p>}
+        <ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} serviceMode={p.serviceMode} />
+        {p.serviceMode === "dry_rental_pickup" && <p className="card__subtitle" style={{ marginTop: 4 }}>Сухая аренда · самовывоз · без доставки, монтажа и демонтажа</p>}
+        {p.serviceMode === "dry_rental_delivery" && <p className="card__subtitle" style={{ marginTop: 4 }}>Сухая аренда с доставкой · без монтажа и демонтажа</p>}
         {(p.dressCodeLabel || p.dressCodeUniform) && <p className="card__subtitle" style={{ marginTop: 4 }}>👔 {[p.dressCodeLabel, p.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}</p>}
         {canViewNote && p.note && <p className="project-note" style={{ marginTop: "var(--space-3)" }}>📝 {p.note}</p>}
-        {canManage && <div className="project-status-chips" aria-label="Статус проекта">{PROJECT_STATUSES.map((status) => <button key={status} className={p.status === status ? "is-active" : ""} onClick={() => setStatus.mutate({ id: p.id, status })}>{projectStatusLabel[status]}</button>)}</div>}
+        {canManage && <div className="project-status-chips" aria-label="Статус проекта">{PROJECT_STATUSES.map((status) => <button key={status} className={p.status === status ? "is-active" : ""} onClick={() => {
+          if (status !== "completed") { setStatus.mutate({ id: p.id, status }); return; }
+          setCompletionLoading(true);
+          void api.get<ProjectCompletionCheck>(`/api/projects/${p.id}/completion-check`).then(check => {
+            if (check.canComplete) void api.post(`/api/projects/${p.id}/complete-manually`, {}).then(() => void project.refetch());
+            else setCompletionCheck(check);
+          }).catch(error => toast("error", error instanceof Error ? error.message : "Не удалось проверить завершение")).finally(() => setCompletionLoading(false));
+        }} disabled={completionLoading}>{projectStatusLabel[status]}</button>)}</div>}
         <div className="project-hero-actions">
           {canManage && <button onClick={() => setEditOpen(true)}><ProjectGlyph type="edit" /><span>Изменить</span></button>}
           {canManage && <button onClick={() => setDuplicateOpen(true)}><ProjectGlyph type="copy" /><span>Дублировать</span></button>}
@@ -555,7 +574,23 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   </div>
                 )}
                 {canReserve && (
-                  <div className="row" style={{ marginTop: 10 }}>
+                  <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
+                    <Field label="Количество">
+                      <Input
+                        type="number"
+                        min={Math.max(1, shownIds.length)}
+                        step="1"
+                        value={reservationQtyDrafts[r.id] ?? String(r.qty)}
+                        onChange={(event) => setReservationQtyDrafts((current) => ({ ...current, [r.id]: event.target.value }))}
+                      />
+                    </Field>
+                    <Button
+                      variant="secondary"
+                      disabled={updateReservation.isPending || !Number.isInteger(Number(reservationQtyDrafts[r.id] ?? r.qty)) || Number(reservationQtyDrafts[r.id] ?? r.qty) < Math.max(1, shownIds.length) || Number(reservationQtyDrafts[r.id] ?? r.qty) === r.qty}
+                      onClick={() => updateReservation.mutate({ id: r.id, qty: Number(reservationQtyDrafts[r.id] ?? r.qty) }, { onSuccess: () => { setReservationQtyDrafts((current) => { const next = { ...current }; delete next[r.id]; return next; }); setEstimateSeeded(false); } })}
+                    >
+                      Сохранить количество
+                    </Button>
                     {requiresPlanningAssignment && <Button variant="secondary" block disabled={issued || !r.startsAt || !r.endsAt} onClick={() => setResolving(r)}>
                       {resolved ? "Изменить" : "Распределить"}
                     </Button>}
@@ -1101,7 +1136,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       {currentTab === "contractors" && (canReserve || (invoice.data && (invoice.data.contractorCostEUR > 0))) && (
         <>
           <SectionTitle>{t("contractors.title")}</SectionTitle>
-          <ContractorEquipment projectId={id} projectEndsAt={p.endsAt} canManage={canReserve} canManageFinance={canManageFinance} />
+          <ContractorEquipment projectId={id} projectStartsAt={p.startsAt} projectEndsAt={p.endsAt} canManage={canReserve} canManageFinance={canManageFinance} />
         </>
       )}
 
@@ -1297,8 +1332,53 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
       />
       <EditProjectSheet open={editOpen} project={p} clients={clients.data ?? []} onClose={() => setEditOpen(false)} />
       <DuplicateProjectSheet open={duplicateOpen} project={p} onClose={() => setDuplicateOpen(false)} />
+      <ProjectCompletionSheet open={!!completionCheck} projectId={p.id} check={completionCheck} accounts={accounts.data ?? []} canAutoResolve={can("projects.complete.override")} onClose={() => setCompletionCheck(null)} onCompleted={() => { setCompletionCheck(null); void project.refetch(); }} />
     </div>
   );
+}
+
+type ProjectCompletionCheck = {
+  canComplete: boolean;
+  canAutoResolve: boolean;
+  issues: { code: string; title: string; detail: string; autoResolvable: boolean }[];
+};
+
+function ProjectCompletionSheet({ open, projectId, check, accounts, canAutoResolve, onClose, onCompleted }: {
+  open: boolean;
+  projectId: string;
+  check: ProjectCompletionCheck | null;
+  accounts: Finance.AccountDTO[];
+  canAutoResolve: boolean;
+  onClose: () => void;
+  onCompleted: () => void;
+}) {
+  const [accountId, setAccountId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const issues = check?.issues ?? [];
+  const requiresAccount = issues.some(issue => ["client_debt", "crew_payment", "contractor_payment"].includes(issue.code));
+  const canResolve = canAutoResolve && issues.every(issue => issue.autoResolvable) && (!requiresAccount || !!accountId);
+  const complete = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/api/projects/${projectId}/complete-manually`, accountId ? { accountId } : {});
+      toast("success", "Проект завершён, обязательства проведены");
+      onCompleted();
+    } catch (error) {
+      toast("error", error instanceof Error ? error.message : "Не удалось завершить проект");
+    } finally { setBusy(false); }
+  };
+  return <Sheet open={open} title="Проверка перед завершением" onClose={onClose}>
+    <div className="stack" style={{ padding: "0 var(--space-4) var(--space-4)" }}>
+      {issues.length === 0 ? <p>Открытых обязательств нет. Проект можно завершить.</p> : <>
+        <p className="card__subtitle">Проект не будет завершён, пока эти факты не будут урегулированы.</p>
+        {issues.map((issue, index) => <Card key={`${issue.code}-${index}`} className="card--flat"><strong>{issue.title}</strong><p className="card__subtitle" style={{ marginTop: 4 }}>{issue.detail}</p>{!issue.autoResolvable && <p className="card__subtitle" style={{ color: "var(--alert)", marginTop: 4 }}>Нужно закрыть вручную.</p>}</Card>)}
+      </>}
+      {canAutoResolve && requiresAccount && <Field label="EUR-счёт для подтверждаемых оплат"><Select value={accountId} onChange={event => setAccountId(event.target.value)} options={[{ value: "", label: "Выберите счёт" }, ...accounts.filter(account => account.currency === "EUR").map(account => ({ value: account.id, label: account.name }))]} /></Field>}
+      {issues.length === 0 && canAutoResolve && <Button disabled={busy} onClick={complete}>Завершить проект</Button>}
+      {issues.length > 0 && canAutoResolve && <Button disabled={busy || !canResolve} onClick={complete}>Подтвердить факты и завершить</Button>}
+      <Button variant="secondary" onClick={onClose}>Отмена</Button>
+    </div>
+  </Sheet>;
 }
 
 function DiscountControl({ type, value, resultEUR, disabled, onType, onValue }: {

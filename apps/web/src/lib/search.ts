@@ -31,6 +31,7 @@ export function equipmentModelSearchValues(model: Equipment.EquipmentModelDTO, d
   const zones = data.zones?.filter((zone) => zoneIds.has(zone.id)) ?? [];
   return [
     model.name,
+    model.subtype,
     model.manufacturer,
     type?.name,
     ...primitiveValues(model.attrs),

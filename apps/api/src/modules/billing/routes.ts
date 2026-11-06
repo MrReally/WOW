@@ -31,6 +31,7 @@ const invoicePdfSchema = z.object({
     name: z.string(),
     count: z.string(),
     priceEUR: z.number(),
+    originalPriceEUR: z.number().nonnegative().optional(),
     costEUR: z.number(),
     comment: z.string(),
   })),

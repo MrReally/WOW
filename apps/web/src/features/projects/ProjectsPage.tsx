@@ -38,7 +38,7 @@ function ProjectCard({ project, clientName, onOpen, canViewNote, venueName }: Pr
         {dateRange(project.startsAt, project.endsAt)}
       </p>
       {venueName && <p className="card__subtitle">📍 {venueName}</p>}
-      <ProjectStageProgress stage={project.operationStage} complete={!!project.warehouseTurnoverCompletedAt} dryRental={project.dryRental} compact />
+      <ProjectStageProgress stage={project.operationStage} complete={!!project.warehouseTurnoverCompletedAt} serviceMode={project.serviceMode} compact />
       {canViewNote && project.note && <p className="project-note project-note--preview">📝 {project.note}</p>}
     </Card>
   );
@@ -166,7 +166,7 @@ export function ProjectsPage() {
                   <td>{clientName(p.clientId)}</td>
                   <td className="data-table__mono">{p.startsAt ? configuredDate(p.startsAt) : "—"}</td>
                   <td className="data-table__mono">{p.endsAt ? configuredDate(p.endsAt) : "—"}</td>
-                  <td><ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} dryRental={p.dryRental} compact /></td>
+                  <td><ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} serviceMode={p.serviceMode} compact /></td>
                   <td><StatusBadge tone={projectStatusTone[p.status]}>{projectStatusLabel[p.status]}</StatusBadge></td>
                   <td className="data-table__arrow">→</td>
                 </tr>
@@ -184,7 +184,7 @@ export function ProjectsPage() {
                       <td>{clientName(p.clientId)}</td>
                       <td className="data-table__mono">{p.startsAt ? configuredDate(p.startsAt) : "—"}</td>
                       <td className="data-table__mono">{p.endsAt ? configuredDate(p.endsAt) : "—"}</td>
-                      <td><ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} dryRental={p.dryRental} compact /></td>
+                      <td><ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} serviceMode={p.serviceMode} compact /></td>
                       <td><StatusBadge tone={projectStatusTone[p.status]}>{projectStatusLabel[p.status]}</StatusBadge></td>
                       <td className="data-table__arrow">→</td>
                     </tr>

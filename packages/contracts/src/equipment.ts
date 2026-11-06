@@ -59,6 +59,8 @@ export interface EquipmentModelDTO {
   /** Effective value after applying type inheritance and the Planning default. */
   effectiveReservationAssignmentMode?: ReservationAssignmentMode;
   name: string;
+  /** Human equipment subtype prepended to the model in estimates, e.g. "Цифровой микшер" + "Flow 8". */
+  subtype?: string | null;
   manufacturer: string | null;
   /** Optional model photo shared by mobile and desktop. PNG/JPEG data URL or hosted URL. */
   imageUrl: string | null;
@@ -498,6 +500,7 @@ export interface CreateModelInput {
   typeId: ID;
   categoryId?: ID | null;
   name: string;
+  subtype?: string | null;
   manufacturer?: string | null;
   imageUrl?: string | null;
   unitCostEUR: number;
@@ -516,6 +519,7 @@ export interface UpdateModelInput {
   typeId?: ID;
   categoryId?: ID | null;
   name?: string;
+  subtype?: string | null;
   manufacturer?: string | null;
   imageUrl?: string | null;
   unitCostEUR?: number;

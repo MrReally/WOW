@@ -1,4 +1,4 @@
-import { DEFAULT_DATE_TIME_SETTINGS, DEFAULT_PROJECT_NAME_TEMPLATE, PROJECT_CHECKLIST_GROUPS, formatProjectName, type AppSettings, type Equipment, type Projects, type Problem, type ISODateTime, type ID } from "@sever/contracts";
+import { DEFAULT_DATE_TIME_SETTINGS, DEFAULT_PROJECT_NAME_TEMPLATE, PROJECT_CHECKLIST_GROUPS, formatProjectName, projectServiceSkipsStage, type AppSettings, type Equipment, type Projects, type Problem, type ISODateTime, type ID } from "@sever/contracts";
 import { one, query, tx, type Sql } from "../../core/db.js";
 import { NotFound, BadRequest, Conflict } from "../../core/errors.js";
 import { peakBookedQuantity } from "./reservationAvailability.js";
@@ -27,6 +27,7 @@ interface ProjectRow {
   operation_stage: Projects.ProjectChecklistGroup;
   warehouse_turnover_completed_at: Date | null;
   finance_tracked: boolean;
+  service_mode: Projects.ProjectServiceMode;
   dry_rental: boolean;
   venue_id: string | null;
   dress_code_option_id: string | null;
@@ -181,6 +182,7 @@ interface ContractorItemRow {
   contractor_id: string;
   order_id: string | null;
   kind: Projects.ContractorItemKind;
+  pricing_mode: Projects.ContractorPricingMode;
   name: string;
   qty: number;
   price_eur: string;
@@ -225,7 +227,8 @@ const projectDTO = (r: ProjectRow): Projects.ProjectDTO => ({
   operationStage: r.operation_stage ?? "prep",
   warehouseTurnoverCompletedAt: r.warehouse_turnover_completed_at ? r.warehouse_turnover_completed_at.toISOString() : null,
   financeTracked: r.finance_tracked ?? true,
-  dryRental: r.dry_rental ?? false,
+  serviceMode: r.service_mode ?? (r.dry_rental ? "dry_rental_pickup" : "full_service"),
+  dryRental: (r.service_mode ?? (r.dry_rental ? "dry_rental_pickup" : "full_service")) !== "full_service",
   venueId: r.venue_id,
   dressCodeOptionId: r.dress_code_option_id,
   dressCodeLabel: r.dress_code_label,
@@ -379,6 +382,7 @@ const contractorItemDTO = (r: ContractorItemRow): Projects.ContractorItemDTO => 
   contractorId: r.contractor_id,
   orderId: r.order_id ?? null,
   kind: r.kind,
+  pricingMode: r.pricing_mode ?? "flat_total",
   name: r.name,
   qty: r.qty,
   priceEUR: Number(r.price_eur),
@@ -426,7 +430,7 @@ const stageRequiredMarks: Partial<Record<Projects.ProjectChecklistGroup, Project
 const seriesProjectFields: (keyof Projects.UpdateProjectInput)[] = [
   "name", "clientId", "startsAt", "endsAt", "venueId", "dressCodeOptionId",
   "dressCodeLabel", "dressCodeUniform", "note", "financeTracked",
-  "dryRental",
+  "serviceMode", "dryRental",
 ];
 
 function projectBaseline(project: Projects.ProjectDTO): Record<string, unknown> {
@@ -753,9 +757,9 @@ export function createProjectsService(
       const name = await renderedProjectName(baseName, client.name, input.venueId ?? null, startsAt, endsAt);
       const row = await one<ProjectRow>(
         db,
-        `INSERT INTO projects.projects (name, base_name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, dry_rental, note)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-        [name, baseName, input.clientId, input.venueId ?? null, startsAt, endsAt, input.dressCodeOptionId ?? null, input.dressCodeLabel ?? null, input.dressCodeUniform ?? false, input.financeTracked ?? true, input.dryRental ?? false, input.note?.trim() || null]
+        `INSERT INTO projects.projects (name, base_name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, service_mode, dry_rental, note)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+        [name, baseName, input.clientId, input.venueId ?? null, startsAt, endsAt, input.dressCodeOptionId ?? null, input.dressCodeLabel ?? null, input.dressCodeUniform ?? false, input.financeTracked ?? true, input.serviceMode ?? (input.dryRental ? "dry_rental_pickup" : "full_service"), (input.serviceMode ?? (input.dryRental ? "dry_rental_pickup" : "full_service")) !== "full_service", input.note?.trim() || null]
       );
       return projectDTO(row!);
     },
@@ -770,9 +774,9 @@ export function createProjectsService(
       const sourceRefMap: Record<string, string> = {};
       await tx(async (client) => {
         created = await one<ProjectRow>(client,
-          `INSERT INTO projects.projects (name, base_name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, dry_rental, note)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,$11) RETURNING *`,
-          [name, baseName, source.client_id, source.venue_id, input.startsAt, input.endsAt, source.dress_code_option_id, source.dress_code_label, source.dress_code_uniform, source.dry_rental, source.note]
+          `INSERT INTO projects.projects (name, base_name, client_id, venue_id, starts_at, ends_at, dress_code_option_id, dress_code_label, dress_code_uniform, finance_tracked, service_mode, dry_rental, note)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,$11,$12) RETURNING *`,
+          [name, baseName, source.client_id, source.venue_id, input.startsAt, input.endsAt, source.dress_code_option_id, source.dress_code_label, source.dress_code_uniform, source.service_mode ?? (source.dry_rental ? "dry_rental_pickup" : "full_service"), source.dry_rental, source.note]
         );
         const newId = created!.id;
         const sourceRoles = await query<ProjectRoleRow>(client, `SELECT * FROM projects.project_roles WHERE project_id=$1 ORDER BY created_at`, [id]);
@@ -842,9 +846,9 @@ export function createProjectsService(
         for (const item of sourceContractors) {
           const inserted = await one<{ id: string }>(client,
             `INSERT INTO projects.contractor_items
-               (project_id, contractor_id, kind, name, qty, price_eur, cost_eur, note, booked, returned_at, paid_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,false,NULL,NULL) RETURNING id`,
-            [newId, item.contractor_id, item.kind, item.name, item.qty, item.price_eur, item.cost_eur, item.note]
+               (project_id, contractor_id, kind, pricing_mode, name, qty, price_eur, cost_eur, note, booked, returned_at, paid_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,false,NULL,NULL) RETURNING id`,
+            [newId, item.contractor_id, item.kind, item.pricing_mode, item.name, item.qty, item.price_eur, item.cost_eur, item.note]
           );
           sourceRefMap[item.id] = inserted!.id;
         }
@@ -1039,6 +1043,7 @@ export function createProjectsService(
       const client = await one<ClientRow>(db, `SELECT * FROM projects.clients WHERE id=$1`, [clientId]);
       const baseName = (input.name ?? existing.baseName).trim();
       const name = await renderedProjectName(baseName, client?.name ?? "", venueId, startsAt, endsAt);
+      const serviceMode = input.serviceMode ?? (input.dryRental === undefined ? existing.serviceMode : input.dryRental ? "dry_rental_pickup" : "full_service");
       const row = await tx(async (client) => {
         const updated = await one<ProjectRow>(
           client,
@@ -1046,10 +1051,11 @@ export function createProjectsService(
              name=$2, base_name=$3, client_id=$4, venue_id=$5,
              starts_at=$6, ends_at=$7, dress_code_option_id=$8,
              dress_code_label=$9, dress_code_uniform=$10,
-             finance_tracked=$11, dry_rental=$12, note=$13,
+             finance_tracked=$11, service_mode=$12, dry_rental=($12 <> 'full_service'), note=$13,
              operation_stage=CASE
-               WHEN $12=true AND operation_stage IN ('delivery','mount') THEN 'show'
-               WHEN $12=true AND operation_stage='dismantle' THEN 'return'
+               WHEN $12='dry_rental_pickup' AND operation_stage IN ('delivery','mount') THEN 'show'
+               WHEN $12 IN ('dry_rental_pickup','dry_rental_delivery') AND operation_stage='mount' THEN 'show'
+               WHEN $12 IN ('dry_rental_pickup','dry_rental_delivery') AND operation_stage='dismantle' THEN 'return'
                ELSE operation_stage
              END
            WHERE id=$1 RETURNING *`,
@@ -1058,7 +1064,7 @@ export function createProjectsService(
             input.dressCodeLabel === undefined ? existing.dressCodeLabel : input.dressCodeLabel,
             input.dressCodeUniform === undefined ? existing.dressCodeUniform : input.dressCodeUniform,
             input.financeTracked === undefined ? existing.financeTracked : input.financeTracked,
-            input.dryRental === undefined ? existing.dryRental : input.dryRental,
+            serviceMode,
             input.note === undefined ? existing.note : input.note?.trim() || null]
         );
         if (startsAt !== existing.startsAt || endsAt !== existing.endsAt) {
@@ -1148,8 +1154,9 @@ export function createProjectsService(
     async setOperationStage(id, stage, actorId) {
       const existing = await one<ProjectRow>(db, `SELECT * FROM projects.projects WHERE id=$1`, [id]);
       if (!existing) throw NotFound("project", id);
-      if (existing.dry_rental && (stage === "delivery" || stage === "mount" || stage === "dismantle")) {
-        throw BadRequest("в сухой аренде нет этапов «Доставка», «Монтаж» и «Демонтаж»");
+      const serviceMode = existing.service_mode ?? (existing.dry_rental ? "dry_rental_pickup" : "full_service");
+      if (projectServiceSkipsStage(serviceMode, stage)) {
+        throw BadRequest(serviceMode === "dry_rental_delivery" ? "в сухой аренде с доставкой нет этапов «Монтаж» и «Демонтаж»" : "в сухой аренде с самовывозом нет этапов «Доставка», «Монтаж» и «Демонтаж»");
       }
       if (existing.operation_stage === stage) return projectDTO(existing);
       const isForward = PROJECT_CHECKLIST_GROUPS.indexOf(stage) > PROJECT_CHECKLIST_GROUPS.indexOf(existing.operation_stage);
@@ -1292,8 +1299,8 @@ export function createProjectsService(
     async setOperationUnitMark(input) {
       const project = await this.getProject(input.projectId);
       if (!project) throw NotFound("project", input.projectId);
-      if (project.dryRental && (input.stage === "delivery" || input.stage === "mount" || input.stage === "dismantle")) {
-        throw BadRequest("в сухой аренде нет этапов «Доставка», «Монтаж» и «Демонтаж»");
+      if (projectServiceSkipsStage(project.serviceMode, input.stage)) {
+        throw BadRequest(project.serviceMode === "dry_rental_delivery" ? "в сухой аренде с доставкой нет этапов «Монтаж» и «Демонтаж»" : "в сухой аренде с самовывозом нет этапов «Доставка», «Монтаж» и «Демонтаж»");
       }
       if (input.status === "held_in_reserve") {
         if (input.stage !== "mount") throw BadRequest("эксплуатационный запас отмечается на этапе «Монтаж»");
@@ -1373,6 +1380,20 @@ export function createProjectsService(
         [input.projectId, input.modelId, input.qty, input.isReserve ?? false, startsAt, endsAt]
       );
       if (startsAt && endsAt) await syncReservationAvailabilityProblems(input.modelId, startsAt, endsAt);
+      return reservationDTO(row!);
+    },
+    async updateReservation(id, input) {
+      const existing = await one<ReservationRow>(db, `SELECT * FROM projects.reservations WHERE id=$1`, [id]);
+      if (!existing) throw NotFound("reservation", id);
+      if (!Number.isInteger(input.qty) || input.qty < 1) throw BadRequest("количество брони должно быть положительным целым числом");
+      if (input.qty < existing.resolved_unit_ids.length) {
+        throw BadRequest(`нельзя уменьшить бронь ниже уже распределённого количества (${existing.resolved_unit_ids.length})`);
+      }
+      const row = await one<ReservationRow>(db, `UPDATE projects.reservations SET qty=$2 WHERE id=$1 RETURNING *`, [id, input.qty]);
+      if (existing.starts_at && existing.ends_at) {
+        await syncReservationAvailabilityProblems(existing.model_id, existing.starts_at.toISOString(), existing.ends_at.toISOString());
+      }
+      await bus.publish({ type: "reservation.updated", reservationId: id, projectId: existing.project_id, at: new Date().toISOString() });
       return reservationDTO(row!);
     },
     async resolveReservation(id, unitIds) {
@@ -1638,9 +1659,7 @@ export function createProjectsService(
       let rows = await loadChecklist(projectId);
       const hasDefault = (item: { group: Projects.ProjectChecklistGroup; title: string }) =>
         rows.some((row) => row.group_key === item.group && row.title === item.title);
-      const applicableDefaults = project.dryRental
-        ? defaultChecklist.filter((item) => item.group !== "delivery" && item.group !== "mount" && item.group !== "dismantle")
-        : defaultChecklist;
+      const applicableDefaults = defaultChecklist.filter((item) => !projectServiceSkipsStage(project.serviceMode, item.group));
       const missingDefaults = applicableDefaults.filter((item) => !hasDefault(item));
       if (missingDefaults.length > 0) {
         await tx(async (client) => {
@@ -1655,7 +1674,7 @@ export function createProjectsService(
         rows = await loadChecklist(projectId);
       }
       return rows
-        .filter((row) => !project.dryRental || (row.group_key !== "delivery" && row.group_key !== "mount" && row.group_key !== "dismantle"))
+        .filter((row) => !projectServiceSkipsStage(project.serviceMode, row.group_key))
         .map(checklistDTO);
     },
     async createChecklistItem(input) {
@@ -2087,12 +2106,13 @@ export function createProjectsService(
     async addContractorItem(input) {
       const row = await one<ContractorItemRow>(
         db,
-        `INSERT INTO projects.contractor_items (project_id, contractor_id, kind, name, qty, price_eur, cost_eur, note, returned_at, paid_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CASE WHEN $7::numeric=0 THEN now() ELSE NULL END) RETURNING *`,
+        `INSERT INTO projects.contractor_items (project_id, contractor_id, kind, pricing_mode, name, qty, price_eur, cost_eur, note, returned_at, paid_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CASE WHEN $8::numeric=0 THEN now() ELSE NULL END) RETURNING *`,
         [
           input.projectId,
           input.contractorId,
           input.kind ?? "equipment",
+          input.pricingMode ?? (input.kind === "delivery" || input.kind === "setup" ? "flat_total" : "per_day"),
           input.name,
           input.qty,
           input.priceEUR,
@@ -2109,8 +2129,8 @@ export function createProjectsService(
       if (existing.order_id) throw BadRequest("пакетный заказ нельзя изменить как ручную позицию");
       const row = await one<ContractorItemRow>(
         db,
-        `UPDATE projects.contractor_items SET contractor_id=$2, kind=$3, name=$4, qty=$5, price_eur=$6, cost_eur=$7, note=$8, booked=$9 WHERE id=$1 RETURNING *`,
-        [id, input.contractorId ?? existing.contractor_id, input.kind ?? existing.kind, input.name ?? existing.name, input.qty ?? existing.qty, input.priceEUR ?? Number(existing.price_eur), input.costEUR ?? Number(existing.cost_eur), input.note === undefined ? existing.note : input.note, input.booked ?? existing.booked]
+        `UPDATE projects.contractor_items SET contractor_id=$2, kind=$3, pricing_mode=$4, name=$5, qty=$6, price_eur=$7, cost_eur=$8, note=$9, booked=$10 WHERE id=$1 RETURNING *`,
+        [id, input.contractorId ?? existing.contractor_id, input.kind ?? existing.kind, input.pricingMode ?? existing.pricing_mode, input.name ?? existing.name, input.qty ?? existing.qty, input.priceEUR ?? Number(existing.price_eur), input.costEUR ?? Number(existing.cost_eur), input.note === undefined ? existing.note : input.note, input.booked ?? existing.booked]
       );
       return contractorItemDTO(row!);
     },
@@ -2163,7 +2183,11 @@ export function createProjectsService(
     async contractorDebts() {
       const rows = await query<{ contractor_id: string; debt: string }>(
         db,
-        `SELECT ci.contractor_id, COALESCE(SUM(ci.cost_eur * ci.qty),0)::text AS debt
+        `SELECT ci.contractor_id,
+                COALESCE(SUM(ci.cost_eur * ci.qty * CASE
+                  WHEN ci.pricing_mode='per_day' THEN COALESCE(GREATEST(1, CEIL(EXTRACT(EPOCH FROM (p.ends_at-p.starts_at))/86400)),1)
+                  ELSE 1
+                END),0)::text AS debt
          FROM projects.contractor_items ci
          JOIN projects.projects p ON p.id=ci.project_id
          WHERE ci.paid_at IS NULL AND p.finance_tracked=true
@@ -2193,7 +2217,7 @@ export function createProjectsService(
           pickupTimingId=(await one<{id:string}>(client,`INSERT INTO projects.timings (project_id,title,starts_at,ends_at) VALUES ($1,$2,$3,$4) RETURNING id`,[input.projectId,`Забор подрядчиком: ${input.name.trim()}`,input.pickupAt,pickupEnd]))!.id;
           await query(client,`UPDATE projects.contractor_orders SET delivery_timing_id=$2,pickup_timing_id=$3 WHERE id=$1`,[row!.id,deliveryTimingId,pickupTimingId]);
         }
-        await query(client,`INSERT INTO projects.contractor_items (project_id,contractor_id,kind,name,qty,price_eur,cost_eur,note,booked,order_id,paid_at) VALUES ($1,$2,'equipment',$3,1,$4,$5,$6,$7,$8,CASE WHEN $5::numeric=0 THEN now() ELSE NULL END)`,[input.projectId,input.contractorId,input.name.trim(),input.clientPriceEUR,input.supplierPriceEUR,input.fulfillmentMode==='contractor_delivery'?'Цена подрядчика включает доставку':'Сухая аренда у подрядчика',input.booked??false,row!.id]);
+        await query(client,`INSERT INTO projects.contractor_items (project_id,contractor_id,kind,pricing_mode,name,qty,price_eur,cost_eur,note,booked,order_id,paid_at) VALUES ($1,$2,'equipment','flat_total',$3,1,$4,$5,$6,$7,$8,CASE WHEN $5::numeric=0 THEN now() ELSE NULL END)`,[input.projectId,input.contractorId,input.name.trim(),input.clientPriceEUR,input.supplierPriceEUR,input.fulfillmentMode==='contractor_delivery'?'Цена подрядчика включает доставку':'Сухая аренда у подрядчика',input.booked??false,row!.id]);
         for (const line of input.lines) await query(client,`INSERT INTO projects.contractor_order_lines (order_id,catalog_item_id,name,qty) VALUES ($1,$2,$3,$4)`,[row!.id,line.catalogItemId,line.name.trim(),line.qty]);
         return one<ContractorOrderRow>(client,`SELECT * FROM projects.contractor_orders WHERE id=$1`,[row!.id]);
       });

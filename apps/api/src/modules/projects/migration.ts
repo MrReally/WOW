@@ -27,6 +27,14 @@ ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS operation_stage text NOT 
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS warehouse_turnover_completed_at timestamptz;
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS finance_tracked boolean NOT NULL DEFAULT true;
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dry_rental boolean NOT NULL DEFAULT false;
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS service_mode text;
+UPDATE projects.projects
+SET service_mode=CASE WHEN dry_rental THEN 'dry_rental_pickup' ELSE 'full_service' END
+WHERE service_mode IS NULL;
+ALTER TABLE projects.projects ALTER COLUMN service_mode SET DEFAULT 'full_service';
+ALTER TABLE projects.projects ALTER COLUMN service_mode SET NOT NULL;
+ALTER TABLE projects.projects DROP CONSTRAINT IF EXISTS projects_service_mode_check;
+ALTER TABLE projects.projects ADD CONSTRAINT projects_service_mode_check CHECK (service_mode IN ('full_service','dry_rental_pickup','dry_rental_delivery'));
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_option_id uuid;
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_label text;
 ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS dress_code_uniform boolean NOT NULL DEFAULT false;
@@ -312,6 +320,17 @@ ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS kind text NOT NUL
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS booked boolean NOT NULL DEFAULT false;
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS paid_at timestamptz;
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS order_id uuid;
+ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS pricing_mode text;
+UPDATE projects.contractor_items
+SET pricing_mode=CASE
+  WHEN kind='equipment' AND order_id IS NULL THEN 'per_day'
+  ELSE 'flat_total'
+END
+WHERE pricing_mode IS NULL;
+ALTER TABLE projects.contractor_items ALTER COLUMN pricing_mode SET DEFAULT 'per_day';
+ALTER TABLE projects.contractor_items ALTER COLUMN pricing_mode SET NOT NULL;
+ALTER TABLE projects.contractor_items DROP CONSTRAINT IF EXISTS contractor_items_pricing_mode_check;
+ALTER TABLE projects.contractor_items ADD CONSTRAINT contractor_items_pricing_mode_check CHECK (pricing_mode IN ('per_day','flat_total'));
 ALTER TABLE projects.contractor_items DROP CONSTRAINT IF EXISTS contractor_items_kind_check;
 ALTER TABLE projects.contractor_items ADD CONSTRAINT contractor_items_kind_check CHECK (kind IN ('equipment','delivery','setup'));
 CREATE INDEX IF NOT EXISTS contractor_items_project_idx ON projects.contractor_items(project_id);

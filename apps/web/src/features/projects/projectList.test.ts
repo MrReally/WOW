@@ -12,6 +12,7 @@ const project = (id: string, status: Projects.ProjectStatus, completedAt: string
   warehouseTurnoverCompletedAt: completedAt,
   financeTracked: true,
   dryRental: false,
+  serviceMode: "full_service",
   venueId: null,
   dressCodeOptionId: null,
   dressCodeLabel: null,

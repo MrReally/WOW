@@ -50,6 +50,29 @@ describe("billing reserve equipment", () => {
     expect(invoice.invoiceEUR).toBe(400);
   });
 
+  it("shows equipment subtype and multiplies per-day contractor positions", async () => {
+    const start = "2026-07-17T10:00:00.000Z";
+    const end = "2026-07-20T10:00:00.000Z";
+    const billing = createBillingService({
+      projects: {
+        getProject: async () => ({ id: "project", startsAt: start, endsAt: end }),
+        listReservations: async () => [{ id: "own", modelId: "model", qty: 1, isReserve: false }],
+        listAssignments: async () => [], listProjectRoles: async () => [], listProjects: async () => [],
+        listContractorItems: async () => [{ id: "vendor", contractorId: "contractor", kind: "equipment", name: "Beam", qty: 2, priceEUR: 20, costEUR: 10, pricingMode: "per_day" }],
+      },
+      equipment: { listModels: async () => [{ id: "model", typeId: "type", subtype: "Цифровой микшер", name: "Flow 8", dailyPriceEUR: 5 }], listTypes: async () => [{ id: "type", name: "Звук" }] },
+      finance: { listTransactions: async () => [], listProjectEstimateLines: async () => [], getProjectEstimateSettings: async () => ({ projectId: "project", totalDiscountType: "percent", totalDiscountValue: 0 }), listFxRates: async () => [] },
+      people: {},
+    } as unknown as BillingDeps);
+
+    const invoice = await billing.projectInvoice("project");
+    expect(invoice.rentalLines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "Цифровой микшер Flow 8", amountEUR: 15 }),
+      expect.objectContaining({ label: "Beam", periods: 3, amountEUR: 120, costEUR: 60 }),
+    ]));
+    expect(invoice.contractorCostEUR).toBe(60);
+  });
+
   it("does not expose an internal project-role comment in the client invoice", async () => {
     const start = "2026-07-17T10:00:00.000Z";
     const end = "2026-07-18T10:00:00.000Z";

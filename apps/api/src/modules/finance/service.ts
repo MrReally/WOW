@@ -375,10 +375,10 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
         if (!previous) throw NotFound("transaction", id);
         if (previous.voided_at) throw BadRequest("отменённую транзакцию нельзя редактировать");
         if (previous.category === "adjustment") throw BadRequest("корректировку остатка нельзя редактировать; сторнируйте её и создайте новую");
-        if (input.amount * Number(previous.fx_rate_to_eur) >= 1_000_000_000_000) throw BadRequest("сумма в EUR превышает допустимый размер");
         const account = await one<AccountRow>(client, `SELECT * FROM finance.accounts WHERE id=$1`, [input.accountId]);
         if (!account) throw NotFound("account", input.accountId);
-        if (account.currency !== previous.currency) throw BadRequest("счёт при редактировании должен быть в той же валюте");
+        const rate = account.currency === previous.currency ? Number(previous.fx_rate_to_eur) : await currentRate(account.currency);
+        if (input.amount * rate >= 1_000_000_000_000) throw BadRequest("сумма в EUR превышает допустимый размер");
         // Acquire account locks in a stable order before moving the balance.
         await query(client, `SELECT id FROM finance.accounts WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE`, [[previous.account_id, input.accountId]]);
         if (CASH_CATEGORIES.has(previous.category)) {
@@ -387,16 +387,17 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
           await query(client, `UPDATE finance.accounts SET balance=balance-$2 WHERE id=$1`, [previous.account_id, oldDelta]);
           await query(client, `UPDATE finance.accounts SET balance=balance+$2 WHERE id=$1`, [input.accountId, newDelta]);
         }
-        // Corrections preserve the original amount and FX snapshot permanently.
+        // A same-currency correction keeps its original FX snapshot. Moving to
+        // another currency creates a new snapshot for the replacement entry.
         await query(client, `UPDATE finance.transactions SET voided_by=$2, voided_at=now() WHERE id=$1`, [id, actorId]);
         return one<TxRow>(client,
           `INSERT INTO finance.transactions
             (account_id, project_id, unit_id, assignment_id, contractor_id, kind, category, amount, currency,
              fx_rate_to_eur, amount_eur, note, created_by, updated_by, updated_at, replaces_transaction_id)
-           SELECT $2, project_id, unit_id, assignment_id, contractor_id, kind, category, $3, currency,
-             fx_rate_to_eur, ROUND($3*fx_rate_to_eur,2), $4, $5, $5, now(), id
+           SELECT $2, project_id, unit_id, assignment_id, contractor_id, kind, category, $3, $6,
+             $7, ROUND($3::numeric*$7::numeric,2), $4, $5, $5, now(), id
            FROM finance.transactions WHERE id=$1 RETURNING *`,
-          [id, input.accountId, input.amount, input.note ?? null, actorId]
+          [id, input.accountId, input.amount, input.note ?? null, actorId, account.currency, rate]
         );
       });
       const dto = txDTO(updated!);

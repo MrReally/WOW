@@ -41,6 +41,7 @@ const TRANSACTION_CATEGORY: Record<Finance.TxCategory, string> = {
   purchase: "Закупка",
   repair: "Ремонт",
   salary: "Зарплата",
+  adjustment: "Корректировка",
   other: "Прочее",
 };
 
@@ -221,7 +222,8 @@ export async function createFullExportCsv(deps: ExportDeps, canViewProjectNotes:
     const positions: PositionDraft[] = [];
     const contractorEconomics = new Map(contractorItems.map((item) => {
       const saved = estimatesBySource.get(item.id);
-      const economics = estimateEconomics(item.priceEUR * item.qty, item.costEUR * item.qty, saved, rsdRateToEUR);
+      const periods = item.pricingMode === "per_day" ? projectDays : 1;
+      const economics = estimateEconomics(item.priceEUR * item.qty * periods, item.costEUR * item.qty * periods, saved, rsdRateToEUR);
       return [item.id, saved?.hidden ? { ...economics, revenue: 0, cost: 0 } : economics] as const;
     }));
     const contractorItemsByContractor = new Map<string, Projects.ContractorItemDTO[]>();

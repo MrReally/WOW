@@ -21,12 +21,14 @@ export function VenuesPage() {
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const saveNew = () => create.mutate(draft as Venues.CreateVenueInput, { onSuccess: () => { setDraft(emptyDraft()); setCreating(false); } });
-  const rows=(venues.data??[]).filter(venue=>!query.trim()||[venue.name,venue.address].some(value=>value?.toLowerCase().includes(query.trim().toLowerCase())));
+  const modeRows=(venues.data??[]).filter(venue=>showArchive ? !!venue.archivedAt : !venue.archivedAt);
+  const rows=modeRows
+    .filter(venue=>!query.trim()||[venue.name,venue.address].some(value=>value?.toLowerCase().includes(query.trim().toLowerCase())));
   const selected=(venues.data??[]).find(venue=>venue.id===selectedId)??null;
   return <div className="stack venues-page">
     {!selected&&<>
     {can("venues.manage")&&<Button block onClick={()=>setCreating(true)}>+ Площадка</Button>}
-    <div className="segmented-control"><button className={!showArchive?"is-active":""} onClick={()=>setShowArchive(false)}>Активные · {!showArchive?(venues.data??[]).length:""}</button><button className={showArchive?"is-active":""} onClick={()=>setShowArchive(true)}>Архив{showArchive?` · ${(venues.data??[]).length}`:""}</button></div>
+    <div className="segmented-control"><button className={!showArchive?"is-active":""} onClick={()=>setShowArchive(false)}>Активные · {!showArchive?modeRows.length:""}</button><button className={showArchive?"is-active":""} onClick={()=>setShowArchive(true)}>Архив{showArchive?` · ${modeRows.length}`:""}</button></div>
     <Input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Название или адрес"/>
     <Sheet open={creating} onClose={()=>setCreating(false)} title="Новая площадка"><VenueForm draft={draft} setDraft={setDraft}/><div className="row"><Button block disabled={!draft.name.trim()||create.isPending} onClick={saveNew}>Создать</Button><Button block variant="secondary" onClick={()=>setCreating(false)}>Отмена</Button></div></Sheet>
     {venues.isLoading?<Loading/>:rows.length===0?<EmptyState title="Площадок пока нет"/>:<Card className="directory-list">{rows.map(venue=><button className="directory-row" key={venue.id} onClick={()=>setSelectedId(venue.id)}><span className="directory-row__icon">⌂</span><span><strong>{venue.name}</strong><small>{[venue.address,venue.workingHours].filter(Boolean).join(" · ")||"Адрес не указан"}</small></span>{venue.archivedAt&&<Chip label="архив" tone="neutral"/>}<i>›</i></button>)}</Card>}

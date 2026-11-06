@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { Equipment, Finance, People, Projects } from "@sever/contracts";
+import { projectRentalDays, type Equipment, type Finance, type People, type Projects } from "@sever/contracts";
 import { Avatar, Button, Card, Chip, EmptyState, ErrorState, Input, Loading, SectionHead, Select, WSGlyph } from "../../ui-kit/index.ts";
 import { dateRange, dateTime, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
 import { configuredTime } from "../../lib/dateFormat.ts";
@@ -154,7 +154,7 @@ export function OperationsProjectPage() {
   if (!project.data) return <EmptyState title="Проект не найден" />;
 
   const activeStage = project.data.operationStage ?? "prep";
-  const stageOrder = projectStageOrder(project.data.dryRental);
+  const stageOrder = projectStageOrder(project.data.serviceMode);
   const upcomingStage = nextStage(activeStage, stageOrder);
   const rollbackStage = previousStage(activeStage, stageOrder);
   const seesWholeTiming = !!user?.operationsShowAllProjects || can("projects.timing.viewAll", "projects.timing.manage");
@@ -174,13 +174,14 @@ export function OperationsProjectPage() {
             <p className="card__title">{project.data.name}</p>
             <p className="card__subtitle">{dateRange(project.data.startsAt, project.data.endsAt)}</p>
             {venue && <div className="row" style={{ gap: 6 }}><p className="card__subtitle" style={{ minWidth: 0 }}>📍 {venue.name}</p><MapRouteButton venue={venue} /></div>}
-            {project.data.dryRental && <p className="card__subtitle">Сухая аренда</p>}
+            {project.data.serviceMode === "dry_rental_pickup" && <p className="card__subtitle">Сухая аренда · самовывоз</p>}
+            {project.data.serviceMode === "dry_rental_delivery" && <p className="card__subtitle">Сухая аренда · с доставкой</p>}
             {(project.data.dressCodeLabel || project.data.dressCodeUniform) && <p className="card__subtitle">👔 {[project.data.dressCodeLabel, project.data.dressCodeUniform ? "форма SEVER" : null].filter(Boolean).join(" · ")}</p>}
             {canViewProjectNote && project.data.note && <p className="project-note">📝 {project.data.note}</p>}
           </div>
           <Chip label={projectStatusLabel[project.data.status]} tone={projectStatusTone[project.data.status]} />
         </div>
-        <ProjectStageProgress stage={activeStage} complete={!!project.data.warehouseTurnoverCompletedAt} dryRental={project.data.dryRental} />
+        <ProjectStageProgress stage={activeStage} complete={!!project.data.warehouseTurnoverCompletedAt} serviceMode={project.data.serviceMode} />
       </Card>
 
       <div className="segmented-control operations-project-tabs" role="tablist" aria-label="Operations">
@@ -318,6 +319,8 @@ function OperationsTimingPanel({
 
 function OperationsFinancePanel({ project, canClientView, canClientManage, canPayrollView, canPayrollManage }: { project: Projects.ProjectDTO; canClientView: boolean; canClientManage: boolean; canPayrollView: boolean; canPayrollManage: boolean }) {
   const projectId = project.id;
+  const navigate = useNavigate();
+  const { can } = useSession();
   const invoice = useProjectInvoice(projectId, canClientView && project.financeTracked), accounts = useAccounts(canClientView || canPayrollView), createTransaction = useCreateTransaction(), assignments = useAssignments(projectId), people = usePeople(canPayrollView || canClientView), transactions = useTransactions(projectId, true), contractorItems = useContractorItems(projectId), contractors = useContractors(), setFinanceTracking = useSetProjectFinanceTracking();
   const activeTransactions = (transactions.data ?? []).filter(transaction => !transaction.voidedAt);
   const active = (assignments.data ?? []).filter(x => x.status === "added" || x.status === "accepted");
@@ -337,6 +340,10 @@ function OperationsFinancePanel({ project, canClientView, canClientManage, canPa
         <div><p className="card__subtitle">Получено</p><p className="card__title">{money(invoice.data?.paidEUR ?? 0)}</p></div>
         <div><p className="card__subtitle">{(invoice.data?.dueEUR ?? 0) >= 0 ? "Осталось" : "Переплата"}</p><p className="card__title">{money(Math.abs(invoice.data?.dueEUR ?? 0))}</p></div>
       </div>
+      {(invoice.data?.rentalLines.length ?? 0) > 0 && <div className="stack" style={{ marginTop: 10, gap: 6 }}>
+        {invoice.data!.rentalLines.map(line => <div className="row row--between" key={line.refId}><span>{line.label} · {line.qty}{line.periods > 1 ? ` × ${line.periods} дн.` : ""}</span><strong>{money(line.amountEUR)}</strong></div>)}
+      </div>}
+      {can("finance.view", "finance.manage") && <Button variant="ghost" onClick={() => navigate(`/projects/${projectId}/invoice`)}>Открыть смету и PDF</Button>}
       {canClientManage && <PaymentComposer accounts={accounts.data ?? []} label="Оплата клиента" pending={createTransaction.isPending} onPay={(account, amount) => createTransaction.mutate({ accountId: account.id, projectId, kind: "income", category: (invoice.data?.paidEUR ?? 0) > 0 ? "debt_settlement" : "prepayment", amount, currency: account.currency, note: "Оплата клиента из Operations" }, { onSuccess: () => invoice.refetch() })} />}
     </Card>}
     {canPayrollView && <Card><p className="card__title">Выплаты команде</p><div className="stack" style={{marginTop:10}}>{active.map(assignment => {
@@ -346,7 +353,7 @@ function OperationsFinancePanel({ project, canClientView, canClientManage, canPa
       const rest = Math.max(0, due - paid);
       return <div className="stack" style={{ gap: 6 }} key={assignment.id}><div className="row row--between"><div><p>{name(assignment.userId)} · {assignment.roleNote ?? "Роль"}</p><p className="card__subtitle">ставка {money(due)} · выплачено {money(paid)}{rest ? ` · осталось ${money(rest)}` : ""}</p></div><label className="chip chip--neutral"><input type="checkbox" checked={due <= 0 || rest <= 0.005} readOnly /> оплачено</label></div>{canPayrollManage && due > 0 && rest > 0.005 && <PaymentComposer accounts={accounts.data ?? []} label="Выплата" max={rest} pending={createTransaction.isPending} onPay={(account, amount) => createTransaction.mutate({ accountId: account.id, projectId, assignmentId: assignment.id, kind: "expense", category: "salary", amount, currency: account.currency, note: `Выплата ${name(assignment.userId)} · ${assignment.roleNote ?? "роль"}` })} />}</div>;
     })}</div></Card>}
-    {canClientView && <ContractorPayments projectId={projectId} items={contractorItems.data ?? []} contractors={contractors.data ?? []} transactions={activeTransactions} accounts={accounts.data ?? []} canManage={canClientManage} createTransaction={createTransaction} money={money} />}
+    {canClientView && <ContractorPayments project={project} items={contractorItems.data ?? []} contractors={contractors.data ?? []} transactions={activeTransactions} accounts={accounts.data ?? []} canManage={canClientManage} createTransaction={createTransaction} money={money} />}
     <ProjectTransactionList transactions={transactions.data ?? []} accounts={accounts.data ?? []} people={people.data ?? []} canClientManage={canClientManage} canPayrollManage={canPayrollManage} />
     </>}
   </>;
@@ -360,11 +367,13 @@ function PaymentComposer({ accounts, label, max, pending, onPay }: { accounts: F
   return <div className="row"><Select value={account?.id ?? ""} onChange={event => setAccountId(event.target.value)} options={accounts.map(item => ({ value: item.id, label: `${item.name} · ${item.currency}` }))} /><Input type="number" min="0" max={limit} value={amount} onChange={event => setAmount(event.target.value)} placeholder={`${label}${account ? `, ${account.currency}` : ""}`} /><Button variant="secondary" disabled={!account || value <= 0 || pending} onClick={() => { onPay(account!, value); setAmount(""); }}>{label}</Button></div>;
 }
 
-function ContractorPayments({ projectId, items, contractors, transactions, accounts, canManage, createTransaction, money }: { projectId: string; items: Projects.ContractorItemDTO[]; contractors: Equipment.ContractorDTO[]; transactions: Finance.TransactionDTO[]; accounts: Finance.AccountDTO[]; canManage: boolean; createTransaction: ReturnType<typeof useCreateTransaction>; money: (value: number | null | undefined) => string }) {
+function ContractorPayments({ project, items, contractors, transactions, accounts, canManage, createTransaction, money }: { project: Projects.ProjectDTO; items: Projects.ContractorItemDTO[]; contractors: Equipment.ContractorDTO[]; transactions: Finance.TransactionDTO[]; accounts: Finance.AccountDTO[]; canManage: boolean; createTransaction: ReturnType<typeof useCreateTransaction>; money: (value: number | null | undefined) => string }) {
+  const projectId = project.id;
+  const days = projectRentalDays(project.startsAt, project.endsAt);
   const contractorIds = [...new Set(items.map(item => item.contractorId))];
   if (!contractorIds.length) return null;
   return <Card><p className="card__title">Оплата подрядчиков</p><div className="stack" style={{ marginTop: 10 }}>{contractorIds.map(contractorId => {
-    const due = items.filter(item => item.contractorId === contractorId).reduce((sum, item) => sum + item.costEUR * item.qty, 0);
+    const due = items.filter(item => item.contractorId === contractorId).reduce((sum, item) => sum + item.costEUR * item.qty * (item.pricingMode === "per_day" ? days : 1), 0);
     const paid = transactions.filter(transaction => transaction.contractorId === contractorId && transaction.kind === "expense").reduce((sum, transaction) => sum + transaction.amountEUR, 0);
     const rest = Math.max(0, due - paid);
     const contractorName = contractors.find(contractor => contractor.id === contractorId)?.name ?? "Подрядчик";
@@ -385,8 +394,8 @@ function ProjectTransactionList({ transactions, accounts, people, canClientManag
 
 function TransactionEditor({ transaction, accounts, accountName, actorName, canManage, pending, onSave, onVoid }: { transaction: Finance.TransactionDTO; accounts: Finance.AccountDTO[]; accountName: (id: string) => string; actorName: (id: string | null) => string; canManage: boolean; pending: boolean; onSave: (input: Finance.UpdateTransactionInput) => void; onVoid: () => void }) {
   const [editing, setEditing] = useState(false), [accountId, setAccountId] = useState(transaction.accountId), [amount, setAmount] = useState(String(transaction.amount)), [note, setNote] = useState(transaction.note ?? "");
-  const compatibleAccounts = accounts.filter(account => account.currency === transaction.currency);
-  return <Card style={transaction.voidedAt ? { opacity: 0.55 } : undefined}><div className="row row--between"><div><p className="card__title">{transaction.note || (transaction.kind === "income" ? "Оплата клиента" : "Выплата")}</p><p className="card__subtitle">{dateTime(transaction.createdAt)} · {accountName(transaction.accountId)} · внёс {actorName(transaction.createdByUserId)}{transaction.updatedAt ? ` · изменил ${actorName(transaction.updatedByUserId)}` : ""}{transaction.voidedAt ? ` · отменил ${actorName(transaction.voidedByUserId)}` : ""}</p></div><strong style={{ color: transaction.kind === "income" ? "var(--ok)" : "var(--danger)" }}>{transaction.kind === "income" ? "+" : "−"}{transaction.amount.toLocaleString("ru-RU")} {transaction.currency}</strong></div>{editing && !transaction.voidedAt && <div className="stack" style={{ marginTop: 8 }}><Select value={accountId} onChange={event => setAccountId(event.target.value)} options={compatibleAccounts.map(account => ({ value: account.id, label: account.name }))} /><Input type="number" min="0.01" value={amount} onChange={event => setAmount(event.target.value)} /><Input value={note} onChange={event => setNote(event.target.value)} placeholder="Комментарий" /><div className="row"><Button disabled={pending || !(Number(amount) > 0)} onClick={() => { onSave({ accountId, amount: Number(amount), note: note.trim() || null }); setEditing(false); }}>Сохранить</Button><Button variant="ghost" onClick={() => setEditing(false)}>Отмена</Button></div></div>}{canManage && !transaction.voidedAt && !editing && <div className="row" style={{ marginTop: 8 }}><Button variant="ghost" onClick={() => setEditing(true)}>Изменить</Button><Button variant="ghost" disabled={pending} onClick={onVoid}>Отменить оплату</Button></div>}</Card>;
+  const selectedAccount = accounts.find(account => account.id === accountId);
+  return <Card style={transaction.voidedAt ? { opacity: 0.55 } : undefined}><div className="row row--between"><div><p className="card__title">{transaction.note || (transaction.kind === "income" ? "Оплата клиента" : "Выплата")}</p><p className="card__subtitle">{dateTime(transaction.createdAt)} · {accountName(transaction.accountId)} · внёс {actorName(transaction.createdByUserId)}{transaction.updatedAt ? ` · изменил ${actorName(transaction.updatedByUserId)}` : ""}{transaction.voidedAt ? ` · отменил ${actorName(transaction.voidedByUserId)}` : ""}</p></div><strong style={{ color: transaction.kind === "income" ? "var(--ok)" : "var(--danger)" }}>{transaction.kind === "income" ? "+" : "−"}{transaction.amount.toLocaleString("ru-RU")} {transaction.currency}</strong></div>{editing && !transaction.voidedAt && <div className="stack" style={{ marginTop: 8 }}><Select value={accountId} onChange={event => setAccountId(event.target.value)} options={accounts.map(account => ({ value: account.id, label: `${account.name} · ${account.currency}` }))} /><Input type="number" min="0.01" value={amount} onChange={event => setAmount(event.target.value)} placeholder={selectedAccount?.currency ?? transaction.currency} /><p className="card__subtitle">При смене валюты сумма пересчитывается по текущему курсу выбранного счёта.</p><Input value={note} onChange={event => setNote(event.target.value)} placeholder="Комментарий" /><div className="row"><Button disabled={pending || !(Number(amount) > 0)} onClick={() => { onSave({ accountId, amount: Number(amount), note: note.trim() || null }); setEditing(false); }}>Сохранить</Button><Button variant="ghost" onClick={() => setEditing(false)}>Отмена</Button></div></div>}{canManage && !transaction.voidedAt && !editing && <div className="row" style={{ marginTop: 8 }}><Button variant="ghost" onClick={() => setEditing(true)}>Изменить</Button><Button variant="ghost" disabled={pending} onClick={onVoid}>Отменить оплату</Button></div>}</Card>;
 }
 
 function avatarUrl(user: People.UserDTO | null | undefined): string | null {
@@ -460,7 +469,10 @@ function StageEquipmentPanel({ projectId, venueId, stage }: { projectId: string;
   const shouldShow = stage !== "show";
   if (!shouldShow) return null;
 
-  const modelName = (modelId: string) => models.data?.find((m) => m.id === modelId)?.name ?? modelId;
+  const modelName = (modelId: string) => {
+    const model = models.data?.find((item) => item.id === modelId);
+    return model?.name ?? modelId;
+  };
   const venue = (venues.data ?? []).find((item) => item.id === venueId);
   const venueWarehouse = (warehouses.data ?? []).find((item) => item.placeId === venueId);
   const venueLocationValue = venueId ? venueWarehouse?.id ?? `venue:${venueId}` : null;

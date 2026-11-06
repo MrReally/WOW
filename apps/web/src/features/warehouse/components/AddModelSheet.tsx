@@ -34,6 +34,7 @@ export function AddModelSheet({ open, onClose, types, models, units = [], zones 
   const [typeId, setTypeId] = useState(types[0]?.id ?? "");
   const [categoryId,setCategoryId]=useState("");
   const [modelName, setModelName] = useState("");
+  const [modelSubtype, setModelSubtype] = useState("");
   const [unitCost, setUnitCost] = useState("0");
   const [dailyPrice, setDailyPrice] = useState("0");
   const [cableType, setCableType] = useState("");
@@ -226,6 +227,7 @@ export function AddModelSheet({ open, onClose, types, models, units = [], zones 
           <Field label="Название модели">
             <Input value={modelName} onChange={(e) => { setModelName(e.target.value); if (isSerialExtension) setAutoExtensionName(false); }} placeholder={selectedType?.trackingMode === "cable" ? cablePreview : "Robe MegaPointe"} />
           </Field>
+          <Field label="Подтип прибора"><Input value={modelSubtype} onChange={(e) => setModelSubtype(e.target.value)} placeholder="Например: цифровой микшер" /></Field>
           {isSerialExtension && !autoExtensionName && <Button variant="secondary" onClick={() => setAutoExtensionName(true)}>Подставить имя по шаблону</Button>}
           {selectedType?.trackingMode === "cable" && <p className="card__subtitle">Оставьте пустым для имени по сохранённому шаблону.</p>}
           {usesAutoName && cableSettings.isError && <p className="card__subtitle">Не удалось загрузить шаблон имени. Повторите загрузку настроек.</p>}
@@ -311,6 +313,7 @@ export function AddModelSheet({ open, onClose, types, models, units = [], zones 
                   typeId: effTypeId,
                   categoryId: categoryId || null,
                   name: isSerialExtension && autoExtensionName ? extensionPreview : modelName.trim() || (selectedType?.trackingMode === "cable" ? cablePreview : ""),
+                  subtype: modelSubtype.trim() || null,
                   unitCostEUR: Number(unitCost),
                   dailyPriceEUR: Number(dailyPrice),
                   attrs: hasExtensionAttrs ? cableAttrs : undefined,
@@ -319,7 +322,7 @@ export function AddModelSheet({ open, onClose, types, models, units = [], zones 
                     ? { count: normalizedInitialUnitCount, assetTagPrefix: normalizedAssetTagPrefix }
                     : undefined,
                 },
-                { onSuccess: () => { setModelName(""); setCableType(""); setLengthM(""); setSideAConnector(""); setSideBConnector(""); setSideAQty("1"); setSideBQty("1"); setSerialExtension(false); setAutoExtensionName(false); setAutoAssetTagPrefix(false); setPrefillExtensionConnectors(false); setInitialUnitCount("0"); setAssetTagPrefix(""); } }
+                { onSuccess: () => { setModelName(""); setModelSubtype(""); setCableType(""); setLengthM(""); setSideAConnector(""); setSideBConnector(""); setSideAQty("1"); setSideBQty("1"); setSerialExtension(false); setAutoExtensionName(false); setAutoAssetTagPrefix(false); setPrefillExtensionConnectors(false); setInitialUnitCount("0"); setAssetTagPrefix(""); } }
               )
             }
           >

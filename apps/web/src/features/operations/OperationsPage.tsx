@@ -48,7 +48,7 @@ export function OperationsPage() {
       {lead ? <Card className="operations-live-card" onClick={() => navigate(`/operations/projects/${lead.id}`)}>
         <div className="operations-live-head"><span>{current ? "ТЕКУЩАЯ ОПЕРАЦИЯ" : "БЛИЖАЙШАЯ ОПЕРАЦИЯ"}</span><Chip label={projectStagePresentation[lead.operationStage].label.toLowerCase()} tone="info" /></div>
         <div><p className="operations-live-title">{lead.name}</p>{leadVenue && <div className="operations-live-venue">📍 {leadVenue.name} <MapRouteButton venue={leadVenue} /></div>}</div>
-        <ProjectStageProgress stage={lead.operationStage} complete={Boolean(lead.warehouseTurnoverCompletedAt)} dryRental={lead.dryRental} />
+        <ProjectStageProgress stage={lead.operationStage} complete={Boolean(lead.warehouseTurnoverCompletedAt)} serviceMode={lead.serviceMode} />
         <Button block onClick={(event) => { event.stopPropagation(); navigate(`/operations/projects/${lead.id}`); }}>Открыть оборот</Button>
       </Card> : <Card><EmptyState title="Нет проектов в работе" hint="Проект появится здесь после подтверждения в Planning" /><Button block variant="secondary" onClick={() => navigate("/projects")}>Открыть Planning</Button></Card>}
 
@@ -65,7 +65,7 @@ export function OperationsPage() {
                   <p className="card__title">{p.name}</p>
                   <p className="card__subtitle">{dateRange(p.startsAt, p.endsAt)}</p>
                   {p.venueId && venueById.get(p.venueId) && <div className="row" style={{ gap: 6 }}><p className="card__subtitle" style={{ minWidth: 0 }}>📍 {venueById.get(p.venueId)?.name}</p><MapRouteButton venue={venueById.get(p.venueId)!} /></div>}
-                  <ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} dryRental={p.dryRental} compact />
+                  <ProjectStageProgress stage={p.operationStage} complete={!!p.warehouseTurnoverCompletedAt} serviceMode={p.serviceMode} compact />
                 </div>
                 <Chip label={projectStatusLabel[p.status]} tone={projectStatusTone[p.status]} />
               </div>

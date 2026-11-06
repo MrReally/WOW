@@ -16,7 +16,7 @@ export * as Supplies from "./supplies.js";
 
 // Runtime constants surfaced at top level for convenience (route validation).
 export { UNIT_STATUSES } from "./equipment.js";
-export { OPERATION_UNIT_MARK_STATUSES, PROJECT_CHECKLIST_GROUPS, PROJECT_STATUSES, PROJECT_WORKFLOW_STATUSES, PROJECT_TASK_STATUSES } from "./projects.js";
+export { OPERATION_UNIT_MARK_STATUSES, PROJECT_CHECKLIST_GROUPS, PROJECT_STATUSES, PROJECT_WORKFLOW_STATUSES, PROJECT_TASK_STATUSES, projectRentalDays, projectServiceSkipsStage } from "./projects.js";
 export { PLAN_LAYERS } from "./plans.js";
 export { ADVANCED_NOTIFICATION_EVENTS, NOTIFICATION_KINDS } from "./notifications.js";
 export { amountAfterDiscountEUR, discountAmountEUR } from "./finance.js";

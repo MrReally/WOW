@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Projects } from "@sever/contracts";
+import { projectRentalDays, type Projects } from "@sever/contracts";
 import { Card, Button, Field, Input, Select, EmptyState, StatusBadge } from "../../../ui-kit/index.ts";
 import { useI18n } from "../../../app/i18n.tsx";
 import {
@@ -27,12 +27,13 @@ const ITEM_KINDS: Projects.ContractorItemKind[] = ["equipment", "delivery", "set
 
 interface Props {
   projectId: string;
+  projectStartsAt: string | null;
   projectEndsAt: string | null;
   canManage: boolean;
   canManageFinance: boolean;
 }
 
-export function ContractorEquipment({ projectId, projectEndsAt, canManage, canManageFinance }: Props) {
+export function ContractorEquipment({ projectId, projectStartsAt, projectEndsAt, canManage, canManageFinance }: Props) {
   const { t, eur, dateTime } = useI18n();
   const items = useContractorItems(projectId);
   const contractors = useContractors();
@@ -56,6 +57,7 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("");
   const [cost, setCost] = useState("");
+  const [pricingMode, setPricingMode] = useState<Projects.ContractorPricingMode>("per_day");
   const [note, setNote] = useState("");
   const [newContractorName, setNewContractorName] = useState("");
   const [newContractorContacts, setNewContractorContacts] = useState("");
@@ -73,6 +75,8 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
   const rows = (items.data ?? []).filter(item=>!item.orderId);
   const contractorName = (id: string) => list.find((contractor) => contractor.id === id)?.name ?? "—";
   const selectedContractorId = contractorId || list[0]?.id || "";
+  const projectDays = projectRentalDays(projectStartsAt, projectEndsAt);
+  const periods = (item: Projects.ContractorItemDTO) => item.pricingMode === "per_day" ? projectDays : 1;
   const history = useContractorItemHistory(selectedContractorId);
   const kindName = (value: Projects.ContractorItemKind) =>
     value === "delivery" ? t("contractors.kindDelivery") : value === "setup" ? t("contractors.kindSetup") : t("contractors.kindEquipment");
@@ -93,8 +97,9 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
     qty: Number(qty) || 1,
     priceEUR: Number(price) || 0,
     costEUR: Number(cost) || 0,
+    pricingMode,
     note: note.trim() || null,
-  }, { onSuccess: () => { setKind("equipment"); setName(""); setQty("1"); setPrice(""); setCost(""); setNote(""); } });
+  }, { onSuccess: () => { setKind("equipment"); setName(""); setQty("1"); setPrice(""); setCost(""); setPricingMode("per_day"); setNote(""); } });
 
   return (
     <div className="stack">
@@ -105,7 +110,7 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
         const someBooked = group.some((item) => item.booked);
         const equipment = group.filter((item) => item.kind === "equipment");
         const outstandingEquipment = equipment.filter((item) => !item.returnedAt);
-        const allPaid = group.every((item) => item.paidAt || item.costEUR * item.qty === 0);
+        const allPaid = group.every((item) => item.paidAt || item.costEUR * item.qty * periods(item) === 0);
         const afterProject = !!projectEndsAt && Date.now() > Date.parse(projectEndsAt);
         const status = allBooked && outstandingEquipment.length === 0 && allPaid
           ? { label: "Закрыто", tone: "ok" as const }
@@ -116,8 +121,8 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
           : allBooked
           ? { label: "Забронировано", tone: "info" as const }
           : { label: "Черновик", tone: "neutral" as const };
-        const clientTotal = group.reduce((sum, item) => sum + item.priceEUR * item.qty, 0);
-        const costTotal = group.reduce((sum, item) => sum + item.costEUR * item.qty, 0);
+        const clientTotal = group.reduce((sum, item) => sum + item.priceEUR * item.qty * periods(item), 0);
+        const costTotal = group.reduce((sum, item) => sum + item.costEUR * item.qty * periods(item), 0);
 
         return (
           <Card key={id}>
@@ -139,9 +144,10 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
                     <Input type="number" value={editing.priceEUR} onChange={(event) => setEditing({ ...editing, priceEUR: Number(event.target.value) || 0 })} placeholder="Ц" />
                   </div>
                   <Select value={editing.kind} onChange={(event) => setEditing({ ...editing, kind: event.target.value as Projects.ContractorItemKind })} options={ITEM_KINDS.map((value) => ({ value, label: kindName(value) }))} />
+                  <Select value={editing.pricingMode} onChange={(event) => setEditing({ ...editing, pricingMode: event.target.value as Projects.ContractorPricingMode })} options={[{ value: "per_day", label: `За день · ${projectDays} дн.` }, { value: "flat_total", label: "За весь проект" }]} />
                   <Input value={editing.note ?? ""} onChange={(event) => setEditing({ ...editing, note: event.target.value || null })} placeholder="Комментарий" />
                   <div className="row">
-                    <Button block disabled={!editing.name.trim() || update.isPending} onClick={() => update.mutate({ id: editing.id, input: { name: editing.name.trim(), kind: editing.kind, qty: editing.qty, priceEUR: editing.priceEUR, costEUR: editing.costEUR, note: editing.note } }, { onSuccess: () => setEditing(null) })}>Сохранить</Button>
+                    <Button block disabled={!editing.name.trim() || update.isPending} onClick={() => update.mutate({ id: editing.id, input: { name: editing.name.trim(), kind: editing.kind, qty: editing.qty, priceEUR: editing.priceEUR, costEUR: editing.costEUR, pricingMode: editing.pricingMode, note: editing.note } }, { onSuccess: () => setEditing(null) })}>Сохранить</Button>
                     <Button block variant="ghost" onClick={() => setEditing(null)}>Отмена</Button>
                   </div>
                 </div>
@@ -151,7 +157,7 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
                     <input className="toggle-switch" type="checkbox" checked={item.booked} disabled={!canManage} onChange={(event) => update.mutate({ id: item.id, input: { booked: event.target.checked } })} />
                     <span style={{ minWidth: 0 }}>
                       <span className="lrow__title">{item.name}</span>
-                      <span className="lrow__detail">К {item.qty} · СС {eur(item.costEUR * item.qty)} · Ц {eur(item.priceEUR * item.qty)}</span>
+                      <span className="lrow__detail">К {item.qty} · {item.pricingMode === "per_day" ? `${projectDays} дн. · ` : ""}СС {eur(item.costEUR * item.qty * periods(item))} · Ц {eur(item.priceEUR * item.qty * periods(item))}</span>
                     </span>
                   </label>
                   <details className="contractor-item-row__details">
@@ -209,7 +215,8 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
         <details>
           <summary className="btn btn--ghost">Подробнее</summary>
           <div className="stack" style={{ marginTop: 8 }}>
-            <Field label="Тип"><Select value={kind} onChange={(event) => setKind(event.target.value as Projects.ContractorItemKind)} options={ITEM_KINDS.map((value) => ({ value, label: kindName(value) }))} /></Field>
+            <Field label="Тип"><Select value={kind} onChange={(event) => { const next = event.target.value as Projects.ContractorItemKind; setKind(next); setPricingMode(next === "equipment" ? "per_day" : "flat_total"); }} options={ITEM_KINDS.map((value) => ({ value, label: kindName(value) }))} /></Field>
+            <Field label="Расчёт цены"><Select value={pricingMode} onChange={(event) => setPricingMode(event.target.value as Projects.ContractorPricingMode)} options={[{ value: "per_day", label: `За день · ${projectDays} дн.` }, { value: "flat_total", label: "За весь проект" }]} /></Field>
             <Field label="Комментарий"><Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Комплект, питание, условия" /></Field>
           </div>
         </details>
@@ -227,7 +234,7 @@ export function ContractorEquipment({ projectId, projectEndsAt, canManage, canMa
         {(history.data ?? []).length > 0 && <details style={{ marginTop: 8 }}>
           <summary className="btn btn--ghost">История цен</summary>
           <div className="stack" style={{ marginTop: 8 }}>
-            {(history.data ?? []).slice(0, 8).map((item) => <div className="lrow" key={item.id}><span>{item.name} × {item.qty}</span><span className="card__subtitle">Ц {eur(item.priceEUR * item.qty)} · СС {eur(item.costEUR * item.qty)}</span></div>)}
+            {(history.data ?? []).slice(0, 8).map((item) => <div className="lrow" key={item.id}><span>{item.name} × {item.qty}</span><span className="card__subtitle">Ц {eur(item.priceEUR * item.qty)} · СС {eur(item.costEUR * item.qty)} · {item.pricingMode === "per_day" ? "за день" : "за проект"}</span></div>)}
           </div>
         </details>}
       </Card>}

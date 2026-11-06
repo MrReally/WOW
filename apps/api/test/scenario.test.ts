@@ -217,6 +217,37 @@ describe("Tech pickup/return → некомплект", () => {
     expect(events.some((e) => e.type === "equipment.return.incomplete")).toBe(true);
   });
 
+  it("clears an incomplete-return problem after the remaining unit is returned", async () => {
+    const { equipment, projects, apex } = wiring;
+    const tech = await makeTech("Late return");
+    const type = await equipment.service.createType({ name: `Late-return-${Date.now()}`, trackingMode: "serial" });
+    const model = await equipment.service.createModel({ typeId: type.id, name: "LED bar", unitCostEUR: 100, dailyPriceEUR: 10 });
+    const first = await equipment.service.createUnit({ modelId: model.id, assetTag: `LED-${Date.now()}-1` });
+    const second = await equipment.service.createUnit({ modelId: model.id, assetTag: `LED-${Date.now()}-2` });
+    const client = await projects.service.createClient({ name: `Late-return client ${Date.now()}` });
+    const project = await projects.service.createProject({ name: "Late LED bar return", clientId: client.id });
+
+    await equipment.service.issueUnits({ projectId: project.id, unitIds: [first.id, second.id], actorId: tech.id });
+    await equipment.service.returnUnits({
+      projectId: project.id,
+      returnedUnitIds: [first.id],
+      expectedUnitIds: [first.id, second.id],
+      actorId: tech.id,
+    });
+    expect((await equipment.service.listProblems()).some((problem) => problem.kind === "incomplete_return" && problem.refs.projectId === project.id)).toBe(true);
+
+    await equipment.service.returnUnits({
+      projectId: project.id,
+      returnedUnitIds: [second.id],
+      expectedUnitIds: [second.id],
+      actorId: tech.id,
+    });
+
+    expect((await equipment.service.getUnit(second.id))?.status).toBe("in_stock");
+    expect((await equipment.service.listProblems()).some((problem) => problem.kind === "incomplete_return" && problem.refs.projectId === project.id)).toBe(false);
+    expect((await apex.dashboard()).problems.some((problem) => problem.kind === "incomplete_return" && problem.refs.projectId === project.id)).toBe(false);
+  });
+
   it("freezes FX snapshot on transactions and never recalculates", async () => {
     const { finance } = wiring;
     await finance.service.setFxRate("RSD", 0.0085);
@@ -236,6 +267,19 @@ describe("Tech pickup/return → некомплект", () => {
     await finance.service.setFxRate("RSD", 0.02);
     const again = (await finance.service.listTransactions()).find((t) => t.id === tx.id)!;
     expect(again.amountEUR).toBe(85);
+  });
+
+  it("adjusts an account to a target balance with one audited transaction", async () => {
+    const service = wiring.finance.service;
+    const actor = await makeTech("Balance Adjuster");
+    const account = await service.createAccount({ name: `Adjustment ${Date.now()}`, currency: "EUR" });
+    await service.createTransaction({ accountId: account.id, kind: "income", category: "prepayment", amount: 100, currency: "EUR" });
+    const adjustment = await service.adjustAccountBalance({ requestKey: randomUUID(), accountId: account.id, targetBalance: 62.5, note: "Сверка", createdByUserId: actor.id });
+    expect(adjustment).toMatchObject({ category: "adjustment", kind: "expense", amount: 37.5, adjustmentBalanceAfter: 62.5, createdByUserId: actor.id });
+    expect((await service.listAccounts()).find(row => row.id === account.id)?.balance).toBe(62.5);
+    await expect(service.adjustAccountBalance({ accountId: account.id, targetBalance: 62.5 })).rejects.toThrow("уже установлен");
+    await service.voidTransaction(adjustment.id, actor.id);
+    expect((await service.listAccounts()).find(row => row.id === account.id)?.balance).toBe(100);
   });
 
   it("edits and voids payments while keeping account balances and audit data consistent", async () => {
@@ -291,6 +335,20 @@ describe("Tech pickup/return → некомплект", () => {
     await expect(service.updateTransaction(original.id, { accountId: account.id, amount: 500 }, actor.id)).rejects.toThrow("отменённую");
     await Promise.all([service.voidTransaction(corrected.id, actor.id), service.voidTransaction(corrected.id, actor.id)]);
     expect((await service.listAccounts()).find(a => a.id === account.id)?.balance).toBe(0);
+  });
+
+  it("moves a corrected transaction to an account in another currency", async () => {
+    const service = wiring.finance.service;
+    const actor = await makeTech("Currency correction");
+    const eur = await service.createAccount({ name: `Currency EUR ${Date.now()}`, currency: "EUR" });
+    const rsd = await service.createAccount({ name: `Currency RSD ${Date.now()}`, currency: "RSD" });
+    await service.setFxRate("RSD", 0.01);
+    const original = await service.createTransaction({ accountId: eur.id, kind: "income", category: "prepayment", amount: 20, currency: "EUR" });
+    const corrected = await service.updateTransaction(original.id, { accountId: rsd.id, amount: 3000 }, actor.id);
+    expect(corrected).toMatchObject({ accountId: rsd.id, currency: "RSD", amount: 3000, amountEUR: 30, fxRateToEUR: 0.01 });
+    const accounts = await service.listAccounts();
+    expect(accounts.find(account => account.id === eur.id)?.balance).toBe(0);
+    expect(accounts.find(account => account.id === rsd.id)?.balance).toBe(3000);
   });
 
   it("concurrent retries of one payment move cash exactly once", async () => {
@@ -428,6 +486,12 @@ describe("Tech pickup/return → некомплект", () => {
     await projects.service.resolveReservation(r1.id, [u2.id]);
     await expect(projects.service.resolveReservation(r2.id, [u2.id])).rejects.toThrow("renamed");
     await expect(projects.service.resolveReservation(r2.id, [u.id])).rejects.toThrow("renamed");
+    expect(await projects.service.updateReservation(r2.id, { qty: 3 })).toMatchObject({ id: r2.id, qty: 3 });
+    await expect(projects.service.updateReservation(r2.id, { qty: 0 })).rejects.toThrow("количество");
+    const u3 = await equipment.service.createUnit({ modelId: model.id, assetTag: `IU3-${Date.now()}` });
+    await projects.service.updateReservation(r1.id, { qty: 2 });
+    await projects.service.resolveReservation(r1.id, [u2.id, u3.id]);
+    await expect(projects.service.updateReservation(r1.id, { qty: 1 })).rejects.toThrow("распределённого количества");
 
     // The current physical status does not make a unit unavailable forever:
     // the same unit can be planned again once the earlier event has ended.
@@ -676,6 +740,14 @@ describe("Tech pickup/return → некомплект", () => {
     await expect(wiring.projects.service.setOperationStage(project.id, "return", actor.id)).resolves.toMatchObject({ operationStage: "return" });
     const checklist = await wiring.projects.service.listChecklist(project.id);
     expect(checklist.some((item) => item.group === "delivery" || item.group === "mount" || item.group === "dismantle")).toBe(false);
+
+    const delivered = await wiring.projects.service.createProject({ name: "Dry rental delivered", clientId: client.id, serviceMode: "dry_rental_delivery" });
+    expect(delivered).toMatchObject({ serviceMode: "dry_rental_delivery", dryRental: true });
+    await expect(wiring.projects.service.setOperationStage(delivered.id, "delivery", actor.id)).resolves.toMatchObject({ operationStage: "delivery" });
+    await expect(wiring.projects.service.setOperationStage(delivered.id, "mount", actor.id)).rejects.toThrow(/сухой аренде с доставкой/);
+    const deliveredChecklist = await wiring.projects.service.listChecklist(delivered.id);
+    expect(deliveredChecklist.some((item) => item.group === "delivery")).toBe(true);
+    expect(deliveredChecklist.some((item) => item.group === "mount" || item.group === "dismantle")).toBe(false);
   });
 
   it("opens a repair with its description in Apex and resolves it when repair closes", async () => {
@@ -1231,7 +1303,8 @@ describe("Tech pickup/return → некомплект", () => {
     const project = await projects.service.createProject({ name: "Invoice Project", clientId: client.id, startsAt: start, endsAt: end });
 
     const type = await equipment.service.createType({ name: `INV-${Date.now()}`, trackingMode: "serial" });
-    const model = await equipment.service.createModel({ typeId: type.id, name: "Inv Fixture", unitCostEUR: 500, dailyPriceEUR: 100 });
+    const model = await equipment.service.createModel({ typeId: type.id, subtype: "Световой прибор", name: "Inv Fixture", unitCostEUR: 500, dailyPriceEUR: 100 });
+    expect(model.subtype).toBe("Световой прибор");
     await projects.service.createReservation({ projectId: project.id, modelId: model.id, qty: 2, startsAt: start, endsAt: end });
     const reserve = await projects.service.createReservation({ projectId: project.id, modelId: model.id, qty: 1, isReserve: true, startsAt: start, endsAt: end });
     expect(reserve.isReserve).toBe(true);
@@ -1242,6 +1315,7 @@ describe("Tech pickup/return → некомплект", () => {
     expect(inv.days).toBe(2);
     expect(inv.rentalEUR).toBe(550); // 100 €/сут × 2 шт × 2 сут + crew 150
     expect(inv.rentalLines).toHaveLength(2); // equipment + crew; reserve gear is not billed
+    expect(inv.rentalLines).toContainEqual(expect.objectContaining({ label: "Световой прибор Inv Fixture" }));
     expect(inv.invoiceEUR).toBe(550);
     expect(inv.laborEUR).toBe(150);
     expect(inv.costEUR).toBe(150);
@@ -1252,12 +1326,12 @@ describe("Tech pickup/return → некомплект", () => {
     const contractor = await equipment.service.createContractor({ name: `Sub ${Date.now()}` });
     const contractorItem = await projects.service.addContractorItem({ projectId: project.id, contractorId: contractor.id, name: "Sub MH", qty: 2, priceEUR: 80, costEUR: 50 });
     const inv2 = await billing.projectInvoice(project.id);
-    expect(inv2.rentalEUR).toBe(710); // 400 + 150 crew + 80×2 contractor
-    expect(inv2.contractorCostEUR).toBe(100); // 50×2
-    expect(inv2.costEUR).toBe(250); // 150 labor + 100 contractor
-    expect(inv2.profitEUR).toBe(460); // 710 − 250
+    expect(inv2.rentalEUR).toBe(870); // 400 + 150 crew + 80×2×2 days contractor
+    expect(inv2.contractorCostEUR).toBe(200); // 50×2×2 days
+    expect(inv2.costEUR).toBe(350); // 150 labor + 200 contractor
+    expect(inv2.profitEUR).toBe(520); // 870 − 350
     const owed = await projects.service.contractorDebts();
-    expect(owed.find((d) => d.contractorId === contractor.id)?.debtEUR).toBe(100);
+    expect(owed.find((d) => d.contractorId === contractor.id)?.debtEUR).toBe(200);
     expect((await projects.service.setContractorItemsBooked(project.id, contractor.id, true))[0]?.booked).toBe(true);
     expect((await projects.service.returnContractorItems(project.id, contractor.id))[0]?.returnedAt).not.toBeNull();
     expect((await projects.service.setContractorItemsPaid(project.id, contractor.id, true))[0]?.paidAt).not.toBeNull();

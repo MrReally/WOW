@@ -14,6 +14,7 @@ export function EditModelSheet({ model, types = [], categories = [], onClose }: 
   const cableSettings = useCableSettings(!!model);
   const connectorCatalog=useCableConnectors();
   const [name, setName] = useState("");
+  const [subtype, setSubtype] = useState("");
   const [categoryId,setCategoryId]=useState("");
   const [manufacturer, setManufacturer] = useState("");
   const [imageUrl,setImageUrl]=useState<string|null>(null);
@@ -40,6 +41,7 @@ export function EditModelSheet({ model, types = [], categories = [], onClose }: 
       setSerialExtension(model.trackingMode === "serial" && !!attrs);
       setReservationMode(model.reservationAssignmentMode ?? "");
       setName(model.name);
+      setSubtype(model.subtype ?? "");
       setCategoryId(model.categoryId??"");
       setManufacturer(model.manufacturer ?? "");
       setImageUrl(model.imageUrl);
@@ -90,6 +92,7 @@ export function EditModelSheet({ model, types = [], categories = [], onClose }: 
         id: model.id,
         input: {
           name: name.trim() || undefined,
+          subtype: subtype.trim() || null,
           categoryId: categoryId || null,
           manufacturer: manufacturer.trim() || null,
           imageUrl,
@@ -126,6 +129,7 @@ export function EditModelSheet({ model, types = [], categories = [], onClose }: 
         <Chip label={model.trackingMode === "cable" ? "кабель" : model.trackingMode === "quantity" ? "количество" : serialExtension ? "удлинитель · серийный учёт" : "серийный учёт"} tone={model.trackingMode === "serial" ? "info" : "warn"} />
       </div>
       <Field label="Название"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
+      <Field label="Подтип прибора"><Input value={subtype} onChange={(e) => setSubtype(e.target.value)} placeholder="Например: цифровой микшер" /></Field>
       <Field label="Категория"><Select value={categoryId} onChange={e=>setCategoryId(e.target.value)} options={[{value:"",label:"Без категории"},...categories.map(category=>({value:category.id,label:category.name}))]}/></Field>
       <Field label="Производитель"><Input value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} placeholder="—" /></Field>
       <ModelImageInput value={imageUrl} onChange={setImageUrl}/>

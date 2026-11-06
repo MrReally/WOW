@@ -254,6 +254,8 @@ export interface EstimatePdfLineDTO {
   count: string;
   /** Client-facing amount in EUR. */
   priceEUR: number;
+  /** Price before a per-line discount. Omitted for legacy document versions. */
+  originalPriceEUR?: number;
   /** Internal cost, never printed to the client PDF. */
   costEUR: number;
   comment: string;

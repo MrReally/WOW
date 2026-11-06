@@ -18,10 +18,10 @@ const CARD = "M 0 -100 L 17 -17 L 100 0 L 17 17 L 0 100 L -17 17 L -100 0 L -17 
 const DIAG = "M 39.6 -39.6 L 16 0 L 39.6 39.6 L 0 16 L -39.6 39.6 L -16 0 L -39.6 -39.6 L 0 -16 Z";
 const HOLE = "M 0 -15 L 2.8 -2.8 L 15 0 L 2.8 2.8 L 0 15 L -2.8 2.8 L -15 0 L -2.8 -2.8 Z";
 
-const labels: Record<Finance.InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; discount: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
-  EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", discount: "DISCOUNT:", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
-  RU: { title: "Коммерческое предложение", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", discount: "СКИДКА:", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
-  RS: { title: "Ponuda", date: "Datum", place: "Mesto", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", discount: "POPUST:", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
+const labels: Record<Finance.InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; lineDiscounts: string; discount: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
+  EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", lineDiscounts: "ITEM DISCOUNTS", discount: "DISCOUNT:", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
+  RU: { title: "Коммерческое предложение", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", lineDiscounts: "СКИДКИ ПО ПОЗИЦИЯМ", discount: "СКИДКА:", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
+  RS: { title: "Ponuda", date: "Datum", place: "Mesto", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", lineDiscounts: "POPUSTI PO STAVKAMA", discount: "POPUST:", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -180,6 +180,8 @@ function drawTable(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO, 
   };
 
   tableHeader();
+  const lineDiscountEUR = (line: Finance.EstimatePdfLineDTO) => Math.max(0, (line.originalPriceEUR ?? line.priceEUR) - line.priceEUR);
+  const totalLineDiscountEUR = round2(req.lines.reduce((sum, line) => sum + lineDiscountEUR(line), 0));
   const grouped = new Map<string, Finance.EstimatePdfLineDTO[]>();
   for (const line of req.lines) {
     const section = clean(line.section) || "Equipment";
@@ -195,11 +197,12 @@ function drawTable(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO, 
 
     for (const line of items) {
       const size = 14.25;
-      const nameH = textHeight(doc, clean(line.name) || "—", cols[0]! - 14, size);
+      const name = `${clean(line.name) || "—"}${lineDiscountEUR(line) > 0.004 ? " *" : ""}`;
+      const nameH = textHeight(doc, name, cols[0]! - 14, size);
       const commentH = textHeight(doc, clean(line.comment) || "", cols[3]! - 14, size);
       const rowH = Math.max(31.5 * SCALE, Math.max(nameH, commentH) + 8);
       ensureRoom(rowH);
-      const values = [clean(line.name) || "—", clean(line.count) || "1", money(currencyAmount(line.priceEUR, req)), clean(line.comment)];
+      const values = [name, clean(line.count) || "1", money(currencyAmount(line.priceEUR, req)), clean(line.comment)];
       let cx = x;
       values.forEach((value, index) => {
         cell(doc, cx, y, cols[index]!, rowH);
@@ -213,6 +216,18 @@ function drawTable(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO, 
   const totalH = 34 * SCALE;
   const subtotalEUR = req.lines.reduce((sum, line) => sum + line.priceEUR, 0);
   const total = currencyAmount(Math.max(0, subtotalEUR - req.totalDiscountEUR), req);
+  if (totalLineDiscountEUR > 0.004) {
+    ensureRoom(totalH);
+    const labelWidth = cols[0]! + cols[1]!;
+    const valueX = x + labelWidth;
+    cell(doc, x, y, labelWidth, totalH);
+    cell(doc, valueX, y, cols[2]!, totalH);
+    cell(doc, valueX + cols[2]!, y, cols[3]!, totalH);
+    drawText(doc, `* ${l.lineDiscounts}`, x, y, labelWidth, totalH, { size: 11.5, bold: true, align: "center", padding: 3, singleLine: true });
+    drawText(doc, `−${money(currencyAmount(totalLineDiscountEUR, req))}`, valueX, y, cols[2]!, totalH, { size: 11.5, bold: true, align: "center", padding: 3, singleLine: true });
+    drawText(doc, req.currency, valueX + cols[2]!, y, cols[3]!, totalH, { size: 11, align: "center", padding: 3, singleLine: true });
+    y += totalH;
+  }
   if (req.totalDiscountEUR > 0) {
     ensureRoom(totalH);
     cell(doc, x, y, cols[0]!, totalH);

@@ -59,10 +59,10 @@ const money = (n: number, cur = "EUR") => `${new Intl.NumberFormat("en-US", { ma
 const amount = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(n));
 const cleanText = (value: string) => value.trim().replace(/\s+/g, " ");
 
-const DOC_LABELS: Record<InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; discount: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
-  EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", discount: "DISCOUNT:", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
-  RU: { title: "Коммерческое предложение", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", discount: "СКИДКА:", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
-  RS: { title: "Ponuda", date: "Datum", place: "Mesto", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", discount: "POPUST:", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
+const DOC_LABELS: Record<InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; lineDiscounts: string; discount: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
+  EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", lineDiscounts: "ITEM DISCOUNTS:", discount: "DISCOUNT:", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
+  RU: { title: "Коммерческое предложение", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", lineDiscounts: "СКИДКИ ПО ПОЗИЦИЯМ:", discount: "СКИДКА:", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
+  RS: { title: "Ponuda", date: "Datum", place: "Mesto", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", lineDiscounts: "POPUSTI PO STAVKAMA:", discount: "POPUST:", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
 };
 
 function loadCompany(): Company {
@@ -241,7 +241,7 @@ export function InvoicePage() {
     rateToEUR: fxRateToEUR,
     note,
     totalDiscountEUR,
-    lines: normalizedLines.map((l) => ({ id: l.id, section: l.section, name: l.name, count: l.count, priceEUR: l.price, costEUR: l.cost, comment: l.comment })),
+    lines: normalizedLines.map((l) => ({ id: l.id, section: l.section, name: l.name, count: l.count, priceEUR: l.price, originalPriceEUR: l.rawPrice, costEUR: l.cost, comment: l.comment })),
   });
   const saveVersion = async () => {
     const version: StoredInvoiceVersion = {
@@ -279,6 +279,7 @@ export function InvoicePage() {
         name: l.name,
         count: l.count,
         priceEUR: l.price,
+        originalPriceEUR: l.rawPrice,
         costEUR: l.cost,
         comment: l.comment,
       })),
@@ -570,7 +571,7 @@ function versionFromDTO(v: Finance.InvoiceVersionDTO): StoredInvoiceVersion {
       name: line.name,
       count: line.count,
       price: line.priceEUR,
-      rawPrice: line.priceEUR,
+      rawPrice: line.originalPriceEUR ?? line.priceEUR,
       discountType: "percent",
       discountValue: 0,
       cost: line.costEUR,
@@ -646,6 +647,7 @@ function InvoiceTopbar({ lang, currency, onLang, onCurrency, onBack, onPdf, pdfB
 }
 
 function PrintableInvoice({ labels, formattedDate, place, sections, convert, subtotal, totalDiscountEUR, total, currency, note, company }: { labels: typeof DOC_LABELS[InvoiceLang]; formattedDate: string; place: string; sections: { section: string; items: Line[] }[]; convert: (valueEUR: number) => number; subtotal: number; totalDiscountEUR: number; total: number; currency: Currency; note: string; company: Company }) {
+  const totalLineDiscountEUR = round2(sections.flatMap((section) => section.items).reduce((sum, line) => sum + Math.max(0, line.rawPrice - line.price), 0));
   return (
     <div className="invoice-doc">
       <div className="estimate-head">
@@ -658,8 +660,9 @@ function PrintableInvoice({ labels, formattedDate, place, sections, convert, sub
       </div>
       <table className="estimate-table">
         <thead><tr><th>{labels.name}</th><th className="num">{labels.count}</th><th className="num">{labels.price}</th><th>{labels.comment}</th></tr></thead>
-        <tbody>{sections.map((sec) => <SectionBlock key={sec.section} section={sec.section} items={sec.items} convert={convert} />)}</tbody>
+        <tbody>{sections.map((sec) => <SectionBlock key={sec.section} section={sec.section} items={sec.items} convert={convert} currency={currency} labels={labels} />)}</tbody>
         <tfoot>
+          {totalLineDiscountEUR > 0 && <tr><td colSpan={2}>{`* ${labels.lineDiscounts}`}</td><td>−{amount(convert(totalLineDiscountEUR))}</td><td>{currency}</td></tr>}
           {totalDiscountEUR > 0 && <tr><td>{amount(convert(subtotal))}</td><td>{labels.discount}</td><td>−{amount(convert(totalDiscountEUR))}</td><td>{currency}</td></tr>}
           <tr><td></td><td className="total-label">{labels.total}</td><td className="total-amount">{amount(convert(total))}</td><td className="total-currency">{currency}</td></tr>
         </tfoot>
@@ -685,13 +688,11 @@ function sectionTone(section: string): string {
   return "default";
 }
 
-function SectionBlock({ section, items, convert }: { section: string; items: Line[]; convert: (valueEUR: number) => number }) {
+function SectionBlock({ section, items, convert, currency, labels }: { section: string; items: Line[]; convert: (valueEUR: number) => number; currency: Currency; labels: typeof DOC_LABELS[InvoiceLang] }) {
   return (
     <>
       <tr className={`inv-section inv-section--${sectionTone(section)}`}><td colSpan={4}>{section}</td></tr>
-      {items.map((l) => (
-        <tr key={l.id}><td>{l.name || "—"}</td><td className="num">{l.count}</td><td className="num">{amount(convert(l.price))}</td><td className="muted">{l.comment}</td></tr>
-      ))}
+      {items.map((l) => <tr key={l.id}><td>{l.name || "—"}{l.rawPrice - l.price > 0.004 ? " *" : ""}</td><td className="num">{l.count}</td><td className="num">{amount(convert(l.price))}</td><td className="muted">{l.comment}</td></tr>)}
     </>
   );
 }

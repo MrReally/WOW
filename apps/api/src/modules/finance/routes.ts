@@ -70,6 +70,7 @@ const invoiceVersionLineSchema = z.object({
   name: z.string(),
   count: z.string(),
   priceEUR: z.number().nonnegative(),
+  originalPriceEUR: z.number().nonnegative().optional(),
   costEUR: z.number().nonnegative(),
   comment: z.string(),
 });
