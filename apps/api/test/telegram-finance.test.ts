@@ -26,6 +26,33 @@ describe("Telegram finance amount expressions", () => {
 });
 
 describe("Telegram finance permission boundary", () => {
+  it("does not open Inbox from the panel for a non-work Telegram account", async () => {
+    env.auth.telegramBotToken = "test-token";
+    const people = {
+      list: vi.fn().mockResolvedValue([{ id: "user", active: true, telegramId: "12345", telegramUsername: "@other" }]),
+      permissionsForUser: vi.fn().mockResolvedValue(["telegram.inbox.manage"]),
+      getTelegramInboxSettings: vi.fn().mockResolvedValue({ workUsername: "@work" }),
+      listTelegramDialogParticipants: vi.fn(),
+      logTelegramDialogMessage: vi.fn().mockResolvedValue(undefined),
+      markTelegramDialogMessageDeleted: vi.fn().mockResolvedValue(undefined),
+    } as unknown as People.PeopleService;
+    let polled = false;
+    const sent: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      if (String(url).endsWith("/getUpdates")) {
+        if (polled) return new Promise<Response>(() => {});
+        polled = true;
+        return Response.json({ ok: true, result: [{ update_id: 1, callback_query: { id: "a", data: "nav:inbox", from: { id: 12345, username: "other" } } }] });
+      }
+      if (String(url).endsWith("/sendMessage")) sent.push(JSON.parse(String(init?.body)).text);
+      return Response.json({ ok: true, result: { message_id: 10 } });
+    });
+
+    startTelegramBot({ people, appSettings: {} as AppSettings.AppSettingsService });
+    await vi.waitFor(() => expect(sent).toContain("Диалоги доступны только в настроенном рабочем Telegram-аккаунте."));
+    expect(people.listTelegramDialogParticipants).not.toHaveBeenCalled();
+  });
+
   it("adjusts an account only when the dedicated adjustment permission is present", async () => {
     env.auth.telegramBotToken = "test-token";
     const account = { id: "22222222-2222-4222-8222-222222222222", name: "Касса", currency: "EUR", balance: 100 } as Finance.AccountDTO;

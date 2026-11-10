@@ -323,7 +323,7 @@ interface Update {
     from?: { id?: number; username?: string; first_name?: string; last_name?: string };
     chat: { id: number; type?: string };
   };
-  callback_query?: { id: string; data?: string; from: { id: number }; message?: { chat: { id: number }; message_id: number } };
+  callback_query?: { id: string; data?: string; from: { id: number; username?: string }; message?: { chat: { id: number }; message_id: number } };
 }
 
 export function startTelegramBot(deps: BotDeps): void {
@@ -618,6 +618,11 @@ export function startTelegramBot(deps: BotDeps): void {
   const isWorkAccount = async (username: string | null | undefined): Promise<boolean> => {
     const settings = await people.getTelegramInboxSettings();
     return !!settings.workUsername && normHandle(username) === normHandle(settings.workUsername);
+  };
+  const canUseInbox = async (chatId: string, username: string | null | undefined): Promise<boolean> => {
+    if (!await isWorkAccount(username)) return false;
+    const user = (await people.list("all")).find((item) => item.active && item.telegramId === chatId);
+    return !!user && (await people.permissionsForUser(user.id)).includes("telegram.inbox.manage");
   };
   const INBOX_PAGE_SIZE = 10;
   const telegramDisplayName = (from: NonNullable<Update["message"]>["from"]): string | null =>
@@ -1042,7 +1047,7 @@ export function startTelegramBot(deps: BotDeps): void {
   const stageLabel: Record<Projects.ProjectChecklistGroup, string> = {
     prep: "Подготовка", pickup: "Выдача", delivery: "Доставка", mount: "Монтаж", show: "Мероприятие", dismantle: "Демонтаж", return: "Возврат",
   };
-  const projectPanelMenu = async (chatId: string) => {
+  const projectPanelMenu = async (chatId: string, telegramUsername?: string | null) => {
     // Entering the root discards every ephemeral flow, including stale callback
     // state left behind after an interrupted action.
     financeSessions.delete(chatId);
@@ -1057,7 +1062,7 @@ export function startTelegramBot(deps: BotDeps): void {
     const buttons: { text: string; callback_data: string }[][] = [[{ text: "📁 Найти проект", callback_data: "nav:projects" }]];
     if (permissions.includes("warehouse.view") || permissions.includes("warehouse.catalog.manage")) buttons.push([{ text: "📦 Найти оборудование", callback_data: "nav:equipment" }]);
     if (permissions.includes("telegram.finance.transactions")) buttons.push([{ text: "💳 Финансы", callback_data: "nav:finance" }]);
-    if (permissions.includes("telegram.inbox.manage")) buttons.push([{ text: "💬 Диалоги", callback_data: "nav:inbox" }]);
+    if (await canUseInbox(chatId, telegramUsername ?? user.telegramUsername)) buttons.push([{ text: "💬 Диалоги", callback_data: "nav:inbox" }]);
     await sendControl(chatId, "<b>SEVER · быстрые действия</b>\nВыберите раздел.", { inline_keyboard: buttons });
   };
   const showFinanceMenu = async (chatId: string) => {
@@ -1256,7 +1261,7 @@ export function startTelegramBot(deps: BotDeps): void {
         await send(chatId, "Панель доступна только в личном чате с ботом.", undefined, { log: false });
         return true;
       }
-      await projectPanelMenu(chatId);
+      await projectPanelMenu(chatId, msg.from?.username);
       return true;
     }
     if (/^\/help(?:@[A-Za-z0-9_]+)?$/.test(text)) {
@@ -1273,15 +1278,20 @@ export function startTelegramBot(deps: BotDeps): void {
     await searchProjects(chatId, session, text);
     return true;
   };
-  const handleProjectCallback = async (data: string, chatId: string): Promise<boolean> => {
+  const handleProjectCallback = async (data: string, chatId: string, telegramUsername?: string): Promise<boolean> => {
     if (!data.startsWith("nav:")) return false;
-    if (data === "nav:menu") { await projectPanelMenu(chatId); return true; }
+    if (data === "nav:menu") { await projectPanelMenu(chatId, telegramUsername); return true; }
     if (data === "nav:projects") { await startProjectSearch(chatId); return true; }
     if (data === "nav:equipment") { await startEquipmentSearch(chatId); return true; }
     if (data === "nav:finance") { await showFinanceMenu(chatId); return true; }
     if (data === "nav:transaction") { await startFinanceSession(chatId); return true; }
     if (data === "nav:account-adjustment") { await startAccountAdjustmentSession(chatId); return true; }
-    if (data === "nav:inbox") { await operatorMenu(chatId); return true; }
+    if (data === "nav:inbox") {
+      if (!await canUseInbox(chatId, telegramUsername)) { await sendControl(chatId, "Диалоги доступны только в настроенном рабочем Telegram-аккаунте."); return true; }
+      await people.rememberTelegramInboxWorkChatId(chatId);
+      await operatorMenu(chatId);
+      return true;
+    }
     const user = await linkedUser(chatId);
     if (!user || !projects) { await send(chatId, "Панель недоступна.", undefined, { log: false }); return true; }
     const permissions = await people.permissionsForUser(user.id);
@@ -1419,7 +1429,7 @@ export function startTelegramBot(deps: BotDeps): void {
   };
 
   const handleOperatorMessage = async (chatId: string, msg: NonNullable<Update["message"]>): Promise<boolean> => {
-    if (!(await isWorkAccount(msg.from?.username))) return false;
+    if (!(await canUseInbox(chatId, msg.from?.username))) return false;
     await people.rememberTelegramInboxWorkChatId(chatId);
     const text = msg.text?.trim() ?? "";
     if (text === "/inbox" || text === "/start" || text === "☰ Диалоги") {
@@ -1528,7 +1538,7 @@ export function startTelegramBot(deps: BotDeps): void {
     const data = cb.data ?? "";
     if (data.startsWith("nav:")) {
       try {
-        await handleProjectCallback(data, fromChatId);
+        await handleProjectCallback(data, fromChatId, cb.from.username);
         await tg("answerCallbackQuery", { callback_query_id: cb.id });
       } catch {
         await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Не удалось обработать действие." });
@@ -1545,6 +1555,10 @@ export function startTelegramBot(deps: BotDeps): void {
       return;
     }
     if (data.startsWith("inbox:")) {
+      if (!await canUseInbox(fromChatId, cb.from.username)) {
+        await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Диалоги недоступны." });
+        return;
+      }
       await people.rememberTelegramInboxWorkChatId(fromChatId);
       if (data === "inbox:exit") {
         operatorSessions.set(fromChatId, { targetTelegramId: null, menuMessageIds: [] });
