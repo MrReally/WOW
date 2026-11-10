@@ -79,6 +79,13 @@ const reservationSchema = z.object({
   endsAt: z.string().datetime().nullable().optional(),
 });
 const updateReservationSchema = z.object({ qty: z.number().int().positive() });
+const kitReservationBodySchema = z.object({
+  kitId: z.string().uuid(),
+  qty: z.number().int().positive(),
+  isReserve: z.boolean().optional(),
+  startsAt: z.string().datetime().nullable().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
+});
 const resolveSchema = z.object({ unitIds: z.array(z.string().uuid()) });
 const timingSchema = z.object({
   projectId: z.string().uuid(),
@@ -337,6 +344,10 @@ export function registerProjectsRoutes(
     await ctx.auth(req);
     return service.listReservations(req.params.id);
   });
+  app.get<{ Params: { id: string } }>("/api/projects/:id/kit-reservations", async req=>{await ctx.auth(req);return service.listKitReservations(req.params.id);});
+  app.post<{ Params: { id: string } }>("/api/projects/:id/kit-reservations", async req=>{const auth=await ctx.auth(req);requirePermission(auth,"projects.reservation.manage");const body=kitReservationBodySchema.parse(req.body);return service.createKitReservation({...body,projectId:req.params.id});});
+  app.patch<{ Params: { id: string } }>("/api/kit-reservations/:id", async req=>{const auth=await ctx.auth(req);requirePermission(auth,"projects.reservation.manage");return service.updateKitReservation(req.params.id,updateReservationSchema.parse(req.body));});
+  app.delete<{ Params: { id: string } }>("/api/kit-reservations/:id", async req=>{const auth=await ctx.auth(req);requirePermission(auth,"projects.reservation.manage");await service.deleteKitReservation(req.params.id);return {ok:true};});
   app.get<{ Querystring: { modelId: string; startsAt: string; endsAt: string } }>("/api/reservations/overlap", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "projects.reservation.manage", "warehouse.issue", "apex.view");

@@ -13,6 +13,8 @@ interface TypeRow {
   created_at: Date;
 }
 interface CategoryRow { id:string; name:string; active:boolean; sort_order:number; created_at:Date }
+interface KitRow { id:string; name:string; description:string|null; pricing_mode:Equipment.EquipmentKitPricingMode; daily_price_eur:string|null; archived_at:Date|null; created_at:Date }
+interface KitComponentRow { model_id:string; qty:number; sort_order:number }
 interface ModelRow {
   id: string;
   type_id: string;
@@ -112,6 +114,12 @@ const typeDTO = (r: TypeRow): Equipment.EquipmentTypeDTO => ({
   createdAt: r.created_at.toISOString(),
 });
 const categoryDTO=(r:CategoryRow):Equipment.EquipmentCategoryDTO=>({id:r.id,name:r.name,active:r.active,sortOrder:r.sort_order,createdAt:r.created_at.toISOString()});
+const kitDTO = (r: KitRow, components: KitComponentRow[]): Equipment.EquipmentKitDTO => ({
+  id:r.id, name:r.name, description:r.description, pricingMode:r.pricing_mode,
+  dailyPriceEUR:r.daily_price_eur === null ? null : Number(r.daily_price_eur),
+  components:components.map(c=>({modelId:c.model_id,qty:c.qty,sortOrder:c.sort_order})),
+  archivedAt:r.archived_at?.toISOString() ?? null, createdAt:r.created_at.toISOString(),
+});
 const modelDTO = (r: ModelRow): Equipment.EquipmentModelDTO => ({
   id: r.id,
   typeId: r.type_id,
@@ -351,6 +359,18 @@ export function createEquipmentService(
   async function assertWarehouse(id: string, client: Sql = db): Promise<void> {
     const row = await one<{ id: string }>(client, `SELECT id FROM equipment.warehouses WHERE id=$1`, [id]);
     if (!row) throw NotFound("warehouse", id);
+  }
+  async function kitWithComponents(id: string, client: Sql = db): Promise<Equipment.EquipmentKitDTO | null> {
+    const row=await one<KitRow>(client,`SELECT * FROM equipment.kits WHERE id=$1`,[id]);
+    if(!row) return null;
+    const components=await query<KitComponentRow>(client,`SELECT model_id,qty,sort_order FROM equipment.kit_components WHERE kit_id=$1 ORDER BY sort_order,model_id`,[id]);
+    return kitDTO(row,components);
+  }
+  function validateKit(input: { components: Equipment.EquipmentKitComponentDTO[]; pricingMode: Equipment.EquipmentKitPricingMode; dailyPriceEUR?: number | null }) {
+    if (!input.components.length) throw BadRequest("комплект должен содержать хотя бы одну модель");
+    if (input.components.some(c=>!Number.isInteger(c.qty)||c.qty<1)) throw BadRequest("количество в комплекте должно быть положительным целым числом");
+    if (new Set(input.components.map(c=>c.modelId)).size !== input.components.length) throw BadRequest("модель нельзя добавить в комплект дважды");
+    if (input.pricingMode === "fixed_daily" && (!Number.isFinite(input.dailyPriceEUR) || (input.dailyPriceEUR ?? -1) < 0)) throw BadRequest("укажите фиксированную дневную цену комплекта");
   }
 
   async function assertZone(zoneId: string | null | undefined, warehouseId: string, client: Sql = db): Promise<void> {
@@ -609,6 +629,31 @@ export function createEquipmentService(
     async getModel(id) {
       const row = await one<ModelRow>(db, `${MODEL_SELECT} WHERE m.id=$1`, [id]);
       return row ? modelDTO(row) : null;
+    },
+    async listKits(includeArchived=false) {
+      const rows=await query<KitRow>(db,`SELECT * FROM equipment.kits ${includeArchived?"":"WHERE archived_at IS NULL"} ORDER BY name`);
+      return Promise.all(rows.map(row=>kitWithComponents(row.id).then(kit=>kit!)));
+    },
+    async getKit(id) { return kitWithComponents(id); },
+    async createKit(input) {
+      validateKit(input);
+      return tx(async client=>{
+        for (const component of input.components) if (!await one<{id:string}>(client,`SELECT id FROM equipment.models WHERE id=$1 AND archived_at IS NULL`,[component.modelId])) throw BadRequest("модель комплекта не найдена или архивирована");
+        const row=await one<KitRow>(client,`INSERT INTO equipment.kits (name,description,pricing_mode,daily_price_eur) VALUES ($1,$2,$3,$4) RETURNING *`,[input.name.trim(),input.description?.trim()||null,input.pricingMode,input.pricingMode==="fixed_daily"?input.dailyPriceEUR:null]);
+        for(const c of input.components) await query(client,`INSERT INTO equipment.kit_components (kit_id,model_id,qty,sort_order) VALUES ($1,$2,$3,$4)`,[row!.id,c.modelId,c.qty,c.sortOrder]);
+        return (await kitWithComponents(row!.id,client))!;
+      });
+    },
+    async updateKit(id,input) {
+      const existing=await kitWithComponents(id); if(!existing) throw NotFound("equipment kit",id);
+      const next={...existing,...input,components:input.components??existing.components,pricingMode:input.pricingMode??existing.pricingMode,dailyPriceEUR:input.dailyPriceEUR===undefined?existing.dailyPriceEUR:input.dailyPriceEUR};
+      validateKit(next);
+      return tx(async client=>{
+        if(input.components) for(const c of input.components) if(!await one<{id:string}>(client,`SELECT id FROM equipment.models WHERE id=$1`,[c.modelId])) throw BadRequest("модель комплекта не найдена");
+        await query(client,`UPDATE equipment.kits SET name=$2,description=$3,pricing_mode=$4,daily_price_eur=$5,archived_at=CASE WHEN $6 THEN COALESCE(archived_at,now()) WHEN $6=false THEN NULL ELSE archived_at END WHERE id=$1`,[id,next.name.trim(),next.description?.trim()||null,next.pricingMode,next.pricingMode==="fixed_daily"?next.dailyPriceEUR:null,input.archived ?? null]);
+        if(input.components){ await query(client,`DELETE FROM equipment.kit_components WHERE kit_id=$1`,[id]); for(const c of input.components) await query(client,`INSERT INTO equipment.kit_components (kit_id,model_id,qty,sort_order) VALUES ($1,$2,$3,$4)`,[id,c.modelId,c.qty,c.sortOrder]); }
+        return (await kitWithComponents(id,client))!;
+      });
     },
     async createModel(input) {
       const selectedType = await one<TypeRow>(db,`SELECT * FROM equipment.types WHERE id=$1`,[input.typeId]);

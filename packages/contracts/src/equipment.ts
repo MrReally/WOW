@@ -76,6 +76,23 @@ export interface EquipmentModelDTO {
   createdAt: ISODateTime;
 }
 
+/** A commercial rental kit. Unlike requiredComponentModelIds, this is not a
+ * property of a single appliance and is never used by the issue-completeness flow. */
+export type EquipmentKitPricingMode = "fixed_daily" | "sum_components";
+export interface EquipmentKitComponentDTO { modelId: ID; qty: number; sortOrder: number; }
+export interface EquipmentKitDTO {
+  id: ID; name: string; description: string | null; pricingMode: EquipmentKitPricingMode;
+  dailyPriceEUR: number | null; components: EquipmentKitComponentDTO[];
+  archivedAt: ISODateTime | null; createdAt: ISODateTime;
+}
+export interface CreateEquipmentKitInput {
+  name: string; description?: string | null; pricingMode: EquipmentKitPricingMode;
+  dailyPriceEUR?: number | null; components: EquipmentKitComponentDTO[];
+}
+export interface UpdateEquipmentKitInput extends Partial<Omit<CreateEquipmentKitInput, "components">> {
+  components?: EquipmentKitComponentDTO[]; archived?: boolean;
+}
+
 /** Reusable visual designation of a model on technical plans. */
 export interface StageSymbol {
   shape: "circle" | "square" | "rectangle" | "bar" | "diamond";
@@ -430,6 +447,10 @@ export interface EquipmentService {
   updateType(id: ID, input: { name?: string; reservationAssignmentMode?: ReservationAssignmentMode | null }): Promise<EquipmentTypeDTO>;
   listModels(typeId?: ID, includeArchived?: boolean): Promise<EquipmentModelDTO[]>;
   getModel(id: ID): Promise<EquipmentModelDTO | null>;
+  listKits(includeArchived?: boolean): Promise<EquipmentKitDTO[]>;
+  getKit(id: ID): Promise<EquipmentKitDTO | null>;
+  createKit(input: CreateEquipmentKitInput): Promise<EquipmentKitDTO>;
+  updateKit(id: ID, input: UpdateEquipmentKitInput): Promise<EquipmentKitDTO>;
   createModel(input: CreateModelInput): Promise<EquipmentModelDTO>;
   updateModel(id: ID, input: UpdateModelInput): Promise<EquipmentModelDTO>;
   setModelTrackingMode(id: ID, trackingMode: TrackingMode): Promise<EquipmentModelDTO>;

@@ -143,6 +143,20 @@ ALTER TABLE projects.reservations ALTER COLUMN ends_at DROP NOT NULL;
 ALTER TABLE projects.reservations ADD COLUMN IF NOT EXISTS is_reserve boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS reservations_model_idx ON projects.reservations(model_id, starts_at, ends_at);
 
+-- The snapshot makes a project's commercial kit independent from later edits
+-- to equipment.kits. kit_id/model_id are opaque IDs; no cross-schema FK.
+CREATE TABLE IF NOT EXISTS projects.kit_reservations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), project_id uuid NOT NULL REFERENCES projects.projects(id) ON DELETE CASCADE,
+  kit_id uuid NOT NULL, kit_name text NOT NULL, kit_description text,
+  pricing_mode text NOT NULL CHECK (pricing_mode IN ('fixed_daily','sum_components')),
+  daily_price_eur numeric(12,2), qty integer NOT NULL CHECK (qty > 0),
+  is_reserve boolean NOT NULL DEFAULT false, starts_at timestamptz, ends_at timestamptz,
+  components jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE projects.reservations ADD COLUMN IF NOT EXISTS kit_reservation_id uuid;
+CREATE INDEX IF NOT EXISTS reservations_kit_reservation_idx ON projects.reservations(kit_reservation_id);
+CREATE INDEX IF NOT EXISTS kit_reservations_project_idx ON projects.kit_reservations(project_id);
+
 CREATE TABLE IF NOT EXISTS projects.timings (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL REFERENCES projects.projects(id),

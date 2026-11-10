@@ -11,11 +11,12 @@ export function createProjectsModule(
   bus: EventBus,
   loadEquipmentUnits: (unitIds: string[]) => Promise<(Equipment.EquipmentUnitDTO | null)[]>,
   loadEquipmentModels: (modelIds: string[]) => Promise<(Equipment.EquipmentModelDTO | null)[]>,
+  loadEquipmentKit: (kitId: string) => Promise<Equipment.EquipmentKitDTO | null>,
   appSettings: AppSettings.AppSettingsService,
   loadVenueName: (venueId: string | null) => Promise<string | null>,
   loadContractorCatalogItems: (ids: string[]) => Promise<{id:string;maxQty:number|null}[]>,
 ): SeverModule<Projects.ProjectsService> {
-  const service = createProjectsService(db, bus, loadEquipmentUnits, loadEquipmentModels, appSettings, loadVenueName, loadContractorCatalogItems);
+  const service = createProjectsService(db, bus, loadEquipmentUnits, loadEquipmentModels, loadEquipmentKit, appSettings, loadVenueName, loadContractorCatalogItems);
   return {
     name: "projects",
     migration: projectsMigration,

@@ -44,6 +44,7 @@ export function createModules(bus: EventBus = new EventBus()) {
     bus,
     (unitIds) => Promise.all(unitIds.map((unitId) => equipment.service.getUnit(unitId))),
     (modelIds) => Promise.all(modelIds.map((modelId) => equipment.service.getModel(modelId))),
+    (kitId) => equipment.service.getKit(kitId),
     appSettings.service,
     async (venueId) => venueId ? (await venues.service.get(venueId))?.name ?? null : null,
     async (ids) => (await contractors.service.listEquipment()).filter(item=>ids.includes(item.id)).map(item=>({id:item.id,maxQty:item.maxQty})),

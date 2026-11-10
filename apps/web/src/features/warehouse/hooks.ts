@@ -52,6 +52,9 @@ export function useUpdateCableConnector() {
 export function useModels(includeArchived=false) {
   return useQuery({ queryKey: ["equipment", "models", includeArchived], queryFn: () => api.get<Equipment.EquipmentModelDTO[]>(`/api/equipment/models${includeArchived ? "?includeArchived=true" : ""}`) });
 }
+export function useEquipmentKits(includeArchived=false) { return useQuery({queryKey:["equipment","kits",includeArchived],queryFn:()=>api.get<Equipment.EquipmentKitDTO[]>(`/api/equipment/kits${includeArchived?"?includeArchived=true":""}`)}); }
+export function useCreateEquipmentKit(){const qc=useQueryClient();return useMutation({mutationFn:(input:Equipment.CreateEquipmentKitInput)=>api.post<Equipment.EquipmentKitDTO>("/api/equipment/kits",input),onSuccess:()=>invalidateEquipment(qc),meta:{successMessage:"Комплект создан"}});}
+export function useUpdateEquipmentKit(){const qc=useQueryClient();return useMutation({mutationFn:({id,input}:{id:string;input:Equipment.UpdateEquipmentKitInput})=>api.patch<Equipment.EquipmentKitDTO>(`/api/equipment/kits/${id}`,input),onSuccess:()=>invalidateEquipment(qc),meta:{successMessage:"Комплект сохранён"}});}
 
 export function useModelStock(modelId: string, enabled = true) {
   return useQuery({

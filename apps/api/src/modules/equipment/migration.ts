@@ -1,6 +1,28 @@
 export const equipmentMigration = `
 CREATE SCHEMA IF NOT EXISTS equipment;
 
+-- Commercial rental kits are intentionally equipment-owned. They do not share
+-- the catalog/supplies recipe mechanism and component ids remain opaque here.
+CREATE TABLE IF NOT EXISTS equipment.kits (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  description text,
+  pricing_mode text NOT NULL CHECK (pricing_mode IN ('fixed_daily','sum_components')),
+  daily_price_eur numeric(12,2),
+  archived_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK ((pricing_mode='fixed_daily' AND daily_price_eur IS NOT NULL AND daily_price_eur >= 0)
+      OR (pricing_mode='sum_components' AND daily_price_eur IS NULL))
+);
+CREATE TABLE IF NOT EXISTS equipment.kit_components (
+  kit_id uuid NOT NULL REFERENCES equipment.kits(id) ON DELETE CASCADE,
+  model_id uuid NOT NULL,
+  qty integer NOT NULL CHECK (qty > 0),
+  sort_order integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (kit_id, model_id)
+);
+CREATE INDEX IF NOT EXISTS kit_components_kit_idx ON equipment.kit_components(kit_id, sort_order);
+
 CREATE TABLE IF NOT EXISTS equipment.types (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name          text NOT NULL,

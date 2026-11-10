@@ -78,6 +78,9 @@ const updateModelSchema = z.object({
 });
 const modelTrackingSchema = z.object({ trackingMode: z.enum(["serial", "quantity", "cable"]) });
 const modelIdParamsSchema = z.object({ id: z.string().uuid() });
+const kitComponentSchema=z.object({modelId:z.string().uuid(),qty:z.number().int().positive(),sortOrder:z.number().int().nonnegative()});
+const kitSchema=z.object({name:z.string().trim().min(1).max(200),description:z.string().nullable().optional(),pricingMode:z.enum(["fixed_daily","sum_components"]),dailyPriceEUR:z.number().nonnegative().nullable().optional(),components:z.array(kitComponentSchema).min(1)});
+const updateKitSchema=kitSchema.partial().extend({archived:z.boolean().optional()});
 
 const createUnitSchema = z.object({
   modelId: z.string().uuid(),
@@ -237,6 +240,12 @@ export function registerEquipmentRoutes(
     requirePermission(auth, "warehouse.catalog.manage");
     return service.updateModel(id, updateModelSchema.parse(req.body) as Equipment.UpdateModelInput);
   });
+
+  // Commercial rental kits; distinct from a model's required components.
+  app.get<{Querystring:{includeArchived?:string}}>("/api/equipment/kits",async req=>{await ctx.auth(req);return service.listKits(req.query.includeArchived==="true");});
+  app.get<{Params:{id:string}}>("/api/equipment/kits/:id",async req=>{await ctx.auth(req);const kit=await service.getKit(req.params.id);if(!kit) throw BadRequest("комплект не найден");return kit;});
+  app.post("/api/equipment/kits",async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.catalog.manage");return service.createKit(kitSchema.parse(req.body));});
+  app.patch<{Params:{id:string}}>("/api/equipment/kits/:id",async req=>{const auth=await ctx.auth(req);requirePermission(auth,"warehouse.catalog.manage");return service.updateKit(req.params.id,updateKitSchema.parse(req.body));});
   app.patch<{ Params: { id: string } }>("/api/equipment/models/:id/tracking-mode", async (req) => {
     const { id } = modelIdParamsSchema.parse(req.params);
     const auth = await ctx.auth(req);

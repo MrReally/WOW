@@ -29,8 +29,9 @@ export function createBillingService(deps: BillingDeps): BillingService {
     const project = await deps.projects.getProject(projectId);
     if (!project) throw NotFound("project", projectId);
 
-    const [reservations, assignments, projectRoles, models, types, txs, contractorItems, estimateLines, estimateSettings, fxRates] = await Promise.all([
+    const [reservations, kitReservations, assignments, projectRoles, models, types, txs, contractorItems, estimateLines, estimateSettings, fxRates] = await Promise.all([
       deps.projects.listReservations(projectId),
+      deps.projects.listKitReservations?.(projectId) ?? Promise.resolve([]),
       deps.projects.listAssignments(projectId),
       deps.projects.listProjectRoles(projectId),
       deps.equipment.listModels(),
@@ -46,7 +47,8 @@ export function createBillingService(deps: BillingDeps): BillingService {
     const typeName = new Map(types.map((t) => [t.id, t.name]));
     const projectDays = projectRentalDays(project.startsAt, project.endsAt);
 
-    const ownLines: Finance.InvoiceLineDTO[] = reservations.filter((r) => !r.isReserve).map((r) => {
+    const kitChildIds=new Set(kitReservations.flatMap(kit=>kit.components.map(component=>component.reservationId)));
+    const ownLines: Finance.InvoiceLineDTO[] = reservations.filter((r) => !r.isReserve && !kitChildIds.has(r.id)).map((r) => {
       const m = modelMap.get(r.modelId);
       const price = m?.dailyPriceEUR ?? 0;
       return {
@@ -60,6 +62,10 @@ export function createBillingService(deps: BillingDeps): BillingService {
         amountEUR: round2(price * r.qty * projectDays),
         costEUR: 0,
       };
+    });
+    const kitLines: Finance.InvoiceLineDTO[] = kitReservations.filter(kit=>!kit.isReserve).map(kit=>{
+      const unitEUR=kit.dailyPriceEUR ?? 0;
+      return {refId:kit.id,section:"Equipment",label:kit.kitName,detail:kit.components.map(component=>`${component.modelName} × ${component.qtyPerKit}`).join(", "),qty:kit.qty,unitEUR:round2(unitEUR),periods:projectDays,amountEUR:round2(unitEUR*kit.qty*projectDays),costEUR:0};
     });
     const contractorLines: Finance.InvoiceLineDTO[] = contractorItems.map((it) => {
       const periods = it.pricingMode === "per_day" ? projectDays : 1;
@@ -75,7 +81,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
         costEUR: round2(it.costEUR * it.qty * periods),
       };
     });
-    const derivedRentalLines = [...ownLines, ...contractorLines];
+    const derivedRentalLines = [...ownLines, ...kitLines, ...contractorLines];
     const contractorCostEUR = round2(contractorLines.reduce((s, l) => s + l.costEUR, 0));
 
     const laborLines: Finance.InvoiceLineDTO[] = projectRoles.length > 0

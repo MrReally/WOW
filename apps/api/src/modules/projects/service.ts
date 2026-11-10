@@ -68,7 +68,9 @@ interface ReservationRow {
   ends_at: Date | null;
   resolved_unit_ids: string[];
   created_at: Date;
+  kit_reservation_id: string | null;
 }
+interface KitReservationRow { id:string; project_id:string; kit_id:string; kit_name:string; kit_description:string|null; pricing_mode:"fixed_daily"|"sum_components"; daily_price_eur:string|null; qty:number; is_reserve:boolean; starts_at:Date|null; ends_at:Date|null; components:{modelId:string;qty:number;sortOrder:number;modelName:string}[]; created_at:Date }
 interface TimingRow {
   id: string;
   project_id: string;
@@ -269,6 +271,7 @@ const reservationDTO = (r: ReservationRow): Projects.ReservationDTO => ({
   endsAt: r.ends_at?.toISOString() ?? null,
   resolvedUnitIds: r.resolved_unit_ids,
   createdAt: r.created_at.toISOString(),
+  kitReservationId: r.kit_reservation_id,
 });
 const timingDTO = (r: TimingRow): Projects.TimingDTO => ({
   id: r.id,
@@ -473,10 +476,21 @@ export function createProjectsService(
   bus: EventBus,
   loadEquipmentUnits: (unitIds: string[]) => Promise<(Equipment.EquipmentUnitDTO | null)[]>,
   loadEquipmentModels: (modelIds: string[]) => Promise<(Equipment.EquipmentModelDTO | null)[]>,
+  loadEquipmentKit: (kitId: string) => Promise<Equipment.EquipmentKitDTO | null> = async () => null,
   appSettings?: AppSettings.AppSettingsService,
   loadVenueName: (venueId: string | null) => Promise<string | null> = async () => null,
   loadContractorCatalogItems: (ids:string[])=>Promise<{id:string;maxQty:number|null}[]> = async()=>[],
 ): Projects.ProjectsService {
+  async function kitReservationDTO(row: KitReservationRow): Promise<Projects.KitReservationDTO> {
+    const childRows=await query<ReservationRow>(db,`SELECT * FROM projects.reservations WHERE kit_reservation_id=$1 ORDER BY created_at`,[row.id]);
+    const byModel=new Map(childRows.map(child=>[child.model_id,child]));
+    const components=await Promise.all(row.components.map(async component=>{
+      const child=byModel.get(component.modelId)!;
+      const availability=row.starts_at&&row.ends_at ? await computeReservationAvailability(component.modelId,row.starts_at.toISOString(),row.ends_at.toISOString()) : undefined;
+      return {modelId:component.modelId,modelName:component.modelName,qtyPerKit:component.qty,totalQty:component.qty*row.qty,reservationId:child.id,availability};
+    }));
+    return {id:row.id,projectId:row.project_id,kitId:row.kit_id,kitName:row.kit_name,kitDescription:row.kit_description,pricingMode:row.pricing_mode,dailyPriceEUR:row.daily_price_eur===null?null:Number(row.daily_price_eur),qty:row.qty,isReserve:row.is_reserve,startsAt:row.starts_at?.toISOString()??null,endsAt:row.ends_at?.toISOString()??null,components,createdAt:row.created_at.toISOString()};
+  }
   async function loadTiming(id: string, sql: Sql = db): Promise<TimingRow | null> {
     return one<TimingRow>(
       sql,
@@ -792,12 +806,18 @@ export function createProjectsService(
           );
           sourceRefMap[role.id] = inserted!.id;
         }
+        const kitRefMap: Record<string,string>={};
+        const sourceKits=await query<KitReservationRow>(client,`SELECT * FROM projects.kit_reservations WHERE project_id=$1 ORDER BY created_at`,[id]);
+        for(const kit of sourceKits){
+          const inserted=await one<{id:string}>(client,`INSERT INTO projects.kit_reservations (project_id,kit_id,kit_name,kit_description,pricing_mode,daily_price_eur,qty,is_reserve,starts_at,ends_at,components) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,[newId,kit.kit_id,kit.kit_name,kit.kit_description,kit.pricing_mode,kit.daily_price_eur,kit.qty,kit.is_reserve,input.startsAt,input.endsAt,JSON.stringify(kit.components)]);
+          kitRefMap[kit.id]=inserted!.id; sourceRefMap[kit.id]=inserted!.id;
+        }
         const sourceReservations = await query<ReservationRow>(client, `SELECT * FROM projects.reservations WHERE project_id=$1 ORDER BY created_at`, [id]);
         for (const reservation of sourceReservations) {
           const inserted = await one<{ id: string }>(client,
-            `INSERT INTO projects.reservations (project_id, model_id, qty, is_reserve, starts_at, ends_at, resolved_unit_ids)
-             VALUES ($1,$2,$3,$4,$5,$6,'{}') RETURNING id`,
-            [newId, reservation.model_id, reservation.qty, reservation.is_reserve, input.startsAt, input.endsAt]
+            `INSERT INTO projects.reservations (project_id, model_id, qty, is_reserve, starts_at, ends_at, resolved_unit_ids,kit_reservation_id)
+             VALUES ($1,$2,$3,$4,$5,$6,'{}',$7) RETURNING id`,
+            [newId, reservation.model_id, reservation.qty, reservation.is_reserve, input.startsAt, input.endsAt,reservation.kit_reservation_id?kitRefMap[reservation.kit_reservation_id]:null]
           );
           sourceRefMap[reservation.id] = inserted!.id;
         }
@@ -1344,6 +1364,51 @@ export function createProjectsService(
     },
 
     // ── Reservations ──
+    async listKitReservations(projectId) {
+      const rows=await query<KitReservationRow>(db,`SELECT * FROM projects.kit_reservations WHERE project_id=$1 ORDER BY created_at`,[projectId]);
+      return Promise.all(rows.map(kitReservationDTO));
+    },
+    async createKitReservation(input) {
+      if(!Number.isInteger(input.qty)||input.qty<1) throw BadRequest("количество комплектов должно быть положительным целым числом");
+      const [project,kit]=await Promise.all([one<ProjectRow>(db,`SELECT * FROM projects.projects WHERE id=$1`,[input.projectId]),loadEquipmentKit(input.kitId)]);
+      if(!project) throw NotFound("project",input.projectId);
+      if(!kit||kit.archivedAt) throw BadRequest("комплект не найден или архивирован");
+      const startsAt=input.startsAt===undefined?project.starts_at?.toISOString()??null:input.startsAt;
+      const endsAt=input.endsAt===undefined?project.ends_at?.toISOString()??null:input.endsAt; assertRange(startsAt,endsAt);
+      const modelRows=await loadEquipmentModels(kit.components.map(c=>c.modelId));
+      if(modelRows.some(model=>!model)) throw BadRequest("в комплекте есть удалённая модель");
+      let created:KitReservationRow|null=null;
+      await tx(async client=>{
+        const snapshot=kit.components.map((c,index)=>({modelId:c.modelId,qty:c.qty,sortOrder:c.sortOrder,modelName:modelRows[index]!.name}));
+        const snapshotDailyPrice=kit.pricingMode==="fixed_daily"?kit.dailyPriceEUR:kit.components.reduce((sum,c,index)=>sum+modelRows[index]!.dailyPriceEUR*c.qty,0);
+        created=await one<KitReservationRow>(client,`INSERT INTO projects.kit_reservations (project_id,kit_id,kit_name,kit_description,pricing_mode,daily_price_eur,qty,is_reserve,starts_at,ends_at,components) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,[input.projectId,kit.id,kit.name,kit.description,kit.pricingMode,snapshotDailyPrice,input.qty,input.isReserve??false,startsAt,endsAt,JSON.stringify(snapshot)]);
+        for(const component of kit.components) await query(client,`INSERT INTO projects.reservations (project_id,model_id,qty,is_reserve,starts_at,ends_at,kit_reservation_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,[input.projectId,component.modelId,component.qty*input.qty,input.isReserve??false,startsAt,endsAt,created!.id]);
+      });
+      if(startsAt&&endsAt) for(const component of kit.components) await syncReservationAvailabilityProblems(component.modelId,startsAt,endsAt);
+      return kitReservationDTO(created!);
+    },
+    async updateKitReservation(id,input) {
+      if(!Number.isInteger(input.qty)||input.qty<1) throw BadRequest("количество комплектов должно быть положительным целым числом");
+      const group=await tx(async client=>{
+        const locked=await one<KitReservationRow>(client,`SELECT * FROM projects.kit_reservations WHERE id=$1 FOR UPDATE`,[id]); if(!locked) throw NotFound("kit reservation",id);
+        const children=await query<ReservationRow>(client,`SELECT * FROM projects.reservations WHERE kit_reservation_id=$1 FOR UPDATE`,[id]);
+        for(const child of children){const component=locked.components.find(c=>c.modelId===child.model_id)!;const target=component.qty*input.qty;if(target<child.resolved_unit_ids.length) throw BadRequest(`нельзя уменьшить комплект: для модели «${component.modelName}» уже распределено ${child.resolved_unit_ids.length}`);}
+        await query(client,`UPDATE projects.kit_reservations SET qty=$2 WHERE id=$1`,[id,input.qty]);for(const child of children){const component=locked.components.find(c=>c.modelId===child.model_id)!;await query(client,`UPDATE projects.reservations SET qty=$2 WHERE id=$1`,[child.id,component.qty*input.qty]);}
+        return locked;
+      });
+      if(group.starts_at&&group.ends_at) for(const component of group.components) await syncReservationAvailabilityProblems(component.modelId,group.starts_at.toISOString(),group.ends_at.toISOString());
+      return kitReservationDTO((await one<KitReservationRow>(db,`SELECT * FROM projects.kit_reservations WHERE id=$1`,[id]))!);
+    },
+    async deleteKitReservation(id) {
+      const group=await tx(async client=>{
+        const locked=await one<KitReservationRow>(client,`SELECT * FROM projects.kit_reservations WHERE id=$1 FOR UPDATE`,[id]);if(!locked) throw NotFound("kit reservation",id);
+        const children=await query<ReservationRow>(client,`SELECT * FROM projects.reservations WHERE kit_reservation_id=$1 FOR UPDATE`,[id]);
+        const blocked=children.find(c=>c.resolved_unit_ids.length>0); if(blocked){const c=locked.components.find(item=>item.modelId===blocked.model_id);throw BadRequest(`нельзя удалить комплект: уже распределена модель «${c?.modelName??blocked.model_id}»`);}
+        await query(client,`DELETE FROM projects.reservations WHERE kit_reservation_id=$1`,[id]);await query(client,`DELETE FROM projects.kit_reservations WHERE id=$1`,[id]);return locked;
+      });
+      if(group.starts_at&&group.ends_at) for(const component of group.components) await syncReservationAvailabilityProblems(component.modelId,group.starts_at.toISOString(),group.ends_at.toISOString());
+      await bus.publish({type:"reservation.deleted",reservationId:id,projectId:group.project_id,at:new Date().toISOString()});
+    },
     async listReservations(projectId) {
       const rows = await query<ReservationRow>(
         db,
@@ -1385,6 +1450,7 @@ export function createProjectsService(
     async updateReservation(id, input) {
       const existing = await one<ReservationRow>(db, `SELECT * FROM projects.reservations WHERE id=$1`, [id]);
       if (!existing) throw NotFound("reservation", id);
+      if (existing.kit_reservation_id) throw BadRequest("позиция комплекта изменяется только через количество комплекта");
       if (!Number.isInteger(input.qty) || input.qty < 1) throw BadRequest("количество брони должно быть положительным целым числом");
       if (input.qty < existing.resolved_unit_ids.length) {
         throw BadRequest(`нельзя уменьшить бронь ниже уже распределённого количества (${existing.resolved_unit_ids.length})`);
@@ -1466,6 +1532,8 @@ export function createProjectsService(
       return reservationDTO(row!);
     },
     async deleteReservation(id) {
+      const linked=await one<ReservationRow>(db,`SELECT * FROM projects.reservations WHERE id=$1`,[id]);
+      if(linked?.kit_reservation_id) throw BadRequest("позиция комплекта удаляется только целиком вместе с комплектом");
       const row = await one<ReservationRow>(db, `DELETE FROM projects.reservations WHERE id=$1 RETURNING *`, [id]);
       if (!row) throw NotFound("reservation", id);
       await query(

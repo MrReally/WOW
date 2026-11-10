@@ -80,6 +80,9 @@ export function useReservations(projectId: string) {
     queryFn: () => api.get<Projects.ReservationDTO[]>(`/api/projects/${projectId}/reservations`),
   });
 }
+export function useKitReservations(projectId: string) {
+  return useQuery({queryKey:["projects","kit-reservations",projectId],queryFn:()=>api.get<Projects.KitReservationDTO[]>(`/api/projects/${projectId}/kit-reservations`)});
+}
 
 export function useTimings(projectId: string) {
   return useQuery({
@@ -214,6 +217,12 @@ export function useCreateReservation() {
     onSuccess: () => invalidateProjects(qc),
   });
 }
+export function useCreateKitReservation() {
+  const qc=useQueryClient();
+  return useMutation({mutationFn:(input:Projects.CreateKitReservationInput)=>api.post<Projects.KitReservationDTO>(`/api/projects/${input.projectId}/kit-reservations`,input),onSuccess:()=>invalidateProjects(qc),meta:{successMessage:"Комплект добавлен в бронь"}});
+}
+export function useUpdateKitReservation() { const qc=useQueryClient(); return useMutation({mutationFn:({id,qty}:{id:string;qty:number})=>api.patch<Projects.KitReservationDTO>(`/api/kit-reservations/${id}`,{qty}),onSuccess:()=>invalidateProjects(qc),meta:{successMessage:"Количество комплектов изменено"}}); }
+export function useDeleteKitReservation() { const qc=useQueryClient(); return useMutation({mutationFn:(id:string)=>api.delete(`/api/kit-reservations/${id}`),onSuccess:()=>invalidateProjects(qc),meta:{successMessage:"Комплект удалён из брони"}}); }
 
 export function useUpdateReservation() {
   const qc = useQueryClient();
