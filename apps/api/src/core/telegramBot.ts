@@ -1,5 +1,5 @@
 import { env } from "../env.js";
-import { formatDateTimeValue, type AppSettings, type Finance, type People } from "@sever/contracts";
+import { formatDateTimeValue, type AppSettings, type Finance, type People, type Projects } from "@sever/contracts";
 import { evaluateTelegramAmount } from "./telegramFinance.js";
 
 // Minimal Telegram bot via long polling (getUpdates) — works without a public
@@ -44,6 +44,8 @@ interface BotDeps {
   people: People.PeopleService;
   appSettings: AppSettings.AppSettingsService;
   finance?: Finance.FinanceService;
+  /** Optional while the bot is used only for applications/inbox in older deployments. */
+  projects?: Projects.ProjectsService;
   onCallback?: CallbackHandler;
 }
 
@@ -76,6 +78,16 @@ interface FinanceSession {
   amount: number | null;
   expression: string | null;
   note: string | null;
+  /** A transaction started from a project card is always attributed to it. */
+  projectId: string | null;
+  expiresAt: number;
+}
+
+interface ProjectSession {
+  userId: string;
+  /** Search input is handled only while this flag is set, never as a global text command. */
+  awaitingSearch: boolean;
+  selectedProjectId: string | null;
   expiresAt: number;
 }
 
@@ -302,7 +314,7 @@ interface Update {
 }
 
 export function startTelegramBot(deps: BotDeps): void {
-  const { people, finance, onCallback } = deps;
+  const { people, finance, projects, onCallback } = deps;
   if (!env.auth.telegramBotToken) return;
   const send = async (
     chatId: string | number,
@@ -337,6 +349,7 @@ export function startTelegramBot(deps: BotDeps): void {
   const sessions = new Map<string, ApplicationSession>();
   const operatorSessions = new Map<string, OperatorSession>();
   const financeSessions = new Map<string, FinanceSession>();
+  const projectSessions = new Map<string, ProjectSession>();
   let offset = 0;
 
   const copy = (session: ApplicationSession) => COPY[session.lang ?? "ru"];
@@ -733,7 +746,7 @@ export function startTelegramBot(deps: BotDeps): void {
     financeSessions.delete(chatId);
     await sendFinance(chatId, "Операция отменена.");
   };
-  const startFinanceSession = async (chatId: string) => {
+  const startFinanceSession = async (chatId: string, projectId: string | null = null) => {
     const user = await financeUser(chatId);
     if (!user || !finance) {
       await sendFinance(chatId, "Команда недоступна.");
@@ -754,9 +767,10 @@ export function startTelegramBot(deps: BotDeps): void {
       amount: null,
       expression: null,
       note: null,
+      projectId,
       expiresAt: Date.now() + 15 * 60_000,
     });
-    await sendFinance(chatId, "<b>Новая транзакция</b>\nВыберите счёт:", {
+    await sendFinance(chatId, `${projectId ? "<b>Транзакция по проекту</b>" : "<b>Новая транзакция</b>"}\nВыберите счёт:`, {
       inline_keyboard: [
         ...accounts.map((account) => [{ text: `${account.name} · ${account.currency}`.slice(0, 60), callback_data: `tx:account:${account.id}` }]),
         [{ text: "Отмена", callback_data: "tx:cancel" }],
@@ -778,6 +792,7 @@ export function startTelegramBot(deps: BotDeps): void {
       `Счёт: ${escapeHtml(account.name)} · ${account.currency}`,
       `Тип: ${direction}`,
       `Категория: ${category}`,
+      session.projectId ? "Проект: выбран в панели" : null,
       `Сумма: <b>${session.amount.toFixed(2)} ${account.currency}</b>`,
       session.expression && session.expression !== String(session.amount) ? `Расчёт: <code>${escapeHtml(session.expression)}</code>` : null,
       `Комментарий: ${escapeHtml(session.note || "—")}`,
@@ -908,6 +923,7 @@ export function startTelegramBot(deps: BotDeps): void {
           category: session.category,
           amount: session.amount,
           currency: account.currency,
+          projectId: session.projectId,
           note: session.note,
           createdByUserId: session.userId,
         });
@@ -920,6 +936,139 @@ export function startTelegramBot(deps: BotDeps): void {
     }
     await sendFinance(chatId, "Этот шаг уже неактуален. Используйте последнюю кнопку или /cancel.");
     return true;
+  };
+
+  // ── Project control panel ────────────────────────────────────────────────
+  // This layer deliberately only navigates and invokes existing module
+  // services. It does not introduce a Telegram-specific project model.
+  const linkedUser = async (chatId: string) =>
+    (await people.list("all")).find((item) => item.active && item.telegramId === chatId) ?? null;
+  const canSeeAllProjects = (permissions: readonly string[]) =>
+    permissions.includes("projects.manage") || permissions.includes("projects.reservation.manage");
+  const visibleProjects = async (userId: string, permissions: readonly string[]) => {
+    if (!projects) return [];
+    return canSeeAllProjects(permissions) ? projects.listProjects() : projects.listProjectsForUser(userId);
+  };
+  const projectDate = (value: string | null) => value ? value.slice(0, 10).split("-").reverse().join(".") : "без даты";
+  const statusLabel = (status: Projects.ProjectStatus) => ({
+    draft: "Черновик", confirmed: "Подтверждён", in_progress: "В работе",
+    awaiting_payment: "Ждёт оплаты", completed: "Завершён", cancelled: "Отменён",
+  }[status]);
+  const projectPanelMenu = async (chatId: string) => {
+    const user = await linkedUser(chatId);
+    if (!user || !projects) {
+      await send(chatId, "Панель доступна после привязки Telegram к активному аккаунту.", undefined, { log: false });
+      return;
+    }
+    const permissions = await people.permissionsForUser(user.id);
+    const buttons: { text: string; callback_data: string }[][] = [[{ text: "📁 Найти проект", callback_data: "nav:projects" }]];
+    if (permissions.includes("telegram.finance.transactions")) buttons.push([{ text: "💳 Новая транзакция", callback_data: "nav:transaction" }]);
+    if (permissions.includes("telegram.inbox.manage")) buttons.push([{ text: "💬 Диалоги", callback_data: "nav:inbox" }]);
+    await send(chatId, "<b>SEVER · быстрые действия</b>\nВыберите раздел.", { inline_keyboard: buttons }, { log: false });
+  };
+  const startProjectSearch = async (chatId: string) => {
+    const user = await linkedUser(chatId);
+    if (!user || !projects) return;
+    projectSessions.set(chatId, { userId: user.id, awaitingSearch: true, selectedProjectId: null, expiresAt: Date.now() + 15 * 60_000 });
+    await send(chatId, "<b>Поиск проекта</b>\nНапишите название, клиента, статус или дату. Например: <code>acme</code> или <code>10.11</code>.\n\n/cancel — отмена", undefined, { log: false });
+  };
+  const renderProjectCard = async (chatId: string, projectId: string, userId: string, permissions: readonly string[]) => {
+    if (!projects) return;
+    const project = (await visibleProjects(userId, permissions)).find((item) => item.id === projectId);
+    if (!project) {
+      projectSessions.delete(chatId);
+      await send(chatId, "Проект больше недоступен. Начните поиск заново.", undefined, { log: false });
+      return;
+    }
+    const clients = await projects.listClients();
+    const client = clients.find((item) => item.id === project.clientId);
+    const rows: { text: string; callback_data: string }[][] = [];
+    if (permissions.includes("telegram.finance.transactions")) rows.push([{ text: "💳 Внести операцию", callback_data: `nav:project:transaction:${project.id}` }]);
+    if (permissions.includes("operations.contractor_turnover.view") || permissions.includes("operations.contractor_turnover.manage") || permissions.includes("projects.reservation.manage")) {
+      rows.push([{ text: "🤝 Подрядчики", callback_data: `nav:project:contractors:${project.id}` }]);
+    }
+    rows.push([{ text: "🔎 Другой проект", callback_data: "nav:projects" }]);
+    projectSessions.set(chatId, { userId, awaitingSearch: false, selectedProjectId: project.id, expiresAt: Date.now() + 15 * 60_000 });
+    await send(chatId, [
+      `<b>${escapeHtml(project.name)}</b>`,
+      `${projectDate(project.startsAt)} — ${projectDate(project.endsAt)} · ${statusLabel(project.status)}`,
+      `Клиент: ${escapeHtml(client?.name ?? "—")}`,
+      `Режим: ${project.serviceMode === "full_service" ? "полный сервис" : "сухая аренда"}`,
+    ].join("\n"), { inline_keyboard: rows }, { log: false });
+  };
+  const searchProjects = async (chatId: string, session: ProjectSession, query: string) => {
+    const user = await linkedUser(chatId);
+    if (!user || user.id !== session.userId || !projects) {
+      projectSessions.delete(chatId);
+      await send(chatId, "Сессия поиска завершена. Откройте панель заново: /menu", undefined, { log: false });
+      return;
+    }
+    const normalized = query.trim().toLocaleLowerCase("ru-RU");
+    if (normalized.length < 2) {
+      await send(chatId, "Введите минимум два символа.", undefined, { log: false });
+      return;
+    }
+    const permissions = await people.permissionsForUser(user.id);
+    const [all, clients] = await Promise.all([visibleProjects(user.id, permissions), projects.listClients()]);
+    const clientNames = new Map(clients.map((client) => [client.id, client.name.toLocaleLowerCase("ru-RU")]));
+    const matches = all.filter((project) => [project.name, project.baseName, clientNames.get(project.clientId) ?? "", project.status, project.startsAt ?? "", project.endsAt ?? ""]
+      .some((value) => value.toLocaleLowerCase("ru-RU").includes(normalized))).slice(0, 8);
+    if (!matches.length) {
+      await send(chatId, "Ничего не найдено. Уточните запрос или используйте /cancel.", undefined, { log: false });
+      return;
+    }
+    await send(chatId, `<b>Найдено: ${matches.length}</b>\nВыберите проект:`, {
+      inline_keyboard: matches.map((project) => [{ text: `${projectDate(project.startsAt)} · ${project.name}`.slice(0, 60), callback_data: `nav:project:open:${project.id}` }]),
+    }, { log: false });
+  };
+  const handleProjectMessage = async (chatId: string, msg: NonNullable<Update["message"]>): Promise<boolean> => {
+    const text = msg.text?.trim() ?? "";
+    if (/^\/(?:menu|panel)(?:@[A-Za-z0-9_]+)?$/.test(text)) {
+      if ((msg.chat.type && msg.chat.type !== "private") || (msg.from?.id != null && String(msg.from.id) !== chatId)) {
+        await send(chatId, "Панель доступна только в личном чате с ботом.", undefined, { log: false });
+        return true;
+      }
+      await projectPanelMenu(chatId);
+      return true;
+    }
+    const session = projectSessions.get(chatId);
+    if (!session) return false;
+    if (text === "/cancel") {
+      projectSessions.delete(chatId);
+      await send(chatId, "Поиск проекта отменён.", undefined, { log: false });
+      return true;
+    }
+    if (session.expiresAt < Date.now() || !session.awaitingSearch) return false;
+    await searchProjects(chatId, session, text);
+    return true;
+  };
+  const handleProjectCallback = async (data: string, chatId: string): Promise<boolean> => {
+    if (!data.startsWith("nav:")) return false;
+    if (data === "nav:projects") { await startProjectSearch(chatId); return true; }
+    if (data === "nav:transaction") { await startFinanceSession(chatId); return true; }
+    if (data === "nav:inbox") { await operatorMenu(chatId); return true; }
+    const user = await linkedUser(chatId);
+    if (!user || !projects) { await send(chatId, "Панель недоступна.", undefined, { log: false }); return true; }
+    const permissions = await people.permissionsForUser(user.id);
+    const open = data.match(/^nav:project:open:([0-9a-f-]{36})$/i);
+    if (open) { await renderProjectCard(chatId, open[1]!, user.id, permissions); return true; }
+    const transaction = data.match(/^nav:project:transaction:([0-9a-f-]{36})$/i);
+    if (transaction) {
+      const allowed = (await visibleProjects(user.id, permissions)).some((project) => project.id === transaction[1]);
+      if (!allowed || !permissions.includes("telegram.finance.transactions")) { await send(chatId, "Действие недоступно.", undefined, { log: false }); return true; }
+      await startFinanceSession(chatId, transaction[1]!);
+      return true;
+    }
+    const contractors = data.match(/^nav:project:contractors:([0-9a-f-]{36})$/i);
+    if (contractors) {
+      const allowed = (await visibleProjects(user.id, permissions)).some((project) => project.id === contractors[1]);
+      if (!allowed || !(permissions.includes("operations.contractor_turnover.view") || permissions.includes("operations.contractor_turnover.manage") || permissions.includes("projects.reservation.manage"))) { await send(chatId, "Действие недоступно.", undefined, { log: false }); return true; }
+      const orders = await projects.listContractorOrders(contractors[1]!);
+      const lines = orders.length ? orders.slice(0, 10).map((order) => `• ${escapeHtml(order.name)} — ${order.booked ? "подтверждён" : "черновик"}`) : ["Заказов подрядчикам пока нет."];
+      await send(chatId, `<b>Подрядчики</b>\n${lines.join("\n")}\n\nДля изменения заказа откройте проект в SEVER.`, undefined, { log: false });
+      return true;
+    }
+    return false;
   };
 
   const handleOperatorMessage = async (chatId: string, msg: NonNullable<Update["message"]>): Promise<boolean> => {
@@ -1030,6 +1179,15 @@ export function startTelegramBot(deps: BotDeps): void {
   async function handleCallback(cb: NonNullable<Update["callback_query"]>) {
     const fromChatId = String(cb.from.id);
     const data = cb.data ?? "";
+    if (data.startsWith("nav:")) {
+      try {
+        await handleProjectCallback(data, fromChatId);
+        await tg("answerCallbackQuery", { callback_query_id: cb.id });
+      } catch {
+        await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Не удалось обработать действие." });
+      }
+      return;
+    }
     if (data.startsWith("tx:")) {
       try {
         await handleFinanceCallback(data, fromChatId);
@@ -1151,6 +1309,7 @@ export function startTelegramBot(deps: BotDeps): void {
           const codeMatch = text.match(/^\/start\s+(\S+)/);
           try {
             if (await handleFinanceMessage(chatId, msg)) continue;
+            if (await handleProjectMessage(chatId, msg)) continue;
             if (await handleOperatorMessage(chatId, msg)) continue;
             const isCommand = text.startsWith("/");
             const incoming = !isCommand ? await logIncomingMessage(chatId, msg) : null;
