@@ -1,5 +1,5 @@
 import { env } from "../env.js";
-import { formatDateTimeValue, type AppSettings, type Finance, type People, type Projects } from "@sever/contracts";
+import { formatDateTimeValue, PROJECT_CHECKLIST_GROUPS, projectRentalDays, projectServiceSkipsStage, type AppSettings, type Equipment, type Finance, type People, type Projects } from "@sever/contracts";
 import { evaluateTelegramAmount } from "./telegramFinance.js";
 
 // Minimal Telegram bot via long polling (getUpdates) — works without a public
@@ -46,6 +46,7 @@ interface BotDeps {
   finance?: Finance.FinanceService;
   /** Optional while the bot is used only for applications/inbox in older deployments. */
   projects?: Projects.ProjectsService;
+  equipment?: Equipment.EquipmentService;
   onCallback?: CallbackHandler;
 }
 
@@ -80,6 +81,8 @@ interface FinanceSession {
   note: string | null;
   /** A transaction started from a project card is always attributed to it. */
   projectId: string | null;
+  assignmentId: string | null;
+  contractorId: string | null;
   expiresAt: number;
 }
 
@@ -88,6 +91,14 @@ interface ProjectSession {
   /** Search input is handled only while this flag is set, never as a global text command. */
   awaitingSearch: boolean;
   selectedProjectId: string | null;
+  expiresAt: number;
+}
+
+interface EquipmentSession {
+  userId: string;
+  awaitingSearch: boolean;
+  selectedUnitId: string | null;
+  targetWarehouseId: string | null;
   expiresAt: number;
 }
 
@@ -314,7 +325,7 @@ interface Update {
 }
 
 export function startTelegramBot(deps: BotDeps): void {
-  const { people, finance, projects, onCallback } = deps;
+  const { people, finance, projects, equipment, onCallback } = deps;
   if (!env.auth.telegramBotToken) return;
   const send = async (
     chatId: string | number,
@@ -344,12 +355,27 @@ export function startTelegramBot(deps: BotDeps): void {
     }
     return res;
   };
+  const clearControlMessages = async (chatId: string) => {
+    const ids = controlMessageIds.get(chatId) ?? [];
+    controlMessageIds.delete(chatId);
+    await Promise.all(ids.map((messageId) => del(chatId, messageId)));
+  };
+  const sendControl = async (chatId: string, text: string, replyMarkup?: unknown) => {
+    await clearControlMessages(chatId);
+    const result = await send(chatId, text, replyMarkup, { log: false });
+    const messageId = (result?.result as { message_id?: number } | undefined)?.message_id;
+    if (typeof messageId === "number") controlMessageIds.set(chatId, [messageId]);
+    return result;
+  };
   const publicName = (user: { nickname?: string | null; displayName?: string | null }) =>
     user.nickname?.trim() || user.displayName?.trim() || "аккаунт";
   const sessions = new Map<string, ApplicationSession>();
   const operatorSessions = new Map<string, OperatorSession>();
   const financeSessions = new Map<string, FinanceSession>();
   const projectSessions = new Map<string, ProjectSession>();
+  const equipmentSessions = new Map<string, EquipmentSession>();
+  /** Bot-owned navigation messages, replaced rather than accumulating in chat. */
+  const controlMessageIds = new Map<string, number[]>();
   let offset = 0;
 
   const copy = (session: ApplicationSession) => COPY[session.lang ?? "ru"];
@@ -746,7 +772,7 @@ export function startTelegramBot(deps: BotDeps): void {
     financeSessions.delete(chatId);
     await sendFinance(chatId, "Операция отменена.");
   };
-  const startFinanceSession = async (chatId: string, projectId: string | null = null) => {
+  const startFinanceSession = async (chatId: string, projectId: string | null = null, preset?: { kind: Finance.TxKind; category: Finance.TxCategory; assignmentId?: string | null; contractorId?: string | null }) => {
     const user = await financeUser(chatId);
     if (!user || !finance) {
       await sendFinance(chatId, "Команда недоступна.");
@@ -762,12 +788,14 @@ export function startTelegramBot(deps: BotDeps): void {
       requestKey: crypto.randomUUID(),
       stage: "account",
       accountId: null,
-      kind: null,
-      category: null,
+      kind: preset?.kind ?? null,
+      category: preset?.category ?? null,
       amount: null,
       expression: null,
       note: null,
       projectId,
+      assignmentId: preset?.assignmentId ?? null,
+      contractorId: preset?.contractorId ?? null,
       expiresAt: Date.now() + 15 * 60_000,
     });
     await sendFinance(chatId, `${projectId ? "<b>Транзакция по проекту</b>" : "<b>Новая транзакция</b>"}\nВыберите счёт:`, {
@@ -868,6 +896,11 @@ export function startTelegramBot(deps: BotDeps): void {
         return true;
       }
       session.accountId = account.id;
+      if (session.kind && session.category) {
+        session.stage = "amount";
+        await sendFinance(chatId, `Счёт: <b>${escapeHtml(account.name)}</b> · ${account.currency}\nВведите сумму или выражение. Например: <code>1200 + 3*450</code>`);
+        return true;
+      }
       session.stage = "kind";
       await sendFinance(chatId, `Счёт: <b>${escapeHtml(account.name)}</b> · ${account.currency}\nВыберите тип операции:`, {
         inline_keyboard: [[
@@ -924,6 +957,8 @@ export function startTelegramBot(deps: BotDeps): void {
           amount: session.amount,
           currency: account.currency,
           projectId: session.projectId,
+          assignmentId: session.assignmentId,
+          contractorId: session.contractorId,
           note: session.note,
           createdByUserId: session.userId,
         });
@@ -954,6 +989,14 @@ export function startTelegramBot(deps: BotDeps): void {
     draft: "Черновик", confirmed: "Подтверждён", in_progress: "В работе",
     awaiting_payment: "Ждёт оплаты", completed: "Завершён", cancelled: "Отменён",
   }[status]);
+  // Telegram does not support custom text colours on inline buttons; these
+  // muted circle markers render consistently in its native clients.
+  const statusMarker = (status: Projects.ProjectStatus) => ({
+    draft: "⚪", confirmed: "🔵", in_progress: "🟡", awaiting_payment: "🟣", completed: "🟢", cancelled: "🔴",
+  }[status]);
+  const stageLabel: Record<Projects.ProjectChecklistGroup, string> = {
+    prep: "Подготовка", pickup: "Выдача", delivery: "Доставка", mount: "Монтаж", show: "Мероприятие", dismantle: "Демонтаж", return: "Возврат",
+  };
   const projectPanelMenu = async (chatId: string) => {
     const user = await linkedUser(chatId);
     if (!user || !projects) {
@@ -962,15 +1005,16 @@ export function startTelegramBot(deps: BotDeps): void {
     }
     const permissions = await people.permissionsForUser(user.id);
     const buttons: { text: string; callback_data: string }[][] = [[{ text: "📁 Найти проект", callback_data: "nav:projects" }]];
+    if (permissions.includes("warehouse.view") || permissions.includes("warehouse.catalog.manage")) buttons.push([{ text: "📦 Найти оборудование", callback_data: "nav:equipment" }]);
     if (permissions.includes("telegram.finance.transactions")) buttons.push([{ text: "💳 Новая транзакция", callback_data: "nav:transaction" }]);
     if (permissions.includes("telegram.inbox.manage")) buttons.push([{ text: "💬 Диалоги", callback_data: "nav:inbox" }]);
-    await send(chatId, "<b>SEVER · быстрые действия</b>\nВыберите раздел.", { inline_keyboard: buttons }, { log: false });
+    await sendControl(chatId, "<b>SEVER · быстрые действия</b>\nВыберите раздел.", { inline_keyboard: buttons });
   };
   const startProjectSearch = async (chatId: string) => {
     const user = await linkedUser(chatId);
     if (!user || !projects) return;
     projectSessions.set(chatId, { userId: user.id, awaitingSearch: true, selectedProjectId: null, expiresAt: Date.now() + 15 * 60_000 });
-    await send(chatId, "<b>Поиск проекта</b>\nНапишите название, клиента, статус или дату. Например: <code>acme</code> или <code>10.11</code>.\n\n/cancel — отмена", undefined, { log: false });
+    await sendControl(chatId, "<b>Поиск проекта</b>\nНапишите название, клиента, статус или дату. Например: <code>acme</code> или <code>10.11</code>.\n\n/cancel — отмена", { inline_keyboard: [[{ text: "☰ Меню", callback_data: "nav:menu" }]] });
   };
   const renderProjectCard = async (chatId: string, projectId: string, userId: string, permissions: readonly string[]) => {
     if (!projects) return;
@@ -983,18 +1027,22 @@ export function startTelegramBot(deps: BotDeps): void {
     const clients = await projects.listClients();
     const client = clients.find((item) => item.id === project.clientId);
     const rows: { text: string; callback_data: string }[][] = [];
-    if (permissions.includes("telegram.finance.transactions")) rows.push([{ text: "💳 Внести операцию", callback_data: `nav:project:transaction:${project.id}` }]);
+    if (permissions.includes("telegram.finance.transactions")) rows.push([{ text: "💳 Финансы проекта", callback_data: `nav:project:finance:${project.id}` }]);
     if (permissions.includes("operations.contractor_turnover.view") || permissions.includes("operations.contractor_turnover.manage") || permissions.includes("projects.reservation.manage")) {
       rows.push([{ text: "🤝 Подрядчики", callback_data: `nav:project:contractors:${project.id}` }]);
     }
-    rows.push([{ text: "🔎 Другой проект", callback_data: "nav:projects" }]);
+    const canAdvanceStage = permissions.some((permission) => ["operations.view", "projects.timing.manage", "projects.manage"].includes(permission));
+    const canReturnStage = permissions.some((permission) => ["operations.stage.back", "operations.stage.back.after.warehouse.turnover", "projects.timing.manage", "projects.manage"].includes(permission));
+    if (canAdvanceStage || canReturnStage) rows.push([{ text: "🔄 Сменить стадию", callback_data: `nav:project:stages:${project.id}` }]);
+    rows.push([{ text: "🔎 Другой проект", callback_data: "nav:projects" }, { text: "☰ Меню", callback_data: "nav:menu" }]);
     projectSessions.set(chatId, { userId, awaitingSearch: false, selectedProjectId: project.id, expiresAt: Date.now() + 15 * 60_000 });
-    await send(chatId, [
+    await sendControl(chatId, [
       `<b>${escapeHtml(project.name)}</b>`,
-      `${projectDate(project.startsAt)} — ${projectDate(project.endsAt)} · ${statusLabel(project.status)}`,
+      `${statusMarker(project.status)} ${projectDate(project.startsAt)} — ${projectDate(project.endsAt)} · ${statusLabel(project.status)}`,
       `Клиент: ${escapeHtml(client?.name ?? "—")}`,
+      `Стадия: ${stageLabel[project.operationStage]}`,
       `Режим: ${project.serviceMode === "full_service" ? "полный сервис" : "сухая аренда"}`,
-    ].join("\n"), { inline_keyboard: rows }, { log: false });
+    ].join("\n"), { inline_keyboard: rows });
   };
   const searchProjects = async (chatId: string, session: ProjectSession, query: string) => {
     const user = await linkedUser(chatId);
@@ -1014,21 +1062,145 @@ export function startTelegramBot(deps: BotDeps): void {
     const matches = all.filter((project) => [project.name, project.baseName, clientNames.get(project.clientId) ?? "", project.status, project.startsAt ?? "", project.endsAt ?? ""]
       .some((value) => value.toLocaleLowerCase("ru-RU").includes(normalized))).slice(0, 8);
     if (!matches.length) {
-      await send(chatId, "Ничего не найдено. Уточните запрос или используйте /cancel.", undefined, { log: false });
+      await sendControl(chatId, "Ничего не найдено. Уточните запрос или используйте /cancel.");
       return;
     }
-    await send(chatId, `<b>Найдено: ${matches.length}</b>\nВыберите проект:`, {
-      inline_keyboard: matches.map((project) => [{ text: `${projectDate(project.startsAt)} · ${project.name}`.slice(0, 60), callback_data: `nav:project:open:${project.id}` }]),
-    }, { log: false });
+    await sendControl(chatId, `<b>Найдено: ${matches.length}</b>\nВыберите проект:`, {
+      inline_keyboard: [...matches.map((project) => [{ text: `${statusMarker(project.status)} ${projectDate(project.startsAt)} · ${project.baseName} · ${statusLabel(project.status)}`.slice(0, 60), callback_data: `nav:project:open:${project.id}` }]), [{ text: "☰ Меню", callback_data: "nav:menu" }]],
+    });
+  };
+  const selectedProject = async (chatId: string, userId: string, permissions: readonly string[]) => {
+    const id = projectSessions.get(chatId)?.selectedProjectId;
+    return id ? (await visibleProjects(userId, permissions)).find((project) => project.id === id) ?? null : null;
+  };
+  const showProjectFinance = async (chatId: string, project: Projects.ProjectDTO) => {
+    await sendControl(chatId, `<b>Финансы · ${escapeHtml(project.baseName)}</b>\nЧто нужно внести?`, {
+      inline_keyboard: [
+        [{ text: "↙️ Оплата от клиента", callback_data: `nav:finance:client:${project.id}` }],
+        [{ text: "👤 Выплата работнику", callback_data: `nav:finance:staff:${project.id}` }],
+        [{ text: "🤝 Оплата подрядчику", callback_data: `nav:finance:contractor:${project.id}` }],
+        [{ text: "↩ К проекту", callback_data: `nav:project:open:${project.id}` }],
+      ],
+    });
+  };
+  const showPayrollRecipients = async (chatId: string, project: Projects.ProjectDTO) => {
+    if (!projects) return;
+    const [assignments, users] = await Promise.all([projects.listAssignments(project.id), people.list("all")]);
+    const active = assignments.filter((assignment) => assignment.status === "added" || assignment.status === "accepted");
+    if (!active.length) { await sendControl(chatId, "<b>Выплата работнику</b>\nВ проекте нет активных назначений."); return; }
+    const names = new Map(users.map((user) => [user.id, publicName(user)]));
+    await sendControl(chatId, "<b>Выплата работнику</b>\nПлан · выплачено · осталось:", {
+      inline_keyboard: active.map((assignment) => {
+        const planned = assignment.rateEUR ?? 0;
+        const remaining = Math.max(0, planned - assignment.paidEUR);
+        const name = names.get(assignment.userId) ?? "Сотрудник";
+        return [{ text: `${name}: ${planned.toFixed(2)}€ · ${assignment.paidEUR.toFixed(2)}€ · ${remaining.toFixed(2)}€`.slice(0, 60), callback_data: `nav:pay:staff:${assignment.id}` }];
+      }),
+    });
+  };
+  const showContractorRecipients = async (chatId: string, project: Projects.ProjectDTO) => {
+    if (!projects || !finance) return;
+    const [items, transactions] = await Promise.all([projects.listContractorItems(project.id), finance.listTransactions({ projectId: project.id })]);
+    const grouped = new Map<string, number>();
+    const days = projectRentalDays(project.startsAt, project.endsAt);
+    for (const item of items) {
+      const amount = item.costEUR * item.qty * (item.kind === "equipment" && item.pricingMode === "per_day" ? days : 1);
+      grouped.set(item.contractorId, (grouped.get(item.contractorId) ?? 0) + amount);
+    }
+    if (!grouped.size) { await sendControl(chatId, "<b>Оплата подрядчику</b>\nВ проекте нет подрядных позиций."); return; }
+    const paid = new Map<string, number>();
+    for (const transaction of transactions.filter((transaction) => transaction.kind === "expense" && transaction.contractorId)) {
+      paid.set(transaction.contractorId!, (paid.get(transaction.contractorId!) ?? 0) + transaction.amountEUR);
+    }
+    await sendControl(chatId, "<b>Оплата подрядчику</b>\nПлан · выплачено · осталось:", {
+      inline_keyboard: [...grouped.entries()].map(([contractorId, planned]) => {
+        const paidAmount = paid.get(contractorId) ?? 0;
+        const remaining = Math.max(0, planned - paidAmount);
+        return [{ text: `Подрядчик: ${planned.toFixed(2)}€ · ${paidAmount.toFixed(2)}€ · ${remaining.toFixed(2)}€`, callback_data: `nav:pay:contractor:${contractorId}` }];
+      }),
+    });
+  };
+  const showStagePicker = async (chatId: string, project: Projects.ProjectDTO, permissions: readonly string[]) => {
+    const currentIndex = PROJECT_CHECKLIST_GROUPS.indexOf(project.operationStage);
+    const rows = PROJECT_CHECKLIST_GROUPS
+      .filter((stage) => !projectServiceSkipsStage(project.serviceMode, stage))
+      .filter((stage) => {
+        const nextIndex = PROJECT_CHECKLIST_GROUPS.indexOf(stage);
+        return nextIndex >= currentIndex
+          ? permissions.some((permission) => ["operations.view", "projects.timing.manage", "projects.manage"].includes(permission))
+          : permissions.some((permission) => ["operations.stage.back", "operations.stage.back.after.warehouse.turnover", "projects.timing.manage", "projects.manage"].includes(permission));
+      })
+      .map((stage) => [{ text: `${stage === project.operationStage ? "✓ " : ""}${stageLabel[stage]}`, callback_data: `nav:stage:${project.id}:${stage}` }]);
+    await sendControl(chatId, `<b>Стадия · ${escapeHtml(project.baseName)}</b>\nТекущая: ${stageLabel[project.operationStage]}`, { inline_keyboard: [...rows, [{ text: "↩ К проекту", callback_data: `nav:project:open:${project.id}` }]] });
+  };
+  const startEquipmentSearch = async (chatId: string) => {
+    const user = await linkedUser(chatId);
+    if (!user || !equipment) return;
+    const permissions = await people.permissionsForUser(user.id);
+    if (!permissions.includes("warehouse.view") && !permissions.includes("warehouse.catalog.manage")) { await sendControl(chatId, "Действие недоступно."); return; }
+    equipmentSessions.set(chatId, { userId: user.id, awaitingSearch: true, selectedUnitId: null, targetWarehouseId: null, expiresAt: Date.now() + 15 * 60_000 });
+    await sendControl(chatId, "<b>Поиск оборудования</b>\nНапишите название модели, производителя, маркировку, серийный номер, статус или заметку.\n\n/cancel — отмена", { inline_keyboard: [[{ text: "☰ Меню", callback_data: "nav:menu" }]] });
+  };
+  const renderUnitCard = async (chatId: string, unitId: string, userId: string, permissions: readonly string[]) => {
+    if (!equipment) return;
+    const [unit, models, warehouses] = await Promise.all([equipment.getUnit(unitId), equipment.listModels(), equipment.listWarehouses()]);
+    if (!unit) { await sendControl(chatId, "Единица оборудования больше не найдена."); return; }
+    const model = models.find((item) => item.id === unit.modelId);
+    const warehouse = warehouses.find((item) => item.id === unit.warehouseId);
+    const rows: { text: string; callback_data: string }[][] = [];
+    if (permissions.includes("warehouse.catalog.manage") && unit.status === "in_stock") rows.push([{ text: "↔️ Переместить на склад", callback_data: `nav:unit:warehouses:${unit.id}` }]);
+    rows.push([{ text: "📦 Другое оборудование", callback_data: "nav:equipment" }, { text: "☰ Меню", callback_data: "nav:menu" }]);
+    equipmentSessions.set(chatId, { userId, awaitingSearch: false, selectedUnitId: unit.id, targetWarehouseId: null, expiresAt: Date.now() + 15 * 60_000 });
+    await sendControl(chatId, [
+      `<b>${escapeHtml(model?.name ?? "Оборудование")}</b>`,
+      `Маркировка: <b>${escapeHtml(unit.assetTag)}</b>`,
+      `Серийный номер: ${escapeHtml(unit.serial ?? "—")}`,
+      `Статус: ${escapeHtml(unit.status)}`,
+      `Склад: ${escapeHtml(warehouse?.name ?? "—")}`,
+      unit.notes ? `Заметка: ${escapeHtml(unit.notes)}` : null,
+    ].filter(Boolean).join("\n"), { inline_keyboard: rows });
+  };
+  const searchEquipment = async (chatId: string, session: EquipmentSession, query: string) => {
+    const user = await linkedUser(chatId);
+    if (!user || user.id !== session.userId || !equipment) { equipmentSessions.delete(chatId); await sendControl(chatId, "Сессия поиска завершена. Откройте меню заново."); return; }
+    const normalized = query.trim().toLocaleLowerCase("ru-RU");
+    if (normalized.length < 2) { await sendControl(chatId, "Введите минимум два символа."); return; }
+    const permissions = await people.permissionsForUser(user.id);
+    if (!permissions.includes("warehouse.view") && !permissions.includes("warehouse.catalog.manage")) { await sendControl(chatId, "Действие недоступно."); return; }
+    const [units, models] = await Promise.all([equipment.listUnits(), equipment.listModels()]);
+    const byModel = new Map(models.map((model) => [model.id, model]));
+    const matches = units.filter((unit) => {
+      const model = byModel.get(unit.modelId);
+      return [unit.assetTag, unit.serial ?? "", unit.status, unit.notes ?? "", model?.name ?? "", model?.subtype ?? "", model?.manufacturer ?? ""]
+        .some((value) => value.toLocaleLowerCase("ru-RU").includes(normalized));
+    }).slice(0, 8);
+    if (!matches.length) { await sendControl(chatId, "Ничего не найдено. Уточните запрос или используйте /cancel."); return; }
+    await sendControl(chatId, `<b>Найдено: ${matches.length}</b>\nВыберите единицу:`, { inline_keyboard: [...matches.map((unit) => {
+      const model = byModel.get(unit.modelId);
+      return [{ text: `${unit.assetTag} · ${model?.name ?? "оборудование"} · ${unit.serial ?? unit.status}`.slice(0, 60), callback_data: `nav:unit:open:${unit.id}` }];
+    }), [{ text: "☰ Меню", callback_data: "nav:menu" }]] });
+  };
+  const handleEquipmentMessage = async (chatId: string, msg: NonNullable<Update["message"]>): Promise<boolean> => {
+    const session = equipmentSessions.get(chatId);
+    if (!session) return false;
+    const text = msg.text?.trim() ?? "";
+    if (text === "/cancel") { equipmentSessions.delete(chatId); await projectPanelMenu(chatId); return true; }
+    if (!session.awaitingSearch || session.expiresAt < Date.now()) return false;
+    await searchEquipment(chatId, session, text);
+    return true;
   };
   const handleProjectMessage = async (chatId: string, msg: NonNullable<Update["message"]>): Promise<boolean> => {
     const text = msg.text?.trim() ?? "";
-    if (/^\/(?:menu|panel)(?:@[A-Za-z0-9_]+)?$/.test(text)) {
+    if (/^\/(?:menu|panel)(?:@[A-Za-z0-9_]+)?$/.test(text) || text === "☰ Меню") {
       if ((msg.chat.type && msg.chat.type !== "private") || (msg.from?.id != null && String(msg.from.id) !== chatId)) {
         await send(chatId, "Панель доступна только в личном чате с ботом.", undefined, { log: false });
         return true;
       }
       await projectPanelMenu(chatId);
+      return true;
+    }
+    if (/^\/help(?:@[A-Za-z0-9_]+)?$/.test(text)) {
+      await sendControl(chatId, "<b>SEVER Bot</b>\n☰ Меню — быстрые действия\n📁 Проекты — поиск и действия по проекту\n📦 Оборудование — поиск и перемещение между складами\n💳 Финансы — доступно только с выданным правом");
       return true;
     }
     const session = projectSessions.get(chatId);
@@ -1044,14 +1216,128 @@ export function startTelegramBot(deps: BotDeps): void {
   };
   const handleProjectCallback = async (data: string, chatId: string): Promise<boolean> => {
     if (!data.startsWith("nav:")) return false;
+    if (data === "nav:menu") { await projectPanelMenu(chatId); return true; }
     if (data === "nav:projects") { await startProjectSearch(chatId); return true; }
+    if (data === "nav:equipment") { await startEquipmentSearch(chatId); return true; }
     if (data === "nav:transaction") { await startFinanceSession(chatId); return true; }
     if (data === "nav:inbox") { await operatorMenu(chatId); return true; }
     const user = await linkedUser(chatId);
     if (!user || !projects) { await send(chatId, "Панель недоступна.", undefined, { log: false }); return true; }
     const permissions = await people.permissionsForUser(user.id);
+    const unit = data.match(/^nav:unit:open:([0-9a-f-]{36})$/i);
+    if (unit) {
+      if (!equipment || (!permissions.includes("warehouse.view") && !permissions.includes("warehouse.catalog.manage"))) { await sendControl(chatId, "Действие недоступно."); return true; }
+      await renderUnitCard(chatId, unit[1]!, user.id, permissions);
+      return true;
+    }
+    const unitWarehouses = data.match(/^nav:unit:warehouses:([0-9a-f-]{36})$/i);
+    if (unitWarehouses) {
+      if (!equipment || !permissions.includes("warehouse.catalog.manage")) { await sendControl(chatId, "Действие недоступно."); return true; }
+      const [unit, warehouses] = await Promise.all([equipment.getUnit(unitWarehouses[1]!), equipment.listWarehouses()]);
+      if (!unit || unit.status !== "in_stock") { await sendControl(chatId, "Перемещать можно только единицы на складе."); return true; }
+      const targets = warehouses.filter((warehouse) => warehouse.id !== unit.warehouseId);
+      if (!targets.length) { await sendControl(chatId, "Нет другого доступного склада."); return true; }
+      equipmentSessions.set(chatId, { userId: user.id, awaitingSearch: false, selectedUnitId: unit.id, targetWarehouseId: null, expiresAt: Date.now() + 15 * 60_000 });
+      await sendControl(chatId, "<b>Перемещение</b>\nВыберите целевой склад:", { inline_keyboard: [...targets.map((warehouse) => [{ text: warehouse.name.slice(0, 60), callback_data: `nav:unit:target:${warehouse.id}` }]), [{ text: "↩ К оборудованию", callback_data: `nav:unit:open:${unit.id}` }]] });
+      return true;
+    }
+    const target = data.match(/^nav:unit:target:([0-9a-f-]{36})$/i);
+    if (target) {
+      if (!equipment || !permissions.includes("warehouse.catalog.manage")) { await sendControl(chatId, "Действие недоступно."); return true; }
+      const session = equipmentSessions.get(chatId);
+      const [unit, warehouses] = await Promise.all([session?.selectedUnitId ? equipment.getUnit(session.selectedUnitId) : Promise.resolve(null), equipment.listWarehouses()]);
+      const warehouse = warehouses.find((item) => item.id === target[1]);
+      if (!unit || !warehouse || unit.status !== "in_stock" || unit.warehouseId === warehouse.id) { await sendControl(chatId, "Перемещение больше недоступно."); return true; }
+      equipmentSessions.set(chatId, { userId: user.id, awaitingSearch: false, selectedUnitId: unit.id, targetWarehouseId: warehouse.id, expiresAt: Date.now() + 15 * 60_000 });
+      await sendControl(chatId, `<b>Подтвердите перемещение</b>\n${escapeHtml(unit.assetTag)} → <b>${escapeHtml(warehouse.name)}</b>`, { inline_keyboard: [[{ text: "✅ Переместить", callback_data: `nav:unit:confirm:${unit.id}` }, { text: "Отмена", callback_data: `nav:unit:open:${unit.id}` }]] });
+      return true;
+    }
+    const confirmTransfer = data.match(/^nav:unit:confirm:([0-9a-f-]{36})$/i);
+    if (confirmTransfer) {
+      const session = equipmentSessions.get(chatId);
+      if (!equipment || !permissions.includes("warehouse.catalog.manage") || !session?.targetWarehouseId || session.selectedUnitId !== confirmTransfer[1] || session.userId !== user.id || session.expiresAt < Date.now()) { await sendControl(chatId, "Подтверждение устарело. Начните заново."); return true; }
+      try {
+        await equipment.transferUnit(confirmTransfer[1]!, session.targetWarehouseId, user.id, "Перемещение через Telegram");
+        await renderUnitCard(chatId, confirmTransfer[1]!, user.id, permissions);
+      } catch (error) {
+        await sendControl(chatId, escapeHtml(error instanceof Error ? error.message : "Не удалось переместить оборудование."));
+      }
+      return true;
+    }
     const open = data.match(/^nav:project:open:([0-9a-f-]{36})$/i);
     if (open) { await renderProjectCard(chatId, open[1]!, user.id, permissions); return true; }
+    const financeMenu = data.match(/^nav:project:finance:([0-9a-f-]{36})$/i);
+    if (financeMenu) {
+      const project = (await visibleProjects(user.id, permissions)).find((item) => item.id === financeMenu[1]);
+      if (!project || !permissions.includes("telegram.finance.transactions")) { await sendControl(chatId, "Действие недоступно."); return true; }
+      await showProjectFinance(chatId, project);
+      return true;
+    }
+    const clientPayment = data.match(/^nav:finance:client:([0-9a-f-]{36})$/i);
+    if (clientPayment) {
+      const allowed = (await visibleProjects(user.id, permissions)).some((project) => project.id === clientPayment[1]);
+      if (!allowed || !permissions.includes("telegram.finance.transactions")) { await sendControl(chatId, "Действие недоступно."); return true; }
+      await clearControlMessages(chatId);
+      await startFinanceSession(chatId, clientPayment[1]!, { kind: "income", category: "prepayment" });
+      return true;
+    }
+    const staffPayment = data.match(/^nav:finance:staff:([0-9a-f-]{36})$/i);
+    if (staffPayment) {
+      const project = (await visibleProjects(user.id, permissions)).find((item) => item.id === staffPayment[1]);
+      if (!project || !permissions.includes("telegram.finance.transactions")) { await sendControl(chatId, "Действие недоступно."); return true; }
+      await showPayrollRecipients(chatId, project);
+      return true;
+    }
+    const contractorPayment = data.match(/^nav:finance:contractor:([0-9a-f-]{36})$/i);
+    if (contractorPayment) {
+      const project = (await visibleProjects(user.id, permissions)).find((item) => item.id === contractorPayment[1]);
+      if (!project || !permissions.includes("telegram.finance.transactions")) { await sendControl(chatId, "Действие недоступно."); return true; }
+      await showContractorRecipients(chatId, project);
+      return true;
+    }
+    const staff = data.match(/^nav:pay:staff:([0-9a-f-]{36})$/i);
+    if (staff) {
+      const project = await selectedProject(chatId, user.id, permissions);
+      const assignment = project ? (await projects.listAssignments(project.id)).find((item) => item.id === staff[1]) : null;
+      if (!project || !assignment || !permissions.includes("telegram.finance.transactions")) { await sendControl(chatId, "Действие недоступно."); return true; }
+      await clearControlMessages(chatId);
+      await startFinanceSession(chatId, project.id, { kind: "expense", category: "salary", assignmentId: assignment.id });
+      return true;
+    }
+    const contractorPay = data.match(/^nav:pay:contractor:([0-9a-f-]{36})$/i);
+    if (contractorPay) {
+      const project = await selectedProject(chatId, user.id, permissions);
+      const valid = project && (await projects.listContractorItems(project.id)).some((item) => item.contractorId === contractorPay[1]);
+      if (!project || !valid || !permissions.includes("telegram.finance.transactions")) { await sendControl(chatId, "Действие недоступно."); return true; }
+      await clearControlMessages(chatId);
+      await startFinanceSession(chatId, project.id, { kind: "expense", category: "other", contractorId: contractorPay[1]! });
+      return true;
+    }
+    const stages = data.match(/^nav:project:stages:([0-9a-f-]{36})$/i);
+    if (stages) {
+      const project = (await visibleProjects(user.id, permissions)).find((item) => item.id === stages[1]);
+      if (!project) { await sendControl(chatId, "Действие недоступно."); return true; }
+      await showStagePicker(chatId, project, permissions);
+      return true;
+    }
+    const stage = data.match(/^nav:stage:([0-9a-f-]{36}):(prep|pickup|delivery|mount|show|dismantle|return)$/i);
+    if (stage) {
+      const project = (await visibleProjects(user.id, permissions)).find((item) => item.id === stage[1]);
+      const requested = stage[2] as Projects.ProjectChecklistGroup;
+      const currentIndex = project ? PROJECT_CHECKLIST_GROUPS.indexOf(project.operationStage) : -1;
+      const nextIndex = PROJECT_CHECKLIST_GROUPS.indexOf(requested);
+      const allowed = project && !projectServiceSkipsStage(project.serviceMode, requested) && (nextIndex >= currentIndex
+        ? permissions.some((permission) => ["operations.view", "projects.timing.manage", "projects.manage"].includes(permission))
+        : permissions.some((permission) => ["operations.stage.back", "operations.stage.back.after.warehouse.turnover", "projects.timing.manage", "projects.manage"].includes(permission)));
+      if (!allowed || !project) { await sendControl(chatId, "Действие недоступно."); return true; }
+      try {
+        await projects.setOperationStage(project.id, requested, user.id);
+        await renderProjectCard(chatId, project.id, user.id, permissions);
+      } catch (error) {
+        await sendControl(chatId, escapeHtml(error instanceof Error ? error.message : "Не удалось сменить стадию."));
+      }
+      return true;
+    }
     const transaction = data.match(/^nav:project:transaction:([0-9a-f-]{36})$/i);
     if (transaction) {
       const allowed = (await visibleProjects(user.id, permissions)).some((project) => project.id === transaction[1]);
@@ -1065,7 +1351,7 @@ export function startTelegramBot(deps: BotDeps): void {
       if (!allowed || !(permissions.includes("operations.contractor_turnover.view") || permissions.includes("operations.contractor_turnover.manage") || permissions.includes("projects.reservation.manage"))) { await send(chatId, "Действие недоступно.", undefined, { log: false }); return true; }
       const orders = await projects.listContractorOrders(contractors[1]!);
       const lines = orders.length ? orders.slice(0, 10).map((order) => `• ${escapeHtml(order.name)} — ${order.booked ? "подтверждён" : "черновик"}`) : ["Заказов подрядчикам пока нет."];
-      await send(chatId, `<b>Подрядчики</b>\n${lines.join("\n")}\n\nДля изменения заказа откройте проект в SEVER.`, undefined, { log: false });
+      await sendControl(chatId, `<b>Подрядчики</b>\n${lines.join("\n")}\n\nДля изменения заказа откройте проект в SEVER.`, { inline_keyboard: [[{ text: "↩ К проекту", callback_data: `nav:project:open:${contractors[1]}` }, { text: "☰ Меню", callback_data: "nav:menu" }]] });
       return true;
     }
     return false;
@@ -1310,6 +1596,7 @@ export function startTelegramBot(deps: BotDeps): void {
           try {
             if (await handleFinanceMessage(chatId, msg)) continue;
             if (await handleProjectMessage(chatId, msg)) continue;
+            if (await handleEquipmentMessage(chatId, msg)) continue;
             if (await handleOperatorMessage(chatId, msg)) continue;
             const isCommand = text.startsWith("/");
             const incoming = !isCommand ? await logIncomingMessage(chatId, msg) : null;

@@ -15,7 +15,7 @@ describe("Telegram crew application", () => {
     const user = { id: "11111111-1111-4111-8111-111111111111", active: true, telegramId: "12345", displayName: "Егор" };
     const project = {
       id: "22222222-2222-4222-8222-222222222222", name: "Acme conference", baseName: "Acme conference",
-      clientId: "33333333-3333-4333-8333-333333333333", status: "confirmed", startsAt: "2026-11-10T09:00:00.000Z", endsAt: "2026-11-10T18:00:00.000Z", serviceMode: "full_service",
+      clientId: "33333333-3333-4333-8333-333333333333", status: "confirmed", operationStage: "prep", startsAt: "2026-11-10T09:00:00.000Z", endsAt: "2026-11-10T18:00:00.000Z", serviceMode: "full_service",
     };
     const people = {
       list: vi.fn().mockResolvedValue([user]),
@@ -48,7 +48,7 @@ describe("Telegram crew application", () => {
     });
 
     startTelegramBot({ people, appSettings: {} as AppSettings.AppSettingsService, projects: projects as unknown as Projects.ProjectsService });
-    await vi.waitFor(() => expect(sentTexts).toContain("<b>Acme conference</b>\n10.11.2026 — 10.11.2026 · Подтверждён\nКлиент: Acme\nРежим: полный сервис"));
+    await vi.waitFor(() => expect(sentTexts).toContain("<b>Acme conference</b>\n🔵 10.11.2026 — 10.11.2026 · Подтверждён\nКлиент: Acme\nСтадия: Подготовка\nРежим: полный сервис"));
     expect(projects.listProjectsForUser).toHaveBeenCalledWith(user.id);
   });
 
