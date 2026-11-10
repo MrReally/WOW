@@ -69,9 +69,11 @@ interface OperatorSession {
 }
 
 type FinanceSessionStage = "account" | "kind" | "category" | "amount" | "note" | "confirm";
+type FinanceSessionMode = "transaction" | "account_adjustment";
 interface FinanceSession {
   userId: string;
   requestKey: string;
+  mode: FinanceSessionMode;
   stage: FinanceSessionStage;
   accountId: string | null;
   kind: Finance.TxKind | null;
@@ -749,7 +751,7 @@ export function startTelegramBot(deps: BotDeps): void {
   // Financial drafts and confirmations are intentionally excluded from the
   // shared Telegram inbox journal: access to that inbox is a different right.
   const sendFinance = (chatId: string, text: string, replyMarkup?: unknown) =>
-    send(chatId, text, replyMarkup, { log: false });
+    sendControl(chatId, text, replyMarkup);
   const financeUser = async (chatId: string) => {
     if (!finance || !/^\d+$/.test(chatId)) return null;
     const user = (await people.list("all")).find((item) => item.active && item.telegramId === chatId);
@@ -770,7 +772,7 @@ export function startTelegramBot(deps: BotDeps): void {
   };
   const cancelFinanceSession = async (chatId: string) => {
     financeSessions.delete(chatId);
-    await sendFinance(chatId, "Операция отменена.");
+    await projectPanelMenu(chatId);
   };
   const startFinanceSession = async (chatId: string, projectId: string | null = null, preset?: { kind: Finance.TxKind; category: Finance.TxCategory; assignmentId?: string | null; contractorId?: string | null }) => {
     const user = await financeUser(chatId);
@@ -786,6 +788,7 @@ export function startTelegramBot(deps: BotDeps): void {
     financeSessions.set(chatId, {
       userId: user.id,
       requestKey: crypto.randomUUID(),
+      mode: "transaction",
       stage: "account",
       accountId: null,
       kind: preset?.kind ?? null,
@@ -805,14 +808,42 @@ export function startTelegramBot(deps: BotDeps): void {
       ],
     });
   };
+  const startAccountAdjustmentSession = async (chatId: string) => {
+    const user = await financeUser(chatId);
+    if (!user || !finance) { await sendFinance(chatId, "Команда недоступна."); return; }
+    const permissions = await people.permissionsForUser(user.id);
+    if (!permissions.includes("finance.account.adjust")) { await sendFinance(chatId, "Недостаточно прав для сверки счёта."); return; }
+    const accounts = await finance.listAccounts();
+    if (!accounts.length) { await sendFinance(chatId, "Нет доступных счетов. Сначала создайте счёт в приложении."); return; }
+    financeSessions.set(chatId, {
+      userId: user.id, requestKey: crypto.randomUUID(), mode: "account_adjustment", stage: "account", accountId: null,
+      kind: null, category: null, amount: null, expression: null, note: null,
+      projectId: null, assignmentId: null, contractorId: null, expiresAt: Date.now() + 15 * 60_000,
+    });
+    await sendFinance(chatId, "<b>Сверка остатка</b>\nВыберите счёт:", { inline_keyboard: [
+      ...accounts.map((account) => [{ text: `${account.name} · ${account.currency} · сейчас ${account.balance.toFixed(2)}`.slice(0, 60), callback_data: `tx:account:${account.id}` }]),
+      [{ text: "Отмена", callback_data: "tx:cancel" }],
+    ] });
+  };
   const sendFinanceConfirmation = async (chatId: string, session: FinanceSession) => {
-    if (!finance || !session.accountId || !session.kind || !session.category || session.amount == null) return;
+    if (!finance || !session.accountId || session.amount == null || (session.mode === "transaction" && (!session.kind || !session.category))) return;
     const account = (await finance.listAccounts()).find((item) => item.id === session.accountId);
     if (!account) {
       financeSessions.delete(chatId);
       await sendFinance(chatId, "Выбранный счёт больше недоступен. Начните заново: /transaction");
       return;
     }
+    if (session.mode === "account_adjustment") {
+      await sendFinance(chatId, [
+        "<b>Проверьте сверку</b>",
+        `Счёт: ${escapeHtml(account.name)} · ${account.currency}`,
+        `Текущий остаток: <b>${account.balance.toFixed(2)} ${account.currency}</b>`,
+        `Фактический остаток: <b>${session.amount.toFixed(2)} ${account.currency}</b>`,
+        `Комментарий: ${escapeHtml(session.note || "—")}`,
+      ].join("\n"), { inline_keyboard: [[{ text: "✅ Провести сверку", callback_data: "tx:confirm" }, { text: "Отмена", callback_data: "tx:cancel" }]] });
+      return;
+    }
+    if (!session.kind || !session.category) return;
     const direction = session.kind === "income" ? "Доход" : "Расход";
     const category = financeCategoryLabels[session.category] ?? "Прочее";
     await sendFinance(chatId, [
@@ -857,7 +888,7 @@ export function startTelegramBot(deps: BotDeps): void {
         session.amount = evaluateTelegramAmount(text);
         session.expression = text;
         session.stage = "note";
-        await sendFinance(chatId, `Сумма: <b>${session.amount.toFixed(2)}</b>\nТеперь отправьте комментарий или <code>-</code>, чтобы оставить его пустым.`);
+        await sendFinance(chatId, `${session.mode === "account_adjustment" ? "Фактический остаток" : "Сумма"}: <b>${session.amount.toFixed(2)}</b>\nТеперь отправьте комментарий или <code>-</code>, чтобы оставить его пустым.`);
       } catch (error) {
         await sendFinance(chatId, `${escapeHtml(error instanceof Error ? error.message : "Не удалось посчитать сумму")}\nПример: <code>1200 + 3*450</code>`);
       }
@@ -896,6 +927,11 @@ export function startTelegramBot(deps: BotDeps): void {
         return true;
       }
       session.accountId = account.id;
+      if (session.mode === "account_adjustment") {
+        session.stage = "amount";
+        await sendFinance(chatId, `Счёт: <b>${escapeHtml(account.name)}</b> · ${account.currency}\nВведите фактический остаток на счёте.`);
+        return true;
+      }
       if (session.kind && session.category) {
         session.stage = "amount";
         await sendFinance(chatId, `Счёт: <b>${escapeHtml(account.name)}</b> · ${account.currency}\nВведите сумму или выражение. Например: <code>1200 + 3*450</code>`);
@@ -935,7 +971,7 @@ export function startTelegramBot(deps: BotDeps): void {
       await sendFinance(chatId, "Введите сумму или выражение. Например: <code>1200 + 3*450</code>");
       return true;
     }
-    if (data === "tx:confirm" && session.stage === "confirm" && session.accountId && session.kind && session.category && session.amount != null) {
+    if (data === "tx:confirm" && session.stage === "confirm" && session.accountId && session.amount != null && (session.mode === "account_adjustment" || (session.kind && session.category))) {
       const account = (await finance.listAccounts()).find((item) => item.id === session.accountId);
       if (!account) {
         financeSessions.delete(chatId);
@@ -949,6 +985,15 @@ export function startTelegramBot(deps: BotDeps): void {
         return true;
       }
       try {
+        if (session.mode === "account_adjustment") {
+          const permissions = await people.permissionsForUser(session.userId);
+          if (!permissions.includes("finance.account.adjust")) throw new Error("Недостаточно прав для сверки счёта.");
+          const adjusted = await finance.adjustAccountBalance({ requestKey: session.requestKey, accountId: account.id, targetBalance: session.amount, note: session.note, createdByUserId: session.userId });
+          financeSessions.delete(chatId);
+          await sendFinance(chatId, `✅ Сверка проведена: <b>${adjusted.amount.toFixed(2)} ${adjusted.currency}</b>`, { inline_keyboard: [[{ text: "☰ Меню", callback_data: "nav:menu" }]] });
+          return true;
+        }
+        if (!session.kind || !session.category) return true;
         const created = await finance.createTransaction({
           requestKey: session.requestKey,
           accountId: account.id,
@@ -963,7 +1008,7 @@ export function startTelegramBot(deps: BotDeps): void {
           createdByUserId: session.userId,
         });
         financeSessions.delete(chatId);
-        await sendFinance(chatId, `✅ Проведено: <b>${created.amount.toFixed(2)} ${created.currency}</b>\nID: <code>${created.id}</code>`);
+        await sendFinance(chatId, `✅ Проведено: <b>${created.amount.toFixed(2)} ${created.currency}</b>\nID: <code>${created.id}</code>`, { inline_keyboard: [[{ text: "☰ Меню", callback_data: "nav:menu" }]] });
       } catch {
         await sendFinance(chatId, "Не удалось провести транзакцию. Данные не изменены; попробуйте подтвердить ещё раз или отмените операцию.");
       }
@@ -998,6 +1043,11 @@ export function startTelegramBot(deps: BotDeps): void {
     prep: "Подготовка", pickup: "Выдача", delivery: "Доставка", mount: "Монтаж", show: "Мероприятие", dismantle: "Демонтаж", return: "Возврат",
   };
   const projectPanelMenu = async (chatId: string) => {
+    // Entering the root discards every ephemeral flow, including stale callback
+    // state left behind after an interrupted action.
+    financeSessions.delete(chatId);
+    projectSessions.delete(chatId);
+    equipmentSessions.delete(chatId);
     const user = await linkedUser(chatId);
     if (!user || !projects) {
       await send(chatId, "Панель доступна после привязки Telegram к активному аккаунту.", undefined, { log: false });
@@ -1006,9 +1056,19 @@ export function startTelegramBot(deps: BotDeps): void {
     const permissions = await people.permissionsForUser(user.id);
     const buttons: { text: string; callback_data: string }[][] = [[{ text: "📁 Найти проект", callback_data: "nav:projects" }]];
     if (permissions.includes("warehouse.view") || permissions.includes("warehouse.catalog.manage")) buttons.push([{ text: "📦 Найти оборудование", callback_data: "nav:equipment" }]);
-    if (permissions.includes("telegram.finance.transactions")) buttons.push([{ text: "💳 Новая транзакция", callback_data: "nav:transaction" }]);
+    if (permissions.includes("telegram.finance.transactions")) buttons.push([{ text: "💳 Финансы", callback_data: "nav:finance" }]);
     if (permissions.includes("telegram.inbox.manage")) buttons.push([{ text: "💬 Диалоги", callback_data: "nav:inbox" }]);
     await sendControl(chatId, "<b>SEVER · быстрые действия</b>\nВыберите раздел.", { inline_keyboard: buttons });
+  };
+  const showFinanceMenu = async (chatId: string) => {
+    const user = await financeUser(chatId);
+    if (!user) { await sendControl(chatId, "Раздел финансов недоступен."); return; }
+    financeSessions.delete(chatId);
+    const permissions = await people.permissionsForUser(user.id);
+    const rows: { text: string; callback_data: string }[][] = [[{ text: "💳 Новая транзакция", callback_data: "nav:transaction" }]];
+    if (permissions.includes("finance.account.adjust")) rows.push([{ text: "⚖️ Сверка остатка счёта", callback_data: "nav:account-adjustment" }]);
+    rows.push([{ text: "☰ Меню", callback_data: "nav:menu" }]);
+    await sendControl(chatId, "<b>Финансы</b>\nВыберите действие.", { inline_keyboard: rows });
   };
   const startProjectSearch = async (chatId: string) => {
     const user = await linkedUser(chatId);
@@ -1184,7 +1244,7 @@ export function startTelegramBot(deps: BotDeps): void {
     const session = equipmentSessions.get(chatId);
     if (!session) return false;
     const text = msg.text?.trim() ?? "";
-    if (text === "/cancel") { equipmentSessions.delete(chatId); await projectPanelMenu(chatId); return true; }
+    if (text === "/cancel") { await projectPanelMenu(chatId); return true; }
     if (!session.awaitingSearch || session.expiresAt < Date.now()) return false;
     await searchEquipment(chatId, session, text);
     return true;
@@ -1206,8 +1266,7 @@ export function startTelegramBot(deps: BotDeps): void {
     const session = projectSessions.get(chatId);
     if (!session) return false;
     if (text === "/cancel") {
-      projectSessions.delete(chatId);
-      await send(chatId, "Поиск проекта отменён.", undefined, { log: false });
+      await projectPanelMenu(chatId);
       return true;
     }
     if (session.expiresAt < Date.now() || !session.awaitingSearch) return false;
@@ -1219,7 +1278,9 @@ export function startTelegramBot(deps: BotDeps): void {
     if (data === "nav:menu") { await projectPanelMenu(chatId); return true; }
     if (data === "nav:projects") { await startProjectSearch(chatId); return true; }
     if (data === "nav:equipment") { await startEquipmentSearch(chatId); return true; }
+    if (data === "nav:finance") { await showFinanceMenu(chatId); return true; }
     if (data === "nav:transaction") { await startFinanceSession(chatId); return true; }
+    if (data === "nav:account-adjustment") { await startAccountAdjustmentSession(chatId); return true; }
     if (data === "nav:inbox") { await operatorMenu(chatId); return true; }
     const user = await linkedUser(chatId);
     if (!user || !projects) { await send(chatId, "Панель недоступна.", undefined, { log: false }); return true; }

@@ -26,6 +26,41 @@ describe("Telegram finance amount expressions", () => {
 });
 
 describe("Telegram finance permission boundary", () => {
+  it("adjusts an account only when the dedicated adjustment permission is present", async () => {
+    env.auth.telegramBotToken = "test-token";
+    const account = { id: "22222222-2222-4222-8222-222222222222", name: "Касса", currency: "EUR", balance: 100 } as Finance.AccountDTO;
+    const adjustAccountBalance = vi.fn().mockResolvedValue({ amount: 25, currency: "EUR" });
+    const finance = { listAccounts: vi.fn().mockResolvedValue([account]), adjustAccountBalance } as unknown as Finance.FinanceService;
+    const user = { id: "11111111-1111-4111-8111-111111111111", active: true, telegramId: "12345" };
+    const people = {
+      list: vi.fn().mockResolvedValue([user]),
+      permissionsForUser: vi.fn().mockResolvedValue(["telegram.finance.transactions", "finance.account.adjust"]),
+      getTelegramInboxSettings: vi.fn().mockResolvedValue({ workUsername: null }),
+      logTelegramDialogMessage: vi.fn().mockResolvedValue(undefined),
+      markTelegramDialogMessageDeleted: vi.fn().mockResolvedValue(undefined),
+    } as unknown as People.PeopleService;
+    const updates = [
+      { update_id: 1, callback_query: { id: "a", data: "nav:account-adjustment", from: { id: 12345 } } },
+      { update_id: 2, callback_query: { id: "b", data: `tx:account:${account.id}`, from: { id: 12345 } } },
+      { update_id: 3, message: { message_id: 3, text: "125", from: { id: 12345 }, chat: { id: 12345, type: "private" } } },
+      { update_id: 4, message: { message_id: 4, text: "Пересчёт кассы", from: { id: 12345 }, chat: { id: 12345, type: "private" } } },
+      { update_id: 5, callback_query: { id: "c", data: "tx:confirm", from: { id: 12345 } } },
+    ];
+    let polled = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      if (String(url).endsWith("/getUpdates")) {
+        if (polled) return new Promise<Response>(() => {});
+        polled = true;
+        return Response.json({ ok: true, result: updates });
+      }
+      return Response.json({ ok: true, result: { message_id: 10 } });
+    });
+
+    startTelegramBot({ people, finance, appSettings: {} as AppSettings.AppSettingsService });
+    await vi.waitFor(() => expect(adjustAccountBalance).toHaveBeenCalledOnce());
+    expect(adjustAccountBalance).toHaveBeenCalledWith(expect.objectContaining({ accountId: account.id, targetBalance: 125, note: "Пересчёт кассы", createdByUserId: user.id, requestKey: expect.any(String) }));
+  });
+
   it("creates a confirmed transaction for the linked user with the dedicated permission", async () => {
     env.auth.telegramBotToken = "test-token";
     const account = { id: "22222222-2222-4222-8222-222222222222", name: "Касса", currency: "EUR", balance: 0 } as Finance.AccountDTO;
