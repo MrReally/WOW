@@ -1059,11 +1059,11 @@ export function startTelegramBot(deps: BotDeps): void {
       return;
     }
     const permissions = await people.permissionsForUser(user.id);
-    const buttons: { text: string; callback_data: string }[][] = [[{ text: "📁 Найти проект", callback_data: "nav:projects" }]];
-    if (permissions.includes("warehouse.view") || permissions.includes("warehouse.catalog.manage")) buttons.push([{ text: "📦 Найти оборудование", callback_data: "nav:equipment" }]);
-    if (permissions.includes("telegram.finance.transactions")) buttons.push([{ text: "💳 Финансы", callback_data: "nav:finance" }]);
-    if (await canUseInbox(chatId, telegramUsername ?? user.telegramUsername)) buttons.push([{ text: "💬 Диалоги", callback_data: "nav:inbox" }]);
-    await sendControl(chatId, "<b>SEVER · быстрые действия</b>\nВыберите раздел.", { inline_keyboard: buttons });
+    const keyboard: string[][] = [["📁 Найти проект"]];
+    if (permissions.includes("warehouse.view") || permissions.includes("warehouse.catalog.manage")) keyboard.push(["📦 Найти оборудование"]);
+    if (permissions.includes("telegram.finance.transactions")) keyboard.push(["💳 Финансы"]);
+    if (await canUseInbox(chatId, telegramUsername ?? user.telegramUsername)) keyboard.push(["💬 Диалоги"]);
+    await sendControl(chatId, "<b>SEVER · быстрые действия</b>\nВыберите раздел.", { keyboard, resize_keyboard: true, one_time_keyboard: false, is_persistent: true });
   };
   const showFinanceMenu = async (chatId: string) => {
     const user = await financeUser(chatId);
@@ -1264,6 +1264,15 @@ export function startTelegramBot(deps: BotDeps): void {
       await projectPanelMenu(chatId, msg.from?.username);
       return true;
     }
+    if (text === "📁 Найти проект") { await startProjectSearch(chatId); return true; }
+    if (text === "📦 Найти оборудование") { await startEquipmentSearch(chatId); return true; }
+    if (text === "💳 Финансы") { await showFinanceMenu(chatId); return true; }
+    if (text === "💬 Диалоги") {
+      if (!await canUseInbox(chatId, msg.from?.username)) { await projectPanelMenu(chatId, msg.from?.username); return true; }
+      await people.rememberTelegramInboxWorkChatId(chatId);
+      await operatorMenu(chatId);
+      return true;
+    }
     if (/^\/help(?:@[A-Za-z0-9_]+)?$/.test(text)) {
       await sendControl(chatId, "<b>SEVER Bot</b>\n☰ Меню — быстрые действия\n📁 Проекты — поиск и действия по проекту\n📦 Оборудование — поиск и перемещение между складами\n💳 Финансы — доступно только с выданным правом");
       return true;
@@ -1439,7 +1448,7 @@ export function startTelegramBot(deps: BotDeps): void {
     }
     if (text === "↩ Выйти" || text === "/exit") {
       operatorSessions.set(chatId, { targetTelegramId: null, menuMessageIds: [] });
-      await send(chatId, "Режим ответа выключен.", operatorReplyKeyboard, { log: false });
+      await projectPanelMenu(chatId, msg.from?.username);
       return true;
     }
     const session = operatorSessions.get(chatId);
@@ -1563,7 +1572,7 @@ export function startTelegramBot(deps: BotDeps): void {
       if (data === "inbox:exit") {
         operatorSessions.set(fromChatId, { targetTelegramId: null, menuMessageIds: [] });
         await tg("answerCallbackQuery", { callback_query_id: cb.id });
-        await send(fromChatId, "Режим ответа выключен.", operatorReplyKeyboard, { log: false });
+        await projectPanelMenu(fromChatId, cb.from.username);
         return;
       }
       const openMatch = data.match(/^inbox:open:(.+)$/);
