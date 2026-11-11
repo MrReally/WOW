@@ -6,7 +6,7 @@ import { dateRange, dateTime, projectStatusLabel, projectStatusTone } from "../.
 import { configuredTime } from "../../lib/dateFormat.ts";
 import { personInitials, personName } from "../../lib/people.ts";
 import { useSession } from "../../app/session.ts";
-import { useAllUnits, useAssignments, useContractorItems, useEquipmentModels, useIssueProjectQuantity, useIssueResolvedUnits, usePeople, useProject, useProjectEquipmentJournal, useProjectInvoice, useProjectVenues, useReservations, useReturnProjectQuantity, useSetProjectFinanceTracking, useUpdateAssignment } from "../projects/hooks.ts";
+import { useAllUnits, useAssignments, useContractorItems, useEquipmentModels, useIssueProjectQuantity, useIssueResolvedUnits, usePeople, useProject, useProjectEquipmentJournal, useProjectInvoice, useProjectVenues, useReservations, useReturnContractorItem, useReturnProjectQuantity, useSetProjectFinanceTracking, useUpdateAssignment } from "../projects/hooks.ts";
 import { useAccounts, useCreateTransaction, useTransactions, useUpdateTransaction, useVoidTransaction } from "../finance/hooks.ts";
 import { useContractors } from "../contractors/hooks.ts";
 import { projectStageOrder, ProjectStageProgress } from "../projects/components/ProjectStageProgress.tsx";
@@ -141,7 +141,12 @@ export function OperationsProjectPage() {
   const canViewProjectNote = can("projects.note.view");
   const canViewContractorTurnover=can("operations.contractor_turnover.view","operations.contractor_turnover.manage");
   const canManageContractorTurnover=can("operations.contractor_turnover.manage");
+  const canViewOperationsFinance = can("operations.finance.view", "operations.finance.manage", "finance.view", "finance.manage");
+  const canManageOperationsFinance = can("operations.finance.manage", "finance.manage");
   const contractorOrders=useContractorOrders(id,canViewContractorTurnover);
+  const contractorItems=useContractorItems(id);
+  const contractorTransactions=useTransactions(id, true, canViewOperationsFinance);
+  const contractorAccounts=useAccounts(canViewOperationsFinance);
   const contractorDirectory=useContractors();
   const canOpenPlan = can("plans.view", "plans.manage");
   const canOpenProject = can("projects.view");
@@ -191,7 +196,7 @@ export function OperationsProjectPage() {
           { id: "timing", label: "Тайминг" },
           { id: "finance", label: "Финансы" },
         ] as const)
-          .filter(tab => (tab.id !== "finance" || can("operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage")) && (tab.id!=="contractors"||canViewContractorTurnover))
+          .filter(tab => (tab.id !== "finance" || can("operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage")) && (tab.id!=="contractors"||(canViewContractorTurnover || canViewOperationsFinance)))
           .map(tab => (
             <button
               key={tab.id}
@@ -239,7 +244,7 @@ export function OperationsProjectPage() {
         />
       )}
 
-      {activeTab==="contractors"&&canViewContractorTurnover&&<ContractorTurnoverPanel orders={contractorOrders.data??[]} contractors={contractorDirectory.data??[]} canManage={canManageContractorTurnover}/>}
+      {activeTab==="contractors"&&(canViewContractorTurnover || canViewOperationsFinance)&&<ContractorTurnoverPanel project={project.data} orders={contractorOrders.data??[]} items={contractorItems.data??[]} contractors={contractorDirectory.data??[]} canViewTurnover={canViewContractorTurnover} canManageTurnover={canManageContractorTurnover} canViewFinance={canViewOperationsFinance} canManageFinance={canManageOperationsFinance} accounts={contractorAccounts.data??[]} transactions={(contractorTransactions.data??[]).filter(transaction=>!transaction.voidedAt)}/>}
 
       {activeTab === "finance" && (can("operations.finance.view", "operations.finance.manage") || can("operations.payroll.view", "operations.payroll.manage")) && <OperationsFinancePanel project={project.data} canClientView={can("operations.finance.view", "operations.finance.manage")} canClientManage={can("operations.finance.manage")} canPayrollView={can("operations.payroll.view", "operations.payroll.manage")} canPayrollManage={can("operations.payroll.manage")} />}
 
@@ -247,11 +252,18 @@ export function OperationsProjectPage() {
   );
 }
 
-function ContractorTurnoverPanel({orders,contractors,canManage}:{orders:Projects.ContractorOrderDTO[];contractors:Equipment.ContractorDTO[];canManage:boolean}) {
-  const receive=useSetContractorOrderLineReceived(),completeReceipt=useCompleteContractorOrderReceipt(),returnLine=useSetContractorOrderLineReturned(),completeReturn=useCompleteContractorOrderReturn();
+function ContractorTurnoverPanel({project,orders,items,contractors,canViewTurnover,canManageTurnover,canViewFinance,canManageFinance,accounts,transactions}:{project:Projects.ProjectDTO;orders:Projects.ContractorOrderDTO[];items:Projects.ContractorItemDTO[];contractors:Equipment.ContractorDTO[];canViewTurnover:boolean;canManageTurnover:boolean;canViewFinance:boolean;canManageFinance:boolean;accounts:Finance.AccountDTO[];transactions:Finance.TransactionDTO[]}) {
+  const receive=useSetContractorOrderLineReceived(),completeReceipt=useCompleteContractorOrderReceipt(),returnLine=useSetContractorOrderLineReturned(),completeReturn=useCompleteContractorOrderReturn(),returnLegacyItem=useReturnContractorItem(),createTransaction=useCreateTransaction();
   const contractorName=(id:string)=>contractors.find(item=>item.id===id)?.name??"Подрядчик";
-  if(!orders.length)return <EmptyState title="Заказов подрядчикам в проекте нет"/>;
-  return <div className="stack"><SectionHead label="Оборот подрядчиков"/>{orders.map(order=>{const allReceived=order.lines.every(line=>!!line.receivedAt),allReturned=order.lines.every(line=>!!line.returnedAt);return <Card key={order.id}><div className="row row--between"><div><p className="card__title">{order.name}</p><p className="card__subtitle">{contractorName(order.contractorId)} · {order.fulfillmentMode==="dry_rental"?"забираем сами":"доставляет подрядчик"}</p></div><Chip label={order.returnCompletedAt?"оборот закрыт":order.receiptCompletedAt?"принято":"приёмка"} tone={order.returnCompletedAt?"ok":order.receiptCompletedAt?"accent":"warn"}/></div><div className="stack" style={{gap:8,marginTop:12}}>{order.lines.map(line=><div className="lrow" key={line.id}><span><strong>{line.name}</strong><small>Количество: {line.qty}</small></span>{!order.receiptCompletedAt?<label className="chip chip--neutral"><input type="checkbox" checked={!!line.receivedAt} disabled={!canManage||receive.isPending} onChange={e=>receive.mutate({orderId:order.id,lineId:line.id,active:e.target.checked})}/> принято</label>:<label className="chip chip--neutral"><input type="checkbox" checked={!!line.returnedAt} disabled={!canManage||!!order.returnCompletedAt||returnLine.isPending} onChange={e=>returnLine.mutate({orderId:order.id,lineId:line.id,active:e.target.checked})}/> возвращено</label>}</div>)}</div>{canManage&&!order.receiptCompletedAt&&<Button block style={{marginTop:12}} disabled={!allReceived||completeReceipt.isPending} onClick={()=>completeReceipt.mutate({orderId:order.id})}>Завершить приёмку</Button>}{canManage&&order.receiptCompletedAt&&!order.returnCompletedAt&&<Button block style={{marginTop:12}} disabled={!allReturned||completeReturn.isPending} onClick={()=>completeReturn.mutate({orderId:order.id})}>Завершить возврат подрядчику</Button>}</Card>;})}</div>;
+  const legacyEquipment=items.filter(item=>!item.orderId&&item.kind==="equipment");
+  const money=(value:number|null|undefined)=>`${(Number(value??0)).toLocaleString("ru-RU",{maximumFractionDigits:2})} €`;
+  return <div className="stack">
+    {canViewTurnover&&<><SectionHead label="Оборот подрядчиков" />
+    {orders.length===0&&legacyEquipment.length===0?<EmptyState title="Заказов подрядчикам в проекте нет"/>:orders.map(order=>{const allReceived=order.lines.every(line=>!!line.receivedAt),allReturned=order.lines.every(line=>!!line.returnedAt);const receiptLabel=order.fulfillmentMode==="dry_rental"?"Забор у подрядчика и приёмка":"Приём от подрядчика";const receivedLabel=order.fulfillmentMode==="dry_rental"?"забрано и принято":"принято";const returnLabel=order.fulfillmentMode==="dry_rental"?"Вернуть подрядчику":"Передать на забор подрядчику";return <Card key={order.id}><div className="row row--between"><div><p className="card__title">{order.name}</p><p className="card__subtitle">{contractorName(order.contractorId)} · {order.fulfillmentMode==="dry_rental"?"забираем сами":"доставляет подрядчик"}</p></div><Chip label={order.returnCompletedAt?"оборот закрыт":order.receiptCompletedAt?"принято":"ожидает приёмки"} tone={order.returnCompletedAt?"ok":order.receiptCompletedAt?"accent":"warn"}/></div><div className="stack" style={{gap:8,marginTop:12}}>{order.lines.map(line=><div className="lrow" key={line.id}><span><strong>{line.name}</strong><small>Количество: {line.qty}</small></span>{!order.receiptCompletedAt?<label className="chip chip--neutral"><input type="checkbox" checked={!!line.receivedAt} disabled={!canManageTurnover||receive.isPending} onChange={e=>receive.mutate({orderId:order.id,lineId:line.id,active:e.target.checked})}/> {receivedLabel}</label>:<label className="chip chip--neutral"><input type="checkbox" checked={!!line.returnedAt} disabled={!canManageTurnover||!!order.returnCompletedAt||returnLine.isPending} onChange={e=>returnLine.mutate({orderId:order.id,lineId:line.id,active:e.target.checked})}/> возвращено</label>}</div>)}</div>{canManageTurnover&&!order.receiptCompletedAt&&<Button block style={{marginTop:12}} disabled={!allReceived||completeReceipt.isPending} onClick={()=>completeReceipt.mutate({orderId:order.id})}>{receiptLabel} завершены</Button>}{canManageTurnover&&order.receiptCompletedAt&&!order.returnCompletedAt&&<Button block style={{marginTop:12}} disabled={!allReturned||completeReturn.isPending} onClick={()=>completeReturn.mutate({orderId:order.id})}>{returnLabel} завершён</Button>}</Card>;})}
+    {legacyEquipment.filter(item=>!item.returnedAt).length>0&&<Card><p className="card__title">Возврат оборудования из планирования</p><div className="stack" style={{gap:8,marginTop:10}}>{legacyEquipment.map(item=><div className="lrow" key={item.id}><span><strong>{item.name}</strong><small>{contractorName(item.contractorId)} · {item.qty} шт. · {item.returnedAt?"возвращено":"нужно вернуть"}</small></span>{!item.returnedAt&&canManageTurnover&&<Button variant="secondary" disabled={returnLegacyItem.isPending} onClick={()=>returnLegacyItem.mutate(item.id)}>Вернуть</Button>}</div>)}</div></Card>}
+    </>}
+    {canViewFinance&&<><SectionHead label="Оплаты подрядчикам"/><ContractorPayments project={project} items={items} contractors={contractors} transactions={transactions} accounts={accounts} canManage={canManageFinance} createTransaction={createTransaction} money={money}/></>}
+  </div>;
 }
 
 function OperationsTimingPanel({
@@ -321,7 +333,7 @@ function OperationsFinancePanel({ project, canClientView, canClientManage, canPa
   const projectId = project.id;
   const navigate = useNavigate();
   const { can } = useSession();
-  const invoice = useProjectInvoice(projectId, canClientView && project.financeTracked), accounts = useAccounts(canClientView || canPayrollView), createTransaction = useCreateTransaction(), assignments = useAssignments(projectId), people = usePeople(canPayrollView || canClientView), transactions = useTransactions(projectId, true), contractorItems = useContractorItems(projectId), contractors = useContractors(), setFinanceTracking = useSetProjectFinanceTracking();
+  const invoice = useProjectInvoice(projectId, canClientView && project.financeTracked), accounts = useAccounts(canClientView || canPayrollView), createTransaction = useCreateTransaction(), assignments = useAssignments(projectId), people = usePeople(canPayrollView || canClientView), transactions = useTransactions(projectId, true), setFinanceTracking = useSetProjectFinanceTracking();
   const activeTransactions = (transactions.data ?? []).filter(transaction => !transaction.voidedAt);
   const active = (assignments.data ?? []).filter(x => x.status === "added" || x.status === "accepted");
   const name = (id:string) => personName((people.data ?? []).find(x => x.id === id), id);
@@ -353,7 +365,6 @@ function OperationsFinancePanel({ project, canClientView, canClientManage, canPa
       const rest = Math.max(0, due - paid);
       return <div className="stack" style={{ gap: 6 }} key={assignment.id}><div className="row row--between"><div><p>{name(assignment.userId)} · {assignment.roleNote ?? "Роль"}</p><p className="card__subtitle">ставка {money(due)} · выплачено {money(paid)}{rest ? ` · осталось ${money(rest)}` : ""}</p></div><label className="chip chip--neutral"><input type="checkbox" checked={due <= 0 || rest <= 0.005} readOnly /> оплачено</label></div>{canPayrollManage && due > 0 && rest > 0.005 && <PaymentComposer accounts={accounts.data ?? []} label="Выплата" max={rest} pending={createTransaction.isPending} onPay={(account, amount) => createTransaction.mutate({ accountId: account.id, projectId, assignmentId: assignment.id, kind: "expense", category: "salary", amount, currency: account.currency, note: `Выплата ${name(assignment.userId)} · ${assignment.roleNote ?? "роль"}` })} />}</div>;
     })}</div></Card>}
-    {canClientView && <ContractorPayments project={project} items={contractorItems.data ?? []} contractors={contractors.data ?? []} transactions={activeTransactions} accounts={accounts.data ?? []} canManage={canClientManage} createTransaction={createTransaction} money={money} />}
     <ProjectTransactionList transactions={transactions.data ?? []} accounts={accounts.data ?? []} people={people.data ?? []} canClientManage={canClientManage} canPayrollManage={canPayrollManage} />
     </>}
   </>;

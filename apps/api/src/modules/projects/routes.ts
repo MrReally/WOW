@@ -623,7 +623,7 @@ export function registerProjectsRoutes(
   });
   app.post("/api/contractor-items/return-all", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "projects.reservation.manage");
+    requirePermission(auth, "projects.reservation.manage", "operations.contractor_turnover.manage");
     const body = contractorGroupSchema.parse(req.body);
     return service.returnContractorItems(body.projectId, body.contractorId);
   });
@@ -641,7 +641,7 @@ export function registerProjectsRoutes(
   });
   app.post<{ Params: { id: string } }>("/api/contractor-items/:id/return", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "projects.reservation.manage");
+    requirePermission(auth, "projects.reservation.manage", "operations.contractor_turnover.manage");
     return service.returnContractorItem(req.params.id);
   });
   app.get<{Params:{id:string}}>("/api/projects/:id/contractor-orders", async req => { const auth=await ctx.auth(req); requirePermission(auth,"projects.view","projects.reservation.manage","operations.contractor_turnover.view","operations.contractor_turnover.manage"); return service.listContractorOrders(req.params.id); });

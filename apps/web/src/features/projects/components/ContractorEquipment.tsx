@@ -9,17 +9,13 @@ import {
   useAddContractorItem,
   useUpdateContractorItem,
   useSetContractorItemsBooked,
-  useReturnContractorItems,
   useRemoveContractorItem,
-  useReturnContractorItem,
   useCreateContractor,
   useContractorCatalog,
   useContractorWarehouses,
   useContractorOrders,
   useCreateContractorOrder,
 } from "../hooks.ts";
-import { useAccounts } from "../../finance/hooks.ts";
-import { AddTransactionSheet } from "../../finance/components/AddTransactionSheet.tsx";
 import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
 import { isoFromLocal } from "../../../lib/datetime.ts";
 
@@ -30,21 +26,16 @@ interface Props {
   projectStartsAt: string | null;
   projectEndsAt: string | null;
   canManage: boolean;
-  canManageFinance: boolean;
 }
 
-export function ContractorEquipment({ projectId, projectStartsAt, projectEndsAt, canManage, canManageFinance }: Props) {
+export function ContractorEquipment({ projectId, projectStartsAt, projectEndsAt, canManage }: Props) {
   const { t, eur, dateTime } = useI18n();
   const items = useContractorItems(projectId);
   const contractors = useContractors();
   const add = useAddContractorItem();
   const update = useUpdateContractorItem();
   const setAllBooked = useSetContractorItemsBooked();
-  const returnAll = useReturnContractorItems();
-  const accounts = useAccounts(canManageFinance);
-  const [paymentContractor, setPaymentContractor] = useState<string | null>(null);
   const remove = useRemoveContractorItem();
-  const markReturned = useReturnContractorItem();
   const createContractor = useCreateContractor();
   const catalog=useContractorCatalog();
   const supplierWarehouses=useContractorWarehouses();
@@ -110,9 +101,8 @@ export function ContractorEquipment({ projectId, projectStartsAt, projectEndsAt,
         const someBooked = group.some((item) => item.booked);
         const equipment = group.filter((item) => item.kind === "equipment");
         const outstandingEquipment = equipment.filter((item) => !item.returnedAt);
-        const allPaid = group.every((item) => item.paidAt || item.costEUR * item.qty * periods(item) === 0);
         const afterProject = !!projectEndsAt && Date.now() > Date.parse(projectEndsAt);
-        const status = allBooked && outstandingEquipment.length === 0 && allPaid
+        const status = allBooked && outstandingEquipment.length === 0
           ? { label: "Закрыто", tone: "ok" as const }
           : afterProject && outstandingEquipment.length > 0
           ? { label: "Нужно вернуть", tone: "warn" as const }
@@ -165,10 +155,8 @@ export function ContractorEquipment({ projectId, projectStartsAt, projectEndsAt,
                     <div className="stack" style={{ marginTop: 6, gap: 6 }}>
                       <span className="card__subtitle">{kindName(item.kind)}{item.note ? ` · ${item.note}` : ""}</span>
                       {item.kind === "equipment" && <span className="card__subtitle">{item.returnedAt ? `Возвращено ${dateTime(item.returnedAt)}` : "Ожидает возврата"}</span>}
-                      <span className="card__subtitle">{item.paidAt ? `Оплачено ${dateTime(item.paidAt)}` : "Не оплачено"}</span>
                       {canManage && <div className="row">
                         <Button variant="ghost" onClick={() => setEditing(item)}>Изменить</Button>
-                        {item.kind === "equipment" && !item.returnedAt && <Button variant="secondary" onClick={() => markReturned.mutate(item.id)}>Вернуть</Button>}
                         <Button variant="ghost" onClick={() => remove.mutate(item.id)}>Удалить</Button>
                       </div>}
                     </div>
@@ -177,10 +165,9 @@ export function ContractorEquipment({ projectId, projectStartsAt, projectEndsAt,
               ))}
             </div>
 
-            {(canManage || canManageFinance) && <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
+            {canManage && <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
               {canManage && <Button variant={allBooked ? "ghost" : "primary"} onClick={() => setAllBooked.mutate({ projectId, contractorId: id, booked: !allBooked })}>{allBooked ? "Снять бронь" : "Забронировать всё"}</Button>}
-              {canManage && outstandingEquipment.length > 0 && <Button variant="secondary" onClick={() => returnAll.mutate({ projectId, contractorId: id })}>Вернуть всё оборудование</Button>}
-              {canManageFinance && !allPaid && <Button variant="secondary" onClick={() => setPaymentContractor(id)}>Внести оплату</Button>}
+              {outstandingEquipment.length > 0 && <span className="card__subtitle">Возврат и оплата проводятся в Operations → Подряд.</span>}
             </div>}
           </Card>
         );
@@ -238,7 +225,6 @@ export function ContractorEquipment({ projectId, projectStartsAt, projectEndsAt,
           </div>
         </details>}
       </Card>}
-      {paymentContractor && <AddTransactionSheet open onClose={() => setPaymentContractor(null)} accounts={accounts.data ?? []} projects={[]} canManage={canManageFinance} paymentTarget={{ projectId, contractorId: paymentContractor, name: contractorName(paymentContractor) }} />}
     </div>
   );
 }

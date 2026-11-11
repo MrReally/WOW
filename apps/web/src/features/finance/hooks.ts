@@ -122,12 +122,12 @@ export function useCreateInvoiceVersion(projectId: string) {
   });
 }
 
-export function useTransactions(projectId?: string, includeVoided = false) {
+export function useTransactions(projectId?: string, includeVoided = false, enabled = true) {
   const params = new URLSearchParams();
   if (projectId) params.set("projectId", projectId);
   if (includeVoided) params.set("includeVoided", "true");
   const suffix = params.size ? `?${params}` : "";
-  return useQuery({ queryKey: ["finance", "transactions", projectId ?? null, includeVoided], queryFn: () => api.get<Finance.TransactionDTO[]>(`/api/finance/transactions${suffix}`) });
+  return useQuery({ enabled, queryKey: ["finance", "transactions", projectId ?? null, includeVoided], queryFn: () => api.get<Finance.TransactionDTO[]>(`/api/finance/transactions${suffix}`) });
 }
 
 export function useDebts() {
