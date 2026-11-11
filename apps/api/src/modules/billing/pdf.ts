@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
 import { DEFAULT_DATE_TIME_SETTINGS, formatDateValue, type AppSettings, type Finance } from "@sever/contracts";
+import { renderSeverA4Pdf } from "./pdfA4.js";
 
 // The preview is 816 x 1056 CSS pixels: US Letter at the browser's 96 dpi.
 // Rendering at 72 dpi keeps the PDF geometry identical to the preview.
@@ -285,7 +286,7 @@ function drawFooter(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO,
   });
 }
 
-export async function renderEstimatePdf(req: Finance.EstimatePdfRequestDTO, dateTimeSettings: AppSettings.DateTimeSettingsDTO = DEFAULT_DATE_TIME_SETTINGS): Promise<Buffer> {
+export async function renderLegacyEstimatePdf(req: Finance.EstimatePdfRequestDTO, dateTimeSettings: AppSettings.DateTimeSettingsDTO = DEFAULT_DATE_TIME_SETTINGS): Promise<Buffer> {
   return await new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({ size: "LETTER", margin: 0, autoFirstPage: true, compress: true, info: { Title: req.number || labels[req.lang].title, Author: req.company.name || "SEVER" } });
     const chunks: Buffer[] = [];
@@ -301,4 +302,10 @@ export async function renderEstimatePdf(req: Finance.EstimatePdfRequestDTO, date
       reject(error);
     }
   });
+}
+
+export async function renderEstimatePdf(req: Finance.EstimatePdfRequestDTO, dateTimeSettings: AppSettings.DateTimeSettingsDTO = DEFAULT_DATE_TIME_SETTINGS): Promise<Buffer> {
+  return req.templateId === "legacy"
+    ? renderLegacyEstimatePdf(req, dateTimeSettings)
+    : renderSeverA4Pdf(req, dateTimeSettings);
 }

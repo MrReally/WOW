@@ -379,11 +379,11 @@ describe("Tech pickup/return → некомплект", () => {
     expect(await service.listProjectEstimateLines(project.id)).toHaveLength(1);
     expect((await service.getProjectEstimateSettings(project.id)).totalDiscountValue).toBe(10);
     await service.setFxRate("RSD", 0.01);
-    const company = { name: "Snapshot", requisites: "Original", phone: "", email: "", telegram: "", logoDataUrl: null };
-    const saved = await service.createInvoiceVersion({ projectId: project.id, number: "TEST", date: "2026-10-06", place: "Belgrade", clientName: "Client", totalEUR: 90, currency: "RSD", lang: "RU", lines: [{ id: "line", section: "Services", name: "Show", count: "1", priceEUR: 100, costEUR: 40, comment: "" }], totalDiscountType: "fixed_eur", totalDiscountValue: 10, company });
+    const company = { name: "Snapshot", requisites: "Original", phone: "", email: "", telegram: "", website: "https://severbeo.rs", logoDataUrl: null };
+    const saved = await service.createInvoiceVersion({ projectId: project.id, number: "TEST", documentTitle: "Snapshot title", date: "2026-10-06", place: "Belgrade", clientName: "Client", totalEUR: 90, currency: "RSD", lang: "RU", lines: [{ id: "line", section: "Services", name: "Show", count: "1", priceEUR: 100, costEUR: 40, comment: "" }], totalDiscountType: "fixed_eur", totalDiscountValue: 10, company, rentalPeriodDays: 2, templateId: "sever_a4", templateVersion: 1 });
     await service.setFxRate("RSD", 0.02);
     const restored = (await service.listInvoiceVersions(project.id)).find(v => v.id === saved.id)!;
-    expect(restored).toMatchObject({ totalEUR: 90, rateToEUR: 0.01, company });
+    expect(restored).toMatchObject({ totalEUR: 90, rateToEUR: 0.01, company, documentTitle: "Snapshot title", rentalPeriodDays: 2, templateId: "sever_a4" });
   });
 
   it("tracks cables by quantity (no serials) through issue/return", async () => {

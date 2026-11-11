@@ -30,11 +30,12 @@ interface Line {
   hidden: boolean;
 }
 
-interface Company { name: string; requisites: string; phone: string; email: string; telegram: string; logoDataUrl: string | null; }
+interface Company { name: string; requisites: string; phone: string; email: string; telegram: string; website: string; logoDataUrl: string | null; }
 interface StoredInvoiceVersion {
   id: string;
   projectId: string;
   number: string;
+  documentTitle: string;
   date: string;
   place: string;
   clientName: string;
@@ -48,6 +49,9 @@ interface StoredInvoiceVersion {
   totalDiscountType: Finance.DiscountType;
   totalDiscountValue: number;
   note?: string;
+  rentalPeriodDays: number;
+  templateId: Finance.EstimateTemplateId;
+  templateVersion: number;
 }
 
 type InvoiceLang = Finance.InvoiceLang;
@@ -55,14 +59,14 @@ type Panel = "doc" | "lines" | "summary";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const uid = () => Math.random().toString(36).slice(2, 9);
-const money = (n: number, cur = "EUR") => `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(n))} ${cur}`;
-const amount = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(n));
+const money = (n: number, cur = "EUR") => `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(n)).replace(/,/g, " ")} ${cur}`;
+const amount = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(n)).replace(/,/g, " ");
 const cleanText = (value: string) => value.trim().replace(/\s+/g, " ");
 
-const DOC_LABELS: Record<InvoiceLang, { title: string; date: string; place: string; name: string; count: string; price: string; comment: string; lineDiscounts: string; discount: string; total: string; contacts: string; phone: string; email: string; telegram: string }> = {
-  EN: { title: "Purchase Order", date: "Date", place: "Place", name: "Name", count: "Count", price: "Price", comment: "Comment", lineDiscounts: "ITEM DISCOUNTS:", discount: "DISCOUNT:", total: "TOTAL:", contacts: "Contacts", phone: "Phone", email: "Email", telegram: "Telegram" },
-  RU: { title: "Коммерческое предложение", date: "Дата", place: "Место", name: "Название", count: "Кол-во", price: "Цена", comment: "Комментарий", lineDiscounts: "СКИДКИ ПО ПОЗИЦИЯМ:", discount: "СКИДКА:", total: "ИТОГО:", contacts: "Контакты", phone: "Телефон", email: "Email", telegram: "Telegram" },
-  RS: { title: "Ponuda", date: "Datum", place: "Mesto", name: "Naziv", count: "Količina", price: "Cena", comment: "Komentar", lineDiscounts: "POPUSTI PO STAVKAMA:", discount: "POPUST:", total: "UKUPNO:", contacts: "Kontakti", phone: "Telefon", email: "Email", telegram: "Telegram" },
+const DOC_LABELS: Record<InvoiceLang, { equipment: string; count: string; price: string; before: string; discount: string; final: string; comment: string; beforeDiscount: string; finalTotal: string; contacts: string; phone: string; email: string; telegram: string; website: string; rentalPeriod: (days: number) => string }> = {
+  EN: { equipment: "EQUIPMENT / SERVICE", count: "QTY", price: "PRICE", before: "BEFORE", discount: "DISCOUNT", final: "FINAL", comment: "COMMENT", beforeDiscount: "BEFORE DISCOUNT", finalTotal: "FINAL TOTAL", contacts: "CONTACTS", phone: "Phone", email: "Email", telegram: "Telegram", website: "Website", rentalPeriod: (days) => `RENTAL PERIOD: ${days} DAYS` },
+  RU: { equipment: "ОБОРУДОВАНИЕ / УСЛУГА", count: "КОЛ-ВО", price: "ЦЕНА", before: "ДО СКИДКИ", discount: "СКИДКА", final: "ИТОГ", comment: "КОММЕНТАРИЙ", beforeDiscount: "ДО СКИДКИ", finalTotal: "ИТОГО", contacts: "КОНТАКТЫ", phone: "Телефон", email: "Email", telegram: "Telegram", website: "Сайт", rentalPeriod: (days) => `ПЕРИОД АРЕНДЫ: ${days} ${days % 10 === 1 && days % 100 !== 11 ? "ДЕНЬ" : [2, 3, 4].includes(days % 10) && ![12, 13, 14].includes(days % 100) ? "ДНЯ" : "ДНЕЙ"}` },
+  RS: { equipment: "OPREMA / USLUGA", count: "KOL.", price: "CENA", before: "PRE POPUSTA", discount: "POPUST", final: "KONAČNO", comment: "KOMENTAR", beforeDiscount: "PRE POPUSTA", finalTotal: "UKUPNO", contacts: "KONTAKTI", phone: "Telefon", email: "Email", telegram: "Telegram", website: "Sajt", rentalPeriod: (days) => `PERIOD NAJMA: ${days} DANA` },
 };
 
 function loadCompany(): Company {
@@ -76,13 +80,14 @@ function loadCompany(): Company {
         phone: parsed.phone ?? "+381 62 852 5240",
         email: parsed.email ?? "sever.beo.contact@gmail.com",
         telegram: parsed.telegram ?? "@sever_contact",
+        website: parsed.website ?? "https://severbeo.rs",
         logoDataUrl: parsed.logoDataUrl ?? null,
       };
     }
   } catch {
     /* ignore */
   }
-  return { name: "SEVER", requisites: "", phone: "+381 62 852 5240", email: "sever.beo.contact@gmail.com", telegram: "@sever_contact", logoDataUrl: null };
+  return { name: "SEVER", requisites: "", phone: "+381 62 850 8797", email: "sever.beo.contact@gmail.com", telegram: "@sever_contact", website: "https://severbeo.rs", logoDataUrl: null };
 }
 
 export function InvoicePage() {
@@ -113,6 +118,7 @@ export function InvoicePage() {
   const [currency, setCurrency] = useState<Currency>("EUR");
   const [lang, setLang] = useState<InvoiceLang>("EN");
   const [number, setNumber] = useState("");
+  const [documentTitle, setDocumentTitle] = useState("");
   const [dateStr, setDateStr] = useState(() => new Date().toISOString().slice(0, 10));
   const [dateTouched, setDateTouched] = useState(false);
   const [clientName, setClientName] = useState("");
@@ -133,6 +139,7 @@ export function InvoicePage() {
     setDateTouched(false);
     setSelectedLineIds([]);
     setMergeOpen(false);
+    setDocumentTitle("");
   }, [id]);
 
   useEffect(() => {
@@ -143,7 +150,15 @@ export function InvoicePage() {
 
   useEffect(() => {
     try {
-      setVersions(JSON.parse(localStorage.getItem(`sever.invoice.versions.${id}`) || "[]"));
+      const stored = JSON.parse(localStorage.getItem(`sever.invoice.versions.${id}`) || "[]") as Partial<StoredInvoiceVersion>[];
+      setVersions(stored.map((version) => ({
+        ...version,
+        documentTitle: version.documentTitle ?? version.number ?? "Смета",
+        rentalPeriodDays: version.rentalPeriodDays ?? 1,
+        templateId: version.templateId ?? "legacy",
+        templateVersion: version.templateVersion ?? 1,
+        company: version.company ? { ...version.company, website: version.company.website ?? "https://severbeo.rs" } : version.company,
+      })) as StoredInvoiceVersion[]);
     } catch {
       setVersions([]);
     }
@@ -190,6 +205,7 @@ export function InvoicePage() {
 
   useEffect(() => {
     if (project.data && !number) setNumber(`EST-${dateStr.replace(/-/g, "")}-${id.slice(0, 4).toUpperCase()}`);
+    if (project.data && !documentTitle) setDocumentTitle(project.data.name);
     if (project.data && !clientName) {
       const c = (clients.data ?? []).find((x) => x.id === project.data!.clientId);
       if (c) setClientName(c.name);
@@ -198,7 +214,7 @@ export function InvoicePage() {
       const venue = (venues.data ?? []).find((x) => x.id === project.data!.venueId);
       setPlace(venue?.name ?? "");
     }
-  }, [project.data, clients.data, venues.data, dateStr, id, number, clientName, placeTouched]);
+  }, [project.data, clients.data, venues.data, dateStr, id, number, documentTitle, clientName, placeTouched]);
 
   useEffect(() => {
     localStorage.setItem("sever.invoice.company", JSON.stringify(company));
@@ -232,6 +248,7 @@ export function InvoicePage() {
   };
   const payload = (): Finance.EstimatePdfRequestDTO => ({
     number: number.trim(),
+    documentTitle: cleanText(documentTitle) || project.data?.name || number.trim(),
     date: dateStr,
     place: place.trim(),
     clientName: clientName.trim(),
@@ -241,6 +258,9 @@ export function InvoicePage() {
     rateToEUR: fxRateToEUR,
     note,
     totalDiscountEUR,
+    rentalPeriodDays: Math.max(1, invoice.data?.days ?? 1),
+    templateId: restoredVersion?.templateId ?? "sever_a4",
+    templateVersion: restoredVersion?.templateVersion ?? 1,
     lines: normalizedLines.map((l) => ({ id: l.id, section: l.section, name: l.name, count: l.count, priceEUR: l.price, originalPriceEUR: l.rawPrice, costEUR: l.cost, comment: l.comment })),
   });
   const saveVersion = async () => {
@@ -248,6 +268,7 @@ export function InvoicePage() {
       id: uid(),
       projectId: id,
       number: number.trim(),
+      documentTitle: cleanText(documentTitle) || project.data?.name || number.trim(),
       date: dateStr,
       place: place.trim(),
       clientName: clientName.trim(),
@@ -261,10 +282,14 @@ export function InvoicePage() {
       totalDiscountType: restoredVersion?.totalDiscountType ?? estimateSettings.data?.totalDiscountType ?? "percent",
       totalDiscountValue: restoredVersion?.totalDiscountValue ?? estimateSettings.data?.totalDiscountValue ?? 0,
       note,
+      rentalPeriodDays: Math.max(1, invoice.data?.days ?? 1),
+      templateId: restoredVersion?.templateId ?? "sever_a4",
+      templateVersion: restoredVersion?.templateVersion ?? 1,
     };
     if (!canManageFinance) return version;
     const saved = await createVersion.mutateAsync({
       number: version.number,
+      documentTitle: version.documentTitle,
       date: version.date,
       place: version.place,
       clientName: version.clientName,
@@ -286,6 +311,9 @@ export function InvoicePage() {
       totalDiscountType: version.totalDiscountType,
       totalDiscountValue: version.totalDiscountValue,
       note: version.note ?? "",
+      rentalPeriodDays: version.rentalPeriodDays,
+      templateId: version.templateId,
+      templateVersion: version.templateVersion,
     });
     const next = [versionFromDTO(saved), ...versions].slice(0, 20);
     setVersions(next);
@@ -302,6 +330,7 @@ export function InvoicePage() {
     setRestoredVersion(v);
     if (v.company) { setCompany(v.company); setCompanyTouched(true); }
     setNumber(v.number);
+    setDocumentTitle(v.documentTitle || v.number);
     setDateStr(v.date);
     setDateTouched(true);
     setPlace(v.place);
@@ -405,7 +434,7 @@ export function InvoicePage() {
         />
         {!canConvert && <p className="card__subtitle no-print" style={{ color: "var(--warn)" }}>Для {currency} не задан курс в Settings.</p>}
         {pdfError && <p className="card__subtitle no-print" style={{ color: "var(--alert)" }}>{pdfError}</p>}
-        <PrintableInvoice labels={labels} formattedDate={isInvoiceDateRange(dateStr) ? dateStr : formatDateValue(dateStr, dateTimeSettings, lang === "EN" ? "en-US" : lang === "RS" ? "sr-RS" : "ru-RU")} place={place} sections={sections} convert={convert} subtotal={subtotal} totalDiscountEUR={totalDiscountEUR} total={total} currency={currency} note={note} company={company} />
+        <PrintableInvoice labels={labels} documentTitle={cleanText(documentTitle) || project.data?.name || number} formattedDate={isInvoiceDateRange(dateStr) ? dateStr : formatDateValue(dateStr, dateTimeSettings, lang === "EN" ? "en-US" : lang === "RS" ? "sr-RS" : "ru-RU")} place={place} sections={sections} convert={convert} total={total} currency={currency} rentalPeriodDays={Math.max(1, invoice.data?.days ?? 1)} company={company} />
       </div>
     );
   }
@@ -452,6 +481,7 @@ export function InvoicePage() {
                 : <ConfiguredDateInput value={dateStr} onChange={(value) => { setDateTouched(true); setDateStr(value); }} />}
             </Field>
           </div>
+          <Field label="Заголовок в коммерческом предложении"><Input value={documentTitle} onChange={(e) => setDocumentTitle(e.target.value)} /></Field>
           <div className="row">
             <Field label="Язык"><Select value={lang} onChange={(e) => setLang(e.target.value as InvoiceLang)} options={langOptions} /></Field>
             <Field label="Валюта"><Select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)} options={currencyOptions} /></Field>
@@ -463,6 +493,7 @@ export function InvoicePage() {
             <Field label="Email"><Input value={company.email} onChange={(e) => saveCompany({ email: e.target.value })} /></Field>
           </div>
           <Field label="Telegram"><Input value={company.telegram} onChange={(e) => saveCompany({ telegram: e.target.value })} /></Field>
+          <Field label="Website"><Input value={company.website} onChange={(e) => saveCompany({ website: e.target.value })} /></Field>
         </Card>
       )}
 
@@ -554,6 +585,7 @@ function versionFromDTO(v: Finance.InvoiceVersionDTO): StoredInvoiceVersion {
     id: v.id,
     projectId: v.projectId,
     number: v.number,
+    documentTitle: v.documentTitle,
     date: v.date,
     place: v.place,
     clientName: v.clientName,
@@ -581,6 +613,9 @@ function versionFromDTO(v: Finance.InvoiceVersionDTO): StoredInvoiceVersion {
     totalDiscountType: v.totalDiscountType,
     totalDiscountValue: v.totalDiscountValue,
     note: v.note,
+    rentalPeriodDays: v.rentalPeriodDays,
+    templateId: v.templateId,
+    templateVersion: v.templateVersion,
   };
 }
 
@@ -646,53 +681,57 @@ function InvoiceTopbar({ lang, currency, onLang, onCurrency, onBack, onPdf, pdfB
   );
 }
 
-function PrintableInvoice({ labels, formattedDate, place, sections, convert, subtotal, totalDiscountEUR, total, currency, note, company }: { labels: typeof DOC_LABELS[InvoiceLang]; formattedDate: string; place: string; sections: { section: string; items: Line[] }[]; convert: (valueEUR: number) => number; subtotal: number; totalDiscountEUR: number; total: number; currency: Currency; note: string; company: Company }) {
-  const totalLineDiscountEUR = round2(sections.flatMap((section) => section.items).reduce((sum, line) => sum + Math.max(0, line.rawPrice - line.price), 0));
+function PrintableInvoice({ labels, documentTitle, formattedDate, place, sections, convert, total, currency, rentalPeriodDays, company }: { labels: typeof DOC_LABELS[InvoiceLang]; documentTitle: string; formattedDate: string; place: string; sections: { section: string; items: Line[] }[]; convert: (valueEUR: number) => number; total: number; currency: Currency; rentalPeriodDays: number; company: Company }) {
+  const allLines = sections.flatMap((section) => section.items);
+  const beforeDiscountEUR = round2(allLines.reduce((sum, line) => sum + Math.max(line.rawPrice, line.price), 0));
+  const discountEUR = round2(Math.max(0, beforeDiscountEUR - total));
+  const hasDiscount = discountEUR > 0.004;
   return (
     <div className="invoice-doc">
-      <div className="estimate-head">
-        <div className="estimate-info">
-          <div className="estimate-title">{labels.title}</div>
-          <div className="estimate-field"><div>{labels.date}</div><strong>{formattedDate}</strong></div>
-          <div className="estimate-field estimate-field--tall"><div>{labels.place}</div><strong>{place.trim() || "—"}</strong></div>
+      <header className="estimate-head">
+        <div>
+          <div className="estimate-brand">SEVER / TECHNICAL PRODUCTION</div>
+          <div className="estimate-title">{documentTitle}</div>
+          <div className="estimate-meta"><strong>{formattedDate}</strong><span>{place.trim() || "—"}</span></div>
         </div>
-        <div className="estimate-logo">{company.logoDataUrl ? <img src={company.logoDataUrl} alt="SEVER" /> : <BrandLogo size={170} color="#000" />}</div>
-      </div>
-      <table className="estimate-table">
-        <thead><tr><th>{labels.name}</th><th className="num">{labels.count}</th><th className="num">{labels.price}</th><th>{labels.comment}</th></tr></thead>
-        <tbody>{sections.map((sec) => <SectionBlock key={sec.section} section={sec.section} items={sec.items} convert={convert} currency={currency} labels={labels} />)}</tbody>
-        <tfoot>
-          {totalLineDiscountEUR > 0 && <tr><td colSpan={2}>{`* ${labels.lineDiscounts}`}</td><td>−{amount(convert(totalLineDiscountEUR))}</td><td>{currency}</td></tr>}
-          {totalDiscountEUR > 0 && <tr><td>{amount(convert(subtotal))}</td><td>{labels.discount}</td><td>−{amount(convert(totalDiscountEUR))}</td><td>{currency}</td></tr>}
-          <tr><td></td><td className="total-label">{labels.total}</td><td className="total-amount">{amount(convert(total))}</td><td className="total-currency">{currency}</td></tr>
-        </tfoot>
+        <div className="estimate-logo">{company.logoDataUrl ? <img src={company.logoDataUrl} alt="SEVER" /> : <BrandLogo size={100} color="#fff" />}</div>
+      </header>
+      <table className={`estimate-table ${hasDiscount ? "estimate-table--discount" : ""}`}>
+        <thead><tr>
+          <th>{labels.equipment}</th><th className="num">{labels.count}</th>
+          {hasDiscount ? <><th className="num">{labels.before}</th><th className="num">{labels.discount}</th><th className="num">{labels.final}</th></> : <th className="num">{labels.price}</th>}
+          <th>{labels.comment}</th>
+        </tr></thead>
+        <tbody>{sections.map((sec) => <SectionBlock key={sec.section} section={sec.section} items={sec.items} convert={convert} hasDiscount={hasDiscount} />)}</tbody>
       </table>
-      {note && <div className="estimate-note">{note}</div>}
-      <table className="contacts-table"><tbody>
-        <tr><th colSpan={2}>{labels.contacts}</th></tr>
-        <tr><td>{labels.phone}</td><td>{company.phone}</td></tr>
-        <tr><td>{labels.email}</td><td>{company.email}</td></tr>
-        <tr><td>{labels.telegram}</td><td className="contact-link">{company.telegram}</td></tr>
-      </tbody></table>
+      <div className={`estimate-totals ${hasDiscount ? "estimate-totals--discount" : ""}`}>
+        {hasDiscount && <><div><small>{labels.beforeDiscount}</small><strong>{money(convert(beforeDiscountEUR), currency)}</strong></div><div><small>{labels.discount}</small><strong>−{money(convert(discountEUR), currency)}</strong></div></>}
+        <div className="estimate-final-total"><small>{labels.finalTotal}</small><strong>{money(convert(total), currency)}</strong></div>
+      </div>
+      {rentalPeriodDays > 1 && <div className="estimate-period">{labels.rentalPeriod(rentalPeriodDays)}</div>}
+      <footer className="estimate-contacts">
+        <strong>{labels.contacts}</strong>
+        <div className="estimate-contacts__grid">
+          <span>{labels.phone}</span><span>{company.phone}</span><span>{labels.telegram}</span><span>{company.telegram}</span>
+          <span>{labels.email}</span><span>{company.email}</span><span>{labels.website}</span><span>{company.website}</span>
+        </div>
+      </footer>
     </div>
   );
 }
 
-function sectionTone(section: string): string {
-  const key = section.toLowerCase();
-  if (key.includes("sound")) return "sound";
-  if (key.includes("light")) return "lighting";
-  if (key.includes("other")) return "other";
-  if (key.includes("staff") || key.includes("crew")) return "staff";
-  if (key.includes("delivery") || key.includes("transport")) return "delivery";
-  return "default";
-}
-
-function SectionBlock({ section, items, convert, currency, labels }: { section: string; items: Line[]; convert: (valueEUR: number) => number; currency: Currency; labels: typeof DOC_LABELS[InvoiceLang] }) {
+function SectionBlock({ section, items, convert, hasDiscount }: { section: string; items: Line[]; convert: (valueEUR: number) => number; hasDiscount: boolean }) {
   return (
     <>
-      <tr className={`inv-section inv-section--${sectionTone(section)}`}><td colSpan={4}>{section}</td></tr>
-      {items.map((l) => <tr key={l.id}><td>{l.name || "—"}{l.rawPrice - l.price > 0.004 ? " *" : ""}</td><td className="num">{l.count}</td><td className="num">{amount(convert(l.price))}</td><td className="muted">{l.comment}</td></tr>)}
+      <tr className="inv-section"><td colSpan={hasDiscount ? 6 : 4}>{section}</td></tr>
+      {items.map((line) => {
+        const discount = Math.max(0, line.rawPrice - line.price);
+        return <tr key={line.id} className={discount > 0.004 ? "inv-line--discounted" : undefined}>
+          <td>{line.name || "—"}</td><td className="num">{line.count}</td>
+          {hasDiscount ? <><td className="num inv-before">{amount(convert(line.rawPrice))}</td><td className="num">{discount > 0.004 ? <>−{amount(convert(discount))}</> : "—"}</td><td className="num inv-final">{amount(convert(line.price))}</td></> : <td className="num inv-final">{amount(convert(line.price))}</td>}
+          <td className="muted">{line.comment || "—"}</td>
+        </tr>;
+      })}
     </>
   );
 }

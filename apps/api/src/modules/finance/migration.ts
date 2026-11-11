@@ -61,14 +61,18 @@ CREATE TABLE IF NOT EXISTS finance.invoice_company_settings (
   id         integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   name       text NOT NULL DEFAULT 'SEVER',
   requisites text NOT NULL DEFAULT '',
-  phone      text NOT NULL DEFAULT '+381 62 852 5240',
+  phone      text NOT NULL DEFAULT '+381 62 850 8797',
   email      text NOT NULL DEFAULT 'sever.beo.contact@gmail.com',
   telegram   text NOT NULL DEFAULT '@sever_contact',
+  website    text NOT NULL DEFAULT 'https://severbeo.rs',
   logo_data_url text,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 INSERT INTO finance.invoice_company_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 ALTER TABLE finance.invoice_company_settings ADD COLUMN IF NOT EXISTS logo_data_url text;
+ALTER TABLE finance.invoice_company_settings ADD COLUMN IF NOT EXISTS website text NOT NULL DEFAULT 'https://severbeo.rs';
+ALTER TABLE finance.invoice_company_settings ALTER COLUMN phone SET DEFAULT '+381 62 850 8797';
+UPDATE finance.invoice_company_settings SET phone = '+381 62 850 8797' WHERE phone = '+381 62 852 5240';
 
 CREATE TABLE IF NOT EXISTS finance.invoice_versions (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -87,6 +91,12 @@ CREATE TABLE IF NOT EXISTS finance.invoice_versions (
 CREATE INDEX IF NOT EXISTS invoice_versions_project_idx ON finance.invoice_versions(project_id, created_at DESC);
 ALTER TABLE finance.invoice_versions ADD COLUMN IF NOT EXISTS rate_to_eur numeric(18,8);
 ALTER TABLE finance.invoice_versions ADD COLUMN IF NOT EXISTS company jsonb;
+ALTER TABLE finance.invoice_versions ADD COLUMN IF NOT EXISTS document_title text;
+ALTER TABLE finance.invoice_versions ADD COLUMN IF NOT EXISTS rental_period_days integer NOT NULL DEFAULT 1 CHECK (rental_period_days > 0);
+ALTER TABLE finance.invoice_versions ADD COLUMN IF NOT EXISTS template_id text NOT NULL DEFAULT 'legacy' CHECK (template_id IN ('legacy','sever_a4'));
+ALTER TABLE finance.invoice_versions ADD COLUMN IF NOT EXISTS template_version integer NOT NULL DEFAULT 1 CHECK (template_version > 0);
+UPDATE finance.invoice_versions SET document_title = number WHERE document_title IS NULL;
+ALTER TABLE finance.invoice_versions ALTER COLUMN document_title SET NOT NULL;
 
 CREATE TABLE IF NOT EXISTS finance.project_estimate_lines (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),

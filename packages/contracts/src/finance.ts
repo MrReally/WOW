@@ -246,6 +246,7 @@ export interface ProjectInvoiceDTO {
 }
 
 export type InvoiceLang = "EN" | "RU" | "RS";
+export type EstimateTemplateId = "legacy" | "sever_a4";
 
 export interface EstimatePdfLineDTO {
   id: string;
@@ -263,6 +264,8 @@ export interface EstimatePdfLineDTO {
 
 export interface EstimatePdfRequestDTO {
   number: string;
+  /** Client-facing document heading, seeded from the project name. */
+  documentTitle: string;
   date: string;
   place: string;
   clientName: string;
@@ -272,6 +275,7 @@ export interface EstimatePdfRequestDTO {
     phone: string;
     email: string;
     telegram: string;
+    website: string;
     logoDataUrl: string | null;
   };
   lang: InvoiceLang;
@@ -281,6 +285,10 @@ export interface EstimatePdfRequestDTO {
   lines: EstimatePdfLineDTO[];
   /** Project-wide discount; line prices already include their own discounts. */
   totalDiscountEUR: number;
+  /** Billed rental days. The A4 document hides the period when this is 1. */
+  rentalPeriodDays: number;
+  templateId: EstimateTemplateId;
+  templateVersion: number;
 }
 
 export interface InvoiceCompanySettingsDTO {
@@ -289,6 +297,7 @@ export interface InvoiceCompanySettingsDTO {
   phone: string;
   email: string;
   telegram: string;
+  website: string;
   /** PNG or JPEG data URL used in commercial proposals. */
   logoDataUrl: string | null;
 }
@@ -297,6 +306,7 @@ export interface InvoiceVersionDTO {
   id: ID;
   projectId: ID;
   number: string;
+  documentTitle: string;
   date: string;
   place: string;
   clientName: string;
@@ -309,12 +319,16 @@ export interface InvoiceVersionDTO {
   totalDiscountType: DiscountType;
   totalDiscountValue: number;
   note: string;
+  rentalPeriodDays: number;
+  templateId: EstimateTemplateId;
+  templateVersion: number;
   createdAt: ISODateTime;
 }
 
 export interface CreateInvoiceVersionInput {
   projectId: ID;
   number: string;
+  documentTitle: string;
   date: string;
   place: string;
   clientName: string;
@@ -327,6 +341,9 @@ export interface CreateInvoiceVersionInput {
   totalDiscountType: DiscountType;
   totalDiscountValue: number;
   note?: string;
+  rentalPeriodDays: number;
+  templateId: EstimateTemplateId;
+  templateVersion: number;
 }
 
 // ── Public service contract ──────────────────────────────────────────────────

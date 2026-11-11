@@ -6,9 +6,10 @@ import { useInvoiceCompanySettings, useSetInvoiceCompanySettings } from "../../f
 const DEFAULT_COMPANY: Finance.InvoiceCompanySettingsDTO = {
   name: "SEVER",
   requisites: "",
-  phone: "+381 62 852 5240",
+  phone: "+381 62 850 8797",
   email: "sever.beo.contact@gmail.com",
   telegram: "@sever_contact",
+  website: "https://severbeo.rs",
   logoDataUrl: null,
 };
 
@@ -61,10 +62,13 @@ export function InvoiceCompanySettings() {
         <Field label="Telegram">
           <Input value={company.telegram} onChange={(event) => update({ telegram: event.target.value })} />
         </Field>
+        <Field label="Website">
+          <Input value={company.website} onChange={(event) => update({ website: event.target.value })} />
+        </Field>
         <Field label="Логотип для коммерческого предложения">
           <input type="file" accept="image/png,image/jpeg" onChange={(event) => uploadLogo(event.target.files?.[0])} />
         </Field>
-        <p className="card__subtitle">PNG или JPEG, квадратный, рекомендуемый размер 1200 × 1200 px, максимум 2 МБ. В документе логотип выводится в области 170 × 170 px без обрезки.</p>
+        <p className="card__subtitle">PNG или JPEG, квадратный, рекомендуемый размер 1200 × 1200 px, максимум 2 МБ. В A4-документе логотип выводится в области 101 × 101 px без обрезки.</p>
         <div className="row" style={{ marginTop: 10 }}>
           <img src={company.logoDataUrl ?? "/sever-logo.png"} alt="Логотип для КП" width={96} height={96} style={{ objectFit: "contain", background: "#fff", border: "1px solid var(--bdr)" }} />
           {company.logoDataUrl && <Button variant="secondary" onClick={() => update({ logoDataUrl: null })}>Вернуть текущий логотип</Button>}

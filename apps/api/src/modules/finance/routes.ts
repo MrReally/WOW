@@ -62,6 +62,7 @@ const invoiceCompanySchema = z.object({
   phone: z.string(),
   email: z.string(),
   telegram: z.string(),
+  website: z.string().optional().default("https://severbeo.rs"),
   logoDataUrl: z.string().max(3_000_000).regex(/^data:image\/(?:png|jpeg);base64,/).nullable().optional().default(null),
 });
 const invoiceVersionLineSchema = z.object({
@@ -76,6 +77,7 @@ const invoiceVersionLineSchema = z.object({
 });
 const invoiceVersionSchema = z.object({
   number: z.string(),
+  documentTitle: z.string().trim().max(240).optional().default(""),
   date: z.string(),
   place: z.string(),
   clientName: z.string(),
@@ -88,6 +90,9 @@ const invoiceVersionSchema = z.object({
   totalDiscountType: z.enum(["percent", "fixed_rsd", "fixed_eur"]),
   totalDiscountValue: z.number().nonnegative(),
   note: z.string().optional(),
+  rentalPeriodDays: z.number().int().positive().optional().default(1),
+  templateId: z.enum(["legacy", "sever_a4"]).optional().default("legacy"),
+  templateVersion: z.number().int().positive().optional().default(1),
 });
 const estimateLineSchema = z.object({
   id: z.string().uuid().optional(),

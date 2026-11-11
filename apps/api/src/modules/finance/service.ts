@@ -60,12 +60,14 @@ interface InvoiceCompanySettingsRow {
   phone: string;
   email: string;
   telegram: string;
+  website: string;
   logo_data_url: string | null;
 }
 interface InvoiceVersionRow {
   id: string;
   project_id: string;
   number: string;
+  document_title: string | null;
   date: string;
   place: string;
   client_name: string;
@@ -78,6 +80,9 @@ interface InvoiceVersionRow {
   total_discount_type: Finance.DiscountType;
   total_discount_value: string;
   note: string;
+  rental_period_days: number;
+  template_id: Finance.EstimateTemplateId;
+  template_version: number;
   created_at: Date;
 }
 interface ProjectEstimateLineRow {
@@ -145,24 +150,29 @@ const invoiceCompanyDTO = (r: InvoiceCompanySettingsRow): Finance.InvoiceCompany
   phone: r.phone,
   email: r.email,
   telegram: r.telegram,
+  website: r.website,
   logoDataUrl: r.logo_data_url,
 });
 const invoiceVersionDTO = (r: InvoiceVersionRow): Finance.InvoiceVersionDTO => ({
   id: r.id,
   projectId: r.project_id,
   number: r.number,
+  documentTitle: r.document_title ?? r.number,
   date: r.date,
   place: r.place,
   clientName: r.client_name,
   totalEUR: Number(r.total_eur),
   rateToEUR: r.rate_to_eur == null ? null : Number(r.rate_to_eur),
-  company: r.company ?? null,
+  company: r.company ? { ...r.company, website: r.company.website ?? "https://severbeo.rs" } : null,
   currency: r.currency,
   lang: r.lang,
   lines: r.lines,
   totalDiscountType: r.total_discount_type,
   totalDiscountValue: Number(r.total_discount_value),
   note: r.note,
+  rentalPeriodDays: r.rental_period_days,
+  templateId: r.template_id,
+  templateVersion: r.template_version,
   createdAt: r.created_at.toISOString(),
 });
 const estimateLineDTO = (r: ProjectEstimateLineRow): Finance.ProjectEstimateLineDTO => ({
@@ -569,7 +579,7 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
     async getInvoiceCompanySettings() {
       const row = await one<InvoiceCompanySettingsRow>(db, `SELECT * FROM finance.invoice_company_settings WHERE id=1`);
       if (!row) {
-        return { name: "SEVER", requisites: "", phone: "+381 62 852 5240", email: "sever.beo.contact@gmail.com", telegram: "@sever_contact", logoDataUrl: null };
+        return { name: "SEVER", requisites: "", phone: "+381 62 850 8797", email: "sever.beo.contact@gmail.com", telegram: "@sever_contact", website: "https://severbeo.rs", logoDataUrl: null };
       }
       return invoiceCompanyDTO(row);
     },
@@ -577,18 +587,19 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
     async setInvoiceCompanySettings(input) {
       const row = await one<InvoiceCompanySettingsRow>(
         db,
-        `INSERT INTO finance.invoice_company_settings (id, name, requisites, phone, email, telegram, logo_data_url, updated_at)
-         VALUES (1,$1,$2,$3,$4,$5,$6,now())
+        `INSERT INTO finance.invoice_company_settings (id, name, requisites, phone, email, telegram, website, logo_data_url, updated_at)
+         VALUES (1,$1,$2,$3,$4,$5,$6,$7,now())
          ON CONFLICT (id) DO UPDATE SET
            name=$1,
            requisites=$2,
            phone=$3,
            email=$4,
            telegram=$5,
-           logo_data_url=$6,
+           website=$6,
+           logo_data_url=$7,
            updated_at=now()
          RETURNING *`,
-        [input.name, input.requisites, input.phone, input.email, input.telegram, input.logoDataUrl]
+        [input.name, input.requisites, input.phone, input.email, input.telegram, input.website, input.logoDataUrl]
       );
       return invoiceCompanyDTO(row!);
     },
@@ -608,12 +619,13 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
       const row = await one<InvoiceVersionRow>(
         db,
         `INSERT INTO finance.invoice_versions
-           (project_id, number, date, place, client_name, total_eur, currency, lang, lines, total_discount_type, total_discount_value, note, rate_to_eur, company)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14::jsonb)
+           (project_id, number, document_title, date, place, client_name, total_eur, currency, lang, lines, total_discount_type, total_discount_value, note, rate_to_eur, company, rental_period_days, template_id, template_version)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15::jsonb,$16,$17,$18)
          RETURNING *`,
         [
           input.projectId,
           input.number,
+          input.documentTitle || input.number,
           input.date,
           input.place,
           input.clientName,
@@ -626,6 +638,9 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
           input.note ?? "",
           rate,
           JSON.stringify(company),
+          input.rentalPeriodDays,
+          input.templateId,
+          input.templateVersion,
         ]
       );
       return invoiceVersionDTO(row!);

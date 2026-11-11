@@ -1,184 +1,175 @@
-/* Printable estimate, intentionally close to the legacy Google Sheets template. */
+/* A4 commercial proposal. PDFKit uses the same 96px-to-72pt geometry. */
 .invoice-doc {
   background: #ffffff;
-  color: #111111;
-  width: 816px;
-  min-height: 1056px;
+  color: #080808;
+  width: 794px;
+  min-height: 1123px;
   margin: 0 auto;
   border-radius: 0;
-  padding: 92px 78px 48px;
+  padding: 0 45px 28px;
   border: 1px solid var(--bdr);
   font-family: Arial, Helvetica, sans-serif;
-}
-.invoice-doc h1 {
-  font-size: 20px;
-  margin: 0 0 2px;
-  color: #111;
+  overflow: hidden;
 }
 .invoice-doc .muted {
-  color: #111;
+  color: #333;
 }
 
 .estimate-head {
-  display: grid;
-  grid-template-columns: 355px 1fr;
-  align-items: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 146px;
+  margin: 0 -45px 18px;
+  padding: 20px 79px 18px 45px;
+  background: #080808;
+  color: #fff;
 }
-.estimate-info {
-  border: 2px solid #000;
-  border-right: none;
+.estimate-brand {
+  margin-bottom: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .27em;
 }
 .estimate-title {
-  height: 98px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #000;
-  color: #fff;
-  font-family: "Arial Narrow", Arial, Helvetica, sans-serif;
-  font-size: 30px;
+  max-width: 500px;
+  font-size: 29px;
   font-weight: 800;
-  padding: 0 12px;
-  text-align: center;
-  line-height: 1.05;
+  line-height: 1.08;
+  text-transform: uppercase;
 }
-.estimate-field {
-  display: grid;
-  grid-template-columns: 1fr 118px;
-  min-height: 92px;
-  border-top: 2px solid #000;
-  font-family: "Arial Narrow", Arial, Helvetica, sans-serif;
-  font-size: 20px;
-  font-weight: 800;
-  text-align: center;
-}
-.estimate-field--tall {
-  min-height: 132px;
-}
-.estimate-field > div,
-.estimate-field > strong {
+.estimate-meta {
   display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.estimate-field > strong {
-  border-left: 2px solid #000;
-  font-size: 18px;
+  gap: 56px;
+  margin-top: 12px;
+  font-size: 13px;
 }
 .estimate-logo {
-  min-height: 322px;
-  border: 1px solid #d2d2d2;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 101px;
+  height: 101px;
+  flex: 0 0 101px;
+  background: #000;
 }
 .estimate-logo img {
-  width: 170px;
-  height: 170px;
+  width: 101px;
+  height: 101px;
   object-fit: contain;
 }
 
 .estimate-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 26px;
-  font-size: 19px;
-  line-height: 1.14;
+  table-layout: fixed;
+  font-size: 12px;
+  line-height: 1.2;
 }
 .estimate-table th,
 .estimate-table td {
-  border: 1px solid #000;
-  padding: 5px 9px;
-  text-align: center;
+  border: 0;
+  padding: 10px 12px;
+  text-align: left;
   vertical-align: middle;
+  overflow-wrap: anywhere;
 }
 .estimate-table th {
-  font-size: 20px;
+  padding-top: 11px;
+  padding-bottom: 11px;
+  background: #080808;
+  color: #fff;
+  font-size: 12px;
   font-weight: 800;
 }
-.estimate-table th:first-child,
-.estimate-table td:first-child {
-  width: 39%;
-}
-.estimate-table th:nth-child(2),
-.estimate-table td:nth-child(2) {
-  width: 14%;
-}
-.estimate-table th:nth-child(3),
-.estimate-table td:nth-child(3) {
-  width: 19%;
-}
-.estimate-table th:nth-child(4),
-.estimate-table td:nth-child(4) {
-  width: 28%;
-}
+.estimate-table:not(.estimate-table--discount) th:nth-child(1) { width: 44%; }
+.estimate-table:not(.estimate-table--discount) th:nth-child(2) { width: 14%; }
+.estimate-table:not(.estimate-table--discount) th:nth-child(3) { width: 20%; }
+.estimate-table:not(.estimate-table--discount) th:nth-child(4) { width: 22%; }
+.estimate-table--discount th:nth-child(1) { width: 40%; }
+.estimate-table--discount th:nth-child(2) { width: 9%; }
+.estimate-table--discount th:nth-child(3) { width: 13%; }
+.estimate-table--discount th:nth-child(4) { width: 14%; }
+.estimate-table--discount th:nth-child(5) { width: 11%; }
+.estimate-table--discount th:nth-child(6) { width: 13%; }
 .estimate-table .num {
   text-align: center;
   white-space: nowrap;
 }
+.estimate-table tbody tr:not(.inv-section):nth-child(odd) td {
+  background: #f3f3f3;
+}
 .estimate-table tr.inv-section td {
-  padding: 4px 8px;
-  font-size: 20px;
+  padding: 5px 12px;
+  background: #cbcbcb;
+  font-size: 13px;
   font-weight: 800;
-  text-transform: none;
 }
-.inv-section--sound td { background: #dcebd6; }
-.inv-section--lighting td { background: #fff2cc; }
-.inv-section--other td { background: #fce5cd; }
-.inv-section--staff td { background: #f4cccc; }
-.inv-section--delivery td { background: #d9e9ec; }
-.inv-section--default td { background: #eeeeee; }
+.estimate-table .inv-before {
+  color: #777;
+}
+.estimate-table .inv-final {
+  font-weight: 800;
+}
+.estimate-table .inv-line--discounted td:first-child {
+  box-shadow: inset 3px 0 0 #080808;
+}
 
-.estimate-table tfoot td {
-  border-color: #000;
-  height: 30px;
-  vertical-align: middle;
-  line-height: 1.15;
-}
-.estimate-table .total-label,
-.estimate-table .total-amount,
-.estimate-table .total-currency {
-  background: #000;
+.estimate-totals {
+  display: grid;
+  grid-template-columns: 1fr;
+  margin-top: 24px;
+  background: #080808;
   color: #fff;
+}
+.estimate-totals--discount {
+  grid-template-columns: 1fr 1fr 1fr;
+  background: #f3f3f3;
+  color: #080808;
+}
+.estimate-totals > div {
+  display: grid;
+  gap: 6px;
+  min-height: 70px;
+  padding: 15px 16px;
+  align-content: center;
+}
+.estimate-totals small {
+  font-size: 9px;
   font-weight: 800;
 }
-.estimate-table .total-label {
-  text-align: center;
-  padding-left: 4px;
-  padding-right: 4px;
-}
-.estimate-table .total-currency {
-  font-weight: 500;
-  text-align: center;
-}
-.estimate-note {
-  margin-top: 14px;
-  white-space: pre-wrap;
-  font-size: 14px;
-}
-.contacts-table {
-  width: 61%;
-  margin: 30px 0 0 auto;
-  border-collapse: collapse;
-  font-family: "Arial Narrow", Arial, Helvetica, sans-serif;
-  font-size: 18px;
-}
-.contacts-table th,
-.contacts-table td {
-  border: 1px solid #000;
-  padding: 8px 12px;
-  text-align: center;
-}
-.contacts-table th {
+.estimate-totals strong {
+  font-size: 22px;
   font-weight: 800;
 }
-.contacts-table td:first-child {
-  width: 28%;
-  font-weight: 800;
+.estimate-totals .estimate-final-total {
+  background: #080808;
+  color: #fff;
 }
-.contacts-table .contact-link {
-  color: #1155cc;
-  text-decoration: underline;
+.estimate-period {
+  margin-top: 4px;
+  color: #888;
+  font-size: 9px;
+  text-align: right;
+}
+.estimate-contacts {
+  margin-top: 34px;
+  font-size: 10px;
+}
+.estimate-contacts > strong {
+  display: block;
+  padding-bottom: 9px;
+  border-bottom: 1px solid #d2d2d2;
+  font-size: 13px;
+}
+.estimate-contacts__grid {
+  display: grid;
+  grid-template-columns: 90px 1fr 90px 1fr;
+  gap: 10px 24px;
+  padding: 10px 2px 0;
+}
+.estimate-contacts__grid span:nth-child(4n + 1),
+.estimate-contacts__grid span:nth-child(4n + 3) {
   font-weight: 800;
 }
 
@@ -335,11 +326,11 @@
     position: absolute;
     left: 0;
     top: 0;
-    width: 100%;
+    width: 210mm;
     min-height: auto;
     border: none;
     border-radius: 0;
-    padding: 72px 72px 36px;
+    padding: 0 11.9mm 7.4mm;
   }
   .no-print {
     display: none !important;
