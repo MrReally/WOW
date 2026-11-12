@@ -1073,6 +1073,8 @@ export function startTelegramBot(deps: BotDeps): void {
     financeSessions.delete(chatId);
     projectSessions.delete(chatId);
     equipmentSessions.delete(chatId);
+    reservationSessions.delete(chatId);
+    problemSessions.delete(chatId);
     const user = await linkedUser(chatId);
     if (!user || !projects) {
       await send(chatId, "Панель доступна после привязки Telegram к активному аккаунту.", undefined, { log: false });
@@ -1451,7 +1453,7 @@ export function startTelegramBot(deps: BotDeps): void {
     const crewPerson = data.match(/^nav:crew:person:([0-9a-f-]{36})$/i);
     if (crewPerson) {
       const session = problemSessions.get(chatId);
-      if (!session || session.userId !== user.id || !session.selectedRoleId || session.expiresAt < Date.now()) { await sendControl(chatId, "Выбор устарел. Откройте роль заново."); return true; }
+      if (!permissions.includes("projects.assignment.manage") || !session || session.userId !== user.id || !session.selectedRoleId || session.expiresAt < Date.now()) { await sendControl(chatId, "Действие недоступно."); return true; }
       const person = await people.getById(crewPerson[1]!);
       if (!person?.active) { await sendControl(chatId, "Сотрудник больше недоступен."); return true; }
       await sendControl(chatId, `<b>${escapeHtml(publicName(person))}</b>\nКак добавить в роль?`, { inline_keyboard: [
@@ -1510,7 +1512,7 @@ export function startTelegramBot(deps: BotDeps): void {
     const reservationUnit = data.match(/^nav:reservation:unit:([0-9a-f-]{36})$/i);
     if (reservationUnit) {
       const session = reservationSessions.get(chatId);
-      if (!session || session.userId !== user.id || !session.selectedReservationId || session.expiresAt < Date.now()) { await sendControl(chatId, "Выбор устарел."); return true; }
+      if (!permissions.includes("projects.reservation.manage") || !session || session.userId !== user.id || !session.selectedReservationId || session.expiresAt < Date.now()) { await sendControl(chatId, "Действие недоступно."); return true; }
       session.selectedUnitIds = session.selectedUnitIds.includes(reservationUnit[1]!) ? session.selectedUnitIds.filter(id => id !== reservationUnit[1]) : [...session.selectedUnitIds, reservationUnit[1]!];
       await renderReservationUnits(chatId, session.selectedReservationId, user.id, permissions); return true;
     }
