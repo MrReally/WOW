@@ -1,5 +1,5 @@
 import { env } from "../env.js";
-import { formatDateTimeValue, PROJECT_CHECKLIST_GROUPS, projectRentalDays, projectServiceSkipsStage, type AppSettings, type Equipment, type Finance, type People, type Projects } from "@sever/contracts";
+import { formatDateTimeValue, projectRentalDays, type AppSettings, type Equipment, type Finance, type People, type Projects } from "@sever/contracts";
 import { evaluateTelegramAmount } from "./telegramFinance.js";
 
 // Minimal Telegram bot via long polling (getUpdates) — works without a public
@@ -1044,9 +1044,6 @@ export function startTelegramBot(deps: BotDeps): void {
   const statusMarker = (status: Projects.ProjectStatus) => ({
     draft: "⚪", confirmed: "🔵", in_progress: "🟡", awaiting_payment: "🟣", completed: "🟢", cancelled: "🔴",
   }[status]);
-  const stageLabel: Record<Projects.ProjectChecklistGroup, string> = {
-    prep: "Подготовка", pickup: "Выдача", delivery: "Доставка", mount: "Монтаж", show: "Мероприятие", dismantle: "Демонтаж", return: "Возврат",
-  };
   const projectPanelMenu = async (chatId: string, telegramUsername?: string | null) => {
     // Entering the root discards every ephemeral flow, including stale callback
     // state left behind after an interrupted action.
@@ -1096,16 +1093,13 @@ export function startTelegramBot(deps: BotDeps): void {
     if (permissions.includes("operations.contractor_turnover.view") || permissions.includes("operations.contractor_turnover.manage") || permissions.includes("projects.reservation.manage")) {
       rows.push([{ text: "🤝 Подрядчики", callback_data: `nav:project:contractors:${project.id}` }]);
     }
-    const canAdvanceStage = permissions.some((permission) => ["operations.view", "projects.timing.manage", "projects.manage"].includes(permission));
-    const canReturnStage = permissions.some((permission) => ["operations.stage.back", "operations.stage.back.after.warehouse.turnover", "projects.timing.manage", "projects.manage"].includes(permission));
-    if (canAdvanceStage || canReturnStage) rows.push([{ text: "🔄 Сменить стадию", callback_data: `nav:project:stages:${project.id}` }]);
+    if (permissions.includes("projects.manage")) rows.push([{ text: "📝 Изменить статус", callback_data: `nav:project:statuses:${project.id}` }]);
     rows.push([{ text: "🔎 Другой проект", callback_data: "nav:projects" }, { text: "☰ Меню", callback_data: "nav:menu" }]);
     projectSessions.set(chatId, { userId, awaitingSearch: false, selectedProjectId: project.id, expiresAt: Date.now() + 15 * 60_000 });
     await sendControl(chatId, [
       `<b>${escapeHtml(project.name)}</b>`,
       `${statusMarker(project.status)} ${projectDate(project.startsAt)} — ${projectDate(project.endsAt)} · ${statusLabel(project.status)}`,
       `Клиент: ${escapeHtml(client?.name ?? "—")}`,
-      `Стадия: ${stageLabel[project.operationStage]}`,
       `Режим: ${project.serviceMode === "full_service" ? "полный сервис" : "сухая аренда"}`,
     ].join("\n"), { inline_keyboard: rows });
   };
@@ -1185,18 +1179,13 @@ export function startTelegramBot(deps: BotDeps): void {
       }),
     });
   };
-  const showStagePicker = async (chatId: string, project: Projects.ProjectDTO, permissions: readonly string[]) => {
-    const currentIndex = PROJECT_CHECKLIST_GROUPS.indexOf(project.operationStage);
-    const rows = PROJECT_CHECKLIST_GROUPS
-      .filter((stage) => !projectServiceSkipsStage(project.serviceMode, stage))
-      .filter((stage) => {
-        const nextIndex = PROJECT_CHECKLIST_GROUPS.indexOf(stage);
-        return nextIndex >= currentIndex
-          ? permissions.some((permission) => ["operations.view", "projects.timing.manage", "projects.manage"].includes(permission))
-          : permissions.some((permission) => ["operations.stage.back", "operations.stage.back.after.warehouse.turnover", "projects.timing.manage", "projects.manage"].includes(permission));
-      })
-      .map((stage) => [{ text: `${stage === project.operationStage ? "✓ " : ""}${stageLabel[stage]}`, callback_data: `nav:stage:${project.id}:${stage}` }]);
-    await sendControl(chatId, `<b>Стадия · ${escapeHtml(project.baseName)}</b>\nТекущая: ${stageLabel[project.operationStage]}`, { inline_keyboard: [...rows, [{ text: "↩ К проекту", callback_data: `nav:project:open:${project.id}` }]] });
+  const MANUALLY_SETTABLE_PROJECT_STATUSES: Projects.ProjectStatus[] = ["draft", "confirmed", "in_progress", "awaiting_payment", "cancelled"];
+  const showStatusPicker = async (chatId: string, project: Projects.ProjectDTO) => {
+    const rows = MANUALLY_SETTABLE_PROJECT_STATUSES.map((status) => [{
+      text: `${status === project.status ? "✓ " : ""}${statusMarker(status)} ${statusLabel(status)}`,
+      callback_data: `nav:status:${project.id}:${status}`,
+    }]);
+    await sendControl(chatId, `<b>Статус · ${escapeHtml(project.baseName)}</b>\nТекущий: ${statusMarker(project.status)} ${statusLabel(project.status)}\n\nЗавершение проекта выполняется автоматически после обязательных проверок.`, { inline_keyboard: [...rows, [{ text: "↩ К проекту", callback_data: `nav:project:open:${project.id}` }]] });
   };
   const startEquipmentSearch = async (chatId: string) => {
     const user = await linkedUser(chatId);
@@ -1393,28 +1382,23 @@ export function startTelegramBot(deps: BotDeps): void {
       await startFinanceSession(chatId, project.id, { kind: "expense", category: "other", contractorId: contractorPay[1]! });
       return true;
     }
-    const stages = data.match(/^nav:project:stages:([0-9a-f-]{36})$/i);
-    if (stages) {
-      const project = (await visibleProjects(user.id, permissions)).find((item) => item.id === stages[1]);
-      if (!project) { await sendControl(chatId, "Действие недоступно."); return true; }
-      await showStagePicker(chatId, project, permissions);
+    const statuses = data.match(/^nav:project:statuses:([0-9a-f-]{36})$/i);
+    if (statuses) {
+      const project = (await visibleProjects(user.id, permissions)).find((item) => item.id === statuses[1]);
+      if (!project || !permissions.includes("projects.manage")) { await sendControl(chatId, "Действие недоступно."); return true; }
+      await showStatusPicker(chatId, project);
       return true;
     }
-    const stage = data.match(/^nav:stage:([0-9a-f-]{36}):(prep|pickup|delivery|mount|show|dismantle|return)$/i);
-    if (stage) {
-      const project = (await visibleProjects(user.id, permissions)).find((item) => item.id === stage[1]);
-      const requested = stage[2] as Projects.ProjectChecklistGroup;
-      const currentIndex = project ? PROJECT_CHECKLIST_GROUPS.indexOf(project.operationStage) : -1;
-      const nextIndex = PROJECT_CHECKLIST_GROUPS.indexOf(requested);
-      const allowed = project && !projectServiceSkipsStage(project.serviceMode, requested) && (nextIndex >= currentIndex
-        ? permissions.some((permission) => ["operations.view", "projects.timing.manage", "projects.manage"].includes(permission))
-        : permissions.some((permission) => ["operations.stage.back", "operations.stage.back.after.warehouse.turnover", "projects.timing.manage", "projects.manage"].includes(permission)));
-      if (!allowed || !project) { await sendControl(chatId, "Действие недоступно."); return true; }
+    const status = data.match(/^nav:status:([0-9a-f-]{36}):(draft|confirmed|in_progress|awaiting_payment|cancelled)$/i);
+    if (status) {
+      const project = (await visibleProjects(user.id, permissions)).find((item) => item.id === status[1]);
+      const requested = status[2] as Projects.ProjectStatus;
+      if (!project || !permissions.includes("projects.manage") || !MANUALLY_SETTABLE_PROJECT_STATUSES.includes(requested)) { await sendControl(chatId, "Действие недоступно."); return true; }
       try {
-        await projects.setOperationStage(project.id, requested, user.id);
+        await projects.setStatus(project.id, requested, user.id);
         await renderProjectCard(chatId, project.id, user.id, permissions);
       } catch (error) {
-        await sendControl(chatId, escapeHtml(error instanceof Error ? error.message : "Не удалось сменить стадию."));
+        await sendControl(chatId, escapeHtml(error instanceof Error ? error.message : "Не удалось изменить статус."));
       }
       return true;
     }

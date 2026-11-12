@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 describe("Telegram crew application", () => {
-  it("finds only accessible projects from the personal control panel", async () => {
+  it("finds a project and changes only its status from the personal control panel", async () => {
     env.auth.telegramBotToken = "test-token";
     const user = { id: "11111111-1111-4111-8111-111111111111", active: true, telegramId: "12345", displayName: "Егор" };
     const project = {
@@ -19,21 +19,25 @@ describe("Telegram crew application", () => {
     };
     const people = {
       list: vi.fn().mockResolvedValue([user]),
-      permissionsForUser: vi.fn().mockResolvedValue(["telegram.finance.transactions"]),
+      permissionsForUser: vi.fn().mockResolvedValue(["telegram.finance.transactions", "projects.manage"]),
       getTelegramInboxSettings: vi.fn().mockResolvedValue({ workUsername: null }),
       logTelegramDialogMessage: vi.fn().mockResolvedValue(undefined),
       markTelegramDialogMessageDeleted: vi.fn().mockResolvedValue(undefined),
     } as unknown as People.PeopleService;
     const projects = {
       listProjectsForUser: vi.fn().mockResolvedValue([project]),
-      listProjects: vi.fn().mockResolvedValue([]),
+      listProjects: vi.fn().mockResolvedValue([project]),
       listClients: vi.fn().mockResolvedValue([{ id: project.clientId, name: "Acme", contacts: null, createdAt: "2026-01-01T00:00:00.000Z" }]),
+      setStatus: vi.fn().mockResolvedValue({ ...project, status: "in_progress" }),
+      setOperationStage: vi.fn(),
     };
     const updates = [
       { update_id: 1, message: { message_id: 1, text: "/menu", from: { id: 12345 }, chat: { id: 12345, type: "private" } } },
       { update_id: 2, callback_query: { id: "a", data: "nav:projects", from: { id: 12345 } } },
       { update_id: 3, message: { message_id: 2, text: "acme", from: { id: 12345 }, chat: { id: 12345, type: "private" } } },
       { update_id: 4, callback_query: { id: "b", data: `nav:project:open:${project.id}`, from: { id: 12345 } } },
+      { update_id: 5, callback_query: { id: "c", data: `nav:project:statuses:${project.id}`, from: { id: 12345 } } },
+      { update_id: 6, callback_query: { id: "d", data: `nav:status:${project.id}:in_progress`, from: { id: 12345 } } },
     ];
     const sentTexts: string[] = [];
     let polled = false;
@@ -48,8 +52,9 @@ describe("Telegram crew application", () => {
     });
 
     startTelegramBot({ people, appSettings: {} as AppSettings.AppSettingsService, projects: projects as unknown as Projects.ProjectsService });
-    await vi.waitFor(() => expect(sentTexts).toContain("<b>Acme conference</b>\n🔵 10.11.2026 — 10.11.2026 · Подтверждён\nКлиент: Acme\nСтадия: Подготовка\nРежим: полный сервис"));
-    expect(projects.listProjectsForUser).toHaveBeenCalledWith(user.id);
+    await vi.waitFor(() => expect(sentTexts).toContain("<b>Acme conference</b>\n🔵 10.11.2026 — 10.11.2026 · Подтверждён\nКлиент: Acme\nРежим: полный сервис"));
+    await vi.waitFor(() => expect(projects.setStatus).toHaveBeenCalledWith(project.id, "in_progress", user.id));
+    expect(projects.setOperationStage).not.toHaveBeenCalled();
   });
 
   it.each(["06.11.1998", "06.11.98", "6.11.1998", "01.11.1998", "6. 06.11.1998", "6)06.11.1998"])(
