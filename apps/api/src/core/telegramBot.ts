@@ -104,6 +104,24 @@ interface EquipmentSession {
   expiresAt: number;
 }
 
+/** State is deliberately only navigation state: all displayed data is loaded
+ * again from the owning services before a command changes anything. */
+interface ReservationSession {
+  userId: string;
+  projectId: string;
+  awaitingModelSearch: boolean;
+  selectedReservationId: string | null;
+  selectedUnitIds: string[];
+  expiresAt: number;
+}
+
+interface ProblemSession {
+  userId: string;
+  projectId: string;
+  selectedRoleId: string | null;
+  expiresAt: number;
+}
+
 const LANG_LABELS: Record<BotLang, string> = { ru: "Русский", sr: "Srpski", en: "English" };
 const CHOOSE_LANGUAGE_TEXT = "<b>SEVER Crew</b>\nРусский · Srpski · English";
 const INACTIVE_TEXT = "No active application. /start";
@@ -376,6 +394,11 @@ export function startTelegramBot(deps: BotDeps): void {
   const financeSessions = new Map<string, FinanceSession>();
   const projectSessions = new Map<string, ProjectSession>();
   const equipmentSessions = new Map<string, EquipmentSession>();
+  const reservationSessions = new Map<string, ReservationSession>();
+  const problemSessions = new Map<string, ProblemSession>();
+  /** Telegram retries a callback if a client is slow. Mutating callbacks are
+   * suppressed briefly; the services remain the final consistency boundary. */
+  const recentCallbacks = new Map<string, number>();
   /** Bot-owned navigation messages, replaced rather than accumulating in chat. */
   const controlMessageIds = new Map<string, number[]>();
   let offset = 0;
@@ -1089,6 +1112,8 @@ export function startTelegramBot(deps: BotDeps): void {
     const clients = await projects.listClients();
     const client = clients.find((item) => item.id === project.clientId);
     const rows: { text: string; callback_data: string }[][] = [];
+    if (permissions.includes("projects.reservation.manage")) rows.push([{ text: "📦 Бронирования", callback_data: `nav:project:reservations:${project.id}` }]);
+    if (permissions.includes("apex.view")) rows.push([{ text: "⚠️ Проблемы", callback_data: `nav:project:problems:${project.id}` }]);
     if (permissions.includes("telegram.finance.transactions")) rows.push([{ text: "💳 Финансы проекта", callback_data: `nav:project:finance:${project.id}` }]);
     if (permissions.includes("operations.contractor_turnover.view") || permissions.includes("operations.contractor_turnover.manage") || permissions.includes("projects.reservation.manage")) {
       rows.push([{ text: "🤝 Подрядчики", callback_data: `nav:project:contractors:${project.id}` }]);
@@ -1102,6 +1127,118 @@ export function startTelegramBot(deps: BotDeps): void {
       `Клиент: ${escapeHtml(client?.name ?? "—")}`,
       `Режим: ${project.serviceMode === "full_service" ? "полный сервис" : "сухая аренда"}`,
     ].join("\n"), { inline_keyboard: rows });
+  };
+  const isVisibleProject = async (projectId: string, userId: string, permissions: readonly string[]) =>
+    (await visibleProjects(userId, permissions)).some(project => project.id === projectId);
+  const modelLabel = (model: Equipment.EquipmentModelDTO | null | undefined) => model?.name ?? "Оборудование";
+  const renderReservations = async (chatId: string, projectId: string, userId: string, permissions: readonly string[]) => {
+    if (!projects || !equipment || !permissions.includes("projects.reservation.manage") || !await isVisibleProject(projectId, userId, permissions)) {
+      await sendControl(chatId, "Действие недоступно."); return;
+    }
+    const [project, reservations] = await Promise.all([projects.getProject(projectId), projects.listReservations(projectId)]);
+    if (!project) { await sendControl(chatId, "Проект больше недоступен."); return; }
+    const models = new Map((await equipment.listModels()).map(model => [model.id, model]));
+    const text = [
+      `<b>Брони · ${escapeHtml(project.baseName)}</b>`,
+      reservations.length ? "Выберите позицию для изменения:" : "Броней пока нет.",
+      ...await Promise.all(reservations.map(async reservation => {
+        const availability = reservation.startsAt && reservation.endsAt
+          ? await projects.reservationAvailability(reservation.modelId, reservation.startsAt, reservation.endsAt) : null;
+        return `• ${escapeHtml(modelLabel(models.get(reservation.modelId)))} — ${reservation.qty} шт. · распределено ${reservation.resolvedUnitIds.length}/${reservation.qty}${reservation.isReserve ? " · резерв" : ""}${availability ? ` · свободно ${availability.free}` : ""}`;
+      })),
+    ].join("\n");
+    reservationSessions.set(chatId, { userId, projectId, awaitingModelSearch: false, selectedReservationId: null, selectedUnitIds: [], expiresAt: Date.now() + 15 * 60_000 });
+    await sendControl(chatId, text, { inline_keyboard: [
+      ...reservations.map(reservation => [{ text: `${modelLabel(models.get(reservation.modelId))} · ${reservation.qty}`.slice(0, 60), callback_data: `nav:reservation:open:${reservation.id}` }]),
+      [{ text: "＋ Добавить модель", callback_data: "nav:reservation:add" }],
+      [{ text: "↩ К проекту", callback_data: `nav:project:open:${projectId}` }],
+    ] });
+  };
+  const renderReservation = async (chatId: string, reservationId: string, userId: string, permissions: readonly string[]) => {
+    if (!projects || !equipment || !permissions.includes("projects.reservation.manage")) { await sendControl(chatId, "Действие недоступно."); return; }
+    const session = reservationSessions.get(chatId);
+    const reservations = session ? await projects.listReservations(session.projectId) : [];
+    const reservation = reservations.find(item => item.id === reservationId);
+    if (!session || session.userId !== userId || session.expiresAt < Date.now() || !reservation) { await sendControl(chatId, "Эта бронь уже изменилась. Откройте список заново."); return; }
+    const [model, availability] = await Promise.all([
+      equipment.getModel(reservation.modelId),
+      reservation.startsAt && reservation.endsAt ? projects.reservationAvailability(reservation.modelId, reservation.startsAt, reservation.endsAt) : Promise.resolve(null),
+    ]);
+    session.selectedReservationId = reservation.id; session.selectedUnitIds = reservation.resolvedUnitIds; session.expiresAt = Date.now() + 15 * 60_000;
+    await sendControl(chatId, [
+      `<b>${escapeHtml(modelLabel(model))}</b>`,
+      `Количество: <b>${reservation.qty}</b>${reservation.isReserve ? " · резерв" : ""}`,
+      `Серийные единицы: ${reservation.resolvedUnitIds.length}/${reservation.qty}`,
+      availability ? `Доступность на период: всего ${availability.total}, занято до ${availability.booked}, свободно ${availability.free}${availability.shortage ? `, не хватает ${availability.shortage}` : ""}` : "Для проверки доступности укажите период проекта.",
+    ].join("\n"), { inline_keyboard: [
+      [{ text: "−1", callback_data: `nav:reservation:qty:${reservation.id}:-1` }, { text: "+1", callback_data: `nav:reservation:qty:${reservation.id}:1` }],
+      ...(model?.trackingMode === "serial" && (model.effectiveReservationAssignmentMode ?? "planning") === "planning" ? [[{ text: "🔢 Распределить единицы", callback_data: `nav:reservation:units:${reservation.id}` }]] : []),
+      [{ text: "↩ К броням", callback_data: `nav:project:reservations:${session.projectId}` }],
+    ] });
+  };
+  const renderReservationUnits = async (chatId: string, reservationId: string, userId: string, permissions: readonly string[]) => {
+    if (!projects || !equipment || !permissions.includes("projects.reservation.manage")) { await sendControl(chatId, "Действие недоступно."); return; }
+    const session = reservationSessions.get(chatId);
+    const reservation = session && (await projects.listReservations(session.projectId)).find(item => item.id === reservationId);
+    if (!session || session.userId !== userId || !reservation || session.expiresAt < Date.now()) { await sendControl(chatId, "Выбор устарел. Откройте бронь заново."); return; }
+    const units = (await equipment.listUnits({ modelId: reservation.modelId })).filter(unit => !["in_repair", "at_contractor", "lost"].includes(unit.status)).slice(0, 24);
+    session.selectedReservationId = reservation.id;
+    session.selectedUnitIds = session.selectedUnitIds.filter(id => units.some(unit => unit.id === id));
+    const chosen = new Set(session.selectedUnitIds);
+    await sendControl(chatId, `<b>Распределение</b>\nВыбрано ${chosen.size}/${reservation.qty}. Список уже исключает ремонт, подряд и утраченные единицы; окончательная проверка пересечений выполняется сервером.`, { inline_keyboard: [
+      ...units.map(unit => [{ text: `${chosen.has(unit.id) ? "✓ " : ""}${unit.assetTag}${unit.serial ? ` · ${unit.serial}` : ""}`.slice(0, 60), callback_data: `nav:reservation:unit:${unit.id}` }]),
+      [{ text: "✅ Сохранить", callback_data: "nav:reservation:units:save" }],
+      [{ text: "↩ К брони", callback_data: `nav:reservation:open:${reservation.id}` }],
+    ] });
+  };
+  const renderProjectProblems = async (chatId: string, projectId: string, userId: string, permissions: readonly string[]) => {
+    if (!projects || !equipment || !permissions.includes("apex.view") || !await isVisibleProject(projectId, userId, permissions)) { await sendControl(chatId, "Действие недоступно."); return; }
+    const [project, roles, assignments, reservations, problemRows] = await Promise.all([
+      projects.getProject(projectId), projects.listProjectRoles(projectId), projects.listAssignments(projectId), projects.listReservations(projectId), projects.listProblems(),
+    ]);
+    if (!project) { await sendControl(chatId, "Проект больше недоступен."); return; }
+    const models = new Map((await equipment.listModels()).map(model => [model.id, model]));
+    const active = assignments.filter(item => item.status === "added" || item.status === "accepted");
+    const missingRoles = roles.filter(role => active.filter(item => item.roleId === role.id).length < role.requiredCount);
+    const unallocated = reservations.filter(reservation => {
+      const model = models.get(reservation.modelId);
+      return model?.trackingMode === "serial" && (model.effectiveReservationAssignmentMode ?? "planning") === "planning" && reservation.resolvedUnitIds.length < reservation.qty;
+    });
+    const conflicts = problemRows.filter(problem => !problem.resolved && problem.kind === "reservation_conflict" && problem.refs.projectId === projectId);
+    problemSessions.set(chatId, { userId, projectId, selectedRoleId: null, expiresAt: Date.now() + 15 * 60_000 });
+    const lines = [
+      `<b>Проблемы · ${escapeHtml(project.baseName)}</b>`,
+      `Прогресс: устранено ${Math.max(0, roles.length + reservations.length - missingRoles.length - unallocated.length - conflicts.length)} из ${roles.length + reservations.length || 1} проверок`,
+      ...(missingRoles.length ? [`Люди: ${missingRoles.map(role => `${role.title} — ${role.requiredCount - active.filter(item => item.roleId === role.id).length}`).join(", ")}`] : []),
+      ...(unallocated.length ? [`Не распределено: ${unallocated.map(reservation => `${modelLabel(models.get(reservation.modelId))} — ${reservation.qty - reservation.resolvedUnitIds.length}`).join(", ")}`] : []),
+      ...conflicts.map(problem => `Пересечение: ${problem.detail}`),
+      !missingRoles.length && !unallocated.length && !conflicts.length ? "✅ Доступных для исправления проблем сейчас нет." : "",
+    ].filter(Boolean);
+    await sendControl(chatId, lines.join("\n"), { inline_keyboard: [
+      ...(permissions.includes("projects.reservation.manage") ? unallocated.map(reservation => [{ text: `Распределить · ${modelLabel(models.get(reservation.modelId))}`.slice(0, 60), callback_data: `nav:reservation:units:${reservation.id}` }]) : []),
+      ...(permissions.includes("projects.assignment.manage") ? missingRoles.map(role => [{ text: `Люди · ${role.title}`.slice(0, 60), callback_data: `nav:problem:role:${role.id}` }]) : []),
+      ...(conflicts.length && permissions.includes("projects.reservation.manage") ? [[{ text: "Проверить брони", callback_data: `nav:project:reservations:${projectId}` }]] : []),
+      [{ text: "↻ Обновить", callback_data: `nav:project:problems:${projectId}` }, { text: "↩ К проекту", callback_data: `nav:project:open:${projectId}` }],
+    ] });
+  };
+  const renderProblemRole = async (chatId: string, roleId: string, userId: string, permissions: readonly string[]) => {
+    if (!projects || !permissions.includes("projects.assignment.manage")) { await sendControl(chatId, "Для назначения людей нужно право управления назначениями."); return; }
+    const session = problemSessions.get(chatId);
+    const role = session && (await projects.listProjectRoles(session.projectId)).find(item => item.id === roleId);
+    if (!session || session.userId !== userId || session.expiresAt < Date.now() || !role) { await sendControl(chatId, "Эта проблема уже изменилась. Обновите список."); return; }
+    const assignments = await projects.listAssignments(session.projectId);
+    const activeCount = assignments.filter(item => item.roleId === role.id && (item.status === "added" || item.status === "accepted")).length;
+    session.selectedRoleId = role.id; session.expiresAt = Date.now() + 15 * 60_000;
+    const peopleRows = (await people.list("all")).filter(person => person.active).slice(0, 16);
+    await sendControl(chatId, [
+      `<b>${escapeHtml(role.title)}</b>`, `Нужно: ${role.requiredCount}; назначено: ${activeCount}; не хватает: ${Math.max(0, role.requiredCount - activeCount)}`,
+      `Дресс-код: ${role.dressCodeEnabled ? "да" : "нет"}`, `Ставка: ${role.rateEUR == null ? "не задана" : `${role.rateEUR} €`}`,
+      `Интервал: ${role.effectiveStartsAt ?? "—"} — ${role.effectiveEndsAt ?? "—"}`, role.comment ? `Комментарий: ${escapeHtml(role.comment)}` : "",
+      "Выберите человека. Статуса «свободен/занят» в SEVER нет — показан действующий список сотрудников.",
+    ].filter(Boolean).join("\n"), { inline_keyboard: [
+      ...peopleRows.map(person => [{ text: (publicName(person) + (person.telegramId ? " · Telegram" : "")).slice(0, 60), callback_data: `nav:crew:person:${person.id}` }]),
+      [{ text: "↩ К проблемам", callback_data: `nav:project:problems:${session.projectId}` }],
+    ] });
   };
   const searchProjects = async (chatId: string, session: ProjectSession, query: string) => {
     const user = await linkedUser(chatId);
@@ -1253,6 +1390,20 @@ export function startTelegramBot(deps: BotDeps): void {
       await projectPanelMenu(chatId, msg.from?.username);
       return true;
     }
+    const reservationSession = reservationSessions.get(chatId);
+    if (reservationSession?.awaitingModelSearch) {
+      if (text === "/cancel") { await renderReservations(chatId, reservationSession.projectId, reservationSession.userId, await people.permissionsForUser(reservationSession.userId)); return true; }
+      const permissions = await people.permissionsForUser(reservationSession.userId);
+      if (!equipment || reservationSession.expiresAt < Date.now() || !permissions.includes("projects.reservation.manage")) { reservationSessions.delete(chatId); await sendControl(chatId, "Поиск брони завершён."); return true; }
+      const query = text.toLocaleLowerCase("ru-RU").trim();
+      const models = (await equipment.listModels()).filter(model => [model.name, model.manufacturer ?? "", model.subtype ?? ""].some(value => value.toLocaleLowerCase("ru-RU").includes(query))).slice(0, 12);
+      if (!models.length) { await sendControl(chatId, "Модель не найдена. Уточните запрос или используйте /cancel."); return true; }
+      await sendControl(chatId, `<b>Добавить модель</b>\nНайдено: ${models.length}`, { inline_keyboard: [
+        ...models.map(model => [{ text: `${model.name}${model.manufacturer ? ` · ${model.manufacturer}` : ""}`.slice(0, 60), callback_data: `nav:reservation:model:${model.id}` }]),
+        [{ text: "↩ К броням", callback_data: `nav:project:reservations:${reservationSession.projectId}` }],
+      ] });
+      return true;
+    }
     if (text === "📁 Найти проект") { await startProjectSearch(chatId); return true; }
     if (text === "📦 Найти оборудование") { await startEquipmentSearch(chatId); return true; }
     if (text === "💳 Финансы") { await showFinanceMenu(chatId); return true; }
@@ -1293,6 +1444,83 @@ export function startTelegramBot(deps: BotDeps): void {
     const user = await linkedUser(chatId);
     if (!user || !projects) { await send(chatId, "Панель недоступна.", undefined, { log: false }); return true; }
     const permissions = await people.permissionsForUser(user.id);
+    const projectProblems = data.match(/^nav:project:problems:([0-9a-f-]{36})$/i);
+    if (projectProblems) { await renderProjectProblems(chatId, projectProblems[1]!, user.id, permissions); return true; }
+    const problemRole = data.match(/^nav:problem:role:([0-9a-f-]{36})$/i);
+    if (problemRole) { await renderProblemRole(chatId, problemRole[1]!, user.id, permissions); return true; }
+    const crewPerson = data.match(/^nav:crew:person:([0-9a-f-]{36})$/i);
+    if (crewPerson) {
+      const session = problemSessions.get(chatId);
+      if (!session || session.userId !== user.id || !session.selectedRoleId || session.expiresAt < Date.now()) { await sendControl(chatId, "Выбор устарел. Откройте роль заново."); return true; }
+      const person = await people.getById(crewPerson[1]!);
+      if (!person?.active) { await sendControl(chatId, "Сотрудник больше недоступен."); return true; }
+      await sendControl(chatId, `<b>${escapeHtml(publicName(person))}</b>\nКак добавить в роль?`, { inline_keyboard: [
+        [{ text: "Добавить", callback_data: `nav:crew:add:${person.id}` }, { text: "Пригласить", callback_data: `nav:crew:invite:${person.id}` }],
+        [{ text: "↩ К роли", callback_data: `nav:problem:role:${session.selectedRoleId}` }],
+      ] }); return true;
+    }
+    const crewAction = data.match(/^nav:crew:(add|invite):([0-9a-f-]{36})$/i);
+    if (crewAction) {
+      const session = problemSessions.get(chatId);
+      if (!session || session.userId !== user.id || !session.selectedRoleId || session.expiresAt < Date.now() || !permissions.includes("projects.assignment.manage")) { await sendControl(chatId, "Действие устарело или недоступно."); return true; }
+      try {
+        await projects.addAssignment({ projectId: session.projectId, roleId: session.selectedRoleId, userId: crewAction[2]!, invite: crewAction[1] === "invite", invitedByUserId: user.id });
+        await renderProjectProblems(chatId, session.projectId, user.id, permissions);
+      } catch (error) { await sendControl(chatId, escapeHtml(error instanceof Error ? error.message : "Не удалось создать назначение.")); }
+      return true;
+    }
+    const reservations = data.match(/^nav:project:reservations:([0-9a-f-]{36})$/i);
+    if (reservations) { await renderReservations(chatId, reservations[1]!, user.id, permissions); return true; }
+    const reservationOpen = data.match(/^nav:reservation:open:([0-9a-f-]{36})$/i);
+    if (reservationOpen) { await renderReservation(chatId, reservationOpen[1]!, user.id, permissions); return true; }
+    if (data === "nav:reservation:add") {
+      const session = reservationSessions.get(chatId);
+      if (!session || session.userId !== user.id || session.expiresAt < Date.now() || !permissions.includes("projects.reservation.manage")) { await sendControl(chatId, "Действие устарело. Откройте брони заново."); return true; }
+      session.awaitingModelSearch = true; session.expiresAt = Date.now() + 15 * 60_000;
+      await sendControl(chatId, "<b>Добавить модель</b>\nНапишите название, производителя или тип оборудования.\n\n/cancel — к списку броней"); return true;
+    }
+    const reservationModel = data.match(/^nav:reservation:model:([0-9a-f-]{36})$/i);
+    if (reservationModel) {
+      const session = reservationSessions.get(chatId);
+      if (!session || session.userId !== user.id || session.expiresAt < Date.now() || !permissions.includes("projects.reservation.manage") || !await isVisibleProject(session.projectId, user.id, permissions)) { await sendControl(chatId, "Действие устарело."); return true; }
+      try { await projects.createReservation({ projectId: session.projectId, modelId: reservationModel[1]!, qty: 1 }); await renderReservations(chatId, session.projectId, user.id, permissions); }
+      catch (error) { await sendControl(chatId, escapeHtml(error instanceof Error ? error.message : "Не удалось добавить бронь.")); }
+      return true;
+    }
+    const reservationQty = data.match(/^nav:reservation:qty:([0-9a-f-]{36}):(-?1)$/i);
+    if (reservationQty) {
+      const session = reservationSessions.get(chatId);
+      const reservation = session && (await projects.listReservations(session.projectId)).find(item => item.id === reservationQty[1]);
+      if (!session || !reservation || session.userId !== user.id || session.expiresAt < Date.now() || !permissions.includes("projects.reservation.manage")) { await sendControl(chatId, "Бронь уже изменилась. Откройте её заново."); return true; }
+      try {
+        const next = reservation.qty + Number(reservationQty[2]);
+        if (next === 0) await projects.deleteReservation(reservation.id); else await projects.updateReservation(reservation.id, { qty: next });
+        await renderReservations(chatId, session.projectId, user.id, permissions);
+      } catch (error) { await sendControl(chatId, escapeHtml(error instanceof Error ? error.message : "Не удалось изменить бронь.")); }
+      return true;
+    }
+    const reservationUnits = data.match(/^nav:reservation:units:([0-9a-f-]{36})$/i);
+    if (reservationUnits) {
+      if (!reservationSessions.get(chatId)) {
+        const problemSession = problemSessions.get(chatId);
+        if (problemSession?.userId === user.id && problemSession.expiresAt >= Date.now()) reservationSessions.set(chatId, { userId: user.id, projectId: problemSession.projectId, awaitingModelSearch: false, selectedReservationId: null, selectedUnitIds: [], expiresAt: Date.now() + 15 * 60_000 });
+      }
+      await renderReservationUnits(chatId, reservationUnits[1]!, user.id, permissions); return true;
+    }
+    const reservationUnit = data.match(/^nav:reservation:unit:([0-9a-f-]{36})$/i);
+    if (reservationUnit) {
+      const session = reservationSessions.get(chatId);
+      if (!session || session.userId !== user.id || !session.selectedReservationId || session.expiresAt < Date.now()) { await sendControl(chatId, "Выбор устарел."); return true; }
+      session.selectedUnitIds = session.selectedUnitIds.includes(reservationUnit[1]!) ? session.selectedUnitIds.filter(id => id !== reservationUnit[1]) : [...session.selectedUnitIds, reservationUnit[1]!];
+      await renderReservationUnits(chatId, session.selectedReservationId, user.id, permissions); return true;
+    }
+    if (data === "nav:reservation:units:save") {
+      const session = reservationSessions.get(chatId);
+      if (!session || session.userId !== user.id || !session.selectedReservationId || session.expiresAt < Date.now() || !permissions.includes("projects.reservation.manage")) { await sendControl(chatId, "Выбор устарел."); return true; }
+      try { await projects.resolveReservation(session.selectedReservationId, session.selectedUnitIds); await renderReservation(chatId, session.selectedReservationId, user.id, permissions); }
+      catch (error) { await sendControl(chatId, escapeHtml(error instanceof Error ? error.message : "Не удалось распределить единицы.")); }
+      return true;
+    }
     const unit = data.match(/^nav:unit:open:([0-9a-f-]{36})$/i);
     if (unit) {
       if (!equipment || (!permissions.includes("warehouse.view") && !permissions.includes("warehouse.catalog.manage"))) { await sendControl(chatId, "Действие недоступно."); return true; }
@@ -1529,6 +1757,15 @@ export function startTelegramBot(deps: BotDeps): void {
   async function handleCallback(cb: NonNullable<Update["callback_query"]>) {
     const fromChatId = String(cb.from.id);
     const data = cb.data ?? "";
+    if (/^nav:(?:reservation:(?:model|qty|units:save)|crew:(?:add|invite))/.test(data)) {
+      const key = `${fromChatId}:${data}`;
+      const previous = recentCallbacks.get(key) ?? 0;
+      if (Date.now() - previous < 4_000) {
+        await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Действие уже выполняется." });
+        return;
+      }
+      recentCallbacks.set(key, Date.now());
+    }
     if (data.startsWith("nav:")) {
       try {
         await handleProjectCallback(data, fromChatId, cb.from.username);

@@ -833,7 +833,11 @@ export function createModules(bus: EventBus = new EventBus()) {
       const body = `«${project.name}»\n${lines.map(line => `• ${line}`).join("\n")}`;
       for (const user of recipients) {
         await notifications.service.create({ userId: user.id, kind: "problem", title, body, link: `/projects/${project.id}`, sourceKey: `project-problems:${project.id}:${project.startsAt}:${intervalMinutes}` });
-        await sendTelegramMessage(user.telegramId, `<b>${escapeHtml(title)}</b>\n${escapeHtml(body)}`);
+        await sendTelegramMessage(user.telegramId, `<b>${escapeHtml(title)}</b>\n${escapeHtml(body)}`, {
+          // The bot reloads current project data after a tap; notification text
+          // is never treated as the source of truth for a remediation action.
+          inlineKeyboard: [[{ text: "Решить проблемы", callbackData: `nav:project:problems:${project.id}` }]],
+        });
       }
     }
   }
