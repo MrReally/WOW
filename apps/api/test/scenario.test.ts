@@ -1001,6 +1001,10 @@ describe("Tech pickup/return → некомплект", () => {
     expect(order.lines).toEqual([expect.objectContaining({catalogItemId:fixture.id,qty:3,receivedAt:null,returnedAt:null})]);
     expect((await wiring.projects.service.listTimings(project.id)).filter(item=>item.title.includes("Light package"))).toHaveLength(2);
     expect((await wiring.billing.projectInvoice(project.id)).contractorCostEUR).toBe(150);
+    await wiring.projects.service.setStatus(project.id, "cancelled");
+    await expect(wiring.projects.service.setContractorOrderLineReceived(order.id, order.lines[0]!.id, true)).rejects.toThrow("нельзя проводить приёмку для отменённого проекта");
+    await expect(wiring.projects.service.completeContractorOrderReceipt(order.id)).rejects.toThrow("нельзя проводить приёмку для отменённого проекта");
+    await wiring.projects.service.setStatus(project.id, "draft");
     await pool.query(`UPDATE projects.projects SET status='awaiting_payment', warehouse_turnover_completed_at=now() WHERE id=$1`,[project.id]);
     await wiring.reconcileSettledProjects();
     expect((await wiring.projects.service.getProject(project.id))?.status).toBe("awaiting_payment");

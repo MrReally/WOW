@@ -70,6 +70,9 @@ export function ContractorsPage() {
   const [name, setName] = useState("");
   const [contacts, setContacts] = useState("");
   const [query, setQuery] = useState("");
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [historyDateFrom, setHistoryDateFrom] = useState("");
+  const [historyDateTo, setHistoryDateTo] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
@@ -108,6 +111,9 @@ export function ContractorsPage() {
     setEditName(selected.name);
     setEditContacts(selected.contacts ?? "");
     setEditing(false);
+    setHistoryQuery("");
+    setHistoryDateFrom("");
+    setHistoryDateTo("");
   }, [selected?.id]);
 
   const history = useContractorHistory(selectedId);
@@ -119,9 +125,12 @@ export function ContractorsPage() {
   const activeClient = active.reduce((sum, item) => sum + totalClient(item), 0);
   const activeMargin = activeClient - activeCost;
   const filteredHistory = historyItems.filter((item) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return [item.name, item.note, projectName(item.projectId)].some((value) => value?.toLowerCase().includes(q));
+    const q = historyQuery.trim().toLowerCase();
+    const matchesQuery = !q || [item.name, item.note, projectName(item.projectId)].some((value) => value?.toLowerCase().includes(q));
+    const createdAt = Date.parse(item.createdAt);
+    const matchesStart = !historyDateFrom || createdAt >= Date.parse(`${historyDateFrom}T00:00:00`);
+    const matchesEnd = !historyDateTo || createdAt <= Date.parse(`${historyDateTo}T23:59:59.999`);
+    return matchesQuery && matchesStart && matchesEnd;
   });
 
   const filteredContractors = list.filter((c) => {
@@ -293,6 +302,13 @@ export function ContractorsPage() {
           )}
 
           <SectionTitle>{t("contractors.prices")}</SectionTitle>
+          <Card>
+            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+              <Field label="Модель или название"><Input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="Например, RCF ART735" /></Field>
+              <Field label="С даты"><Input type="date" value={historyDateFrom} onChange={(event) => setHistoryDateFrom(event.target.value)} /></Field>
+              <Field label="По дату"><Input type="date" value={historyDateTo} onChange={(event) => setHistoryDateTo(event.target.value)} /></Field>
+            </div>
+          </Card>
           {history.isLoading ? (
             <Loading />
           ) : filteredHistory.length === 0 ? (

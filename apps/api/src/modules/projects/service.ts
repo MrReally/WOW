@@ -2270,6 +2270,9 @@ export function createProjectsService(
       return Promise.all(rows.map(row=>contractorOrderDTO(row)));
     },
     async createContractorOrder(input) {
+      const project = await one<Pick<ProjectRow, "status">>(db, `SELECT status FROM projects.projects WHERE id=$1`, [input.projectId]);
+      if (!project) throw NotFound("project", input.projectId);
+      if (project.status === "cancelled") throw BadRequest("нельзя создать заказ подрядчику для отменённого проекта");
       if (!input.lines.length) throw BadRequest("добавьте хотя бы одну позицию каталога");
       const catalogItems=await loadContractorCatalogItems(input.lines.map(line=>line.catalogItemId));
       for(const line of input.lines){const item=catalogItems.find(candidate=>candidate.id===line.catalogItemId);if(!item)throw BadRequest(`позиция каталога ${line.catalogItemId} не найдена`);if(item.maxQty!=null&&line.qty>item.maxQty)throw BadRequest(`количество ${line.name} превышает известный максимум ${item.maxQty}`);}
@@ -2292,14 +2295,18 @@ export function createProjectsService(
       return contractorOrderDTO(created!);
     },
     async setContractorOrderLineReceived(orderId,lineId,received) {
-      const order=await one<ContractorOrderRow>(db,`SELECT * FROM projects.contractor_orders WHERE id=$1`,[orderId]);
+      const order=await one<ContractorOrderRow & { project_status: Projects.ProjectStatus }>(db,`SELECT co.*, p.status AS project_status FROM projects.contractor_orders co JOIN projects.projects p ON p.id=co.project_id WHERE co.id=$1`,[orderId]);
       if (!order) throw NotFound("contractor order",orderId);
+      if (order.project_status === "cancelled") throw BadRequest("нельзя проводить приёмку для отменённого проекта");
       if (order.receipt_completed_at) throw BadRequest("приёмка уже завершена");
       const line=await one<ContractorOrderLineRow>(db,`UPDATE projects.contractor_order_lines SET received_at=CASE WHEN $3 THEN COALESCE(received_at,now()) ELSE NULL END WHERE id=$1 AND order_id=$2 RETURNING *`,[lineId,orderId,received]);
       if (!line) throw NotFound("contractor order line",lineId);
       return contractorOrderDTO(order);
     },
     async completeContractorOrderReceipt(orderId) {
+      const order=await one<Pick<ContractorOrderRow, "id"> & { project_status: Projects.ProjectStatus }>(db,`SELECT co.id, p.status AS project_status FROM projects.contractor_orders co JOIN projects.projects p ON p.id=co.project_id WHERE co.id=$1`,[orderId]);
+      if (!order) throw NotFound("contractor order",orderId);
+      if (order.project_status === "cancelled") throw BadRequest("нельзя проводить приёмку для отменённого проекта");
       const missing=await one<{count:string}>(db,`SELECT COUNT(*)::text AS count FROM projects.contractor_order_lines WHERE order_id=$1 AND received_at IS NULL`,[orderId]);
       if (Number(missing?.count??0)>0) throw BadRequest("сначала примите каждую позицию");
       const row=await one<ContractorOrderRow>(db,`UPDATE projects.contractor_orders SET receipt_completed_at=COALESCE(receipt_completed_at,now()) WHERE id=$1 RETURNING *`,[orderId]);
