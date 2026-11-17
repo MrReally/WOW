@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
 import { DEFAULT_DATE_TIME_SETTINGS, formatDateValue, type AppSettings, type Finance } from "@sever/contracts";
@@ -7,13 +8,11 @@ const PAGE_H = 841.89;
 const MARGIN_X = 33.75;
 const CONTENT_W = PAGE_W - MARGIN_X * 2;
 const FONT = fileURLToPath(new URL("../../../../web/public/fonts/Manrope-Variable.ttf", import.meta.url));
+const DEFAULT_LOGO = fileURLToPath(new URL("../../../../web/public/sever-logo.png", import.meta.url));
 const BLACK = "#080808";
 const SECTION = "#cbcbcb";
 const STRIPE = "#f3f3f3";
 const MUTED = "#777777";
-const CARD = "M 0 -100 L 17 -17 L 100 0 L 17 17 L 0 100 L -17 17 L -100 0 L -17 -17 Z";
-const DIAG = "M 39.6 -39.6 L 16 0 L 39.6 39.6 L 0 16 L -39.6 39.6 L -16 0 L -39.6 -39.6 L 0 -16 Z";
-const HOLE = "M 0 -15 L 2.8 -2.8 L 15 0 L 2.8 2.8 L 0 15 L -2.8 2.8 L -15 0 L -2.8 -2.8 Z";
 
 type Labels = {
   equipment: string;
@@ -48,19 +47,12 @@ const localeFor = (lang: Finance.InvoiceLang) => lang === "EN" ? "en-US" : lang 
 const invoiceDate = (value: string, settings: AppSettings.DateTimeSettingsDTO, lang: Finance.InvoiceLang) =>
   /^\d{2}\.\d{2}-\d{2}\.\d{2}$/.test(value) ? value : formatDateValue(value, settings, localeFor(lang));
 
-function logoBuffer(dataUrl: string | null): Buffer | null {
+function logoBuffer(dataUrl: string | null): Buffer {
   if (dataUrl) {
     const match = /^data:image\/(?:png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
     if (match) return Buffer.from(match[1]!, "base64");
   }
-  return null;
-}
-
-function drawBrandMark(doc: PDFKit.PDFDocument, x: number, y: number, size: number): void {
-  doc.save().translate(x + size / 2, y + size / 2).scale(size / 224);
-  doc.fillColor("#ffffff").path(CARD).fill().path(DIAG).fill();
-  doc.fillColor(BLACK).path(HOLE).fill();
-  doc.restore();
+  return readFileSync(DEFAULT_LOGO);
 }
 
 function setFont(doc: PDFKit.PDFDocument, size: number): void {
@@ -110,10 +102,11 @@ function drawHeader(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO,
   fitText(doc, clean(req.place) || "—", MARGIN_X + 92, 72, 250, 16, { size: 9.6, color: "#ffffff", padding: 0 });
   try {
     const logo = logoBuffer(req.company.logoDataUrl);
-    if (logo) doc.image(logo, PAGE_W - 135, 17, { fit: [76, 76], align: "center", valign: "center" });
-    else drawBrandMark(doc, PAGE_W - 135, 17, 76);
+    doc.image(logo, PAGE_W - 135, 17, { fit: [76, 76], align: "center", valign: "center" });
   } catch {
-    drawBrandMark(doc, PAGE_W - 135, 17, 76);
+    // A custom image may be malformed. Keep the document exportable and use
+    // the same default logo shown in Settings.
+    doc.image(readFileSync(DEFAULT_LOGO), PAGE_W - 135, 17, { fit: [76, 76], align: "center", valign: "center" });
   }
   return height + 13.5;
 }
