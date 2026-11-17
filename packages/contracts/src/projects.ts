@@ -602,6 +602,8 @@ export interface ContractorItemDTO {
   costEUR: number;
   /** Free-form spec / note. */
   note: string | null;
+  /** Set in Operations when the manually planned item has physically been received. */
+  receivedAt: ISODateTime | null;
   /** Null means we still need to return this rented contractor gear. */
   returnedAt: ISODateTime | null;
   /** Null means the contractor cost is still payable. */
@@ -779,6 +781,8 @@ export interface ProjectsService {
   addContractorItem(input: AddContractorItemInput): Promise<ContractorItemDTO>;
   updateContractorItem(id: ID, input: UpdateContractorItemInput): Promise<ContractorItemDTO>;
   setContractorItemsBooked(projectId: ID, contractorId: ID, booked: boolean): Promise<ContractorItemDTO[]>;
+  /** Records physical receipt for a manually planned contractor-equipment item. */
+  setContractorItemReceived(id: ID, received: boolean): Promise<ContractorItemDTO>;
   returnContractorItems(projectId: ID, contractorId: ID): Promise<ContractorItemDTO[]>;
   setContractorItemsPaid(projectId: ID, contractorId: ID, paid: boolean): Promise<ContractorItemDTO[]>;
   returnContractorItem(id: ID): Promise<ContractorItemDTO>;

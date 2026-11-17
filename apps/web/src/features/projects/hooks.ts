@@ -441,6 +441,18 @@ export function useReturnContractorItem() {
     },
   });
 }
+export function useSetContractorItemReceived() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, received }: { id: string; received: boolean }) =>
+      api.put<Projects.ContractorItemDTO>(`/api/contractor-items/${id}/received`, { received }),
+    meta: { successMessage: "Приёмка оборудования обновлена" },
+    onSuccess: () => {
+      invalidateProjects(qc);
+      qc.invalidateQueries({ queryKey: ["projects", "contractor-items"] });
+    },
+  });
+}
 export function useCreateContractor() {
   const qc = useQueryClient();
   return useMutation({

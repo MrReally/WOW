@@ -190,6 +190,7 @@ interface ContractorItemRow {
   price_eur: string;
   cost_eur: string;
   note: string | null;
+  received_at: Date | null;
   returned_at: Date | null;
   paid_at: Date | null;
   booked: boolean;
@@ -391,6 +392,7 @@ const contractorItemDTO = (r: ContractorItemRow): Projects.ContractorItemDTO => 
   priceEUR: Number(r.price_eur),
   costEUR: Number(r.cost_eur),
   note: r.note,
+  receivedAt: r.received_at ? r.received_at.toISOString() : null,
   returnedAt: r.returned_at ? r.returned_at.toISOString() : null,
   paidAt: r.paid_at ? r.paid_at.toISOString() : null,
   booked: r.booked ?? false,
@@ -2167,7 +2169,16 @@ export function createProjectsService(
     async listOpenContractorItems() {
       const rows = await query<ContractorItemRow>(
         db,
-        `SELECT * FROM projects.contractor_items WHERE kind='equipment' AND returned_at IS NULL ORDER BY created_at DESC`
+        `SELECT ci.*
+         FROM projects.contractor_items ci
+         LEFT JOIN projects.contractor_orders co ON co.id=ci.order_id
+         WHERE ci.kind='equipment'
+           AND ci.returned_at IS NULL
+           AND (
+             (ci.order_id IS NULL AND ci.received_at IS NOT NULL)
+             OR (ci.order_id IS NOT NULL AND co.receipt_completed_at IS NOT NULL)
+           )
+         ORDER BY ci.created_at DESC`
       );
       return rows.map(contractorItemDTO);
     },
@@ -2210,10 +2221,35 @@ export function createProjectsService(
       );
       return rows.map(contractorItemDTO);
     },
+    async setContractorItemReceived(id, received) {
+      const existing = await one<ContractorItemRow & { project_status: Projects.ProjectStatus }>(
+        db,
+        `SELECT ci.*, p.status AS project_status
+         FROM projects.contractor_items ci
+         JOIN projects.projects p ON p.id=ci.project_id
+         WHERE ci.id=$1`,
+        [id]
+      );
+      if (!existing) throw NotFound("contractor item", id);
+      if (existing.order_id) throw BadRequest("приёмка пакетного заказа проводится через оборот подрядчика в Operations");
+      if (existing.kind !== "equipment") throw BadRequest("приёмка доступна только для оборудования");
+      if (existing.project_status === "cancelled" && received) throw BadRequest("нельзя принять оборудование для отменённого проекта");
+      if (existing.returned_at && !received) throw BadRequest("нельзя отменить приёмку после возврата");
+      const row = await one<ContractorItemRow>(
+        db,
+        `UPDATE projects.contractor_items
+         SET received_at=CASE WHEN $2 THEN COALESCE(received_at, now()) ELSE NULL END
+         WHERE id=$1 RETURNING *`,
+        [id, received]
+      );
+      if (!row) throw NotFound("contractor item", id);
+      await bus.publish({ type: "project.contractor_items.changed", projectId: row.project_id, contractorId: row.contractor_id, at: new Date().toISOString() });
+      return contractorItemDTO(row);
+    },
     async returnContractorItems(projectId, contractorId) {
       const rows = await query<ContractorItemRow>(
         db,
-        `UPDATE projects.contractor_items SET returned_at=COALESCE(returned_at, now()) WHERE project_id=$1 AND contractor_id=$2 AND kind='equipment' AND order_id IS NULL RETURNING *`,
+        `UPDATE projects.contractor_items SET returned_at=COALESCE(returned_at, now()) WHERE project_id=$1 AND contractor_id=$2 AND kind='equipment' AND order_id IS NULL AND received_at IS NOT NULL RETURNING *`,
         [projectId, contractorId]
       );
       if (rows.length) {
@@ -2233,6 +2269,7 @@ export function createProjectsService(
       const existing=await one<ContractorItemRow>(db,`SELECT * FROM projects.contractor_items WHERE id=$1`,[id]);
       if (!existing) throw NotFound("contractor item", id);
       if(existing?.order_id)throw BadRequest("возврат пакетного заказа проводится через оборот подрядчика в Operations");
+      if (!existing.received_at) throw BadRequest("сначала отметьте приёмку оборудования в Operations");
       const row = await one<ContractorItemRow>(
         db,
         `UPDATE projects.contractor_items SET returned_at=COALESCE(returned_at, now()) WHERE id=$1 RETURNING *`,

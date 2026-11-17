@@ -31,7 +31,6 @@ import {
   useCreateContractorWarehouse,
   useOpenContractorItems,
   useProjects,
-  useReturnContractorItem,
   useUpdateContractor,
 } from "./hooks.ts";
 import { contractorMatches } from "../../lib/search.ts";
@@ -62,7 +61,6 @@ export function ContractorsPage() {
   const updateEquipment = useUpdateContractorEquipment();
   const contractorWarehouses = useContractorWarehouses();
   const createWarehouse = useCreateContractorWarehouse();
-  const markReturned = useReturnContractorItem();
   const { t, eur, locale } = useI18n();
   const directoryLabels = directoryCopy[locale];
 
@@ -293,9 +291,7 @@ export function ContractorsPage() {
                   key={item.id}
                   item={item}
                   projectName={projectName(item.projectId)}
-                  action={
-                    item.orderId ? <StatusBadge tone="info">Через Operations</StatusBadge> : <Button variant="secondary" disabled={markReturned.isPending} onClick={() => markReturned.mutate(item.id)}>{t("contractors.return")}</Button>
-                  }
+                  action={<StatusBadge tone="info">Через Operations</StatusBadge>}
                 />
               ))}
             </div>

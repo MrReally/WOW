@@ -42,8 +42,8 @@ describe("full project export", () => {
         ],
         listAssignments: async () => [], listProjectRoles: async () => [],
         listContractorItems: async () => [
-          { id: "vendor-1", projectId: "project", contractorId: "vendor", kind: "equipment", name: "A", qty: 1, priceEUR: 100, costEUR: 40, note: null, returnedAt: null, paidAt: null, booked: true, createdAt },
-          { id: "vendor-2", projectId: "project", contractorId: "vendor", kind: "equipment", name: "B", qty: 1, priceEUR: 100, costEUR: 60, note: null, returnedAt: null, paidAt: null, booked: true, createdAt },
+          { id: "vendor-1", projectId: "project", contractorId: "vendor", kind: "equipment", name: "A", qty: 1, priceEUR: 100, costEUR: 40, note: null, receivedAt: null, returnedAt: null, paidAt: null, booked: true, createdAt },
+          { id: "vendor-2", projectId: "project", contractorId: "vendor", kind: "equipment", name: "B", qty: 1, priceEUR: 100, costEUR: 60, note: null, receivedAt: null, returnedAt: null, paidAt: null, booked: true, createdAt },
         ],
       },
       equipment: {

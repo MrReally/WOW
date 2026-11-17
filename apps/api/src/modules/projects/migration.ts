@@ -330,6 +330,7 @@ CREATE TABLE IF NOT EXISTS projects.contractor_items (
   created_at    timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS returned_at timestamptz;
+ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS received_at timestamptz;
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'equipment';
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS booked boolean NOT NULL DEFAULT false;
 ALTER TABLE projects.contractor_items ADD COLUMN IF NOT EXISTS paid_at timestamptz;

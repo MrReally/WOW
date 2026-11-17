@@ -135,7 +135,7 @@ export function createModules(bus: EventBus = new EventBus()) {
     const active = assignments.filter(a => a.status === "added" || a.status === "accepted");
     const payrollSettled = active.every(a => a.paidEUR + 0.005 >= (a.rateEUR ?? 0));
     const contractorSettled = contractorItems.every(item =>
-      !!item.paidAt && (item.kind !== "equipment" || !!item.returnedAt)
+      !!item.paidAt && (item.kind !== "equipment" || !item.receivedAt || !!item.returnedAt)
     );
     if (invoice.dueEUR <= 0.005 && payrollSettled && contractorSettled) {
       await projects.service.setStatus(projectId, "completed", actorId);
@@ -969,7 +969,7 @@ export function registerAllRoutes(
         const itemCost = (item: typeof items[number]) => item.costEUR * item.qty * (item.pricingMode === "per_day" ? days : 1);
         const unpaid = items.filter(item => !item.paidAt && itemCost(item) > 0);
         if (unpaid.length) issues.push({ code: "contractor_payment", title: "Не оплачен подрядчик", detail: `${unpaid.length} поз. · ${unpaid.reduce((sum, item) => sum + itemCost(item), 0).toFixed(2)} EUR`, autoResolvable: true });
-        const unreturned = items.filter(item => item.kind === "equipment" && !item.orderId && !item.returnedAt);
+        const unreturned = items.filter(item => item.kind === "equipment" && !item.orderId && item.receivedAt && !item.returnedAt);
         if (unreturned.length) issues.push({ code: "contractor_return", title: "Не возвращено оборудование подрядчику", detail: unreturned.map(item => `${item.name} × ${item.qty}`).join(", "), autoResolvable: true });
       }
     }

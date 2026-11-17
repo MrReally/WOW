@@ -139,6 +139,7 @@ const updateContractorItemSchema = contractorItemSchema.omit({ projectId: true }
 const contractorBookedSchema = z.object({ projectId: z.string().uuid(), contractorId: z.string().uuid(), booked: z.boolean() });
 const contractorGroupSchema = z.object({ projectId: z.string().uuid(), contractorId: z.string().uuid() });
 const contractorPaidSchema = contractorGroupSchema.extend({ paid: z.boolean() });
+const contractorReceiptSchema = z.object({ received: z.boolean() });
 const contractorOrderSchema = z.object({
   projectId:z.string().uuid(), contractorId:z.string().uuid(), warehouseId:z.string().uuid().nullable().optional(),
   name:z.string().trim().min(1), fulfillmentMode:z.enum(["dry_rental","contractor_delivery"]),
@@ -621,9 +622,14 @@ export function registerProjectsRoutes(
     const body = contractorBookedSchema.parse(req.body);
     return service.setContractorItemsBooked(body.projectId, body.contractorId, body.booked);
   });
+  app.put<{ Params: { id: string } }>("/api/contractor-items/:id/received", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "operations.contractor_turnover.manage");
+    return service.setContractorItemReceived(req.params.id, contractorReceiptSchema.parse(req.body).received);
+  });
   app.post("/api/contractor-items/return-all", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "projects.reservation.manage", "operations.contractor_turnover.manage");
+    requirePermission(auth, "operations.contractor_turnover.manage");
     const body = contractorGroupSchema.parse(req.body);
     return service.returnContractorItems(body.projectId, body.contractorId);
   });
@@ -641,7 +647,7 @@ export function registerProjectsRoutes(
   });
   app.post<{ Params: { id: string } }>("/api/contractor-items/:id/return", async (req) => {
     const auth = await ctx.auth(req);
-    requirePermission(auth, "projects.reservation.manage", "operations.contractor_turnover.manage");
+    requirePermission(auth, "operations.contractor_turnover.manage");
     return service.returnContractorItem(req.params.id);
   });
   app.get<{Params:{id:string}}>("/api/projects/:id/contractor-orders", async req => { const auth=await ctx.auth(req); requirePermission(auth,"projects.view","projects.reservation.manage","operations.contractor_turnover.view","operations.contractor_turnover.manage"); return service.listContractorOrders(req.params.id); });
