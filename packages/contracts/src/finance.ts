@@ -257,6 +257,9 @@ export interface EstimatePdfLineDTO {
   priceEUR: number;
   /** Price before a per-line discount. Omitted for legacy document versions. */
   originalPriceEUR?: number;
+  /** Original per-line discount input. Omitted for document versions created before discounts were preserved in PDF snapshots. */
+  discountType?: DiscountType;
+  discountValue?: number;
   /** Internal cost, never printed to the client PDF. */
   costEUR: number;
   comment: string;

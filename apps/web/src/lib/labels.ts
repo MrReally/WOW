@@ -68,7 +68,9 @@ export function eur(amount: number): string {
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
     currency: "EUR",
-    maximumFractionDigits: 0,
+    // Project estimates are calculated to cents. Hiding them here makes the
+    // editor and the generated document appear to disagree.
+    maximumFractionDigits: 2,
   }).format(amount);
 }
 

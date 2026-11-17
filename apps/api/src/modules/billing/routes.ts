@@ -37,8 +37,13 @@ const invoicePdfSchema = z.object({
     count: z.string(),
     priceEUR: z.number(),
     originalPriceEUR: z.number().nonnegative().optional(),
+    discountType: z.enum(["percent", "fixed_rsd", "fixed_eur"]).optional(),
+    discountValue: z.number().nonnegative().optional(),
     costEUR: z.number(),
     comment: z.string(),
+  }).refine((line) => line.discountType !== "percent" || (line.discountValue ?? 0) <= 100, {
+    message: "percentage discount cannot exceed 100",
+    path: ["discountValue"],
   })),
 });
 

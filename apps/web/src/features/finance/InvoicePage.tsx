@@ -261,7 +261,7 @@ export function InvoicePage() {
     rentalPeriodDays: Math.max(1, invoice.data?.days ?? 1),
     templateId: restoredVersion?.templateId ?? "sever_a4",
     templateVersion: restoredVersion?.templateVersion ?? 1,
-    lines: normalizedLines.map((l) => ({ id: l.id, section: l.section, name: l.name, count: l.count, priceEUR: l.price, originalPriceEUR: l.rawPrice, costEUR: l.cost, comment: l.comment })),
+    lines: normalizedLines.map((l) => ({ id: l.id, section: l.section, name: l.name, count: l.count, priceEUR: l.price, originalPriceEUR: l.rawPrice, discountType: l.discountType, discountValue: l.discountValue, costEUR: l.cost, comment: l.comment })),
   });
   const saveVersion = async () => {
     const version: StoredInvoiceVersion = {
@@ -305,6 +305,8 @@ export function InvoicePage() {
         count: l.count,
         priceEUR: l.price,
         originalPriceEUR: l.rawPrice,
+        discountType: l.discountType,
+        discountValue: l.discountValue,
         costEUR: l.cost,
         comment: l.comment,
       })),
@@ -552,6 +554,17 @@ export function InvoicePage() {
             <div className="row row--between" style={{ marginTop: 6 }}><span className="card__subtitle">Себестоимость</span><span>{money(costTotal)}</span></div>
             <div className="row row--between" style={{ marginTop: 2 }}><span className="card__subtitle">Маржа</span><span style={{ color: margin >= 0 ? "var(--ok)" : "var(--alert)" }}>{money(margin)}</span></div>
           </Card>
+          <Card>
+            <p className="card__title">Итоговые строки сметы</p>
+            <div className="stack" style={{ marginTop: 8 }}>
+              {sections.flatMap((section) => section.items).map((line) => (
+                <div className="row row--between" key={line.id} style={{ gap: 12 }}>
+                  <span style={{ minWidth: 0 }}>{line.name || "—"} · {line.count}</span>
+                  <span style={{ whiteSpace: "nowrap" }}>{money(line.price)}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
           <Field label="Примечание / условия"><Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Сроки оплаты, условия аренды и т.п." /></Field>
           {versions.length > 0 && (
             <Card>
@@ -604,8 +617,10 @@ function versionFromDTO(v: Finance.InvoiceVersionDTO): StoredInvoiceVersion {
       count: line.count,
       price: line.priceEUR,
       rawPrice: line.originalPriceEUR ?? line.priceEUR,
-      discountType: "percent",
-      discountValue: 0,
+      // Older saved versions only retained the calculated EUR difference.
+      // Keep that fallback while preserving the original input for new versions.
+      discountType: line.discountType ?? "fixed_eur",
+      discountValue: line.discountValue ?? Math.max(0, (line.originalPriceEUR ?? line.priceEUR) - line.priceEUR),
       cost: line.costEUR,
       comment: line.comment,
       hidden: false,
@@ -720,6 +735,15 @@ function PrintableInvoice({ labels, documentTitle, formattedDate, place, section
   );
 }
 
+function lineDiscountLabel(line: Pick<Line, "discountType" | "discountValue" | "rawPrice" | "price">, convert: (valueEUR: number) => number): string {
+  if (line.discountValue <= 0) return "—";
+  if (line.discountType === "percent") return `−${amount(line.discountValue)}%`;
+  if (line.discountType === "fixed_rsd") return `−${amount(line.discountValue)} RSD`;
+  if (line.discountType === "fixed_eur") return `−${amount(line.discountValue)} EUR`;
+  const discount = Math.max(0, line.rawPrice - line.price);
+  return discount > 0.004 ? `−${amount(convert(discount))}` : "—";
+}
+
 function SectionBlock({ section, items, convert, hasDiscount }: { section: string; items: Line[]; convert: (valueEUR: number) => number; hasDiscount: boolean }) {
   return (
     <>
@@ -728,7 +752,7 @@ function SectionBlock({ section, items, convert, hasDiscount }: { section: strin
         const discount = Math.max(0, line.rawPrice - line.price);
         return <tr key={line.id} className={discount > 0.004 ? "inv-line--discounted" : undefined}>
           <td>{line.name || "—"}</td><td className="num">{line.count}</td>
-          {hasDiscount ? <><td className="num inv-before">{amount(convert(line.rawPrice))}</td><td className="num">{discount > 0.004 ? <>−{amount(convert(discount))}</> : "—"}</td><td className="num inv-final">{amount(convert(line.price))}</td></> : <td className="num inv-final">{amount(convert(line.price))}</td>}
+          {hasDiscount ? <><td className="num inv-before">{amount(convert(line.rawPrice))}</td><td className="num">{lineDiscountLabel(line, convert)}</td><td className="num inv-final">{amount(convert(line.price))}</td></> : <td className="num inv-final">{amount(convert(line.price))}</td>}
           <td className="muted">{line.comment || "—"}</td>
         </tr>;
       })}

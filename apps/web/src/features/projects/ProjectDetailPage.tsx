@@ -1147,6 +1147,26 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
         const draftSubtotalEUR = visibleEstimateDrafts.reduce((sum, line) => sum + amountAfterDiscountEUR(Number(line.priceEUR) || 0, line.discountType, Number(line.discountValue) || 0, rsdRateToEUR), 0);
         const totalDraftDiscountEUR = discountAmountEUR(draftSubtotalEUR, totalDiscountType, Number(totalDiscountValue) || 0, rsdRateToEUR);
         const draftTotalEUR = Math.max(0, draftSubtotalEUR - totalDraftDiscountEUR);
+        const setLinePriceAfterDiscount = (index: number, value: string) => {
+          const finalPriceEUR = Number(value);
+          if (!Number.isFinite(finalPriceEUR) || finalPriceEUR < 0) return;
+          setEstimateDrafts((rows) => rows.map((row, rowIndex) => {
+            if (rowIndex !== index) return row;
+            const discountValue = Math.max(0, Number(row.discountValue) || 0);
+            if (row.discountType === "percent") {
+              const factor = 1 - Math.min(100, discountValue) / 100;
+              // A 100% discount cannot produce a positive final price. Turn it
+              // into an editable undiscounted price instead of silently changing it.
+              return factor > 0
+                ? { ...row, priceEUR: String(finalPriceEUR / factor) }
+                : { ...row, priceEUR: String(finalPriceEUR), discountValue: "0" };
+            }
+            const fixedDiscountEUR = row.discountType === "fixed_rsd"
+              ? discountValue * rsdRateToEUR
+              : discountValue;
+            return { ...row, priceEUR: String(finalPriceEUR + fixedDiscountEUR) };
+          }));
+        };
         const Line = ({ l }: { l: { refId: string; label: string; detail: string; amountEUR: number } }) => (
           <div className="row row--between" style={{ padding: "4px 0", gap: 12 }}>
             <div style={{ minWidth: 0 }}>
@@ -1193,6 +1213,16 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                       onType={(discountType) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, discountType } : row))}
                       onValue={(discountValue) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, discountValue } : row))}
                     />
+                    <Field label="После скидки, €">
+                      <Input
+                        disabled={!canManageFinance}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={String(amountAfterDiscountEUR(Number(line.priceEUR) || 0, line.discountType, Number(line.discountValue) || 0, rsdRateToEUR))}
+                        onChange={(event) => setLinePriceAfterDiscount(index, event.target.value)}
+                      />
+                    </Field>
                     <Input disabled={!canManageFinance} value={line.comment} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, comment: e.target.value } : row))} placeholder="Комментарий" />
                   </div>
                 ))}

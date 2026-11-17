@@ -72,8 +72,13 @@ const invoiceVersionLineSchema = z.object({
   count: z.string(),
   priceEUR: z.number().nonnegative(),
   originalPriceEUR: z.number().nonnegative().optional(),
+  discountType: z.enum(["percent", "fixed_rsd", "fixed_eur"]).optional(),
+  discountValue: z.number().nonnegative().optional(),
   costEUR: z.number().nonnegative(),
   comment: z.string(),
+}).refine((line) => line.discountType !== "percent" || (line.discountValue ?? 0) <= 100, {
+  message: "percentage discount cannot exceed 100",
+  path: ["discountValue"],
 });
 const invoiceVersionSchema = z.object({
   number: z.string(),

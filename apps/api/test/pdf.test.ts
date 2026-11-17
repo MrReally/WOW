@@ -19,7 +19,7 @@ describe("estimate PDF", () => {
       templateVersion: 1,
       note: "",
       lines: [
-        { id: "1", section: "Звуковое оборудование", name: "Монтаж+демонтаж", count: "1", priceEUR: 40, originalPriceEUR: 50, costEUR: 0, comment: "1 day × 40 €/day" },
+        { id: "1", section: "Звуковое оборудование", name: "Монтаж+демонтаж", count: "1", priceEUR: 40, originalPriceEUR: 50, discountType: "percent", discountValue: 20, costEUR: 0, comment: "1 day × 40 €/day" },
       ],
     });
 

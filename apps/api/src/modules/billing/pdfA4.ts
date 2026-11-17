@@ -43,6 +43,16 @@ const clean = (value: string) => value.trim().replace(/\s+/g, " ");
 const converted = (eur: number, req: Finance.EstimatePdfRequestDTO) => req.currency === "EUR" || !req.rateToEUR ? eur : eur / req.rateToEUR;
 const numeric = (value: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(round2(value)).replace(/,/g, " ");
 const money = (eur: number, req: Finance.EstimatePdfRequestDTO) => `${numeric(converted(eur, req))} ${req.currency}`;
+const lineDiscountLabel = (line: Finance.EstimatePdfLineDTO, req: Finance.EstimatePdfRequestDTO) => {
+  if (!line.discountType || !line.discountValue) {
+    const before = Math.max(line.originalPriceEUR ?? line.priceEUR, line.priceEUR);
+    const discount = Math.max(0, before - line.priceEUR);
+    return discount > .004 ? `−${numeric(converted(discount, req))}` : "—";
+  }
+  if (line.discountType === "percent") return `−${numeric(line.discountValue)}%`;
+  if (line.discountType === "fixed_rsd") return `−${numeric(line.discountValue)} RSD`;
+  return `−${numeric(line.discountValue)} EUR`;
+};
 const localeFor = (lang: Finance.InvoiceLang) => lang === "EN" ? "en-US" : lang === "RS" ? "sr-RS" : "ru-RU";
 const invoiceDate = (value: string, settings: AppSettings.DateTimeSettingsDTO, lang: Finance.InvoiceLang) =>
   /^\d{2}\.\d{2}-\d{2}\.\d{2}$/.test(value) ? value : formatDateValue(value, settings, localeFor(lang));
@@ -169,7 +179,7 @@ function drawLine(doc: PDFKit.PDFDocument, req: Finance.EstimatePdfRequestDTO, l
     name: clean(line.name) || "—",
     qty: clean(line.count) || "1",
     before: numeric(converted(before, req)),
-    discount: discount > .004 ? `−${numeric(converted(discount, req))}` : "—",
+    discount: lineDiscountLabel(line, req),
     final: numeric(converted(line.priceEUR, req)),
     price: numeric(converted(line.priceEUR, req)),
     comment: clean(line.comment) || "—",
