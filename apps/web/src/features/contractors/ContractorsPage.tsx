@@ -27,6 +27,8 @@ import {
   useContractorEquipmentDirectory,
   useCreateContractorEquipment,
   useUpdateContractorEquipment,
+  useDeleteContractorEquipment,
+  useSetContractorEquipmentArchived,
   useContractorWarehouses,
   useCreateContractorWarehouse,
   useOpenContractorItems,
@@ -58,8 +60,11 @@ export function ContractorsPage() {
   const createPerson = useCreateContractorPerson();
   const createVehicle = useCreateContractorVehicle();
   const contractorEquipment = useContractorEquipmentDirectory();
+  const archivedContractorEquipment = useContractorEquipmentDirectory(true, true);
   const createEquipment = useCreateContractorEquipment();
   const updateEquipment = useUpdateContractorEquipment();
+  const deleteEquipment = useDeleteContractorEquipment();
+  const setEquipmentArchived = useSetContractorEquipmentArchived();
   const contractorWarehouses = useContractorWarehouses();
   const createWarehouse = useCreateContractorWarehouse();
   const { t, eur, locale } = useI18n();
@@ -95,6 +100,8 @@ export function ContractorsPage() {
   const [equipmentWarehouseId, setEquipmentWarehouseId] = useState("");
   const [equipmentNote, setEquipmentNote] = useState("");
   const [editingEquipment, setEditingEquipment] = useState<Contractors.ContractorEquipmentDTO | null>(null);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveCandidate, setArchiveCandidate] = useState<Contractors.ContractorEquipmentDTO | null>(null);
   const [warehouseName,setWarehouseName]=useState("");
   const [warehouseAddress,setWarehouseAddress]=useState("");
   const [warehouseLat,setWarehouseLat]=useState("");
@@ -201,7 +208,7 @@ export function ContractorsPage() {
                 <p className="card__title">{selected.name}</p>
                 <p className="card__subtitle">{selected.contacts || t("common.noContacts")}</p>
               </div>
-              <StatusBadge tone={active.length ? "warn" : "ok"}>{active.length ? t("contractors.returnDue") : t("contractors.allClosed")}</StatusBadge>
+              <div className="row" style={{gap:6}}><Button variant="ghost" aria-label="Архив позиций" title="Архив позиций" onClick={()=>setArchiveOpen(true)}>▣</Button><StatusBadge tone={active.length ? "warn" : "ok"}>{active.length ? t("contractors.returnDue") : t("contractors.allClosed")}</StatusBadge></div>
             </div>
             <div className="row" style={{ marginTop: 12, gap: 18, flexWrap: "wrap" }}>
               <Metric value={eur(activeCost)} label={t("contractors.activeCost")} tone={activeCost ? "danger" : "ok"} />
@@ -276,9 +283,17 @@ export function ContractorsPage() {
                 <Field label="Склад"><select value={editingEquipment.warehouseId ?? ""} onChange={event=>setEditingEquipment({...editingEquipment,warehouseId:event.target.value || null})}><option value="">Без склада</option>{(contractorWarehouses.data??[]).filter(warehouse=>warehouse.contractorId===selected.id).map(warehouse=><option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></Field>
               </div>
               <Field label={directoryLabels.note}><Input value={editingEquipment.note ?? ""} onChange={event=>setEditingEquipment({...editingEquipment,note:event.target.value || null})} /></Field>
-              <div className="row"><Button disabled={!editingEquipment.name.trim() || updateEquipment.isPending} onClick={()=>updateEquipment.mutate({id:item.id,input:{name:editingEquipment.name.trim(),availableQty:editingEquipment.availableQty,maxQty:editingEquipment.maxQty,dryRentalCostEUR:editingEquipment.dryRentalCostEUR,deliveredCostEUR:editingEquipment.deliveredCostEUR,warehouseId:editingEquipment.warehouseId,note:editingEquipment.note,defaultCostEUR:editingEquipment.dryRentalCostEUR}},{onSuccess:()=>setEditingEquipment(null)})}>Сохранить</Button><Button variant="ghost" onClick={()=>setEditingEquipment(null)}>Отмена</Button></div>
-            </div> : <div key={item.id} className="row row--between"><span>{item.name}{item.maxQty==null?"":` · до ${item.maxQty}`}</span><span className="card__subtitle">сухая {item.dryRentalCostEUR==null?"—":eur(item.dryRentalCostEUR)} · с доставкой {item.deliveredCostEUR==null?"—":eur(item.deliveredCostEUR)}</span><Button variant="ghost" onClick={()=>setEditingEquipment(item)}>Изменить</Button></div>)}</div>}
+              <div className="row"><Button disabled={!editingEquipment.name.trim() || updateEquipment.isPending} onClick={()=>updateEquipment.mutate({id:item.id,input:{name:editingEquipment.name.trim(),availableQty:editingEquipment.availableQty,maxQty:editingEquipment.maxQty,dryRentalCostEUR:editingEquipment.dryRentalCostEUR,deliveredCostEUR:editingEquipment.deliveredCostEUR,warehouseId:editingEquipment.warehouseId,note:editingEquipment.note,defaultCostEUR:editingEquipment.dryRentalCostEUR}},{onSuccess:()=>setEditingEquipment(null)})}>Сохранить</Button><Button variant="ghost" onClick={()=>setEditingEquipment(null)}>Отмена</Button><Button variant="ghost" disabled={deleteEquipment.isPending} onClick={()=>deleteEquipment.mutate(item.id,{onSuccess:result=>{setEditingEquipment(null);if(result.mustArchive)setArchiveCandidate(item);}})}>Удалить</Button></div>
+            </div> : <div key={item.id} className="row row--between"><span>{item.name}{item.maxQty==null?"":` · до ${item.maxQty}`}</span><span className="card__subtitle">сухая {item.dryRentalCostEUR==null?"—":eur(item.dryRentalCostEUR)} · с доставкой {item.deliveredCostEUR==null?"—":eur(item.deliveredCostEUR)}</span><div className="row" style={{gap:4}}><Button variant="ghost" onClick={()=>setEditingEquipment(item)}>Изменить</Button><Button variant="ghost" aria-label={`Удалить ${item.name}`} title="Удалить" disabled={deleteEquipment.isPending} onClick={()=>deleteEquipment.mutate(item.id,{onSuccess:result=>{if(result.mustArchive)setArchiveCandidate(item);}})}>×</Button></div></div>)}</div>}
           </Card>
+
+          <Sheet open={!!archiveCandidate} onClose={()=>setArchiveCandidate(null)} title="Нельзя удалить позицию">
+            <p>Позиция «{archiveCandidate?.name}» уже использовалась в заказе и должна остаться в истории.</p>
+            <div className="row" style={{marginTop:16,gap:8}}><Button variant="ghost" onClick={()=>setArchiveCandidate(null)}>Отмена</Button><Button disabled={setEquipmentArchived.isPending} onClick={()=>archiveCandidate&&setEquipmentArchived.mutate({id:archiveCandidate.id,archived:true},{onSuccess:()=>setArchiveCandidate(null)})}>В архив</Button></div>
+          </Sheet>
+          <Sheet open={archiveOpen} onClose={()=>setArchiveOpen(false)} title="Архив позиций">
+            <div className="stack" style={{gap:8}}>{(()=>{const items=(archivedContractorEquipment.data??[]).filter(item=>item.contractorId===selected.id&&item.archivedAt);return items.length?items.map(item=><div className="row row--between" key={item.id}><span>{item.name}</span><Button variant="ghost" disabled={setEquipmentArchived.isPending} onClick={()=>setEquipmentArchived.mutate({id:item.id,archived:false})}>Восстановить</Button></div>):<p className="card__subtitle">Архив пуст.</p>;})()}</div>
+          </Sheet>
 
           <SectionTitle>{t("contractors.needReturn")}</SectionTitle>
           {openItems.isLoading ? (

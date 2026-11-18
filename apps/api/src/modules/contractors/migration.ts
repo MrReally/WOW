@@ -39,6 +39,7 @@ ALTER TABLE contractors.equipment ADD COLUMN IF NOT EXISTS max_qty integer CHECK
 ALTER TABLE contractors.equipment ADD COLUMN IF NOT EXISTS dry_rental_cost_eur numeric(12,2) CHECK (dry_rental_cost_eur >= 0);
 ALTER TABLE contractors.equipment ADD COLUMN IF NOT EXISTS delivered_cost_eur numeric(12,2) CHECK (delivered_cost_eur >= 0);
 ALTER TABLE contractors.equipment ADD COLUMN IF NOT EXISTS warehouse_id uuid;
+ALTER TABLE contractors.equipment ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 CREATE INDEX IF NOT EXISTS contractor_equipment_contractor_idx ON contractors.equipment(contractor_id);
 
 CREATE TABLE IF NOT EXISTS contractors.warehouses (

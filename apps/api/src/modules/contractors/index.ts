@@ -5,7 +5,7 @@ import { contractorsMigration } from "./migration.js";
 import { registerContractorsRoutes } from "./routes.js";
 import { createContractorsService } from "./service.js";
 
-export function createContractorsModule(db: Sql): SeverModule<Contractors.ContractorsService> {
-  const service = createContractorsService(db);
+export function createContractorsModule(db: Sql, isEquipmentUsed?: (id:string) => Promise<boolean>): SeverModule<Contractors.ContractorsService> {
+  const service = createContractorsService(db, isEquipmentUsed);
   return { name:"contractors", migration:contractorsMigration, service, registerRoutes:(app, ctx) => registerContractorsRoutes(app, ctx, service) };
 }

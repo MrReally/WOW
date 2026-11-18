@@ -56,6 +56,7 @@ export interface ContractorEquipmentDTO {
   deliveredCostEUR: number | null;
   warehouseId: ID | null;
   note: string | null;
+  archivedAt: ISODateTime | null;
   createdAt: ISODateTime;
 }
 
@@ -103,9 +104,12 @@ export interface ContractorsService {
   createPerson(input: CreateContractorPersonInput): Promise<ContractorPersonDTO>;
   listVehicles(contractorId?: ID): Promise<ContractorVehicleDTO[]>;
   createVehicle(input: CreateContractorVehicleInput): Promise<ContractorVehicleDTO>;
-  listEquipment(contractorId?: ID): Promise<ContractorEquipmentDTO[]>;
+  listEquipment(contractorId?: ID, options?: { includeArchived?: boolean }): Promise<ContractorEquipmentDTO[]>;
   createEquipment(input: CreateContractorEquipmentInput): Promise<ContractorEquipmentDTO>;
   updateEquipment(id: ID, input: UpdateContractorEquipmentInput): Promise<ContractorEquipmentDTO>;
+  /** Deletes an unused catalog item; used items must be archived to preserve order history. */
+  deleteEquipment(id: ID): Promise<{ deleted: boolean; mustArchive: boolean }>;
+  setEquipmentArchived(id: ID, archived: boolean): Promise<ContractorEquipmentDTO>;
   listWarehouses(contractorId?: ID): Promise<ContractorWarehouseDTO[]>;
   createWarehouse(input: CreateContractorWarehouseInput): Promise<ContractorWarehouseDTO>;
   updateWarehouse(id: ID, input: UpdateContractorWarehouseInput): Promise<ContractorWarehouseDTO>;

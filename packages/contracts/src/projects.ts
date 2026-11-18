@@ -790,6 +790,8 @@ export interface ProjectsService {
   /** Owed-to-contractor totals (cost × qty) grouped by contractor. */
   contractorDebts(): Promise<ContractorDebtDTO[]>;
   listContractorOrders(projectId: ID): Promise<ContractorOrderDTO[]>;
+  /** Whether a contractor catalog item is retained by an order line. */
+  isContractorCatalogItemUsed(catalogItemId: ID): Promise<boolean>;
   createContractorOrder(input: CreateContractorOrderInput): Promise<ContractorOrderDTO>;
   setContractorOrderLineReceived(orderId: ID, lineId: ID, received: boolean): Promise<ContractorOrderDTO>;
   completeContractorOrderReceipt(orderId: ID): Promise<ContractorOrderDTO>;

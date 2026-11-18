@@ -62,8 +62,8 @@ export function useCreateContractorVehicle() {
   });
 }
 
-export function useContractorEquipmentDirectory(enabled = true) {
-  return useQuery({ enabled, queryKey:["contractors", "equipment"], queryFn:() => api.get<Contractors.ContractorEquipmentDTO[]>("/api/contractors/equipment") });
+export function useContractorEquipmentDirectory(enabled = true, includeArchived = false) {
+  return useQuery({ enabled, queryKey:["contractors", "equipment", includeArchived], queryFn:() => api.get<Contractors.ContractorEquipmentDTO[]>(`/api/contractors/equipment${includeArchived ? "?includeArchived=true" : ""}`) });
 }
 
 export function useCreateContractorEquipment() {
@@ -74,6 +74,16 @@ export function useCreateContractorEquipment() {
 export function useUpdateContractorEquipment() {
   const qc=useQueryClient();
   return useMutation({ mutationFn:({id,input}:{id:string;input:Contractors.UpdateContractorEquipmentInput})=>api.patch<Contractors.ContractorEquipmentDTO>(`/api/contractors/equipment/${id}`,input), onSuccess:()=>qc.invalidateQueries({queryKey:["contractors","equipment"]}) });
+}
+
+export function useDeleteContractorEquipment() {
+  const qc=useQueryClient();
+  return useMutation({ mutationFn:(id:string)=>api.delete<{deleted:boolean;mustArchive:boolean}>(`/api/contractors/equipment/${id}`), onSuccess:()=>qc.invalidateQueries({queryKey:["contractors","equipment"]}) });
+}
+
+export function useSetContractorEquipmentArchived() {
+  const qc=useQueryClient();
+  return useMutation({ mutationFn:({id,archived}:{id:string;archived:boolean})=>api.post<Contractors.ContractorEquipmentDTO>(`/api/contractors/equipment/${id}/${archived?"archive":"restore"}`), onSuccess:()=>qc.invalidateQueries({queryKey:["contractors","equipment"]}) });
 }
 
 export function useContractorWarehouses(enabled=true) {

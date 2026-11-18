@@ -2306,6 +2306,9 @@ export function createProjectsService(
       const rows=await query<ContractorOrderRow>(db,`SELECT * FROM projects.contractor_orders WHERE project_id=$1 ORDER BY created_at`,[projectId]);
       return Promise.all(rows.map(row=>contractorOrderDTO(row)));
     },
+    async isContractorCatalogItemUsed(catalogItemId) {
+      return (await one<{ exists:boolean }>(db, `SELECT EXISTS(SELECT 1 FROM projects.contractor_order_lines WHERE catalog_item_id=$1) AS exists`, [catalogItemId]))?.exists ?? false;
+    },
     async createContractorOrder(input) {
       const project = await one<Pick<ProjectRow, "status">>(db, `SELECT status FROM projects.projects WHERE id=$1`, [input.projectId]);
       if (!project) throw NotFound("project", input.projectId);

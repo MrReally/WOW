@@ -36,10 +36,11 @@ import { requirePermission } from "./core/auth.js";
 export function createModules(bus: EventBus = new EventBus()) {
   const people = createPeopleModule(pool, bus);
   const equipment = createEquipmentModule(pool, bus);
-  const contractors = createContractorsModule(pool);
+  let projects!: ReturnType<typeof createProjectsModule>;
+  const contractors = createContractorsModule(pool, id => projects.service.isContractorCatalogItemUsed(id));
   const appSettings = createAppSettingsModule(pool, bus);
   const venues = createVenuesModule(pool);
-  const projects = createProjectsModule(
+  projects = createProjectsModule(
     pool,
     bus,
     (unitIds) => Promise.all(unitIds.map((unitId) => equipment.service.getUnit(unitId))),
