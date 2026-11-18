@@ -1,7 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSettings } from "@sever/contracts";
-import { ConfiguredDateInput, ConfiguredDateTimeInput } from "../src/app/ConfiguredDateTimeInput.tsx";
+import { ConfiguredDateInput, ConfiguredDateTimeInput, ConfiguredTimeInput } from "../src/app/ConfiguredDateTimeInput.tsx";
 
 const configured = vi.hoisted(() => ({ dateFormat: "DD.MM.YYYY" as AppSettings.DateFormat, timeFormat: "24h" as AppSettings.TimeFormat }));
 vi.mock("../src/app/dateFormat.tsx", () => ({ useDateFormatSettings: () => configured }));
@@ -42,5 +42,40 @@ describe("configured date/time editors", () => {
     const { container } = render(<ConfiguredDateInput value="1998-11-06" onChange={() => undefined} />);
     expect([...container.querySelectorAll("input")].map((segment) => segment.getAttribute("aria-label"))).toEqual(["Год", "Месяц", "День"]);
     expect(container.querySelector('input[type="date"]')).toBeNull();
+  });
+
+  it("keeps an incomplete value empty instead of replacing it with a date", () => {
+    const onChange = vi.fn();
+    const { container } = render(<ConfiguredDateTimeInput value="2026-09-12T19:30" onChange={onChange} />);
+
+    fireEvent.change(within(container).getByLabelText("Месяц"), { target: { value: "" } });
+    expect(onChange).toHaveBeenLastCalledWith("");
+  });
+
+  it("moves between date and time segments with the left and right arrows", () => {
+    const { container } = render(<ConfiguredDateTimeInput value="2026-09-12T19:30" onChange={() => undefined} />);
+    const day = within(container).getByLabelText("День");
+    const month = within(container).getByLabelText("Месяц");
+    const year = within(container).getByLabelText("Год");
+    const hour = within(container).getByLabelText("Часы");
+
+    day.focus();
+    fireEvent.keyDown(day, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(month);
+    fireEvent.keyDown(month, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(year);
+    fireEvent.keyDown(year, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(hour);
+    fireEvent.keyDown(hour, { key: "ArrowLeft" });
+    expect(document.activeElement).toBe(year);
+  });
+
+  it("supports clearing a standalone time value", () => {
+    const onChange = vi.fn();
+    const { container } = render(<ConfiguredTimeInput value="09:30" onChange={onChange} />);
+
+    expect((within(container).getByLabelText("Часы") as HTMLInputElement).value).toBe("09");
+    fireEvent.change(within(container).getByLabelText("Минуты"), { target: { value: "" } });
+    expect(onChange).toHaveBeenLastCalledWith("");
   });
 });

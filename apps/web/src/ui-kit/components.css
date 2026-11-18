@@ -972,6 +972,10 @@ select optgroup {
   padding-left: 12px;
   border-left: 1px solid var(--bdr);
 }
+.configured-editor > .configured-editor__time:only-child {
+  padding-left: 0;
+  border-left: 0;
+}
 .configured-editor__separator {
   flex: 0 0 auto;
   color: var(--text3);

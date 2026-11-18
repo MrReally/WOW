@@ -4,7 +4,7 @@ import { useClients, useCreateClient, useCreateProject, useCreateProjectSeries }
 import { useCreateVenue, useVenues } from "../../plans/hooks.ts";
 import { AddressInput } from "../../places/AddressInput.tsx";
 import { useSession } from "../../../app/session.ts";
-import { ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
+import { ConfiguredDateInput, ConfiguredDateTimeInput } from "../../../app/ConfiguredDateTimeInput.tsx";
 import { isoFromLocal } from "../../../lib/datetime.ts";
 import { ProjectNoteField } from "./ProjectNoteField.tsx";
 import type { Projects } from "@sever/contracts";
@@ -192,7 +192,7 @@ export function CreateProjectSheet({ open, onClose }: { open: boolean; onClose: 
           ]} />
         </Field>
         {endMode === "count" && <Field label="Количество проектов"><Input type="number" min="1" value={occurrenceCount} onChange={(event) => setOccurrenceCount(event.target.value)} /></Field>}
-        {endMode === "until" && <Field label="Последняя дата"><Input type="date" value={until} onChange={(event) => setUntil(event.target.value)} /></Field>}
+        {endMode === "until" && <Field label="Последняя дата"><ConfiguredDateInput value={until} onChange={setUntil} /></Field>}
         <p className="card__subtitle">Каждая дата создаётся отдельным проектом со своей сметой и транзакциями. Ближайшие 12 недель будут созданы сразу.</p>
       </div>}
       {canViewNote && <ProjectNoteField value={note} onChange={setNote} />}

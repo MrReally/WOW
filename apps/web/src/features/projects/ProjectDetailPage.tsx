@@ -228,6 +228,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
   const [timingTitle, setTimingTitle] = useState("");
   const [timingStart, setTimingStart] = useState("");
   const [timingEnd, setTimingEnd] = useState("");
+  const [timingStartTouched, setTimingStartTouched] = useState(false);
+  const [timingEndTouched, setTimingEndTouched] = useState(false);
   const [editingTimingId, setEditingTimingId] = useState("");
   const [timingEditTitle, setTimingEditTitle] = useState("");
   const [timingEditStart, setTimingEditStart] = useState("");
@@ -811,8 +813,8 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
           );
         })}
       {canTiming && (() => {
-        const tStart = timingStart || toLocalInput(p.startsAt);
-        const tEnd = timingEnd || toLocalInput(p.endsAt);
+        const tStart = timingStartTouched ? timingStart : toLocalInput(p.startsAt);
+        const tEnd = timingEndTouched ? timingEnd : toLocalInput(p.endsAt);
         const validRange = !!tStart && tEnd > tStart;
         return (
           <Card>
@@ -821,10 +823,10 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
             </Field>
             <div className="row">
               <Field label="Начало">
-                <ConfiguredDateTimeInput value={tStart} onChange={setTimingStart} />
+                <ConfiguredDateTimeInput value={tStart} onChange={(value) => { setTimingStartTouched(true); setTimingStart(value); }} />
               </Field>
               <Field label="Конец">
-                <ConfiguredDateTimeInput value={tEnd} onChange={setTimingEnd} />
+                <ConfiguredDateTimeInput value={tEnd} onChange={(value) => { setTimingEndTouched(true); setTimingEnd(value); }} />
               </Field>
             </div>
             {!validRange && <p className="card__subtitle" style={{ color: "var(--alert)" }}>Конец должен быть позже начала</p>}
@@ -834,7 +836,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
               onClick={() =>
                 addTiming.mutate(
                   { projectId: p.id, title: timingTitle, startsAt: isoFromLocal(tStart), endsAt: isoFromLocal(tEnd) },
-                  { onSuccess: () => { setTimingTitle(""); setTimingStart(""); setTimingEnd(""); } }
+                  { onSuccess: () => { setTimingTitle(""); setTimingStart(""); setTimingEnd(""); setTimingStartTouched(false); setTimingEndTouched(false); } }
                 )
               }
             >

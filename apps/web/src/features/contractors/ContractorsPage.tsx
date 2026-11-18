@@ -34,6 +34,7 @@ import {
   useUpdateContractor,
 } from "./hooks.ts";
 import { contractorMatches } from "../../lib/search.ts";
+import { ConfiguredDateInput } from "../../app/ConfiguredDateTimeInput.tsx";
 
 const directoryCopy = {
   ru: { directory:"Справочник подрядчика", people:"Сотрудники", vehicles:"Машины", equipment:"Оборудование", firstName:"Имя", lastName:"Фамилия", patronymic:"Отчество", phone:"Телефон", telegram:"Telegram", document:"Номер документа", photo:"Фото (URL)", make:"Марка", model:"Модель", color:"Цвет", plate:"Гос. номер", itemName:"Название", qty:"Количество", cost:"Обычная цена, €", note:"Примечание", noPeople:"Сотрудников пока нет", noVehicles:"Машин пока нет", noEquipment:"Оборудования пока нет" },
@@ -301,8 +302,8 @@ export function ContractorsPage() {
           <Card>
             <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
               <Field label="Модель или название"><Input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="Например, RCF ART735" /></Field>
-              <Field label="С даты"><Input type="date" value={historyDateFrom} onChange={(event) => setHistoryDateFrom(event.target.value)} /></Field>
-              <Field label="По дату"><Input type="date" value={historyDateTo} onChange={(event) => setHistoryDateTo(event.target.value)} /></Field>
+              <Field label="С даты"><ConfiguredDateInput value={historyDateFrom} onChange={setHistoryDateFrom} /></Field>
+              <Field label="По дату"><ConfiguredDateInput value={historyDateTo} onChange={setHistoryDateTo} /></Field>
             </div>
           </Card>
           {history.isLoading ? (

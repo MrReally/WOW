@@ -1,21 +1,24 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { AppSettings } from "@sever/contracts";
 import { useDateFormatSettings } from "./dateFormat.tsx";
 
-type Mode = "date" | "datetime";
+type Mode = "date" | "time" | "datetime";
 type Draft = { year: string; month: string; day: string; hour: string; minute: string; period: "AM" | "PM" };
 
 const emptyDraft = (): Draft => ({ year: "", month: "", day: "", hour: "", minute: "", period: "AM" });
 const pad = (value: string | number) => String(value).padStart(2, "0");
 
 function draftFromValue(value: string, timeFormat: AppSettings.TimeFormat): Draft {
-  const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(value);
+  const match = /^(?:(\d{4})-(\d{2})-(\d{2})T)?(\d{2}):(\d{2})$|^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return emptyDraft();
+  const year = match[1] ?? match[6] ?? "";
+  const month = match[2] ?? match[7] ?? "";
+  const day = match[3] ?? match[8] ?? "";
   const hour24 = Number(match[4] ?? 0);
   return {
-    year: match[1]!,
-    month: match[2]!,
-    day: match[3]!,
+    year,
+    month,
+    day,
     hour: timeFormat === "12h" ? String(hour24 % 12 || 12) : pad(hour24),
     minute: match[5] ?? "00",
     period: hour24 >= 12 ? "PM" : "AM",
@@ -29,6 +32,7 @@ function fullYear(raw: string, short: boolean): number {
 }
 
 function canonicalValue(draft: Draft, mode: Mode, dateFormat: AppSettings.DateFormat, timeFormat: AppSettings.TimeFormat): string | null {
+  if (mode === "time") return canonicalTimeValue(draft, timeFormat);
   const shortYear = dateFormat.includes("YY") && !dateFormat.includes("YYYY");
   const year = fullYear(draft.year, shortYear);
   const month = Number(draft.month);
@@ -38,6 +42,12 @@ function canonicalValue(draft: Draft, mode: Mode, dateFormat: AppSettings.DateFo
   if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day) return null;
   const dateValue = `${String(year).padStart(4, "0")}-${pad(month)}-${pad(day)}`;
   if (mode === "date") return dateValue;
+  const time = canonicalTimeValue(draft, timeFormat);
+  return time ? `${dateValue}T${time}` : null;
+}
+
+function canonicalTimeValue(draft: Draft, timeFormat: AppSettings.TimeFormat): string | null {
+  if (!draft.hour || !draft.minute) return null;
   const enteredHour = Number(draft.hour);
   const minute = Number(draft.minute);
   if (!Number.isInteger(minute) || minute < 0 || minute > 59) return null;
@@ -46,7 +56,7 @@ function canonicalValue(draft: Draft, mode: Mode, dateFormat: AppSettings.DateFo
     if (!Number.isInteger(hour) || hour < 1 || hour > 12) return null;
     hour = (hour % 12) + (draft.period === "PM" ? 12 : 0);
   } else if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
-  return `${dateValue}T${pad(hour)}:${pad(minute)}`;
+  return `${pad(hour)}:${pad(minute)}`;
 }
 
 function monthOptions(style: "short" | "long") {
@@ -63,6 +73,10 @@ export function ConfiguredDateInput(props: EditorProps) {
 
 export function ConfiguredDateTimeInput(props: EditorProps) {
   return <ConfiguredEditor {...props} mode="datetime" />;
+}
+
+export function ConfiguredTimeInput(props: EditorProps) {
+  return <ConfiguredEditor {...props} mode="time" />;
 }
 
 interface EditorProps {
@@ -110,10 +124,21 @@ function ConfiguredEditor({ value, onChange, disabled = false, className = "", m
     return <Segment key={token} label="Год" value={settings.dateFormat.includes("YYYY") ? draft.year : draft.year.slice(-2)} placeholder={token} maxLength={token.length} disabled={disabled} onChange={(year) => patchDraft({ year })} />;
   });
 
+  const moveFocus = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    const fields = Array.from(event.currentTarget.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input:not(:disabled), select:not(:disabled)"));
+    const current = fields.indexOf(event.target as HTMLInputElement | HTMLSelectElement);
+    const next = fields[current + (event.key === "ArrowLeft" ? -1 : 1)];
+    if (!next) return;
+    event.preventDefault();
+    next.focus();
+    if (next instanceof HTMLInputElement) next.select();
+  };
+
   return (
-    <div className={`configured-editor ${className}`} role={ariaLabel ? "group" : undefined} aria-label={ariaLabel}>
-      <div className="configured-editor__date">{dateParts}</div>
-      {mode === "datetime" && (
+    <div className={`configured-editor ${className}`} role={ariaLabel ? "group" : undefined} aria-label={ariaLabel} onKeyDown={moveFocus}>
+      {mode !== "time" && <div className="configured-editor__date">{dateParts}</div>}
+      {mode !== "date" && (
         <div className="configured-editor__time">
           <Segment label="Часы" value={draft.hour} placeholder={settings.timeFormat === "24h" ? "ЧЧ" : "HH"} maxLength={2} disabled={disabled} onChange={(hour) => patchDraft({ hour })} />
           <span className="configured-editor__separator">:</span>

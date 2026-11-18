@@ -11,6 +11,7 @@ import { personName } from "../../lib/people.ts";
 import { transactionCategoryLabel as categoryLabel } from "../../lib/labels.ts";
 import { TransactionActions } from "./components/TransactionActions.tsx";
 import { AdjustAccountSheet } from "./components/AdjustAccountSheet.tsx";
+import { ConfiguredDateInput } from "../../app/ConfiguredDateTimeInput.tsx";
 
 type FinanceTab = "summary" | "transactions" | "debts" | "payback" | "accounts";
 
@@ -108,7 +109,7 @@ export function FinancePage() {
 
       {tab === "transactions" && <>
         <Button block onClick={openTransaction}>+ Транзакция</Button>
-        <Card className="finance-filters"><Field label="Поиск по комментарию, сумме или валюте"><Input value={journal.search} onChange={e=>journal.setSearch(e.target.value)}/></Field><Field label="Счёт"><Select value={journal.accountId} onChange={e=>journal.setAccountId(e.target.value)} options={[{value:"",label:"Все счета"},...(accounts.data??[]).map(account=>({value:account.id,label:`${account.name} · ${account.currency}`}))]}/></Field><div className="row"><Field label="С даты"><Input type="date" value={journal.from} onChange={e=>journal.setFrom(e.target.value)}/></Field><Field label="По дату"><Input type="date" value={journal.to} onChange={e=>journal.setTo(e.target.value)}/></Field></div><label className="check-row row--between">Показывать отменённые и исправленные <input className="toggle-switch" type="checkbox" checked={journal.includeVoided} onChange={e=>journal.setIncludeVoided(e.target.checked)}/></label><p className="card__subtitle">Поступления {eur(journal.totals.income)} · расходы {eur(journal.totals.expense)} · результат {eur(journal.totals.income-journal.totals.expense)}</p></Card>
+        <Card className="finance-filters"><Field label="Поиск по комментарию, сумме или валюте"><Input value={journal.search} onChange={e=>journal.setSearch(e.target.value)}/></Field><Field label="Счёт"><Select value={journal.accountId} onChange={e=>journal.setAccountId(e.target.value)} options={[{value:"",label:"Все счета"},...(accounts.data??[]).map(account=>({value:account.id,label:`${account.name} · ${account.currency}`}))]}/></Field><div className="row"><Field label="С даты"><ConfiguredDateInput value={journal.from} onChange={journal.setFrom}/></Field><Field label="По дату"><ConfiguredDateInput value={journal.to} onChange={journal.setTo}/></Field></div><label className="check-row row--between">Показывать отменённые и исправленные <input className="toggle-switch" type="checkbox" checked={journal.includeVoided} onChange={e=>journal.setIncludeVoided(e.target.checked)}/></label><p className="card__subtitle">Поступления {eur(journal.totals.income)} · расходы {eur(journal.totals.expense)} · результат {eur(journal.totals.income-journal.totals.expense)}</p></Card>
         {transactions.isLoading?<Loading/>:transactions.error?<ErrorState error={transactions.error} onRetry={transactions.refetch}/>:journal.count===0?<EmptyState title={t("finance.noTransactions")}/>:<div className="stack">{transactionCards(journal.rows)}{journal.count>journal.rows.length&&<Button variant="secondary" onClick={journal.showMore}>Показать ещё · {journal.rows.length} из {journal.count}</Button>}</div>}
       </>}
 
