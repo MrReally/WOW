@@ -64,7 +64,6 @@ export function useNavigationMeta(pathname: string, locale: string): NavigationM
     "/contractors": ["Contractors", ""],
     "/finance": ["Finance", ""],
     "/settings": ["Settings", ""],
-    "/more": ["Ещё", "Workspaces"],
   };
   const [title, subtitle] = roots[pathname] ?? ["SEVER", ""];
   return { detail: false, title, subtitle, backLabel: "Назад" };

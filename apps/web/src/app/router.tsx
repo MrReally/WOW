@@ -20,7 +20,6 @@ import { MySettingsPage } from "../features/settings/MySettingsPage.tsx";
 import { BackofficePage } from "../features/backoffice/BackofficePage.tsx";
 import { VenuesPage } from "../features/venues/VenuesPage.tsx";
 import { SuppliesPage } from "../features/supplies/SuppliesPage.tsx";
-import { MorePage } from "../features/more/MorePage.tsx";
 
 export function AppRouter() {
   const { can } = useSession();
@@ -51,7 +50,6 @@ export function AppRouter() {
       <Route path="/contractors" element={<Guard allow={["projects.reservation.manage", "finance.view"]}><ContractorsPage /></Guard>} />
       <Route path="/crew" element={<Guard allow={["people.view"]}><CrewPage /></Guard>} />
       <Route path="/finance" element={<Guard allow={["finance.view"]}><FinancePage /></Guard>} />
-      <Route path="/more" element={<MorePage />} />
       {/* Personal settings — every signed-in user, no permission gate. */}
       <Route path="/me" element={<MySettingsPage />} />
       <Route

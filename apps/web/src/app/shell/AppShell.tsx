@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { People, Projects } from "@sever/contracts";
-import { WSChip, WSGlyph, Avatar, BrandLogo, SeverStar, ActionIcon } from "../../ui-kit/index.ts";
+import { WSChip, Avatar, BrandLogo, SeverStar, ActionIcon } from "../../ui-kit/index.ts";
 import { useSession } from "../session.ts";
 import { currentWorkspace, workspacesFor, WORKSPACE_COPY } from "../workspaces.ts";
 import { useI18n } from "../i18n.tsx";
@@ -49,7 +49,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     queryKey: ["projects", "mine"],
     queryFn: () => api.get<Projects.ProjectDTO[]>("/api/projects?mine=true"),
   });
-  const operationsBadge = (operationProjects.data ?? []).filter((project) => project.status === "in_progress").length;
   const activeOperation = (operationProjects.data ?? []).find((project) => project.status === "in_progress");
   const navigationSubtitle = location.pathname === "/operations" && activeOperation
     ? `Сейчас · ${projectStagePresentation[activeOperation.operationStage].label}`
@@ -74,12 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [can, location.pathname, navigate]);
 
-  const primaryWorkspaceIds = ["apex", "ops", "plan", "wh"];
-  const primaryWorkspaces = primaryWorkspaceIds
-    .map((id) => availableWorkspaces.find((workspace) => workspace.id === id))
-    .filter((workspace): workspace is NonNullable<typeof workspace> => Boolean(workspace));
-  const moreActive = location.pathname === "/more" || !primaryWorkspaceIds.includes(ws.id);
-  const workspacePill = location.pathname === "/more" ? "Аккаунт" : wsCopy.name;
+  const workspacePill = wsCopy.name;
 
   return (
     <div className="app-shell sever" data-theme={theme}>
@@ -198,32 +192,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      <nav className="mobile-tabbar" aria-label={t("common.workspaces")}>
-        {primaryWorkspaces.map((workspace) => {
-          const copy = WORKSPACE_COPY[workspace.id]?.[locale] ?? workspace;
-          const active = location.pathname !== "/more" && workspace.id === ws.id;
-          const shortLabel = workspace.id === "wh" && locale === "ru" ? "Склад" : copy.name;
-          return (
-            <button
-              key={workspace.id}
-              className={`mobile-tabbar__item ${active ? "mobile-tabbar__item--active" : ""}`}
-              onClick={() => navigate(workspace.route)}
-              aria-current={active ? "page" : undefined}
-            >
-              <WSGlyph type={workspace.glyph} size={24} />
-              <span>{shortLabel}</span>
-              {workspace.id === "ops" && operationsBadge > 0 && <b className="mobile-tabbar__badge">{operationsBadge > 9 ? "9+" : operationsBadge}</b>}
-            </button>
-          );
-        })}
-        <button
-          className={`mobile-tabbar__item ${moreActive ? "mobile-tabbar__item--active" : ""}`}
-          onClick={() => navigate("/more")}
-        >
-          <ActionIcon name="more" />
-          <span>{locale === "ru" ? "Ещё" : "More"}</span>
-        </button>
-      </nav>
       </div>
 
       {user && (

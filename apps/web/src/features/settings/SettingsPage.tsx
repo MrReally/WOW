@@ -15,6 +15,27 @@ import { InvoiceCompanySettings } from "./components/InvoiceCompanySettings.tsx"
 
 type SettingsTab = "fleet" | "roles" | "estimate" | "rates" | "telegram" | "cables" | "data" | "general";
 
+const settingsTabGroups = [
+  {
+    label: "Рабочее пространство",
+    items: [
+      { id: "fleet" as const, label: "Автопарк" },
+      { id: "roles" as const, label: "Права" },
+      { id: "estimate" as const, label: "Смета", when: (can: ReturnType<typeof useSession>["can"]) => can("finance.manage") },
+      { id: "rates" as const, label: "Курсы" },
+    ],
+  },
+  {
+    label: "Интеграции и данные",
+    items: [
+      { id: "telegram" as const, label: "Telegram" },
+      { id: "cables" as const, label: "Кабели" },
+      { id: "data" as const, label: "Данные" },
+      { id: "general" as const, label: "Прочее" },
+    ],
+  },
+] as const;
+
 export function SettingsPage() {
   const { theme, toggle } = useTheme();
   const { can } = useSession();
@@ -51,16 +72,19 @@ export function SettingsPage() {
 
   return (
     <div className="stack settings-page">
-      <div className="design-tabs settings-tabs" role="tablist">{([
-        { id: "fleet", label: "Автопарк" },
-        { id: "roles", label: "Права" },
-        ...(can("finance.manage") ? [{ id: "estimate" as const, label: "Смета" }] : []),
-        { id: "rates", label: "Курсы" },
-        { id: "telegram", label: "Telegram" },
-        { id: "cables", label: "Кабели" },
-        { id: "data", label: "Данные" },
-        { id: "general", label: "Прочее" },
-      ] as const).map(item => <button key={item.id} className={tab === item.id ? "is-active" : ""} onClick={() => setTab(item.id)}>{item.label}</button>)}</div>
+      <nav className="settings-tab-groups" aria-label="Разделы настроек">
+        {settingsTabGroups.map((group) => {
+          const items = group.items.filter((item) => !("when" in item) || item.when(can));
+          return (
+            <section className="settings-tab-group" key={group.label}>
+              <h2>{group.label}</h2>
+              <div className="settings-tabs">
+                {items.map((item) => <button key={item.id} className={tab === item.id ? "is-active" : ""} onClick={() => setTab(item.id)} aria-current={tab === item.id ? "page" : undefined}>{item.label}</button>)}
+              </div>
+            </section>
+          );
+        })}
+      </nav>
       {tab === "general" && <>
       <SectionTitle>Оформление</SectionTitle>
       <Card>
