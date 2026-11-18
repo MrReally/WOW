@@ -20,7 +20,24 @@ export function Field({ label, children }: FieldProps) {
 }
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className="input" {...props} />;
+  const { className, onBlur, onChange, type, value, ...rest } = props;
+  const [clearedNumber, setClearedNumber] = useState(false);
+  const isControlledNumber = type === "number" && value !== undefined;
+
+  return <input
+    className={className ? `input ${className}` : "input"}
+    {...rest}
+    type={type}
+    value={isControlledNumber && clearedNumber ? "" : value}
+    onChange={(event) => {
+      if (isControlledNumber) setClearedNumber(event.target.value === "");
+      onChange?.(event);
+    }}
+    onBlur={(event) => {
+      setClearedNumber(false);
+      onBlur?.(event);
+    }}
+  />;
 }
 
 export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
