@@ -3061,35 +3061,105 @@ textarea.input:focus {
   }
   .workspace-large-title p { margin: 0 0 2px; color: var(--label-secondary); font-size: 13px; line-height: 1.35; }
 
+  /* Workspace tabs live in the bottom bar on phones; the top chrome is for
+     switching workspaces only.  Each bar remains local to its screen. */
+  .finance-page,
+  .crew-page,
+  .planning-page,
+  .warehouse-mobile-page,
+  .project-mobile-page,
+  .operations-project-page { padding-bottom: calc(94px + env(safe-area-inset-bottom)); }
+  .finance-tabs,
+  .crew-tabs,
+  .warehouse-tabs,
+  .planning-archive-switch,
+  .operations-project-tabs,
+  .project-tabbar,
+  .invoice-tabbar {
+    position: fixed;
+    z-index: 40;
+    right: max(14px, env(safe-area-inset-right));
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    left: max(14px, env(safe-area-inset-left));
+    width: min(612px, calc(100vw - 28px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    margin: 0 auto;
+    border: 1px solid var(--tabbar-border);
+    border-radius: var(--radius-tabbar);
+    background: var(--tabbar-bg);
+    box-shadow: var(--glass-highlight), var(--shadow-tabbar);
+    backdrop-filter: var(--blur-tabbar);
+    -webkit-backdrop-filter: var(--blur-tabbar);
+  }
+  .finance-tabs,
+  .crew-tabs,
+  .warehouse-tabs,
+  .project-tabbar { padding: 4px; }
+  .finance-tabs,
+  .crew-tabs,
+  .warehouse-tabs,
+  .project-tabbar { overflow-x: auto; scrollbar-width: none; }
+  .finance-tabs > button,
+  .crew-tabs > button,
+  .warehouse-tabs__item,
+  .project-tabbar__item { min-height: 42px; }
+  .finance-tabs > button,
+  .crew-tabs > button {
+    position: relative;
+    min-width: 48px;
+    flex: 1 1 0;
+    justify-content: center;
+    padding: 0 8px;
+  }
+  .workspace-tab-label { display: none; }
+  .workspace-tab-symbol { font-size: 26px; font-weight: 700; line-height: 1; }
+  .finance-tabs > button svg,
+  .crew-tabs > button svg,
+  .planning-archive-switch svg,
+  .operations-project-tabs > button svg,
+  .invoice-tab svg { width: 20px; height: 20px; }
+  .workspace-tab-count {
+    position: absolute;
+    top: 3px;
+    right: 6px;
+    min-width: 16px;
+    height: 16px;
+    display: grid;
+    place-items: center;
+    padding: 0 4px;
+    border-radius: 9px;
+    background: var(--tint-blue);
+    color: var(--blue-text);
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .workspace-tab-count.is-alert { background: var(--red); color: var(--label-on-accent); }
+  .warehouse-tabs__item > span:not(.warehouse-tabs__icon):not(.warehouse-tabs__badge) { display: none; }
+  .planning-archive-switch,
+  .operations-project-tabs,
+  .invoice-tabbar { padding: 4px; }
+  .planning-archive-switch button,
+  .operations-project-tabs > button,
+  .invoice-tab { min-height: 42px; }
   .project-tabbar {
-    position: sticky;
-    top: calc(60px + env(safe-area-inset-top));
-    left: auto;
-    right: auto;
-    bottom: auto;
-    z-index: 24;
-    width: 100%;
     display: flex;
     grid-template-columns: none;
     gap: 6px;
-    overflow-x: auto;
-    margin: 0;
-    padding: 4px;
-    border-color: var(--glass-border);
-    border-radius: 0;
-    border-right: 0;
-    border-left: 0;
-    background: var(--s-sticky);
-    box-shadow: var(--glass-highlight);
-    backdrop-filter: blur(20px) saturate(170%);
-    -webkit-backdrop-filter: blur(20px) saturate(170%);
   }
-  .project-tabbar__item { min-height: 34px; flex: 0 0 auto; flex-direction: row; gap: 5px; padding: 0 12px; border-radius: 17px; }
-  .project-tabbar__item--active { background: var(--s-tab-on); box-shadow: var(--s-tab-ring); color: var(--label-primary); }
-  .project-tabbar__icon > svg { display: none; }
-  .project-tabbar__icon { width: auto; }
-  .project-tabbar__label { font-family: var(--font-brand); font-size: 13.5px; font-weight: 600; line-height: 1; letter-spacing: 0; text-transform: none; }
+  .project-tabbar__item { flex: 0 0 auto; flex-direction: row; gap: 5px; padding: 0 12px; border-radius: 21px; }
+  .project-tabbar__icon > svg { display: block; width: 21px; height: 21px; }
+  .project-tabbar__icon { width: 21px; }
+  .project-tabbar__label { display: none; }
   .project-tabbar__badge { position: static; min-width: 18px; height: 18px; border: 0; border-radius: 9px; }
+  .app-shell[data-mobile-keyboard] .finance-tabs,
+  .app-shell[data-mobile-keyboard] .crew-tabs,
+  .app-shell[data-mobile-keyboard] .warehouse-tabs,
+  .app-shell[data-mobile-keyboard] .planning-archive-switch,
+  .app-shell[data-mobile-keyboard] .operations-project-tabs,
+  .app-shell[data-mobile-keyboard] .project-tabbar,
+  .app-shell[data-mobile-keyboard] .invoice-tabbar { display: none; }
+
+  .project-tabbar__item--active { background: var(--s-tab-on); box-shadow: var(--s-tab-ring); color: var(--label-primary); }
   .project-status-chips { display: flex; gap: 6px; overflow-x: auto; margin-top: 12px; padding-bottom: 2px; }
   .project-status-chips button { height: 32px; flex: 0 0 auto; padding: 0 13px; border: 0; border-radius: 16px; background: var(--fill-gray); color: var(--label-secondary); font-size: 13px; font-weight: 600; cursor: pointer; }
   .project-status-chips button.is-active { background: var(--blue); color: var(--label-on-accent); box-shadow: var(--shadow-accent); }
@@ -3105,8 +3175,7 @@ textarea.input:focus {
   .project-stage-progress__item--active .project-stage-progress__icon { border-radius: 50%; }
   .project-mobile-page > .icon-text-action:first-child { display: none; }
   .nested-mobile-page > .nested-mobile-page__back:first-child { display: none; }
-  .page-with-tabbar,
-  .project-mobile-page { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .page-with-tabbar { padding-bottom: calc(94px + env(safe-area-inset-bottom)); }
 
   .more-page { gap: 18px; }
   .more-profile-row,

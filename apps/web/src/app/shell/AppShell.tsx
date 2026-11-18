@@ -32,6 +32,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigationMeta = useNavigationMeta(location.pathname, locale);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [mobileKeyboardOpen, setMobileKeyboardOpen] = useState(false);
 
   const ws = currentWorkspace(location.pathname);
   const wsCopy = WORKSPACE_COPY[ws.id]?.[locale] ?? ws;
@@ -73,10 +74,31 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [can, location.pathname, navigate]);
 
+  // Keep fixed workspace section bars out of the way of the native keyboard.
+  // A narrow desktop window is intentionally not treated as a phone here.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const updateKeyboardState = () => {
+      const isTouchDevice = window.matchMedia?.("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+      const visibleHeight = viewport?.height ?? window.innerHeight;
+      setMobileKeyboardOpen(Boolean(isTouchDevice && window.innerHeight - visibleHeight > 150));
+    };
+
+    updateKeyboardState();
+    window.addEventListener("resize", updateKeyboardState);
+    viewport?.addEventListener("resize", updateKeyboardState);
+    viewport?.addEventListener("scroll", updateKeyboardState);
+    return () => {
+      window.removeEventListener("resize", updateKeyboardState);
+      viewport?.removeEventListener("resize", updateKeyboardState);
+      viewport?.removeEventListener("scroll", updateKeyboardState);
+    };
+  }, []);
+
   const workspacePill = wsCopy.name;
 
   return (
-    <div className="app-shell sever" data-theme={theme}>
+    <div className="app-shell sever" data-theme={theme} data-mobile-keyboard={mobileKeyboardOpen || undefined}>
       <div className="sever-wallpaper" aria-hidden="true">
         <i /><i /><i /><i />
       </div>

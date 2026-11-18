@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { projectRentalDays, type Equipment, type Finance, type People, type Projects } from "@sever/contracts";
-import { Avatar, Button, Card, Chip, EmptyState, ErrorState, Input, Loading, SectionHead, Select, WSGlyph } from "../../ui-kit/index.ts";
+import { ActionIcon, Avatar, Button, Card, Chip, EmptyState, ErrorState, Input, Loading, SectionHead, Select, WSGlyph } from "../../ui-kit/index.ts";
 import { dateRange, dateTime, projectStatusLabel, projectStatusTone } from "../../lib/labels.ts";
 import { configuredTime } from "../../lib/dateFormat.ts";
 import { personInitials, personName } from "../../lib/people.ts";
@@ -191,10 +191,10 @@ export function OperationsProjectPage() {
 
       <div className="segmented-control operations-project-tabs" role="tablist" aria-label="Operations">
         {([
-          { id: "turnover", label: "Оборот" },
-          { id: "contractors", label: "Подряд" },
-          { id: "timing", label: "Тайминг" },
-          { id: "finance", label: "Финансы" },
+          { id: "turnover", label: "Оборот", glyph: "rows" },
+          { id: "contractors", label: "Подряд", glyph: "person" },
+          { id: "timing", label: "Тайминг", glyph: "calendar" },
+          { id: "finance", label: "Финансы", glyph: "coin" },
         ] as const)
           .filter(tab => (tab.id !== "finance" || can("operations.finance.view", "operations.finance.manage", "operations.payroll.view", "operations.payroll.manage")) && (tab.id!=="contractors"||(canViewContractorTurnover || canViewOperationsFinance)))
           .map(tab => (
@@ -202,11 +202,13 @@ export function OperationsProjectPage() {
               key={tab.id}
               className={activeTab === tab.id ? "is-active" : ""}
               onClick={() => setActiveTab(tab.id)}
+              aria-label={tab.label}
               role="tab"
               aria-selected={activeTab === tab.id}
               type="button"
             >
-              {tab.label}
+              {tab.glyph === "calendar" ? <ActionIcon name="calendar" /> : <WSGlyph type={tab.glyph} size={20} />}
+              <span className="workspace-tab-label" aria-hidden="true">{tab.label}</span>
             </button>
           ))}
       </div>

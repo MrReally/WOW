@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { Currency, Finance } from "@sever/contracts";
 import { amountAfterDiscountEUR, formatDateValue } from "@sever/contracts";
-import { Card, Button, Field, Input, Textarea, Select, Loading, ErrorState, BrandLogo, Chip } from "../../ui-kit/index.ts";
+import { Card, Button, Field, Input, Textarea, Select, Loading, ErrorState, BrandLogo, Chip, WSGlyph } from "../../ui-kit/index.ts";
 import { authenticatedFetch } from "../../lib/api.ts";
 import { platform } from "../../app/platform/telegram.ts";
 import { useSession } from "../../app/session.ts";
@@ -467,8 +467,9 @@ export function InvoicePage() {
 
       <div className="invoice-tabbar">
         {(["doc", "lines", "summary"] as Panel[]).map((p) => (
-          <button key={p} className={`invoice-tab ${panel === p ? "invoice-tab--active" : ""}`} onClick={() => setPanel(p)} type="button">
-            {p === "doc" ? "Документ" : p === "lines" ? "Позиции" : "Итог"}
+          <button key={p} className={`invoice-tab ${panel === p ? "invoice-tab--active" : ""}`} onClick={() => setPanel(p)} aria-label={p === "doc" ? "Документ" : p === "lines" ? "Позиции" : "Итог"} type="button">
+            <WSGlyph type={p === "doc" ? "doc" : p === "lines" ? "rows" : "coin"} size={20} />
+            <span className="workspace-tab-label" aria-hidden="true">{p === "doc" ? "Документ" : p === "lines" ? "Позиции" : "Итог"}</span>
           </button>
         ))}
       </div>

@@ -2,7 +2,7 @@ import { inviteCancellationReasonLabel } from "../../lib/labels.ts";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Equipment, People, Projects } from "@sever/contracts";
-import { Card, Button, SectionHead, Field, Input, Select, Textarea, Loading, EmptyState, Chip, Sheet } from "../../ui-kit/index.ts";
+import { ActionIcon, Card, Button, SectionHead, Field, Input, Select, Textarea, Loading, EmptyState, Chip, Sheet, WSGlyph } from "../../ui-kit/index.ts";
 import { useSession } from "../../app/session.ts";
 import { api } from "../../lib/api.ts";
 import { personMatches } from "../../lib/search.ts";
@@ -360,7 +360,7 @@ export function CrewPage() {
 
   return (
     <div className={`stack ${(canReviewApplications || canManagePeople) ? "page-with-tabbar" : ""}`}>
-      <div className="design-tabs crew-tabs" role="tablist">{([{id:"people",label:"Работники",count:list.length},{id:"applications",label:"Анкеты",count:pendingApplications.length,hidden:!canReviewApplications},{id:"deleted",label:"Удалённые",count:deletedList.length,hidden:!canManagePeople}] as const).filter(item=>!("hidden" in item&&item.hidden)).map(item=><button key={item.id} className={currentTab===item.id?"is-active":""} onClick={()=>{setActiveTab(item.id);setSelectedId("");}}>{item.label}{item.count?<span className={item.id==="applications"?"is-alert":""}>{item.count}</span>:null}</button>)}</div>
+      <div className="design-tabs crew-tabs" role="tablist">{([{id:"people",label:"Работники",count:list.length},{id:"applications",label:"Анкеты",count:pendingApplications.length,hidden:!canReviewApplications},{id:"deleted",label:"Удалённые",count:deletedList.length,hidden:!canManagePeople}] as const).filter(item=>!("hidden" in item&&item.hidden)).map(item=><button key={item.id} className={currentTab===item.id?"is-active":""} onClick={()=>{setActiveTab(item.id);setSelectedId("");}} aria-label={item.label}>{item.id === "people" ? <WSGlyph type="person" size={20} /> : item.id === "applications" ? <ActionIcon name="send" /> : <ActionIcon name="delete" />}<span className="workspace-tab-label" aria-hidden="true">{item.label}</span>{item.count?<span className={`workspace-tab-count ${item.id==="applications"?"is-alert":""}`}>{item.count}</span>:null}</button>)}</div>
       {currentTab === "applications" ? (
         <>
           <SectionHead label="Анкеты" meta={`${pendingApplications.length}`} />

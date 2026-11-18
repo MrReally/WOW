@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CURRENCIES } from "@sever/contracts";
 import type { Finance } from "@sever/contracts";
-import { Card, Button, SectionTitle, Metric, StatusBadge, Loading, ErrorState, EmptyState, Field, Input, Select } from "../../ui-kit/index.ts";
+import { ActionIcon, Card, Button, SectionTitle, Metric, StatusBadge, Loading, ErrorState, EmptyState, Field, Input, Select } from "../../ui-kit/index.ts";
 import { useI18n } from "../../app/i18n.tsx";
 import { useAccounts, useTransactions, useDebts, useProjectsForFinance, useCreateAccount, useUpdateAccount, usePeopleNames, useContractorDebts, useContractorsList, useFinanceJournal, useUpdateTransaction, useVoidTransaction } from "./hooks.ts";
 import { AddTransactionSheet } from "./components/AddTransactionSheet.tsx";
@@ -96,7 +96,7 @@ export function FinancePage() {
 
   return (
     <div className="stack finance-page">
-      <div className="design-tabs finance-tabs" role="tablist">{([{id:"summary",label:"Сводка"},{id:"transactions",label:"Транзакции"},{id:"debts",label:"Долги",count:(debts.data??[]).length||null},{id:"payback",label:"Окупаемость"},{id:"accounts",label:"Счета"}] as const).map(item=><button key={item.id} className={tab===item.id?"is-active":""} onClick={()=>setTab(item.id)}>{item.label}{"count" in item&&item.count?<span>{item.count}</span>:null}</button>)}</div>
+      <div className="design-tabs finance-tabs" role="tablist">{([{id:"summary",label:"Сводка",icon:"more"},{id:"transactions",label:"Транзакции",icon:"rows"},{id:"debts",label:"Долги",icon:"filter",count:(debts.data??[]).length||null},{id:"payback",label:"Окупаемость",icon:"refresh"},{id:"accounts",label:"Счета",icon:"settings"}] as const).map(item=><button key={item.id} className={tab===item.id?"is-active":""} onClick={()=>setTab(item.id)} aria-label={item.label}>{item.icon === "rows" ? <span className="workspace-tab-symbol" aria-hidden="true">≡</span> : <ActionIcon name={item.icon} />}<span className="workspace-tab-label" aria-hidden="true">{item.label}</span>{"count" in item&&item.count?<span className="workspace-tab-count">{item.count}</span>:null}</button>)}</div>
 
       {tab === "summary" && <>
         <div className="segmented-control finance-period">{([{id:"week",label:"Неделя"},{id:"month",label:"Месяц"},{id:"quarter",label:"Квартал"}] as const).map(item=><button key={item.id} className={period===item.id?"is-active":""} onClick={()=>setPeriod(item.id)}>{item.label}</button>)}</div>
