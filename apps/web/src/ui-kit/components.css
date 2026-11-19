@@ -3002,16 +3002,17 @@ textarea.input:focus {
   .mobile-workspace-switcher { margin-left: 2px; }
   .mobile-nav-title {
     position: absolute;
-    left: 50%;
+    left: 168px;
+    right: 112px;
     top: calc(env(safe-area-inset-top) + 21px);
-    width: min(150px, 40vw);
-    transform: translateX(-50%);
+    width: auto;
+    transform: none;
     overflow: hidden;
     color: var(--label-primary);
     font-size: 17px;
     font-weight: 600;
     line-height: 22px;
-    text-align: center;
+    text-align: left;
     text-overflow: ellipsis;
     white-space: nowrap;
     pointer-events: none;
