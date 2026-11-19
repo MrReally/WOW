@@ -202,7 +202,7 @@ interface ContractorOrderRow {
   delivery_at:Date|null; pickup_at:Date|null; booked:boolean; receipt_completed_at:Date|null; return_completed_at:Date|null;
   delivery_timing_id:string|null; pickup_timing_id:string|null; created_at:Date;
 }
-interface ContractorOrderLineRow { id:string; order_id:string; catalog_item_id:string; name:string; qty:number; received_at:Date|null; returned_at:Date|null }
+interface ContractorOrderLineRow { id:string; order_id:string; catalog_item_id:string; name:string; note:string|null; qty:number; received_at:Date|null; returned_at:Date|null }
 interface ProblemRow {
   id: string;
   kind: Problem["kind"];
@@ -398,7 +398,7 @@ const contractorItemDTO = (r: ContractorItemRow): Projects.ContractorItemDTO => 
   booked: r.booked ?? false,
   createdAt: r.created_at.toISOString(),
 });
-const contractorOrderLineDTO = (r:ContractorOrderLineRow):Projects.ContractorOrderLineDTO => ({ id:r.id,orderId:r.order_id,catalogItemId:r.catalog_item_id,name:r.name,qty:r.qty,receivedAt:r.received_at?.toISOString()??null,returnedAt:r.returned_at?.toISOString()??null });
+const contractorOrderLineDTO = (r:ContractorOrderLineRow):Projects.ContractorOrderLineDTO => ({ id:r.id,orderId:r.order_id,catalogItemId:r.catalog_item_id,name:r.name,note:r.note,qty:r.qty,receivedAt:r.received_at?.toISOString()??null,returnedAt:r.returned_at?.toISOString()??null });
 const problemDTO = (r: ProblemRow): Problem => ({
   id: r.id,
   kind: r.kind,
@@ -481,7 +481,7 @@ export function createProjectsService(
   loadEquipmentKit: (kitId: string) => Promise<Equipment.EquipmentKitDTO | null> = async () => null,
   appSettings?: AppSettings.AppSettingsService,
   loadVenueName: (venueId: string | null) => Promise<string | null> = async () => null,
-  loadContractorCatalogItems: (ids:string[])=>Promise<{id:string;maxQty:number|null}[]> = async()=>[],
+  loadContractorCatalogItems: (ids:string[])=>Promise<{id:string;maxQty:number|null;note:string|null}[]> = async()=>[],
 ): Projects.ProjectsService {
   async function kitReservationDTO(row: KitReservationRow): Promise<Projects.KitReservationDTO> {
     const childRows=await query<ReservationRow>(db,`SELECT * FROM projects.reservations WHERE kit_reservation_id=$1 ORDER BY created_at`,[row.id]);
@@ -2329,7 +2329,10 @@ export function createProjectsService(
           await query(client,`UPDATE projects.contractor_orders SET delivery_timing_id=$2,pickup_timing_id=$3 WHERE id=$1`,[row!.id,deliveryTimingId,pickupTimingId]);
         }
         await query(client,`INSERT INTO projects.contractor_items (project_id,contractor_id,kind,pricing_mode,name,qty,price_eur,cost_eur,note,booked,order_id,paid_at) VALUES ($1,$2,'equipment','flat_total',$3,1,$4,$5,$6,$7,$8,CASE WHEN $5::numeric=0 THEN now() ELSE NULL END)`,[input.projectId,input.contractorId,input.name.trim(),input.clientPriceEUR,input.supplierPriceEUR,input.fulfillmentMode==='contractor_delivery'?'Цена подрядчика включает доставку':'Сухая аренда у подрядчика',input.booked??false,row!.id]);
-        for (const line of input.lines) await query(client,`INSERT INTO projects.contractor_order_lines (order_id,catalog_item_id,name,qty) VALUES ($1,$2,$3,$4)`,[row!.id,line.catalogItemId,line.name.trim(),line.qty]);
+        for (const line of input.lines) {
+          const catalogItem=catalogItems.find(item=>item.id===line.catalogItemId)!;
+          await query(client,`INSERT INTO projects.contractor_order_lines (order_id,catalog_item_id,name,note,qty) VALUES ($1,$2,$3,$4,$5)`,[row!.id,line.catalogItemId,line.name.trim(),catalogItem.note,line.qty]);
+        }
         return one<ContractorOrderRow>(client,`SELECT * FROM projects.contractor_orders WHERE id=$1`,[row!.id]);
       });
       return contractorOrderDTO(created!);

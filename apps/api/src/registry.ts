@@ -48,7 +48,7 @@ export function createModules(bus: EventBus = new EventBus()) {
     (kitId) => equipment.service.getKit(kitId),
     appSettings.service,
     async (venueId) => venueId ? (await venues.service.get(venueId))?.name ?? null : null,
-    async (ids) => (await contractors.service.listEquipment()).filter(item=>ids.includes(item.id)).map(item=>({id:item.id,maxQty:item.maxQty})),
+    async (ids) => (await contractors.service.listEquipment()).filter(item=>ids.includes(item.id)).map(item=>({id:item.id,maxQty:item.maxQty,note:item.note})),
   );
   bus.on("app_settings.project_name_template.updated", async () => projects.service.refreshProjectNames());
   const authorizeFinanceProject = async (auth: AuthContext, projectId: string) => {

@@ -642,6 +642,8 @@ export interface ContractorOrderLineDTO {
   orderId: ID;
   catalogItemId: ID;
   name: string;
+  /** Internal catalogue note copied when the order is created; never part of client pricing. */
+  note: string | null;
   qty: number;
   receivedAt: ISODateTime | null;
   returnedAt: ISODateTime | null;

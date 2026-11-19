@@ -381,6 +381,9 @@ CREATE TABLE IF NOT EXISTS projects.contractor_order_lines (
   received_at     timestamptz,
   returned_at     timestamptz
 );
+-- Preserve the catalogue note as an operational snapshot for receiving and return.
+-- It is not used by the client-facing commercial line.
+ALTER TABLE projects.contractor_order_lines ADD COLUMN IF NOT EXISTS note text;
 CREATE INDEX IF NOT EXISTS contractor_order_lines_order_idx ON projects.contractor_order_lines(order_id);
 CREATE UNIQUE INDEX IF NOT EXISTS contractor_items_order_idx ON projects.contractor_items(order_id) WHERE order_id IS NOT NULL;
 
