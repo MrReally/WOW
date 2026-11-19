@@ -24,7 +24,7 @@ export function WSGlyph({ type, size = 22 }: { type: Glyph; size?: number }) {
     case "rows":
       return <svg {...S}>{[[6, 7, 12], [6, 12, 10], [6, 17, 6]].map(([x, y, w], i) => <line key={i} x1={x} y1={y} x2={x! + w!} y2={y} {...p} />)}</svg>;
     case "coin":
-      return <svg {...S}><circle cx="12" cy="12" r="8.2" {...p} /><line x1="8" y1="12" x2="16" y2="12" {...p} /><line x1="12" y1="9.4" x2="12" y2="14.6" {...p} /></svg>;
+      return <svg {...S}><text x="12" y="17.5" textAnchor="middle" fill="currentColor" fontSize="21" fontWeight="700">€</text></svg>;
     case "shield":
       return <svg {...S}><path d="M12 3.5l7 2.6v5c0 4.4-3 7.4-7 9.4-4-2-7-5-7-9.4v-5z" {...p} /><path d="M9 12l2.2 2.2L15.4 10" {...p} /></svg>;
     case "pin":

@@ -1621,6 +1621,8 @@ input[type="checkbox"]:not(.toggle-switch):disabled { cursor: default; opacity: 
   box-shadow: var(--shadow-segment);
   font-weight: 600;
 }
+.operations-finance__invoice-action { margin-top: 12px; }
+.operations-finance__invoice-action + .row { margin-top: 8px; }
 .operations-timing-card { padding: 6px 16px; overflow: hidden; }
 .operations-timing-row {
   position: relative;

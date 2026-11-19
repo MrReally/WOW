@@ -1955,7 +1955,7 @@ function ProjectGlyph({ type }: { type: ProjectTabIcon }) {
     case "contractors":
       return <svg viewBox="0 0 24 24"><rect x="4.5" y="7" width="15" height="11" rx="2" {...p} /><path d="M8.5 7V5.8A1.8 1.8 0 0110.3 4h3.4a1.8 1.8 0 011.8 1.8V7M8 12h8M8 15h5" {...p} /></svg>;
     case "finance":
-      return <svg viewBox="0 0 24 24"><path d="M7 8.2h8.8M7 12h7M7 15.8h8.8" {...p} /><path d="M18 5.5c-1.2-.9-2.6-1.3-4.2-1.3-4.2 0-7.3 3.3-7.3 7.8s3.1 7.8 7.3 7.8c1.6 0 3-.4 4.2-1.3" {...p} /></svg>;
+      return <svg viewBox="0 0 24 24"><text x="12" y="17.5" textAnchor="middle" fill="currentColor" fontSize="21" fontWeight="700">€</text></svg>;
     case "plan":
       return <svg viewBox="0 0 24 24"><path d="M4.5 18.5h15M6 16l4-8 3 5 2-3 3 6" {...p} /><circle cx="10" cy="8" r="1.3" fill="currentColor" stroke="none" /></svg>;
     case "operations":
