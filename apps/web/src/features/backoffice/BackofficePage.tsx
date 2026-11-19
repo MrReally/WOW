@@ -56,7 +56,12 @@ const catalogUnitLabel: Record<string, string> = { pcs: "шт.", roll: "руло
 const storageZoneKindLabel:Record<Equipment.StorageZoneKind,string>={room:"Помещение",rack:"Стеллаж",shelf:"Полка",bin:"Ячейка",floor:"Напольная зона",other:"Другое"};
 const dt = (value: string | null | undefined) => value ? configuredDateTime(value) : "—";
 const localDateTimeInput = (value: string | Date = new Date()) => toLocalInput(value instanceof Date ? value.toISOString() : value);
-const money = (value: number) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: "EUR" }).format(value);
+const money = (value: number) => new Intl.NumberFormat("ru-RU", {
+  style: "currency",
+  currency: "EUR",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+}).format(value);
 function domainAllowed(domain: DomainId, can: (...permissions: Permission[]) => boolean) {
   if (["equipment","models","cables","components","connectors","catalog","documents","inventory","movement","problems","reports"].includes(domain)) return can("warehouse.view");
   if (domain === "projects") return can("projects.view");

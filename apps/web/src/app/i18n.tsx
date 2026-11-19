@@ -407,7 +407,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     const t = (key: Key) => dictionaries[locale][key] ?? dictionaries.ru[key] ?? key;
     const money = (amount: number, currency: string) => {
       try {
-        return new Intl.NumberFormat(intlLocale(locale), { style: "currency", currency, maximumFractionDigits: currency === "EUR" ? 0 : 2 }).format(amount);
+        return new Intl.NumberFormat(intlLocale(locale), {
+          style: "currency",
+          currency,
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        }).format(amount);
       } catch {
         return `${amount} ${currency}`;
       }

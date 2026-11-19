@@ -68,15 +68,21 @@ export function eur(amount: number): string {
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
     currency: "EUR",
-    // Project estimates are calculated to cents. Hiding them here makes the
-    // editor and the generated document appear to disagree.
+    // Project estimates are calculated to cents. Keep a non-zero fractional
+    // part, but do not add redundant ",00" to whole amounts.
+    minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(amount);
 }
 
 export function money(amount: number, currency: string): string {
   try {
-    return new Intl.NumberFormat("ru-RU", { style: "currency", currency }).format(amount);
+    return new Intl.NumberFormat("ru-RU", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(amount);
   } catch {
     return `${amount} ${currency}`;
   }

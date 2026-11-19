@@ -150,10 +150,19 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="ws-bar">
         <div className="mobile-nav-leading">
           {isDetail ? (
-            <button className="mobile-back" onClick={() => navigate(-1)} aria-label="Назад">
-              <span aria-hidden="true">‹</span>
-              <span>{navigationMeta.backLabel}</span>
-            </button>
+            <>
+              <button className="mobile-back" onClick={() => navigate(-1)} aria-label="Назад">
+                <span aria-hidden="true">‹</span>
+              </button>
+              <button className="mobile-workspace-switcher" onClick={() => setSwitcherOpen(true)} aria-label={t("workspace.current")}>
+                <span className="mobile-workspace-pill">
+                  {workspacePill}
+                  <svg className="mobile-workspace-pill__chevron" aria-hidden="true" viewBox="0 0 12 12">
+                    <path d="M2.5 4.5 6 8l3.5-3.5" />
+                  </svg>
+                </span>
+              </button>
+            </>
           ) : (
             <button className="mobile-wordmark" onClick={() => setSwitcherOpen(true)} aria-label={t("workspace.current")}>
               <SeverStar size={26} />

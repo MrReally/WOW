@@ -2949,7 +2949,8 @@ textarea.input:focus {
   .desktop-workspace-id { display: none; }
   .mobile-nav-leading { min-width: 0; display: flex; align-items: center; }
   .mobile-wordmark,
-  .mobile-back {
+  .mobile-back,
+  .mobile-workspace-switcher {
     min-width: 0;
     height: 44px;
     display: flex;
@@ -2994,9 +2995,9 @@ textarea.input:focus {
     stroke-linecap: round;
     stroke-linejoin: round;
   }
-  .mobile-back { max-width: 100px; gap: 3px; color: var(--blue); font-size: 17px; }
+  .mobile-back { flex: 0 0 44px; width: 44px; gap: 3px; color: var(--blue); font-size: 17px; }
   .mobile-back > span:first-child { flex: 0 0 auto; font-size: 34px; font-weight: 300; line-height: 1; transform: translateY(-1px); }
-  .mobile-back > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-workspace-switcher { margin-left: 2px; }
   .mobile-nav-title {
     position: absolute;
     left: 50%;
@@ -3142,14 +3143,24 @@ textarea.input:focus {
   .operations-project-tabs > button,
   .invoice-tab { min-height: 42px; }
   .project-tabbar {
-    display: flex;
-    grid-template-columns: none;
-    gap: 6px;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    gap: 4px;
+    width: 100%;
+    padding: 6px max(8px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 18px 18px 0 0;
   }
-  .project-tabbar__item { flex: 0 0 auto; flex-direction: row; gap: 5px; padding: 0 12px; border-radius: 21px; }
+  .project-tabbar__item { min-height: 58px; flex-direction: column; gap: 4px; padding: 4px 2px; border-radius: 12px; }
   .project-tabbar__icon > svg { display: block; width: 21px; height: 21px; }
   .project-tabbar__icon { width: 21px; }
-  .project-tabbar__label { display: none; }
+  .project-tabbar__label { display: block; font-size: 9px; }
   .project-tabbar__badge { position: static; min-width: 18px; height: 18px; border: 0; border-radius: 9px; }
   .app-shell[data-mobile-keyboard] .finance-tabs,
   .app-shell[data-mobile-keyboard] .crew-tabs,
