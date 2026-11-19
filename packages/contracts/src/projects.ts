@@ -685,6 +685,9 @@ export interface CreateContractorOrderInput {
   lines: { catalogItemId: ID; name: string; qty: number }[];
 }
 
+/** An order can be revised while it is still in Planning, before receipt begins. */
+export type UpdateContractorOrderInput = Omit<CreateContractorOrderInput, "projectId">;
+
 // ── Public service contract ──────────────────────────────────────────────────
 
 export interface ProjectsService {
@@ -782,6 +785,7 @@ export interface ProjectsService {
   listOpenContractorItems(): Promise<ContractorItemDTO[]>;
   addContractorItem(input: AddContractorItemInput): Promise<ContractorItemDTO>;
   updateContractorItem(id: ID, input: UpdateContractorItemInput): Promise<ContractorItemDTO>;
+  updateContractorOrder(id: ID, input: UpdateContractorOrderInput): Promise<ContractorOrderDTO>;
   setContractorItemsBooked(projectId: ID, contractorId: ID, booked: boolean): Promise<ContractorItemDTO[]>;
   /** Records physical receipt for a manually planned contractor-equipment item. */
   setContractorItemReceived(id: ID, received: boolean): Promise<ContractorItemDTO>;

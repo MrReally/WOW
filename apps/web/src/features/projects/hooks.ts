@@ -364,6 +364,10 @@ export function useCreateContractorOrder() {
   const qc=useQueryClient();
   return useMutation({mutationFn:(input:Projects.CreateContractorOrderInput)=>api.post<Projects.ContractorOrderDTO>("/api/contractor-orders",input),meta:{successMessage:"Заказ подрядчику создан"},onSuccess:()=>{invalidateProjects(qc);qc.invalidateQueries({queryKey:["projects","contractor-orders"]});qc.invalidateQueries({queryKey:["projects","contractor-items"]});qc.invalidateQueries({queryKey:["projects","timings"]});}});
 }
+export function useUpdateContractorOrder() {
+  const qc=useQueryClient();
+  return useMutation({mutationFn:({id,input}:{id:string;input:Projects.UpdateContractorOrderInput})=>api.patch<Projects.ContractorOrderDTO>(`/api/contractor-orders/${id}`,input),meta:{successMessage:"Заказ подрядчику сохранён"},onSuccess:()=>{invalidateProjects(qc);qc.invalidateQueries({queryKey:["projects","contractor-orders"]});qc.invalidateQueries({queryKey:["projects","contractor-items"]});qc.invalidateQueries({queryKey:["projects","timings"]});}});
+}
 export function useAddContractorItem() {
   const qc = useQueryClient();
   return useMutation({

@@ -2337,6 +2337,49 @@ export function createProjectsService(
       });
       return contractorOrderDTO(created!);
     },
+    async updateContractorOrder(id, input) {
+      const order = await one<ContractorOrderRow & { project_status: Projects.ProjectStatus }>(db, `SELECT co.*, p.status AS project_status FROM projects.contractor_orders co JOIN projects.projects p ON p.id=co.project_id WHERE co.id=$1`, [id]);
+      if (!order) throw NotFound("contractor order", id);
+      if (order.project_status === "cancelled") throw BadRequest("нельзя изменить заказ подрядчику для отменённого проекта");
+      if (order.receipt_completed_at) throw BadRequest("нельзя изменить заказ после завершения приёмки");
+      if (!input.lines.length) throw BadRequest("добавьте хотя бы одну позицию каталога");
+      const catalogItems = await loadContractorCatalogItems(input.lines.map(line => line.catalogItemId));
+      for (const line of input.lines) {
+        const item = catalogItems.find(candidate => candidate.id === line.catalogItemId);
+        if (!item) throw BadRequest(`позиция каталога ${line.catalogItemId} не найдена`);
+        if (item.maxQty != null && line.qty > item.maxQty) throw BadRequest(`количество ${line.name} превышает известный максимум ${item.maxQty}`);
+      }
+      if (input.fulfillmentMode === "contractor_delivery" && (!input.deliveryAt || !input.pickupAt)) throw BadRequest("для доставки подрядчиком укажите доставку и забор");
+      if (input.deliveryAt && input.pickupAt && Date.parse(input.pickupAt) <= Date.parse(input.deliveryAt)) throw BadRequest("забор должен быть позже доставки");
+      const updated = await tx(async client => {
+        let deliveryTimingId = order.delivery_timing_id;
+        let pickupTimingId = order.pickup_timing_id;
+        if (input.fulfillmentMode === "contractor_delivery") {
+          const deliveryEnd = new Date(Date.parse(input.deliveryAt!) + 30 * 60_000).toISOString();
+          const pickupEnd = new Date(Date.parse(input.pickupAt!) + 30 * 60_000).toISOString();
+          if (deliveryTimingId) await query(client, `UPDATE projects.timings SET title=$2, starts_at=$3, ends_at=$4 WHERE id=$1`, [deliveryTimingId, `Доставка подрядчика: ${input.name.trim()}`, input.deliveryAt, deliveryEnd]);
+          else deliveryTimingId = (await one<{id:string}>(client, `INSERT INTO projects.timings (project_id,title,starts_at,ends_at) VALUES ($1,$2,$3,$4) RETURNING id`, [order.project_id, `Доставка подрядчика: ${input.name.trim()}`, input.deliveryAt, deliveryEnd]))!.id;
+          if (pickupTimingId) await query(client, `UPDATE projects.timings SET title=$2, starts_at=$3, ends_at=$4 WHERE id=$1`, [pickupTimingId, `Забор подрядчика: ${input.name.trim()}`, input.pickupAt, pickupEnd]);
+          else pickupTimingId = (await one<{id:string}>(client, `INSERT INTO projects.timings (project_id,title,starts_at,ends_at) VALUES ($1,$2,$3,$4) RETURNING id`, [order.project_id, `Забор подрядчика: ${input.name.trim()}`, input.pickupAt, pickupEnd]))!.id;
+        } else {
+          if (deliveryTimingId) await query(client, `DELETE FROM projects.timings WHERE id=$1`, [deliveryTimingId]);
+          if (pickupTimingId) await query(client, `DELETE FROM projects.timings WHERE id=$1`, [pickupTimingId]);
+          deliveryTimingId = null;
+          pickupTimingId = null;
+        }
+        const row = await one<ContractorOrderRow>(client, `UPDATE projects.contractor_orders SET contractor_id=$2, warehouse_id=$3, name=$4, fulfillment_mode=$5, supplier_price_eur=$6, client_price_eur=$7, delivery_at=$8, pickup_at=$9, booked=$10, delivery_timing_id=$11, pickup_timing_id=$12 WHERE id=$1 RETURNING *`, [id, input.contractorId, input.warehouseId ?? null, input.name.trim(), input.fulfillmentMode, input.supplierPriceEUR, input.clientPriceEUR, input.deliveryAt ?? null, input.pickupAt ?? null, input.booked ?? false, deliveryTimingId, pickupTimingId]);
+        await query(client, `UPDATE projects.contractor_items SET contractor_id=$2, name=$3, price_eur=$4, cost_eur=$5, note=$6, booked=$7 WHERE order_id=$1`, [id, input.contractorId, input.name.trim(), input.clientPriceEUR, input.supplierPriceEUR, input.fulfillmentMode === "contractor_delivery" ? "Цена подрядчика включает доставку" : "Сухая аренда у подрядчика", input.booked ?? false]);
+        await query(client, `DELETE FROM projects.contractor_order_lines WHERE order_id=$1`, [id]);
+        for (const line of input.lines) {
+          const catalogItem = catalogItems.find(item => item.id === line.catalogItemId)!;
+          await query(client, `INSERT INTO projects.contractor_order_lines (order_id,catalog_item_id,name,note,qty) VALUES ($1,$2,$3,$4,$5)`, [id, line.catalogItemId, line.name.trim(), catalogItem.note, line.qty]);
+        }
+        return row;
+      });
+      const item = await one<ContractorItemRow>(db, `SELECT * FROM projects.contractor_items WHERE order_id=$1`, [id]);
+      if (item) await bus.publish({ type: "project.contractor_items.changed", projectId: item.project_id, contractorId: item.contractor_id, at: new Date().toISOString() });
+      return contractorOrderDTO(updated!);
+    },
     async setContractorOrderLineReceived(orderId,lineId,received) {
       const order=await one<ContractorOrderRow & { project_status: Projects.ProjectStatus }>(db,`SELECT co.*, p.status AS project_status FROM projects.contractor_orders co JOIN projects.projects p ON p.id=co.project_id WHERE co.id=$1`,[orderId]);
       if (!order) throw NotFound("contractor order",orderId);
