@@ -1112,6 +1112,18 @@ export function createProjectsService(
             [id]
           );
         }
+        // A project-date edit changes the number of billable days. Reuse the
+        // reservation event so finance discards visible generated snapshots,
+        // including the parent kit rows (not just their child reservations).
+        const sources = await query<{ id: string }>(db, `
+          SELECT id FROM projects.reservations WHERE project_id=$1
+          UNION
+          SELECT id FROM projects.kit_reservations WHERE project_id=$1
+        `, [id]);
+        for (const source of sources) {
+          await bus.publish({ type: "reservation.updated", reservationId: source.id, projectId: id, at: new Date().toISOString() });
+        }
+        await bus.publish({ type: "project.schedule.updated", projectId: id, at: new Date().toISOString() });
       }
       if (existing.dressCodeLabel !== updated.dressCodeLabel || existing.dressCodeUniform !== updated.dressCodeUniform) {
         await bus.publish({ type: "project.dress_code.changed", projectId: id, roleId: null, at: new Date().toISOString() });
@@ -1399,6 +1411,7 @@ export function createProjectsService(
         return locked;
       });
       if(group.starts_at&&group.ends_at) for(const component of group.components) await syncReservationAvailabilityProblems(component.modelId,group.starts_at.toISOString(),group.ends_at.toISOString());
+      await bus.publish({type:"reservation.updated",reservationId:id,projectId:group.project_id,at:new Date().toISOString()});
       return kitReservationDTO((await one<KitReservationRow>(db,`SELECT * FROM projects.kit_reservations WHERE id=$1`,[id]))!);
     },
     async deleteKitReservation(id) {
@@ -1819,7 +1832,9 @@ export function createProjectsService(
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
         [input.projectId, input.title.trim(), input.comment?.trim() || null, input.requiredCount, input.rateEUR ?? null, startsAt, endsAt, input.dressCodeEnabled ?? false]
       );
-      return projectRoleDTO((await loadProjectRole(row!.id))!);
+      const dto = projectRoleDTO((await loadProjectRole(row!.id))!);
+      await bus.publish({ type: "project.role.updated", projectId: input.projectId, roleId: dto.id, at: new Date().toISOString() });
+      return dto;
     },
     async updateProjectRole(id, input) {
       const existing = await one<ProjectRoleRow>(db, `SELECT * FROM projects.project_roles WHERE id=$1`, [id]);
@@ -1883,6 +1898,7 @@ export function createProjectsService(
       for (const assignment of removedAssignments.filter((a) => a.status === "added" || a.status === "accepted")) {
         await bus.publish({ type: "project.unassigned", projectId: assignment.project_id, userId: assignment.user_id, at: new Date().toISOString() });
       }
+      await bus.publish({ type: "project.role.updated", projectId: existing.project_id, roleId: id, at: new Date().toISOString() });
     },
     async listAssignments(projectId) {
       const rows = await query<AssignmentRow>(
@@ -2200,7 +2216,9 @@ export function createProjectsService(
           null,
         ]
       );
-      return contractorItemDTO(row!);
+      const dto = contractorItemDTO(row!);
+      await bus.publish({ type: "project.contractor_items.changed", projectId: dto.projectId, contractorId: dto.contractorId, at: new Date().toISOString() });
+      return dto;
     },
     async updateContractorItem(id, input) {
       const existing = await one<ContractorItemRow>(db, `SELECT * FROM projects.contractor_items WHERE id=$1`, [id]);
@@ -2211,7 +2229,9 @@ export function createProjectsService(
         `UPDATE projects.contractor_items SET contractor_id=$2, kind=$3, pricing_mode=$4, name=$5, qty=$6, price_eur=$7, cost_eur=$8, note=$9, booked=$10 WHERE id=$1 RETURNING *`,
         [id, input.contractorId ?? existing.contractor_id, input.kind ?? existing.kind, input.pricingMode ?? existing.pricing_mode, input.name ?? existing.name, input.qty ?? existing.qty, input.priceEUR ?? Number(existing.price_eur), input.costEUR ?? Number(existing.cost_eur), input.note === undefined ? existing.note : input.note, input.booked ?? existing.booked]
       );
-      return contractorItemDTO(row!);
+      const dto = contractorItemDTO(row!);
+      await bus.publish({ type: "project.contractor_items.changed", projectId: dto.projectId, contractorId: dto.contractorId, at: new Date().toISOString() });
+      return dto;
     },
     async setContractorItemsBooked(projectId, contractorId, booked) {
       const rows = await query<ContractorItemRow>(
@@ -2284,6 +2304,7 @@ export function createProjectsService(
       if (!existing) throw NotFound("contractor item", id);
       if(existing?.order_id)throw BadRequest("пакетный заказ нельзя удалить как ручную позицию");
       await query(db, `DELETE FROM projects.contractor_items WHERE id=$1`, [id]);
+      await bus.publish({ type: "project.contractor_items.changed", projectId: existing.project_id, contractorId: existing.contractor_id, at: new Date().toISOString() });
     },
     async contractorDebts() {
       const rows = await query<{ contractor_id: string; debt: string }>(

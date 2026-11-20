@@ -71,6 +71,17 @@ export function createModules(bus: EventBus = new EventBus()) {
     // and amount. Drop that snapshot so billing regenerates it from the new reservation.
     await finance.service.removeProjectEstimateLinesBySourceRef(event.reservationId);
   });
+  bus.on("project.contractor_items.changed", async (event) => {
+    await finance.service.removeVisibleProjectEstimateLinesBySource(event.projectId, "contractor");
+  });
+  bus.on("project.schedule.updated", async (event) => {
+    await finance.service.removeVisibleProjectEstimateLinesBySource(event.projectId, "contractor");
+  });
+  for (const type of ["project.role.updated", "project.assigned", "project.unassigned", "project.invite.responded"] as const) {
+    bus.on(type, async (event) => {
+      await finance.service.removeVisibleProjectEstimateLinesBySource(event.projectId, "labor");
+    });
+  }
   bus.on("project.duplicated", async (event) => {
     await finance.service.copyProjectEstimateLines(event.sourceProjectId, event.projectId, event.sourceRefMap);
   });

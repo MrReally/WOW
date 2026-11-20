@@ -112,7 +112,6 @@ export function InvoicePage() {
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [panel, setPanel] = useState<Panel>("lines");
   const [lines, setLines] = useState<Line[]>([]);
-  const [seeded, setSeeded] = useState(false);
   const [company, setCompany] = useState<Company>(loadCompany);
   const [companyTouched, setCompanyTouched] = useState(false);
   const [currency, setCurrency] = useState<Currency>("EUR");
@@ -134,7 +133,6 @@ export function InvoicePage() {
   const [mergeOpen, setMergeOpen] = useState(false);
 
   useEffect(() => {
-    setSeeded(false);
     setRestoredVersion(null);
     setDateTouched(false);
     setSelectedLineIds([]);
@@ -175,7 +173,7 @@ export function InvoicePage() {
   }, [serverVersions.data]);
 
   useEffect(() => {
-    if (!seeded && invoice.data && estimateLines.data) {
+    if (invoice.data && estimateLines.data && !restoredVersion) {
       const saved = estimateLines.data;
       const invoiceSource = invoice.data.rentalLines;
       const visible = invoiceSource.map((l) => {
@@ -199,9 +197,8 @@ export function InvoicePage() {
       const rsdRateToEUR = (fx.data ?? []).find((rate) => rate.currency === "RSD")?.rateToEUR ?? 0;
       const hidden = saved.filter((line) => line.hidden).map((line) => lineFromEstimate(line, rsdRateToEUR));
       setLines([...visible, ...hidden]);
-      setSeeded(true);
     }
-  }, [invoice.data, estimateLines.data, fx.data, seeded]);
+  }, [invoice.data, estimateLines.data, fx.data, restoredVersion]);
 
   useEffect(() => {
     if (project.data && !number) setNumber(`EST-${dateStr.replace(/-/g, "")}-${id.slice(0, 4).toUpperCase()}`);
@@ -444,7 +441,7 @@ export function InvoicePage() {
   return (
     <div className="stack invoice-workspace">
       {pdfError && <p role="alert">{pdfError}</p>}
-      {restoredVersion && <Card><p>Открыта сохранённая версия. Итог, курс и реквизиты взяты из неё.</p><Button variant="ghost" onClick={() => { setRestoredVersion(null); setSeeded(false); setCompanyTouched(false); }}>Вернуться к текущей смете</Button></Card>}
+      {restoredVersion && <Card><p>Открыта сохранённая версия. Итог, курс и реквизиты взяты из неё.</p><Button variant="ghost" onClick={() => { setRestoredVersion(null); setCompanyTouched(false); }}>Вернуться к текущей смете</Button></Card>}
       {fxRateToEUR === null && <p role="alert">Для выбранной валюты нет сохранённого курса. Просмотр и экспорт доступны в EUR.</p>}
       <button className="icon-text-action" onClick={() => navigate(`/projects/${id}`)} aria-label="К проекту">
         <span>←</span><span>Проект</span>

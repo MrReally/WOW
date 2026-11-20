@@ -530,7 +530,18 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
     },
 
     async removeProjectEstimateLinesBySourceRef(sourceRefId) {
-      await query(db, `DELETE FROM finance.project_estimate_lines WHERE source_ref_id=$1`, [sourceRefId]);
+      // A hidden source row is the bookkeeping link beneath a manually merged
+      // line. Keeping it hidden prevents a changed source from reappearing
+      // beside that manual total and being counted twice.
+      await query(db, `DELETE FROM finance.project_estimate_lines WHERE source_ref_id=$1 AND is_hidden=false`, [sourceRefId]);
+    },
+
+    async removeVisibleProjectEstimateLinesBySource(projectId, source) {
+      await query(db,
+        `DELETE FROM finance.project_estimate_lines
+         WHERE project_id=$1 AND source=$2 AND is_hidden=false`,
+        [projectId, source]
+      );
     },
 
     async copyProjectEstimateLines(sourceProjectId, projectId, sourceRefMap = {}) {

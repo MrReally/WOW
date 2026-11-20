@@ -846,6 +846,13 @@ export interface ReservationUpdatedEvent {
   at: ISODateTime;
 }
 
+/** Project time range changed; daily-priced commercial sources must be rebuilt. */
+export interface ProjectScheduleUpdatedEvent {
+  type: "project.schedule.updated";
+  projectId: ID;
+  at: ISODateTime;
+}
+
 export interface ProjectAssignedEvent {
   type: "project.assigned";
   projectId: ID;
@@ -986,6 +993,7 @@ export type ProjectsEvent =
   | ReservationConflictEvent
   | ReservationDeletedEvent
   | ReservationUpdatedEvent
+  | ProjectScheduleUpdatedEvent
   | ProjectAssignedEvent
   | ProjectUnassignedEvent
   | ProjectInvitedEvent

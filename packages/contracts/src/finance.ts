@@ -378,6 +378,9 @@ export interface FinanceService {
   listProjectEstimateLines(projectId: ID): Promise<ProjectEstimateLineDTO[]>;
   replaceProjectEstimateLines(projectId: ID, lines: SaveProjectEstimateLineInput[], settings?: SaveProjectEstimateSettingsInput): Promise<ProjectEstimateLineDTO[]>;
   removeProjectEstimateLinesBySourceRef(sourceRefId: ID): Promise<void>;
+  /** Drops visible generated snapshots for a changed project source. Hidden
+   * source rows are retained because they may be part of a manual merge. */
+  removeVisibleProjectEstimateLinesBySource(projectId: ID, source: Exclude<ProjectEstimateLineSource, "manual">): Promise<void>;
   copyProjectEstimateLines(sourceProjectId: ID, projectId: ID, sourceRefMap?: Record<ID, ID>): Promise<ProjectEstimateLineDTO[]>;
   getProjectEstimateSettings(projectId: ID): Promise<ProjectEstimateSettingsDTO>;
   setProjectEstimateSettings(projectId: ID, input: SaveProjectEstimateSettingsInput): Promise<ProjectEstimateSettingsDTO>;
