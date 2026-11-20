@@ -61,6 +61,11 @@ type SendTelegramDocument = (
 ) => Promise<{ chatId: string; messageId: number } | null>;
 
 const fullExportFilename = () => `sever-full-export-${new Date().toISOString().slice(0, 10)}.csv`;
+const transactionExportFilename = (from: string, to: string) => `sever-cash-transactions-${from}-${to}.csv`;
+const transactionExportQuery = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+}).refine(value => value.from <= value.to, { message: "дата начала не может быть позже даты окончания" });
 
 export function registerBillingRoutes(
   app: FastifyInstance,
@@ -114,6 +119,16 @@ export function registerBillingRoutes(
     return reply
       .header("Content-Type", "text/csv; charset=utf-8")
       .header("Content-Disposition", `attachment; filename="${fullExportFilename()}"`)
+      .send(csv);
+  });
+  app.get<{ Querystring: { from?: string; to?: string } }>("/api/reports/transaction-export.csv", async (req, reply) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.view", "finance.manage");
+    const filter = transactionExportQuery.parse(req.query);
+    const csv = await service.transactionCashExportCsv(filter);
+    return reply
+      .header("Content-Type", "text/csv; charset=utf-8")
+      .header("Content-Disposition", `attachment; filename="${transactionExportFilename(filter.from, filter.to)}"`)
       .send(csv);
   });
   app.post("/api/reports/full-export.csv/telegram", async (req) => {

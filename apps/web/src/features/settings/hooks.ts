@@ -166,6 +166,21 @@ export function useFullExport() {
   });
 }
 
+export function useTransactionCashExport() {
+  return useMutation({
+    mutationFn: async (filter: { from: string; to: string }) => {
+      const params = new URLSearchParams({ from: filter.from, to: filter.to });
+      const response = await authenticatedFetch(`/api/reports/transaction-export.csv?${params}`);
+      const fallback = `sever-cash-transactions-${filter.from}-${filter.to}.csv`;
+      return {
+        blob: await response.blob(),
+        filename: response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? fallback,
+      };
+    },
+    meta: { successMessage: "CSV-выписка подготовлена" },
+  });
+}
+
 export function useSendFullExportToTelegram() {
   return useMutation({
     mutationFn: () => api.post<{ sent: true; filename: string }>("/api/reports/full-export.csv/telegram", {}),
