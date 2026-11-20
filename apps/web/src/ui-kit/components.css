@@ -3162,11 +3162,11 @@ textarea.input:focus {
   }
   .project-tabbar__item { min-height: 58px; flex-direction: column; gap: 4px; padding: 4px 2px; border-radius: 12px; }
   .project-tabbar__icon > svg { display: block; width: 21px; height: 21px; }
-  /* Keep the counter beside the glyph: a static badge inside a 21px icon
-     container can overlap the glyph when a tab has notifications. */
-  .project-tabbar__icon { width: 42px; justify-content: flex-start; }
+  /* Keep the glyph and its label on the same center line. The badge is
+     positioned outside the icon box, so it does not affect that alignment. */
+  .project-tabbar__icon { width: 21px; justify-content: center; }
   .project-tabbar__label { display: block; font-size: 9px; }
-  .project-tabbar__badge { position: absolute; top: -8px; right: 0; min-width: 18px; height: 18px; border: 0; border-radius: 9px; }
+  .project-tabbar__badge { position: absolute; top: -8px; right: -10px; min-width: 18px; height: 18px; border: 0; border-radius: 9px; }
   .app-shell[data-mobile-keyboard] .finance-tabs,
   .app-shell[data-mobile-keyboard] .crew-tabs,
   .app-shell[data-mobile-keyboard] .warehouse-tabs,
