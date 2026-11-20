@@ -14,7 +14,7 @@ export function createProjectsModule(
   loadEquipmentKit: (kitId: string) => Promise<Equipment.EquipmentKitDTO | null>,
   appSettings: AppSettings.AppSettingsService,
   loadVenueName: (venueId: string | null) => Promise<string | null>,
-  loadContractorCatalogItems: (ids: string[]) => Promise<{id:string;maxQty:number|null}[]>,
+  loadContractorCatalogItems: (ids: string[]) => Promise<{id:string;maxQty:number|null;note:string|null}[]>,
 ): SeverModule<Projects.ProjectsService> {
   const service = createProjectsService(db, bus, loadEquipmentUnits, loadEquipmentModels, loadEquipmentKit, appSettings, loadVenueName, loadContractorCatalogItems);
   return {
