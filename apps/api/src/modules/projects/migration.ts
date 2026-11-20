@@ -398,4 +398,99 @@ CREATE TABLE IF NOT EXISTS projects.problems (
   created_at  timestamptz NOT NULL DEFAULT now(),
   resolved_at timestamptz
 );
+
+-- R1 site-import provenance. These IDs are opaque site_integration IDs: the
+-- projects module never joins or constrains another module's schema.
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS source_import_id uuid;
+ALTER TABLE projects.projects ADD COLUMN IF NOT EXISTS source_import_environment text;
+ALTER TABLE projects.projects DROP CONSTRAINT IF EXISTS projects_source_import_environment_check;
+ALTER TABLE projects.projects ADD CONSTRAINT projects_source_import_environment_check
+  CHECK (source_import_environment IS NULL OR source_import_environment IN ('test','live'));
+CREATE UNIQUE INDEX IF NOT EXISTS projects_one_project_per_source_import
+  ON projects.projects(source_import_id) WHERE source_import_id IS NOT NULL;
+
+-- The legacy contacts field remains untouched for existing clients. Structured identities are
+-- an additive exact-match index for future imports only.
+CREATE TABLE IF NOT EXISTS projects.client_contact_identities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id uuid NOT NULL REFERENCES projects.clients(id) ON DELETE CASCADE,
+  identity_type text NOT NULL CHECK (identity_type IN ('phone','email','instagram','site_customer_id')),
+  normalized_value text NOT NULL,
+  original_value text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(identity_type, normalized_value)
+);
+CREATE INDEX IF NOT EXISTS client_contact_identities_client_idx ON projects.client_contact_identities(client_id);
+CREATE INDEX IF NOT EXISTS client_contact_identities_exact_lookup_idx
+  ON projects.client_contact_identities(identity_type, normalized_value);
+
+-- Requested equipment is a planning/import fact, never a reservation. It has
+-- no price columns: a source line's commercial value exists only in the quote
+-- snapshot in site_integration.
+CREATE TABLE IF NOT EXISTS projects.requested_equipment (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES projects.projects(id) ON DELETE CASCADE,
+  source_import_id uuid NOT NULL,
+  source_site_line_id text NOT NULL,
+  source_mapping_component_key text NOT NULL,
+  target_kind text NOT NULL CHECK (target_kind IN ('own_model','contractor_catalog')),
+  target_id uuid NOT NULL,
+  contractor_id uuid,
+  site_quantity integer NOT NULL CHECK (site_quantity > 0),
+  qty_per_site_unit numeric(12,4) NOT NULL CHECK (qty_per_site_unit > 0),
+  requested_quantity numeric(12,4) NOT NULL CHECK (requested_quantity > 0),
+  review_status text NOT NULL DEFAULT 'pending_review' CHECK (review_status IN ('pending_review','ready','converted','rejected')),
+  converted_reservation_id uuid REFERENCES projects.reservations(id),
+  converted_contractor_item_id uuid REFERENCES projects.contractor_items(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  converted_at timestamptz,
+  CHECK ((target_kind = 'contractor_catalog') = (contractor_id IS NOT NULL)),
+  CHECK ((target_kind = 'own_model') OR converted_reservation_id IS NULL),
+  CHECK ((target_kind = 'contractor_catalog') OR converted_contractor_item_id IS NULL),
+  CHECK ((review_status = 'converted') = ((converted_reservation_id IS NOT NULL) OR (converted_contractor_item_id IS NOT NULL))),
+  UNIQUE(project_id, source_site_line_id, source_mapping_component_key),
+  UNIQUE(converted_reservation_id),
+  UNIQUE(converted_contractor_item_id)
+);
+-- Upgrade early R1 requested equipment. Its model_id was explicitly an own
+-- equipment model, so this backfill does not guess a contractor target.
+ALTER TABLE projects.requested_equipment ADD COLUMN IF NOT EXISTS target_kind text;
+ALTER TABLE projects.requested_equipment ADD COLUMN IF NOT EXISTS target_id uuid;
+ALTER TABLE projects.requested_equipment ADD COLUMN IF NOT EXISTS contractor_id uuid;
+ALTER TABLE projects.requested_equipment ADD COLUMN IF NOT EXISTS qty_per_site_unit numeric(12,4);
+ALTER TABLE projects.requested_equipment ADD COLUMN IF NOT EXISTS converted_contractor_item_id uuid;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='projects' AND table_name='requested_equipment' AND column_name='model_id') THEN
+    UPDATE projects.requested_equipment
+    SET target_kind='own_model', target_id=model_id, qty_per_site_unit=quantity_multiplier
+    WHERE target_kind IS NULL AND target_id IS NULL AND model_id IS NOT NULL AND quantity_multiplier IS NOT NULL;
+  END IF;
+  IF EXISTS (SELECT 1 FROM projects.requested_equipment WHERE target_kind IS NULL OR target_id IS NULL OR qty_per_site_unit IS NULL) THEN
+    RAISE EXCEPTION 'Cannot upgrade projects.requested_equipment: legacy row has no unambiguous own-model target';
+  END IF;
+END $$;
+ALTER TABLE projects.requested_equipment ALTER COLUMN target_kind SET NOT NULL;
+ALTER TABLE projects.requested_equipment ALTER COLUMN target_id SET NOT NULL;
+ALTER TABLE projects.requested_equipment ALTER COLUMN qty_per_site_unit SET NOT NULL;
+ALTER TABLE projects.requested_equipment DROP CONSTRAINT IF EXISTS requested_equipment_target_kind_check;
+ALTER TABLE projects.requested_equipment ADD CONSTRAINT requested_equipment_target_kind_check CHECK (target_kind IN ('own_model','contractor_catalog'));
+ALTER TABLE projects.requested_equipment DROP CONSTRAINT IF EXISTS requested_equipment_target_contractor_check;
+ALTER TABLE projects.requested_equipment ADD CONSTRAINT requested_equipment_target_contractor_check CHECK ((target_kind = 'contractor_catalog') = (contractor_id IS NOT NULL));
+ALTER TABLE projects.requested_equipment DROP CONSTRAINT IF EXISTS requested_equipment_converted_target_check;
+ALTER TABLE projects.requested_equipment ADD CONSTRAINT requested_equipment_converted_target_check CHECK (
+  (target_kind = 'own_model' AND converted_contractor_item_id IS NULL)
+  OR (target_kind = 'contractor_catalog' AND converted_reservation_id IS NULL)
+);
+ALTER TABLE projects.requested_equipment DROP CONSTRAINT IF EXISTS requested_equipment_conversion_presence_check;
+ALTER TABLE projects.requested_equipment ADD CONSTRAINT requested_equipment_conversion_presence_check CHECK (
+  (review_status = 'converted') = ((converted_reservation_id IS NOT NULL) OR (converted_contractor_item_id IS NOT NULL))
+);
+ALTER TABLE projects.requested_equipment DROP CONSTRAINT IF EXISTS requested_equipment_reservation_fk;
+ALTER TABLE projects.requested_equipment ADD CONSTRAINT requested_equipment_reservation_fk FOREIGN KEY (converted_reservation_id) REFERENCES projects.reservations(id);
+ALTER TABLE projects.requested_equipment DROP CONSTRAINT IF EXISTS requested_equipment_contractor_item_fk;
+ALTER TABLE projects.requested_equipment ADD CONSTRAINT requested_equipment_contractor_item_fk FOREIGN KEY (converted_contractor_item_id) REFERENCES projects.contractor_items(id);
+ALTER TABLE projects.requested_equipment DROP COLUMN IF EXISTS model_id;
+ALTER TABLE projects.requested_equipment DROP COLUMN IF EXISTS quantity_multiplier;
+CREATE INDEX IF NOT EXISTS requested_equipment_project_idx ON projects.requested_equipment(project_id, review_status);
+CREATE INDEX IF NOT EXISTS requested_equipment_import_idx ON projects.requested_equipment(source_import_id);
 `;

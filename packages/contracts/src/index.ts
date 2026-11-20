@@ -13,6 +13,7 @@ export * as Transport from "./transport.js";
 export * as AppSettings from "./appSettings.js";
 export * as Contractors from "./contractors.js";
 export * as Supplies from "./supplies.js";
+export * as SiteIntegration from "./siteIntegration.js";
 
 // Runtime constants surfaced at top level for convenience (route validation).
 export { UNIT_STATUSES } from "./equipment.js";

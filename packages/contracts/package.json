@@ -14,7 +14,8 @@
     "./common": "./src/common.ts",
     "./app-settings": "./src/appSettings.ts",
     "./contractors": "./src/contractors.ts",
-    "./supplies": "./src/supplies.ts"
+    "./supplies": "./src/supplies.ts",
+    "./site-integration": "./src/siteIntegration.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",

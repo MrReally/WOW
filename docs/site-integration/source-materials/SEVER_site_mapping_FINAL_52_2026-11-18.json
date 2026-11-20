@@ -1,0 +1,969 @@
+{
+  "schema": "sever_site_product_mapping_handoff_v1",
+  "status": "final_user_approved_read_only_handoff_not_imported",
+  "sourceOfTruth": {
+    "siteCatalog": "sever-catalog.state.json",
+    "severAppSnapshot": "sever-backup-2026-11-18T21-06-23-142Z.dump",
+    "previousReview": "SEVER_mapping_review_2026-11-18.json",
+    "websiteProductIdField": "products[].id",
+    "webhookProductIdField": "items[].id"
+  },
+  "summary": {
+    "websiteProducts": 52,
+    "mappedProducts": 52,
+    "unmappedProducts": 0,
+    "ownModelComponents": 38,
+    "contractorCatalogComponents": 15,
+    "multiComponentProducts": 1,
+    "hiddenWebsiteProducts": 1,
+    "allTargetUUIDsPresentInSnapshot": true
+  },
+  "integrationRules": {
+    "idMatching": "Exact equality of webhook items[].id and mappings[].siteProductId; do not match by display name.",
+    "quantity": "For a site line: requestedQtyForComponent = items[].qty * components[].qtyPerSiteUnit. The qtyPerSiteUnit counts target catalog entries, NOT physical units inside a prebuilt bundle.",
+    "catalogBundles": "If catalogEntryRepresentsBundle=true, one target catalog entry already represents the indicated physical set; do not expand or reserve constituent gear a second time.",
+    "ownVersusContractor": "own_model targets are models UUIDs; contractor_catalog targets are contractor equipment catalog UUIDs and carry contractorId.",
+    "sitePrice": "siteDailyPriceEUR in this file is a reference catalog snapshot only; at runtime use items[].pricePerDay, rental.days, rental.discountPercent and totals.total from the signed webhook payload. Never replace client quoted prices with internal rental/cost prices.",
+    "componentsAndBilling": "The entire signed site item line has ONE site price, regardless of how many mapped components it generates. Do not duplicate revenue across components.",
+    "importWorkflow": "Create requested equipment in a draft, not reservations, contractor orders, finance transactions or inventory movements. Manual conversion later.",
+    "hiddenProducts": "siteHidden reflects website catalog state at export time; keep mapping for hidden products without publishing them.",
+    "mappingReadiness": "All 52 IDs exist and are non-archived where applicable in specified snapshot. Physical availability on event dates is NOT verified."
+  },
+  "knownOperationalNotes": [
+    "For contractor catalog db Opera 12, available_qty=1 in backup, while owner confirmed actual stock exceeds one physical speaker; verify/update operational availability before relying on stock check. Mapping is correct regardless.",
+    "User explicitly approved cross-name equivalence RCF ART 745-A MK5 site pair -> contractor catalog 2 x RCF ART735 bundle.",
+    "User explicitly approved RCF SUB8003-II -> RCF SUB8003 and Logitech R400 -> FEC Presenter as replacements/equivalences.",
+    "For AKG SR40 + HT40 source site item generates two own-model requests but only one client price line."
+  ],
+  "mappings": [
+    {
+      "siteProductId": "led-par-180w",
+      "siteName": "Led Par RGBW 180W",
+      "siteCategory": "light",
+      "siteDailyPriceEUR": 5,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "1369f6f1-2169-4923-996d-d240db3945f8",
+          "targetName": "PAR 180W",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "led-bar",
+      "siteName": "Led Bar RGBW 96W",
+      "siteCategory": "light",
+      "siteDailyPriceEUR": 9,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "ecee4de5-66ab-4b20-a480-b82ec7305fc8",
+          "targetName": "Led bar",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "beye-k10",
+      "siteName": "B-EYE K10 19×15W RGBW",
+      "siteCategory": "light",
+      "siteDailyPriceEUR": 30,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "715670f9-586e-42dc-9609-05897d81db5a",
+          "targetName": "SHEHDS Bee-eye K10",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "led-beam-120w",
+      "siteName": "Led Beam 120W",
+      "siteCategory": "light",
+      "siteDailyPriceEUR": 12,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "1a1c80fd-9fe7-4eed-b675-09b237dc1161",
+          "targetName": "Led Beam 120W",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "led-spot-60w",
+      "siteName": "Led Spot 60W",
+      "siteCategory": "light",
+      "siteDailyPriceEUR": 12,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "08a27dc1-0f36-4a91-a0f2-777641c9d36d",
+          "targetName": "Led Spot 60W",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "led-spider",
+      "siteName": "Led Spider 10W×8 RGBW",
+      "siteCategory": "light",
+      "siteDailyPriceEUR": 7,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "eedf4090-885c-487a-b379-909145c028d6",
+          "targetName": "Led mini spider",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "fog-machine-1500w",
+      "siteName": "FOG Machine 1500W",
+      "siteCategory": "light",
+      "siteDailyPriceEUR": 25,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "5b35d541-8f46-4ec0-a649-508d0dd45b67",
+          "targetName": "Smoke Machine 1500W",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "art-net-dmx-node-4-universes",
+      "siteName": "Art-Net DMX Node  4 Universes",
+      "siteCategory": "light",
+      "siteDailyPriceEUR": 5,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "ae00ffea-fbd1-4d5e-a2f5-404d050bc68c",
+          "targetName": "PKnight Artnet 4-universe",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified",
+      "mappingNote": "На сайте 5 EUR/день, цена модели в приложении 15 EUR/день; пользователь согласовал приоритет клиентской цены сайта."
+    },
+    {
+      "siteProductId": "ddj-flx10",
+      "siteName": "PioneerDJ DDJ-FLX10",
+      "siteCategory": "dj",
+      "siteDailyPriceEUR": 100,
+      "siteHidden": true,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "47321386-f918-4a33-8ffb-4794ff3e34a5",
+          "contractorId": "8d0c321f-b790-42a9-8891-0dcdba373ee8",
+          "targetName": "Pioneer DJ DDJ-FLX10",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified",
+      "mappingNote": "Скрытый товар сайта. Не менять флаг видимости сайта при импорте."
+    },
+    {
+      "siteProductId": "db-opera-12",
+      "siteName": "2× dB Opera 12",
+      "siteCategory": "acoustic",
+      "siteDailyPriceEUR": 60,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "4ccb2758-d854-4332-b850-137bee8518b7",
+          "contractorId": "8f0eb164-eed2-494f-8fea-66d856a15758",
+          "targetName": "db Opera 12",
+          "qtyPerSiteUnit": 2,
+          "countingUnit": "catalog_entry",
+          "representedPhysicalQtyPerCatalogUnit": 1,
+          "catalogEntryRepresentsBundle": false
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified",
+      "mappingNote": "Сайт продаёт пару. Одна запись каталога подрядчика = одна физическая колонка; требуется 2 единицы. По snapshot available_qty=1, пользователь подтвердил наличие >1 фактически; складскую доступность не считать подтверждённой по snapshot."
+    },
+    {
+      "siteProductId": "rcf-art-745",
+      "siteName": "2× RCF ART 745-A MK5",
+      "siteCategory": "acoustic",
+      "siteDailyPriceEUR": 75,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "1dcdb9a9-0ea5-498d-a13a-82ca0e654232",
+          "contractorId": "8f0eb164-eed2-494f-8fea-66d856a15758",
+          "targetName": "2 x RCF ART735",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry",
+          "representedPhysicalQtyPerCatalogUnit": 2,
+          "catalogEntryRepresentsBundle": true
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified",
+      "mappingNote": "По прямому решению владельца сайта RCF ART 745-A MK5 (пара) соответствует готовой позиции подрядчика 2 x RCF ART735; 1 единица каталога = 2 физические колонки. Не умножать эту пару ещё на 2."
+    },
+    {
+      "siteProductId": "turbosound-m12",
+      "siteName": "2× Turbosound Milan M12",
+      "siteCategory": "acoustic",
+      "siteDailyPriceEUR": 75,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "947cae54-28a4-415d-8d1b-72f4d489a0a7",
+          "contractorId": "54ec173e-e37a-47d2-a1dc-d30cffb3ed97",
+          "targetName": "2× Turbosound Milan M12",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry",
+          "representedPhysicalQtyPerCatalogUnit": 2,
+          "catalogEntryRepresentsBundle": true
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified",
+      "mappingNote": "В SEVER App это готовая каталожная пара: 1 позиция = две колонки. Себестоимость с доставкой 60 EUR за пару."
+    },
+    {
+      "siteProductId": "invotone-dva2000",
+      "siteName": "Invotone DVA2000",
+      "siteCategory": "acoustic",
+      "siteDailyPriceEUR": 75,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "af7d3785-8d38-4510-868d-f9b18058fc16",
+          "targetName": "Invotone DVA2000",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "db-sub15h",
+      "siteName": "dB SUB15H",
+      "siteCategory": "acoustic",
+      "siteDailyPriceEUR": 60,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "e49e5392-ccf4-45b4-828a-6c06ab4928df",
+          "contractorId": "8f0eb164-eed2-494f-8fea-66d856a15758",
+          "targetName": "dB SUB15H",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "rcf-sub8003-ii",
+      "siteName": "RCF SUB8003-II",
+      "siteCategory": "acoustic",
+      "siteDailyPriceEUR": 80,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "224a9cd6-5ac6-497c-aff5-ed8d4d834f4e",
+          "contractorId": "8f0eb164-eed2-494f-8fea-66d856a15758",
+          "targetName": "RCF SUB8003",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified",
+      "mappingNote": "Подтверждённая владельцем эквивалентность названия RCF SUB8003-II на сайте и RCF SUB8003 в приложении."
+    },
+    {
+      "siteProductId": "2-x-l-acoustics-arcs-wide-2-x-sb18",
+      "siteName": "2 x L-acoustics Arcs Wide + 2 x SB18 PA System",
+      "siteCategory": "acoustic",
+      "siteDailyPriceEUR": 260,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "3331e2c5-70f2-49e8-8fcf-2ea022815dd8",
+          "contractorId": "8f0eb164-eed2-494f-8fea-66d856a15758",
+          "targetName": "2 x L-acoustic wide + 2 x L-acoustic SB18",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry",
+          "representedPhysicalQtyPerCatalogUnit": 4,
+          "catalogEntryRepresentsBundle": true
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "rcf-art-735-sub-8003-pa-system",
+      "siteName": "2 x RCF ART 735 + 2 x SUB 8003 PA System",
+      "siteCategory": "acoustic",
+      "siteDailyPriceEUR": 200,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "adc834c9-a68d-4fa7-8774-b4e1be4e7b8f",
+          "contractorId": "8f0eb164-eed2-494f-8fea-66d856a15758",
+          "targetName": "2 x RCF ART735 + 2 x RCF SUB8003",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry",
+          "representedPhysicalQtyPerCatalogUnit": 4,
+          "catalogEntryRepresentsBundle": true
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "db-technologies-opera-12-sub-15h-pa-system",
+      "siteName": "2 x dB Technologies Opera 12 + 2 x SUB 15H PA System",
+      "siteCategory": "acoustic",
+      "siteDailyPriceEUR": 150,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "c3d19d0b-a3d7-4f5a-8766-8ec000a2c76f",
+          "contractorId": "8f0eb164-eed2-494f-8fea-66d856a15758",
+          "targetName": "2x db Opera 12 + 2x db SUB15H",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry",
+          "representedPhysicalQtyPerCatalogUnit": 4,
+          "catalogEntryRepresentsBundle": true
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified",
+      "mappingNote": "Готовая позиция подрядчика уже содержит 2 Opera 12 и 2 SUB15H. Не раскрывать автоматически в другие позиции сверх указанного mapping."
+    },
+    {
+      "siteProductId": "behringer-flow8",
+      "siteName": "Behringer Flow8",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 15,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "16fc4172-3f42-40a0-8d6c-b2663d2f8f11",
+          "targetName": "Flow 8",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "mackie-dl1608",
+      "siteName": "Mackie DL1608",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 20,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "748c1a95-fba8-46bd-9948-e9a8b608466f",
+          "targetName": "DL1608",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "behringer-xr18",
+      "siteName": "Behringer XR18",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 30,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "c6f75f56-8430-4bcf-b952-3a83fb971d32",
+          "targetName": "Behringer XR18",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "behringer-x32",
+      "siteName": "Behringer X32 Compact",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 50,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "3fca6ceb-733a-44fb-9826-9bdb519761d0",
+          "targetName": "X32 Compact",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "behringer-wing",
+      "siteName": "Behringer Wing Rack",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 100,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "90c93399-34f1-4368-af72-fdde7a353dce",
+          "contractorId": "51582917-bc64-43c0-9250-fb8265e0ce4d",
+          "targetName": "Behringer Wing Rack",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "shure-sm58",
+      "siteName": "Shure SM58",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 7,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "ace2ac65-2d51-47b1-9bc8-e7b5415c0085",
+          "targetName": "Shure sm58",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "shure-sm57",
+      "siteName": "Shure SM57",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 7,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "00542235-bc8c-4674-9361-37dbe9c4bde3",
+          "targetName": "Shure sm57",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "sennheiser-e845s",
+      "siteName": "Sennheiser E845S",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 7,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "fdad3244-affc-4ffa-a9d8-9bb0282931e7",
+          "targetName": "e845s",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "akg-sr40-ht40",
+      "siteName": "AKG SR40 + HT40",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 15,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "9595665e-9225-43f8-ab0c-042830f5deb6",
+          "targetName": "AKG SR40",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        },
+        {
+          "targetKind": "own_model",
+          "targetId": "cb7cf284-32ee-42b2-b850-bcfaea41565e",
+          "targetName": "AKG HT 40 mini pro ISM 2",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified",
+      "mappingNote": "Одна позиция сайта = 1 AKG SR40 и 1 AKG HT40; цена на сайте применяется один раз на всю исходную строку."
+    },
+    {
+      "siteProductId": "sennheiser-ew100-g3",
+      "siteName": "Sennheiser ew100 g3",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 25,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "2b9333fa-c224-4402-a792-ced1935e8337",
+          "targetName": "Sennheiser ew100 G3",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "dj-table",
+      "siteName": "DJ Table",
+      "siteCategory": "dj",
+      "siteDailyPriceEUR": 30,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "4c30706d-cd69-4137-b185-c267567f66bb",
+          "targetName": "DJ table",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "dj-facade",
+      "siteName": "DJ Facade",
+      "siteCategory": "dj",
+      "siteDailyPriceEUR": 10,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "c0e621b6-aada-4f8f-ae3e-1b66d06838c9",
+          "targetName": "Ширма",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "hercules-ms202b",
+      "siteName": "Hercules MS202B",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 5,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "1362e16a-d6c9-451f-8745-fe170e7a9f8c",
+          "targetName": "Стойка микрофонная прямая Hercules MS202B",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "k-m-25400",
+      "siteName": "K&M 25400",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 3,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "0c0f50a9-f378-4762-8182-56991b53903d",
+          "targetName": "Стойка микрофонная 25400",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "behringer-ultra-di-di20",
+      "siteName": "Behringer Ultra-DI DI20",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 5,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "b062249e-7dc2-4d30-bb9a-f3987e3eac65",
+          "targetName": "Ultra-Di DI20",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "focusrite-18i20",
+      "siteName": "Focusrite Scarlett 18i20",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 25,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "df4e91eb-db1c-4a86-a898-65aafde29a04",
+          "targetName": "Scarlett 18i20 2gen",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "stage-fan-45-cm-120-w",
+      "siteName": "Stage Fan 45 cm / 120 W",
+      "siteCategory": "light",
+      "siteDailyPriceEUR": 7,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "3b5ed5f5-d696-48c5-893d-b578428af417",
+          "targetName": "Напольный Вентилятор 45см (металл)",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "peavey-classic-112",
+      "siteName": "Peavey Classic 30 112",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 30,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "b634933d-a37f-4762-b966-1913f694cd50",
+          "targetName": "Classic 30 112",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified",
+      "mappingNote": "На сайте 30 EUR/день, цена модели в приложении 35 EUR/день; пользователь согласовал приоритет клиентской цены сайта."
+    },
+    {
+      "siteProductId": "x-stalak",
+      "siteName": "X-stalak",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 10,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "3ccc9e99-5e03-42fc-b0c7-1ab27a5f9af3",
+          "targetName": "X-стойка высокая KS-25",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "behringer-p2",
+      "siteName": "Behringer P2",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 5,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "5f69a3fd-7caf-4b83-9833-6d2a1539ad3a",
+          "targetName": "Behringer P2",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified",
+      "mappingNote": "Использовать отдельную модель Behringer P2, а не существующую модель Ultra-Di DI20."
+    },
+    {
+      "siteProductId": "notni-stalak",
+      "siteName": "Notni Stalak",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 7,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "d95537f9-ca13-47e9-adb6-6c9db4633659",
+          "targetName": "Sheet Stand Veston MUS014",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "hercules-gs415b",
+      "siteName": "Hercules GS415B",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 5,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "bb425e8a-6d90-4ec7-ab16-9f19abf9f835",
+          "targetName": "Стойка гитарная с автозахватом Hercules GS415B",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "nec-m403h",
+      "siteName": "NEC M403H",
+      "siteCategory": "video",
+      "siteDailyPriceEUR": 30,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "25e6d301-1c7d-40e2-95a7-8c9fbc8c99f1",
+          "targetName": "Проектор M403H",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "hdmi-splitter-1x4",
+      "siteName": "HDMI Splitter 1x4",
+      "siteCategory": "video",
+      "siteDailyPriceEUR": 7,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "b48c36bb-ea01-4a7b-969c-9172bde17e0f",
+          "targetName": "HDMI Splitter 1 to 4",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "presentation-clicker",
+      "siteName": "Logitech Presenter R400",
+      "siteCategory": "video",
+      "siteDailyPriceEUR": 5,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "5b6fbbd5-8a9c-4bee-a404-02c1947ad663",
+          "targetName": "FEC Presenter",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified",
+      "mappingNote": "Подтверждённая владельцем допустимая замена Logitech Presenter R400 на собственный FEC Presenter; цены могут различаться."
+    },
+    {
+      "siteProductId": "ddj-400",
+      "siteName": "PioneerDJ DDJ-400",
+      "siteCategory": "dj",
+      "siteDailyPriceEUR": 20,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "6c45c94e-8b8a-4e37-800e-e2ab54f3b8ad",
+          "targetName": "PioneerDJ DDJ-400",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "xdj-xz",
+      "siteName": "PioneerDJ XDJ-XZ",
+      "siteCategory": "dj",
+      "siteDailyPriceEUR": 100,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "e025a213-82c2-40a3-9c24-2908313435d4",
+          "contractorId": "8f0eb164-eed2-494f-8fea-66d856a15758",
+          "targetName": "PioneerDJ XDJ-XZ",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "pioneerdj-cdj-3000",
+      "siteName": "PioneerDJ CDJ-3000",
+      "siteCategory": "dj",
+      "siteDailyPriceEUR": 80,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "203d8c45-ff0f-4b10-b4d3-0b329daf0311",
+          "contractorId": "8f0eb164-eed2-494f-8fea-66d856a15758",
+          "targetName": "PioneerDJ CDJ3000",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "pioneerdj-djm-900nxs2",
+      "siteName": "PioneerDJ DJM-900nxs2",
+      "siteCategory": "dj",
+      "siteDailyPriceEUR": 60,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "0b4dfe8c-53a1-4235-b145-f901b3d8015b",
+          "contractorId": "f567e5be-ccdc-42b3-8729-742e36f3456f",
+          "targetName": "Pioneer DJM-900NXS2",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "pioneerdj-djm-a9",
+      "siteName": "PioneerDJ DJM-A9",
+      "siteCategory": "dj",
+      "siteDailyPriceEUR": 65,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "c1f07514-593d-4214-abba-543e17300d83",
+          "contractorId": "f567e5be-ccdc-42b3-8729-742e36f3456f",
+          "targetName": "Pioneer DJM-A9",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "pioneerdj-opus-quad",
+      "siteName": "PioneerDJ Opus Quad",
+      "siteCategory": "dj",
+      "siteDailyPriceEUR": 90,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "contractor_catalog",
+          "targetId": "23f166ab-5641-42aa-8df8-0ee997b6853e",
+          "contractorId": "f567e5be-ccdc-42b3-8729-742e36f3456f",
+          "targetName": "Pioneer OPUS QUAD",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "catalog_entry"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "dmx-splitter",
+      "siteName": "DMX Splitter",
+      "siteCategory": "light",
+      "siteDailyPriceEUR": 5,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "4b044de5-8414-4cb2-92b7-a53c3b4ac771",
+          "targetName": "DMX Splitter",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "pop-up-tent",
+      "siteName": "Pop-up tent",
+      "siteCategory": "kits",
+      "siteDailyPriceEUR": 25,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "00013dc7-1538-4018-bfdf-9b166182a3ed",
+          "targetName": "Тент",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    },
+    {
+      "siteProductId": "kablovska-motalica-50m-3x2-5",
+      "siteName": "Kablovska motalica 50m 3x2,5",
+      "siteCategory": "sound",
+      "siteDailyPriceEUR": 10,
+      "siteHidden": false,
+      "components": [
+        {
+          "targetKind": "own_model",
+          "targetId": "ff60c3be-527a-44fa-94e1-bdad5cdb3ecb",
+          "targetName": "E-50m 3×2.5",
+          "qtyPerSiteUnit": 1,
+          "countingUnit": "physical_unit"
+        }
+      ],
+      "reviewStatus": "user_approved_and_snapshot_id_verified"
+    }
+  ]
+}

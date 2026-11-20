@@ -23,6 +23,7 @@ import { createTransportModule } from "./modules/transport/index.js";
 import { createAppSettingsModule } from "./modules/appSettings/index.js";
 import { createContractorsModule } from "./modules/contractors/index.js";
 import { createSuppliesModule } from "./modules/supplies/index.js";
+import { createSiteIntegrationModule } from "./modules/siteIntegration/index.js";
 import { createApexService } from "./modules/apex/service.js";
 import { registerApexRoutes } from "./modules/apex/routes.js";
 import { createBillingService } from "./modules/billing/service.js";
@@ -99,6 +100,7 @@ export function createModules(bus: EventBus = new EventBus()) {
   const operations = createOperationsModule(pool, equipment.service, projects.service, venues.service, appSettings.service);
   const audit = createAuditModule(pool);
   const transport = createTransportModule(pool);
+  const siteIntegration = createSiteIntegrationModule(pool);
 
   setTelegramMessageLogger(async (message) => {
     await people.service.logTelegramDialogMessage(message);
@@ -934,9 +936,9 @@ export function createModules(bus: EventBus = new EventBus()) {
     }
   }
 
-  const modules = [appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, supplies, operations, transport, audit];
+  const modules = [appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, supplies, operations, transport, audit, siteIntegration];
 
-  return { bus, appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, supplies, operations, transport, audit, apex, billing, modules, authorizeFinanceProject, handleTelegramCallback, startReminderScheduler, startProjectProblemScheduler, startClientFollowupScheduler, startInventoryScheduler, reconcileSettledProjects };
+  return { bus, appSettings, people, equipment, contractors, projects, finance, venues, plans, notifications, catalog, supplies, operations, transport, audit, siteIntegration, apex, billing, modules, authorizeFinanceProject, handleTelegramCallback, startReminderScheduler, startProjectProblemScheduler, startClientFollowupScheduler, startInventoryScheduler, reconcileSettledProjects };
 }
 
 export type Wiring = ReturnType<typeof createModules>;

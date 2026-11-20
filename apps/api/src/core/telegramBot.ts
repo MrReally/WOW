@@ -17,11 +17,12 @@ import { evaluateTelegramAmount } from "./telegramFinance.js";
 /** Normalize a Telegram handle for comparison: drop a leading @, lowercase. */
 const normHandle = (s: string | null | undefined): string => (s ?? "").trim().replace(/^@/, "").toLowerCase();
 
-const tg = (method: string, body: unknown) =>
+const tg = (method: string, body: unknown, signal?: AbortSignal) =>
   fetch(`https://api.telegram.org/bot${env.auth.telegramBotToken}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   })
     .then((r) => r.json() as Promise<{ ok: boolean; result?: unknown; description?: string }>)
     .catch(() => null);
@@ -48,6 +49,14 @@ interface BotDeps {
   projects?: Projects.ProjectsService;
   equipment?: Equipment.EquipmentService;
   onCallback?: CallbackHandler;
+}
+
+/** A polling process is a resource.  Tests use this test-only registry in
+ * their global teardown; production owns the returned stopper in main.ts. */
+const activePollers = new Set<() => void>();
+
+export function stopTelegramBotsForTests(): void {
+  for (const stop of activePollers) stop();
 }
 
 type ApplicationField = "firstName" | "lastName" | "patronymic" | "nickname" | "email" | "birthDate" | "languages" | "about" | "source" | "photoFileId";
@@ -344,9 +353,17 @@ interface Update {
   callback_query?: { id: string; data?: string; from: { id: number; username?: string }; message?: { chat: { id: number }; message_id: number } };
 }
 
-export function startTelegramBot(deps: BotDeps): void {
+export function startTelegramBot(deps: BotDeps): () => void {
   const { people, finance, projects, equipment, onCallback } = deps;
-  if (!env.auth.telegramBotToken) return;
+  if (!env.auth.telegramBotToken) return () => undefined;
+  const abort = new AbortController();
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  const stop = () => {
+    abort.abort();
+    if (retryTimer) clearTimeout(retryTimer);
+    activePollers.delete(stop);
+  };
+  activePollers.add(stop);
   const send = async (
     chatId: string | number,
     text: string,
@@ -1884,9 +1901,9 @@ export function startTelegramBot(deps: BotDeps): void {
 
   async function loop() {
     // eslint-disable-next-line no-constant-condition
-    while (true) {
+    while (!abort.signal.aborted) {
       try {
-        const res = await tg("getUpdates", { offset, timeout: 25 });
+        const res = await tg("getUpdates", { offset, timeout: 25 }, abort.signal);
         const updates = (res?.result as Update[] | undefined) ?? [];
         for (const u of updates) {
           offset = u.update_id + 1;
@@ -1949,7 +1966,11 @@ export function startTelegramBot(deps: BotDeps): void {
           }
         }
       } catch {
-        await new Promise((r) => setTimeout(r, 3000));
+        if (abort.signal.aborted) break;
+        await new Promise<void>((resolve) => {
+          retryTimer = setTimeout(resolve, 3000);
+        });
+        retryTimer = undefined;
       }
     }
   }
@@ -1957,4 +1978,5 @@ export function startTelegramBot(deps: BotDeps): void {
   void loop();
   // eslint-disable-next-line no-console
   console.log("[telegram] bot polling started");
+  return stop;
 }
