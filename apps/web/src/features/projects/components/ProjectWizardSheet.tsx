@@ -8,6 +8,7 @@ import {
   useAddContractorItem,
   useClients,
   useContractors,
+  useContractorCatalog,
   useCreateContractor,
   useCreateClient,
   useCreateProject,
@@ -88,6 +89,7 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const equipmentUnits = useAllUnits();
   const equipmentZones = useEquipmentStorageZones();
   const contractors = useContractors();
+  const contractorCatalog = useContractorCatalog();
   const createClient = useCreateClient();
   const createVenue = useCreateVenue();
   const createProject = useCreateProject();
@@ -118,6 +120,9 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
   const [contractorDrafts, setContractorDrafts] = useState<ContractorDraft[]>([{ contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }]);
   const [newContractorName, setNewContractorName] = useState("");
   const [newContractorContacts, setNewContractorContacts] = useState("");
+  const [wizardCatalogFor, setWizardCatalogFor] = useState<string | null>(null);
+  const [wizardCatalogQuery, setWizardCatalogQuery] = useState("");
+  const [wizardCatalogQty, setWizardCatalogQty] = useState<Record<string, string>>({});
   const [financeDrafts, setFinanceDrafts] = useState<FinanceDraft[]>([{ name: "", client: "", cost: "" }]);
   const [projectNote, setProjectNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -413,9 +418,11 @@ export function ProjectWizardSheet({ open, onClose }: Props) {
                 <Input type="number" value={draft.price} onChange={(e) => patchContractor(idx, { price: e.target.value })} placeholder="Клиенту" />
                 <Input type="number" value={draft.cost} onChange={(e) => patchContractor(idx, { cost: e.target.value })} placeholder="Себес" />
               </div>
+              {draft.contractorId && draft.contractorId !== "__new__" && <Button variant="ghost" block onClick={() => { setWizardCatalogFor(draft.contractorId); setWizardCatalogQuery(""); }}>Из ассортимента</Button>}
             </DraftCard>
           ))}
           <Button variant="secondary" onClick={() => setContractorDrafts((x) => [...x, { contractorId: "", kind: "equipment", name: "", qty: "1", price: "", cost: "" }])}>+</Button>
+          <Sheet open={!!wizardCatalogFor} onClose={() => setWizardCatalogFor(null)} title="Ассортимент подрядчика"><div className="stack" style={{ padding: "0 var(--space-4) var(--space-4)" }}><Input value={wizardCatalogQuery} onChange={(event) => setWizardCatalogQuery(event.target.value)} placeholder="Поиск по всем полям позиции" />{(contractorCatalog.data ?? []).filter(item => item.contractorId === wizardCatalogFor && JSON.stringify(item).toLowerCase().includes(wizardCatalogQuery.toLowerCase())).map(item => { const qty = Number(wizardCatalogQty[item.id]) || 0; return <div className="lrow" key={item.id}><span style={{ flex: 1 }}><strong>{item.name}</strong><small>{item.note ?? ""}</small></span><Button variant="ghost" onClick={() => setWizardCatalogQty(rows => ({ ...rows, [item.id]: String(Math.max(0, qty - 1)) }))}>−</Button><Input type="number" min="0" value={wizardCatalogQty[item.id] ?? ""} onChange={event => setWizardCatalogQty(rows => ({ ...rows, [item.id]: event.target.value }))} style={{ width: 64 }} /><Button variant="ghost" onClick={() => setWizardCatalogQty(rows => ({ ...rows, [item.id]: String(qty + 1) }))}>+</Button></div>})}<Button block onClick={() => { const additions = (contractorCatalog.data ?? []).filter(item => item.contractorId === wizardCatalogFor && (Number(wizardCatalogQty[item.id]) || 0) > 0).map(item => ({ contractorId: wizardCatalogFor!, kind: "equipment" as const, name: item.name, qty: String(Number(wizardCatalogQty[item.id])), price: String(item.defaultCostEUR ?? 0), cost: String(item.defaultCostEUR ?? 0) })); if (additions.length) setContractorDrafts(rows => [...rows.filter(row => row.contractorId || row.name || row.price || row.cost), ...additions]); setWizardCatalogFor(null); setWizardCatalogQty({}); }}>Добавить выбранное</Button></div></Sheet>
         </WizardScreen>
       )}
 

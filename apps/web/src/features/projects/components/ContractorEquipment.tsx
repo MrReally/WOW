@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { projectRentalDays, type Projects } from "@sever/contracts";
-import { Card, Button, Field, Input, Select, EmptyState, StatusBadge } from "../../../ui-kit/index.ts";
+import { Card, Button, Field, Input, Select, EmptyState, StatusBadge, Sheet } from "../../../ui-kit/index.ts";
 import { useI18n } from "../../../app/i18n.tsx";
 import {
   useContractorItems,
@@ -64,6 +64,8 @@ export function ContractorEquipment({ projectId, projectStartsAt, projectEndsAt,
   const [pickupAt,setPickupAt]=useState("");
   const [catalogQty,setCatalogQty]=useState<Record<string,string>>({});
   const [editingOrderId,setEditingOrderId]=useState<string|null>(null);
+  const [catalogOpen,setCatalogOpen]=useState(false);
+  const [catalogQuery,setCatalogQuery]=useState("");
 
   const list = contractors.data ?? [];
   const rows = (items.data ?? []).filter(item=>!item.orderId);
@@ -101,7 +103,7 @@ export function ContractorEquipment({ projectId, projectStartsAt, projectEndsAt,
 
   return (
     <div className="stack">
-      {(orders.data??[]).map(order=><Card key={order.id}><div className="row row--between"><div><p className="card__title">{order.name}</p><p className="card__subtitle">{contractorName(order.contractorId)} · {order.fulfillmentMode==="dry_rental"?"Сухая аренда":"Доставка подрядчиком"}</p></div><div className="row"><StatusBadge tone={order.returnCompletedAt?"ok":order.receiptCompletedAt?"info":"neutral"}>{order.returnCompletedAt?"Оборот закрыт":order.receiptCompletedAt?"Принято":"Ожидает приёмки"}</StatusBadge>{canManage&&!order.receiptCompletedAt&&<Button variant="ghost" onClick={()=>editOrder(order)}>Изменить</Button>}</div></div><div className="stack" style={{gap:4,marginTop:8}}>{order.lines.map(line=><div className="row row--between" key={line.id}><span><strong>{line.name} × {line.qty}</strong>{line.note&&<small className="card__subtitle">Примечание: {line.note}</small>}</span><span className="card__subtitle">{line.returnedAt?"возвращено":line.receivedAt?"принято":"ожидается"}</span></div>)}</div><p className="card__subtitle" style={{marginTop:8}}>Подрядчику {eur(order.supplierPriceEUR)} · клиенту {eur(order.clientPriceEUR)}{order.deliveryAt?` · доставка ${dateTime(order.deliveryAt)}`:""}{order.pickupAt?` · забор ${dateTime(order.pickupAt)}`:""}</p></Card>)}
+      {(orders.data??[]).map(order=><Card key={order.id}><div className="row row--between"><div><p className="card__title">{order.name}</p><p className="card__subtitle">{contractorName(order.contractorId)} · {order.fulfillmentMode==="dry_rental"?"Сухая аренда":"Доставка подрядчиком"}</p></div><div className="row"><StatusBadge tone={order.returnCompletedAt?"ok":order.receiptCompletedAt?"info":"neutral"}>{order.returnCompletedAt?"Оборот закрыт":order.receiptCompletedAt?"Принято":"Ожидает приёмки"}</StatusBadge>{canManage&&<Button variant="ghost" onClick={()=>editOrder(order)}>{order.receiptCompletedAt?"Изменить цену":"Изменить"}</Button>}</div></div><div className="stack" style={{gap:4,marginTop:8}}>{order.lines.map(line=><div className="row row--between" key={line.id}><span><strong>{line.name} × {line.qty}</strong>{line.note&&<small className="card__subtitle">{line.note}</small>}</span><span className="card__subtitle">{line.returnedAt?"возвращено":line.receivedAt?"принято":"ожидается"}</span></div>)}</div><p className="card__subtitle" style={{marginTop:8}}>Подрядчику {eur(order.supplierPriceEUR)} · клиенту {eur(order.clientPriceEUR)}{order.deliveryAt?` · доставка ${dateTime(order.deliveryAt)}`:""}{order.pickupAt?` · забор ${dateTime(order.pickupAt)}`:""}</p></Card>)}
       {rows.length === 0 ? <EmptyState title={t("contractors.empty")} /> : contractorIds.map((id) => {
         const group = rows.filter((item) => item.contractorId === id);
         const allBooked = group.every((item) => item.booked);
@@ -182,12 +184,12 @@ export function ContractorEquipment({ projectId, projectStartsAt, projectEndsAt,
 
       {canManage && list.length>0 && <Card>
         <p className="card__title">{editingOrderId?"Изменить заказ подрядчику":"Заказ из каталога подрядчика"}</p>
-        <p className="card__subtitle">{editingOrderId?"Изменения доступны до завершения приёмки в Operations.":"Несколько приборов можно объединить в один набор с общей ценой."}</p>
+        <p className="card__subtitle">{editingOrderId?"После приёмки можно корректировать цены; состав заказа останется прежним.":"Несколько приборов можно объединить в один набор с общей ценой."}</p>
         <Field label="Подрядчик"><Select value={selectedContractorId} onChange={event=>{setContractorId(event.target.value);setOrderWarehouseId("");setCatalogQty({});}} options={list.map(item=>({value:item.id,label:item.name}))}/></Field>
         {warehouses.length>0&&<Field label="Склад подрядчика"><Select value={orderWarehouseId} onChange={event=>{setOrderWarehouseId(event.target.value);setCatalogQty({});}} options={[{value:"",label:"Все склады"},...warehouses.map(item=>({value:item.id,label:item.name}))]}/></Field>}
         <Field label="Название набора"><Input value={orderName} onChange={event=>setOrderName(event.target.value)} placeholder="Комплект света"/></Field>
         <Field label="Исполнение"><Select value={fulfillmentMode} onChange={event=>setFulfillmentMode(event.target.value as Projects.ContractorFulfillmentMode)} options={[{value:"dry_rental",label:"Сухая аренда — забираем сами"},{value:"contractor_delivery",label:"Подрядчик доставляет и забирает"}]}/></Field>
-        <div className="stack" style={{gap:6,marginTop:8}}>{contractorCatalog.map(item=>{const qty=Number(catalogQty[item.id])||0;return <div className="lrow" key={item.id}><label className="row" style={{flex:1,gap:8}}><input type="checkbox" checked={qty>0} onChange={event=>setCatalogQty(current=>({...current,[item.id]:event.target.checked?"1":""}))}/><span><strong>{item.name}</strong><small>{item.maxQty==null?"Количество неизвестно":`максимум ${item.maxQty}`} · сухая {eur(item.dryRentalCostEUR??item.defaultCostEUR??0)} · с доставкой {eur(item.deliveredCostEUR??item.defaultCostEUR??0)}</small>{item.note&&<small className="card__subtitle">Примечание: {item.note}</small>}</span></label>{qty>0&&<Input type="number" min="1" max={item.maxQty??undefined} value={catalogQty[item.id]} onChange={event=>setCatalogQty(current=>({...current,[item.id]:event.target.value}))}/>}</div>;})}</div>
+        <Button variant="secondary" block onClick={()=>setCatalogOpen(true)}>Выбрать из ассортимента{selectedCatalog.length?` · ${selectedCatalog.length}`:""}</Button>
         {contractorCatalog.length===0&&<p className="card__subtitle" style={{marginTop:8}}>В каталоге выбранного подрядчика пока нет оборудования.</p>}
         {fulfillmentMode==="contractor_delivery"&&<div className="row"><Field label="Доставка на проект"><ConfiguredDateTimeInput value={deliveryAt} onChange={setDeliveryAt}/></Field><Field label="Забор с проекта"><ConfiguredDateTimeInput value={pickupAt} onChange={setPickupAt}/></Field></div>}
         <div className="row"><Field label={`Цена подрядчика, €${suggestedSupplier?` · каталог ${eur(suggestedSupplier)}`:""}`}><Input type="number" min="0" value={supplierTotal} onChange={event=>setSupplierTotal(event.target.value)} placeholder={suggestedSupplier?String(suggestedSupplier):"0"}/></Field><Field label="Цена клиенту, €"><Input type="number" min="0" value={clientTotal} onChange={event=>setClientTotal(event.target.value)}/></Field></div>
@@ -195,6 +197,8 @@ export function ContractorEquipment({ projectId, projectStartsAt, projectEndsAt,
         <Button block disabled={!selectedContractorId||selectedCatalog.length===0||exceedsKnownMaximum||(editingOrderId?updateOrder.isPending:createOrder.isPending)||(fulfillmentMode==="contractor_delivery"&&(!deliveryAt||!pickupAt))} onClick={editingOrderId?saveOrder:submitOrder}>{editingOrderId?"Сохранить заказ":"Создать заказ подрядчику"}</Button>
         {editingOrderId&&<Button block variant="ghost" onClick={()=>{setEditingOrderId(null);setOrderName("");setSupplierTotal("");setClientTotal("");setDeliveryAt("");setPickupAt("");setCatalogQty({});}}>Отмена</Button>}
       </Card>}
+
+      <Sheet open={catalogOpen} onClose={()=>setCatalogOpen(false)} title="Ассортимент подрядчика"><div className="stack" style={{padding:"0 var(--space-4) var(--space-4)"}}><Input value={catalogQuery} onChange={event=>setCatalogQuery(event.target.value)} placeholder="Поиск по названию, заметке и цене"/>{contractorCatalog.filter(item=>JSON.stringify(item).toLowerCase().includes(catalogQuery.trim().toLowerCase())).map(item=>{const value=catalogQty[item.id]??"";const qty=Number(value)||0;return <div className="lrow" key={item.id}><span style={{flex:1}}><strong>{item.name}</strong><small>{item.maxQty==null?"Количество неизвестно":`максимум ${item.maxQty}`} · сухая {eur(item.dryRentalCostEUR??item.defaultCostEUR??0)} · с доставкой {eur(item.deliveredCostEUR??item.defaultCostEUR??0)}</small>{item.note&&<small>{item.note}</small>}</span><Button variant="ghost" onClick={()=>setCatalogQty(current=>({...current,[item.id]:String(Math.max(0,qty-1))}))}>−</Button><Input type="number" min="0" max={item.maxQty??undefined} value={value} onChange={event=>setCatalogQty(current=>({...current,[item.id]:event.target.value}))} style={{width:64}}/><Button variant="ghost" onClick={()=>setCatalogQty(current=>({...current,[item.id]:String(qty+1)}))}>+</Button></div>})}{contractorCatalog.length===0&&<EmptyState title="В каталоге пока нет оборудования"/>}<Button block onClick={()=>setCatalogOpen(false)}>Готово</Button></div></Sheet>
 
       {canManage && <Card>
         <div className="row row--between">

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ActionIcon, Card, Button, StatusBadge, Loading, ErrorState, EmptyState, ProjectSearch, WSGlyph } from "../../ui-kit/index.ts";
+import { Card, Button, StatusBadge, Loading, ErrorState, EmptyState, ProjectSearch, WSGlyph } from "../../ui-kit/index.ts";
 import type { Projects } from "@sever/contracts";
 import { projectStatusLabel, projectStatusTone, dateRange } from "../../lib/labels.ts";
 import { useSession } from "../../app/session.ts";
@@ -94,8 +94,8 @@ export function ProjectsPage() {
 
       <div className="planning-controls">
         <div className="planning-view-switch planning-archive-switch" aria-label="Раздел Planning">
-          <button className={archiveMode === "work" ? "is-active" : ""} aria-label="Рабочий журнал" aria-pressed={archiveMode === "work"} onClick={() => { setArchiveMode("work"); setStatusFilters([]); }}><WSGlyph type="rows" size={20} /><span className="workspace-tab-label" aria-hidden="true">Рабочий журнал</span></button>
-          <button className={archiveMode === "archive" ? "is-active" : ""} aria-label="Проведённые и отменённые" aria-pressed={archiveMode === "archive"} onClick={() => { setArchiveMode("archive"); setStatusFilters([]); }}><ActionIcon name="calendar" /><span className="workspace-tab-label" aria-hidden="true">Проведённые и отменённые</span></button>
+          <button className={archiveMode === "work" ? "is-active" : ""} aria-label="Рабочий журнал" aria-pressed={archiveMode === "work"} onClick={() => { setArchiveMode("work"); setStatusFilters([]); }}><WSGlyph type="rows" size={20} /><span className="workspace-tab-label" aria-hidden="true">В работе</span></button>
+          <button className={archiveMode === "archive" ? "is-active" : ""} aria-label="Завершённые и отменённые" aria-pressed={archiveMode === "archive"} onClick={() => { setArchiveMode("archive"); setStatusFilters([]); }}><span className="workspace-tab-symbol" aria-hidden="true">✓</span><span className="workspace-tab-label" aria-hidden="true">Архив</span></button>
         </div>
         {archiveMode === "work" && <div className="row planning-status-filters">
           <button

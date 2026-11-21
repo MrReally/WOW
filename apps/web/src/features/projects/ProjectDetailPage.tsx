@@ -1203,7 +1203,7 @@ export function ProjectDetailPage({ projectId, embedded = false }: { projectId?:
                   <div className="invoice-line" key={line.id}>
                     <div className="row" style={{ gap: 6 }}>
                       <Input disabled={!canManageFinance} value={line.name} onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, name: e.target.value } : row))} placeholder="Наименование" />
-                      {canManageFinance && <button className="icon-btn icon-btn--danger" onClick={() => setEstimateDrafts((rows) => rows.flatMap((row, i) => i !== index ? [row] : row.source === "manual" ? [] : [{ ...row, hidden: true }]))} aria-label="Удалить позицию">×</button>}
+                      {canManageFinance && <button className="icon-btn icon-btn--danger" onClick={() => setEstimateDrafts((rows) => rows.filter((_, i) => i !== index))} aria-label="Удалить позицию">×</button>}
                     </div>
                     <div className="invoice-line-grid">
                       <Input disabled={!canManageFinance} value={line.section} list="project-estimate-sections" autoComplete="on" onChange={(e) => setEstimateDrafts((rows) => rows.map((row, i) => i === index ? { ...row, section: e.target.value } : row))} placeholder="Категория" />

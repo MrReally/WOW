@@ -685,7 +685,7 @@ export interface CreateContractorOrderInput {
   lines: { catalogItemId: ID; name: string; qty: number }[];
 }
 
-/** An order can be revised while it is still in Planning, before receipt begins. */
+/** After receipt, an order's composition is immutable, while its supplier and client prices remain correctable. */
 export type UpdateContractorOrderInput = Omit<CreateContractorOrderInput, "projectId">;
 
 // ── Public service contract ──────────────────────────────────────────────────

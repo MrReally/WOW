@@ -2349,7 +2349,8 @@ export function createProjectsService(
           pickupTimingId=(await one<{id:string}>(client,`INSERT INTO projects.timings (project_id,title,starts_at,ends_at) VALUES ($1,$2,$3,$4) RETURNING id`,[input.projectId,`Забор подрядчиком: ${input.name.trim()}`,input.pickupAt,pickupEnd]))!.id;
           await query(client,`UPDATE projects.contractor_orders SET delivery_timing_id=$2,pickup_timing_id=$3 WHERE id=$1`,[row!.id,deliveryTimingId,pickupTimingId]);
         }
-        await query(client,`INSERT INTO projects.contractor_items (project_id,contractor_id,kind,pricing_mode,name,qty,price_eur,cost_eur,note,booked,order_id,paid_at) VALUES ($1,$2,'equipment','flat_total',$3,1,$4,$5,$6,$7,$8,CASE WHEN $5::numeric=0 THEN now() ELSE NULL END)`,[input.projectId,input.contractorId,input.name.trim(),input.clientPriceEUR,input.supplierPriceEUR,input.fulfillmentMode==='contractor_delivery'?'Цена подрядчика включает доставку':'Сухая аренда у подрядчика',input.booked??false,row!.id]);
+        const totalQty=input.lines.reduce((sum,line)=>sum+line.qty,0);
+        await query(client,`INSERT INTO projects.contractor_items (project_id,contractor_id,kind,pricing_mode,name,qty,price_eur,cost_eur,note,booked,order_id,paid_at) VALUES ($1,$2,'equipment','flat_total',$3,$4,$5,$6,$7,$8,$9,CASE WHEN $6::numeric=0 THEN now() ELSE NULL END)`,[input.projectId,input.contractorId,input.name.trim(),totalQty,input.clientPriceEUR/totalQty,input.supplierPriceEUR/totalQty,input.fulfillmentMode==='contractor_delivery'?'Цена подрядчика включает доставку':'Сухая аренда у подрядчика',input.booked??false,row!.id]);
         for (const line of input.lines) {
           const catalogItem=catalogItems.find(item=>item.id===line.catalogItemId)!;
           await query(client,`INSERT INTO projects.contractor_order_lines (order_id,catalog_item_id,name,note,qty) VALUES ($1,$2,$3,$4,$5)`,[row!.id,line.catalogItemId,line.name.trim(),catalogItem.note,line.qty]);
@@ -2362,7 +2363,6 @@ export function createProjectsService(
       const order = await one<ContractorOrderRow & { project_status: Projects.ProjectStatus }>(db, `SELECT co.*, p.status AS project_status FROM projects.contractor_orders co JOIN projects.projects p ON p.id=co.project_id WHERE co.id=$1`, [id]);
       if (!order) throw NotFound("contractor order", id);
       if (order.project_status === "cancelled") throw BadRequest("нельзя изменить заказ подрядчику для отменённого проекта");
-      if (order.receipt_completed_at) throw BadRequest("нельзя изменить заказ после завершения приёмки");
       if (!input.lines.length) throw BadRequest("добавьте хотя бы одну позицию каталога");
       const catalogItems = await loadContractorCatalogItems(input.lines.map(line => line.catalogItemId));
       for (const line of input.lines) {
@@ -2372,6 +2372,11 @@ export function createProjectsService(
       }
       if (input.fulfillmentMode === "contractor_delivery" && (!input.deliveryAt || !input.pickupAt)) throw BadRequest("для доставки подрядчиком укажите доставку и забор");
       if (input.deliveryAt && input.pickupAt && Date.parse(input.pickupAt) <= Date.parse(input.deliveryAt)) throw BadRequest("забор должен быть позже доставки");
+      const existingLines=await query<ContractorOrderLineRow>(db,`SELECT * FROM projects.contractor_order_lines WHERE order_id=$1 ORDER BY id`,[id]);
+      if (order.receipt_completed_at) {
+        const sameOrder = input.contractorId===order.contractor_id && (input.warehouseId??null)===order.warehouse_id && input.name.trim()===order.name && input.fulfillmentMode===order.fulfillment_mode && (input.deliveryAt??null)===(order.delivery_at?.toISOString()??null) && (input.pickupAt??null)===(order.pickup_at?.toISOString()??null) && input.lines.length===existingLines.length && input.lines.every(line=>existingLines.some(existing=>existing.catalog_item_id===line.catalogItemId&&existing.name===line.name.trim()&&Number(existing.qty)===line.qty));
+        if (!sameOrder) throw BadRequest("после приёмки можно изменить только цену подрядчика и цену клиенту");
+      }
       const updated = await tx(async client => {
         let deliveryTimingId = order.delivery_timing_id;
         let pickupTimingId = order.pickup_timing_id;
@@ -2389,11 +2394,14 @@ export function createProjectsService(
           pickupTimingId = null;
         }
         const row = await one<ContractorOrderRow>(client, `UPDATE projects.contractor_orders SET contractor_id=$2, warehouse_id=$3, name=$4, fulfillment_mode=$5, supplier_price_eur=$6, client_price_eur=$7, delivery_at=$8, pickup_at=$9, booked=$10, delivery_timing_id=$11, pickup_timing_id=$12 WHERE id=$1 RETURNING *`, [id, input.contractorId, input.warehouseId ?? null, input.name.trim(), input.fulfillmentMode, input.supplierPriceEUR, input.clientPriceEUR, input.deliveryAt ?? null, input.pickupAt ?? null, input.booked ?? false, deliveryTimingId, pickupTimingId]);
-        await query(client, `UPDATE projects.contractor_items SET contractor_id=$2, name=$3, price_eur=$4, cost_eur=$5, note=$6, booked=$7 WHERE order_id=$1`, [id, input.contractorId, input.name.trim(), input.clientPriceEUR, input.supplierPriceEUR, input.fulfillmentMode === "contractor_delivery" ? "Цена подрядчика включает доставку" : "Сухая аренда у подрядчика", input.booked ?? false]);
-        await query(client, `DELETE FROM projects.contractor_order_lines WHERE order_id=$1`, [id]);
-        for (const line of input.lines) {
-          const catalogItem = catalogItems.find(item => item.id === line.catalogItemId)!;
-          await query(client, `INSERT INTO projects.contractor_order_lines (order_id,catalog_item_id,name,note,qty) VALUES ($1,$2,$3,$4,$5)`, [id, line.catalogItemId, line.name.trim(), catalogItem.note, line.qty]);
+        const totalQty=input.lines.reduce((sum,line)=>sum+line.qty,0);
+        await query(client, `UPDATE projects.contractor_items SET contractor_id=$2, name=$3, qty=$4, price_eur=$5, cost_eur=$6, note=$7, booked=$8 WHERE order_id=$1`, [id, input.contractorId, input.name.trim(), totalQty, input.clientPriceEUR/totalQty, input.supplierPriceEUR/totalQty, input.fulfillmentMode === "contractor_delivery" ? "Цена подрядчика включает доставку" : "Сухая аренда у подрядчика", input.booked ?? false]);
+        if (!order.receipt_completed_at) {
+          await query(client, `DELETE FROM projects.contractor_order_lines WHERE order_id=$1`, [id]);
+          for (const line of input.lines) {
+            const catalogItem = catalogItems.find(item => item.id === line.catalogItemId)!;
+            await query(client, `INSERT INTO projects.contractor_order_lines (order_id,catalog_item_id,name,note,qty) VALUES ($1,$2,$3,$4,$5)`, [id, line.catalogItemId, line.name.trim(), catalogItem.note, line.qty]);
+          }
         }
         return row;
       });

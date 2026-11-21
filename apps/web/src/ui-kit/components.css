@@ -3114,6 +3114,8 @@ textarea.input:focus {
     justify-content: center;
     padding: 0 8px;
   }
+  .planning-archive-switch .workspace-tab-label { display: block !important; font-size: 10px; line-height: 1; }
+  .planning-archive-switch button { flex-direction: column; gap: 2px; }
   .workspace-tab-label { display: none; }
   .workspace-tab-symbol { font-size: 26px; font-weight: 700; line-height: 1; }
   .finance-tabs > button svg,
