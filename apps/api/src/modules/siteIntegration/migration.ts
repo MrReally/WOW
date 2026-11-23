@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS site_integration.inbox (
   environment text NOT NULL CHECK (environment IN ('test','live')),
   external_order_id text NOT NULL,
   raw_payload jsonb NOT NULL,
+  raw_body bytea,
   payload_digest text,
   status text NOT NULL DEFAULT 'received' CONSTRAINT inbox_status_check CHECK (status IN ('received','processing','needs_review','imported','failed','retryable_failure')),
   attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
@@ -29,6 +30,10 @@ CREATE TABLE IF NOT EXISTS site_integration.inbox (
     OR (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)
   )
 );
+-- R2 preserves the signed HTTP bytes separately from R1's queryable JSONB.
+-- Existing R1 rows legitimately have no HTTP body and remain readable.
+ALTER TABLE site_integration.inbox ADD COLUMN IF NOT EXISTS delivery_id text;
+ALTER TABLE site_integration.inbox ADD COLUMN IF NOT EXISTS raw_body bytea;
 -- The first R1 migration did not require an expiry for a processing lease.
 -- Validate before adding the stricter constraint so a legacy upgrade fails with
 -- a useful diagnostic and leaves the migration transaction untouched.

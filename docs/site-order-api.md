@@ -120,6 +120,27 @@ Inbox в Telegram-пульте не является общим правом р�
 4. Согласовать таблицу соответствия `siteProductId → modelId` SEVER для каждого товара. Для неизвестного или неоднозначного товара сохранять заявку на ручной разбор, не выбирать модель по похожему имени.
 5. Хранить секрет только на сервере, отправлять по HTTPS, повторять запрос при временных ошибках с тем же внешним ID и сохранять ответ SEVER. Не повторять создание с новым ID после таймаута.
 
+## Приёмник заказов сайта (R2, test-only)
+
+Работает `POST /api/integrations/site/webhook`. Требуются ровно по одному заголовку `X-Sever-Event: order.created`, `X-Sever-Delivery`, `X-Sever-Timestamp` и `X-Sever-Signature`. Подпись `sha256=<hex>` проверяется timing-safe как HMAC-SHA256 по точным байтам `timestamp + "." + raw_body`; timestamp — unix seconds в окне ±300 секунд.
+
+Тело читается ровно один раз через ограниченный поток: как с `Content-Length`, так и chunked-запрос ограничен 256 KiB во время чтения; превышение возвращает `413`. R2 принимает только payload с `source: "test"` и непустым `SEVER_SITE_WEBHOOK_TEST_SECRET`. Live webhook отключён: `source: "live"` отвергается, отдельного live-секрета R2 не использует.
+
+После проверки contract единственный эффект — commit одной строки `site_integration.inbox`. `raw_payload` остаётся совместимым JSONB, а `raw_body` хранит исходные byte-exact HTTP bytes; SHA-256 digest вычислен по ним. Идемпотентность ключа `(source, environment, external_order_id)`: тот же body даёт `200` без второй строки, иной body — `409` без перезаписи. Успех возвращается только после commit; ошибка БД остаётся не-2xx. Receiver не создаёт клиентов, проекты, reservations, contractor orders, финансовые/складские записи или уведомления; worker и импорт в R2 отсутствуют.
+
+У строк, созданных до R2, `raw_body` и `payload_digest` могут быть `NULL`: исходные HTTP-байты для них неизвестны и не подставляются. Поэтому byte-exact forensic-проверка таких legacy-строк невозможна; JSONB-данные остаются доступными как прежде.
+
+| Ответ | Значение |
+|---|---|
+| `200` | durable commit или точный повтор |
+| `400` | неподдерживаемый event |
+| `401` | неверные/повторяющиеся security headers, timestamp или подпись |
+| `403` | live source выключен |
+| `409` | тот же order ID с иным body |
+| `413` | тело больше 256 KiB |
+| `422` | signed payload нарушает contract |
+| `500` | БД не закоммитила запись; сайт должен повторить |
+
 ## Что уже подготовлено в R1
 
 В коде есть только фундамент безопасного импорта; публичный приёмник, аутентификация интеграции и worker **ещё не реализованы**. Новый модуль `site_integration` хранит входящий raw payload с составным ключом `(source, environment, external_order_id)`, статусом, lease/retry-полями и неизменяемым quote snapshot. Допустимые статусы inbox: `received`, `processing`, `needs_review`, `imported`, `failed`, `retryable_failure`; они одинаковы в PostgreSQL и общем контракте. `environment` — обязательный `test` или `live`, поэтому эти потоки не являются одним неразличимым источником.

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { createHash, randomUUID } from "node:crypto";
+import type { SiteWebhookPayloadDTO } from "@sever/contracts/site-integration";
 import { pool } from "../src/core/db.js";
 import { runMigrations } from "../src/core/migrate.js";
 import { siteIntegrationMigration } from "../src/modules/siteIntegration/migration.js";
+import { createSiteIntegrationService } from "../src/modules/siteIntegration/service.js";
 
 async function migrated() {
   await runMigrations();
@@ -116,5 +119,53 @@ describe.sequential("R1 PostgreSQL invariants", () => {
       await client.query("ROLLBACK").catch(() => undefined);
       client.release();
     }
+  });
+});
+
+describe.sequential("R2 webhook PostgreSQL invariants", () => {
+  it("keeps exact signed bytes, JSONB compatibility, and a matching digest", async () => {
+    await migrated();
+    const service = createSiteIntegrationService(pool);
+    const id = `r2-byte-exact-${randomUUID()}`;
+    const rawBody = Buffer.from(`{ "event":"order.created", "id":"${id}", "source":"test" }`);
+    const payload: SiteWebhookPayloadDTO = { id, event: "order.created", createdAt: "2026-11-08T12:00:00Z", source: "test", lang: "ru", items: [{ id: "x", name: { sr: "X", ru: "X", en: "X" }, qty: 1, pricePerDay: 1 }], rental: { start: "2026-11-20", end: "2026-11-22", pickupTime: "10:00", returnTime: "10:00", days: 2, discountPercent: 0 }, totals: { perDay: 1, total: 2, currency: "EUR" }, delivery: { type: "pickup", address: "" }, customer: { name: "I", telegram: "", phone: "+381601234567", instagram: "", other: "", preferred: ["whatsapp"] } };
+    await service.receiveWebhook({ deliveryId: "r2-byte-delivery", payload, rawBody });
+    const stored = await pool.query<{ raw_body: Buffer; payload_digest: string; raw_payload: { id: string; source: string } }>("SELECT raw_body, payload_digest, raw_payload FROM site_integration.inbox WHERE source='sever-website' AND environment='test' AND external_order_id=$1", [id]);
+    expect(stored.rows[0]!.raw_body.equals(rawBody)).toBe(true);
+    expect(stored.rows[0]!.payload_digest).toBe(createHash("sha256").update(rawBody).digest("hex"));
+    expect(stored.rows[0]!.raw_payload).toMatchObject({ id, source: "test" });
+  });
+
+  it("serializes duplicate and conflicting concurrent deliveries without overwriting the original", async () => {
+    await migrated();
+    const service = createSiteIntegrationService(pool);
+    const id = `r2-concurrent-${randomUUID()}`;
+    const payload: SiteWebhookPayloadDTO = { id, event: "order.created", createdAt: "2026-11-08T12:00:00Z", source: "test", lang: "ru", items: [{ id: "x", name: { sr: "X", ru: "X", en: "X" }, qty: 1, pricePerDay: 1 }], rental: { start: "2026-11-20", end: "2026-11-22", pickupTime: "10:00", returnTime: "10:00", days: 2, discountPercent: 0 }, totals: { perDay: 1, total: 2, currency: "EUR" }, delivery: { type: "pickup", address: "" }, customer: { name: "I", telegram: "", phone: "+381601234567", instagram: "", other: "", preferred: ["whatsapp"] } };
+    const raw = Buffer.from(JSON.stringify(payload));
+    const results = await Promise.all(Array.from({ length: 8 }, (_, index) => service.receiveWebhook({ deliveryId: `r2-concurrent-${index}`, payload, rawBody: raw })));
+    expect(results.filter(result => result.outcome === "received")).toHaveLength(1);
+    expect(results.filter(result => result.outcome === "duplicate")).toHaveLength(7);
+    const conflict = await service.receiveWebhook({ deliveryId: "r2-conflict", payload, rawBody: Buffer.from(JSON.stringify({ ...payload, customer: { ...payload.customer, name: "Changed" } })) });
+    expect(conflict.outcome).toBe("conflict");
+    expect(Number((await pool.query("SELECT count(*) FROM site_integration.inbox WHERE source='sever-website' AND environment='test' AND external_order_id=$1", [id])).rows[0]!.count)).toBe(1);
+  });
+
+  it("isolates the same external ID by environment and rolls back failed inserts", async () => {
+    await migrated();
+    const service = createSiteIntegrationService(pool);
+    const id = `r2-scoped-${randomUUID()}`;
+    const base: SiteWebhookPayloadDTO = { id, event: "order.created", createdAt: "2026-11-08T12:00:00Z", source: "test", lang: "ru", items: [{ id: "x", name: { sr: "X", ru: "X", en: "X" }, qty: 1, pricePerDay: 1 }], rental: { start: "2026-11-20", end: "2026-11-22", pickupTime: "10:00", returnTime: "10:00", days: 2, discountPercent: 0 }, totals: { perDay: 1, total: 2, currency: "EUR" }, delivery: { type: "pickup", address: "" }, customer: { name: "I", telegram: "", phone: "+381601234567", instagram: "", other: "", preferred: ["whatsapp"] } };
+    await Promise.all([service.receiveWebhook({ deliveryId: "r2-test", payload: base, rawBody: Buffer.from(JSON.stringify(base)) }), service.receiveWebhook({ deliveryId: "r2-live", payload: { ...base, source: "live" }, rawBody: Buffer.from(JSON.stringify({ ...base, source: "live" })) })]);
+    expect(Number((await pool.query("SELECT count(*) FROM site_integration.inbox WHERE source='sever-website' AND external_order_id=$1", [id])).rows[0]!.count)).toBe(2);
+    const queries: string[] = [];
+    const failing = createSiteIntegrationService({ connect: async () => ({ query: async (sql: string) => { queries.push(sql); if (sql.startsWith("INSERT")) throw new Error("insert failed"); return { rowCount: 0, rows: [] }; }, release: () => undefined }) } as never);
+    await expect(failing.receiveWebhook({ deliveryId: "r2-failure", payload: base, rawBody: Buffer.from("{}") })).rejects.toThrow("insert failed");
+    expect(queries).toEqual(["BEGIN", expect.stringContaining("INSERT INTO site_integration.inbox"), "ROLLBACK"]);
+    const commitFailing = createSiteIntegrationService({ connect: async () => ({ query: async (sql: string) => {
+      if (sql === "COMMIT") throw new Error("commit failed");
+      if (sql.startsWith("INSERT")) return { rowCount: 1, rows: [{ id: "uncommitted" }] };
+      return { rowCount: 0, rows: [] };
+    }, release: () => undefined }) } as never);
+    await expect(commitFailing.receiveWebhook({ deliveryId: "r2-commit-failure", payload: base, rawBody: Buffer.from("{}") })).rejects.toThrow("commit failed");
   });
 });

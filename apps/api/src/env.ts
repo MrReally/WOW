@@ -21,6 +21,10 @@ export const env = {
   /** On boot, load demo data if the database is empty (first container run). */
   seedOnStart: bool(process.env.SEED_ON_START, false),
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? "",
+  siteWebhook: {
+    /** R2 accepts test deliveries only; live delivery remains deliberately disabled. */
+    testSecret: process.env.SEVER_SITE_WEBHOOK_TEST_SECRET ?? "",
+  },
   /** Destructive database reset is disabled in production unless explicitly enabled. */
   allowDataReset: bool(process.env.ALLOW_DATA_RESET, false),
   /** Restore is separately gated because it replaces every schema and row. */
