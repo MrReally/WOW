@@ -87,7 +87,12 @@ export function registerSiteIntegrationRoutes(app: FastifyInstance, service: Ret
     let payload;
     try { payload = parseSiteWebhookPayload(request.body); } catch { return reject(reply, 422, "invalid_webhook_payload"); }
     if (payload.source !== "test") return reject(reply, 403, "site_webhook_environment_disabled");
-    const result = await service.receiveWebhook({ deliveryId, payload, rawBody });
+    let result;
+    try {
+      result = await service.receiveWebhook({ deliveryId, payload, rawBody });
+    } catch {
+      return reply.code(500).send({ error: { code: "site_webhook_persistence_failed", message: "site webhook rejected" } });
+    }
     if (result.outcome === "conflict") return reject(reply, 409, "duplicate_payload_conflict");
     return reply.code(200).send({ ok: true, duplicate: result.outcome === "duplicate" });
   });

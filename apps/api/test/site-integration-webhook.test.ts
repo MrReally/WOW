@@ -32,6 +32,13 @@ async function socketRequest(app: ReturnType<typeof Fastify>, rawRequest: string
   return response;
 }
 
+async function listeningAddress(app: ReturnType<typeof Fastify>): Promise<{ port: number }> {
+  if (!app.server.listening) await app.listen({ host: "127.0.0.1", port: 0 });
+  const address = app.server.address();
+  if (!address || typeof address === "string") throw new Error("expected TCP listener");
+  return address;
+}
+
 function wireHeaders(raw: string, extra: string[] = []) {
   const signed = headers(raw);
   return [
@@ -122,6 +129,61 @@ describe("R2 webhook receiver", () => {
     const duplicateTimestamp = await socketRequest(app, wireHeaders(raw, ["Transfer-Encoding: chunked", `Content-Length: ${Buffer.byteLength(raw)}`, `X-Sever-Timestamp: ${Math.floor(Date.now() / 1000)}`]) + `${Buffer.byteLength(raw).toString(16)}\r\n${raw}\r\n0\r\n\r\n`);
     expect(duplicateTimestamp === "" || /^HTTP\/1\.1 400/.test(duplicateTimestamp)).toBe(true);
     expect(service.receiveWebhook).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("TEST-1: survives a real chunked client abort without persisting a partial order", async () => {
+    const service = { receiveWebhook: vi.fn(async () => ({ outcome: "received" as const, inboxId: "id" })) };
+    const app = Fastify();
+    registerSiteIntegrationRoutes(app, service);
+    const address = await listeningAddress(app);
+    const aborted = body("r2-client-abort");
+    const serverSideClose = new Promise<void>(resolve => app.server.once("connection", connection => connection.once("close", resolve)));
+    const socket = connect(address.port, "127.0.0.1");
+    const errors: Error[] = [];
+    const onUnhandled = (reason: unknown) => { errors.push(reason instanceof Error ? reason : new Error(String(reason))); };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      await once(socket, "connect");
+      socket.write(wireHeaders(aborted, ["Transfer-Encoding: chunked"]));
+      socket.write(`${Math.floor(Buffer.byteLength(aborted) / 2).toString(16)}\r\n${aborted.slice(0, Math.floor(aborted.length / 2))}`);
+      socket.destroy();
+      await once(socket, "close");
+      await serverSideClose;
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+    expect(errors).toEqual([]);
+    expect(service.receiveWebhook).not.toHaveBeenCalled();
+    const good = body("r2-after-client-abort");
+    expect(await socketRequest(app, wireHeaders(good, [`Content-Length: ${Buffer.byteLength(good)}`]) + good)).toMatch(/^HTTP\/1\.1 200/);
+    expect(service.receiveWebhook).toHaveBeenCalledTimes(1);
+    await app.close();
+  }, 10_000);
+
+  it("TEST-2: rejects an invalid HMAC over actual HTTP without invoking persistence", async () => {
+    const service = { receiveWebhook: vi.fn(async () => ({ outcome: "received" as const, inboxId: "id" })) };
+    const app = Fastify();
+    registerSiteIntegrationRoutes(app, service);
+    const raw = body("r2-invalid-hmac");
+    const invalid = { ...headers(raw), "x-sever-signature": "sha256=" + "0".repeat(64) };
+    const request = [
+      "POST /api/integrations/site/webhook HTTP/1.1",
+      "Host: 127.0.0.1",
+      ...Object.entries(invalid).map(([name, value]) => `${name}: ${value}`),
+      `Content-Length: ${Buffer.byteLength(raw)}`,
+      "Connection: close",
+      "",
+      raw,
+    ].join("\r\n");
+    const rejected = await socketRequest(app, request);
+    expect(rejected).toMatch(/^HTTP\/1\.1 401/);
+    expect(rejected).not.toContain(raw);
+    expect(rejected).not.toContain(secret);
+    expect(service.receiveWebhook).not.toHaveBeenCalled();
+    const good = body("r2-after-invalid-hmac");
+    expect(await socketRequest(app, wireHeaders(good, [`Content-Length: ${Buffer.byteLength(good)}`]) + good)).toMatch(/^HTTP\/1\.1 200/);
+    expect(service.receiveWebhook).toHaveBeenCalledTimes(1);
     await app.close();
   });
 });

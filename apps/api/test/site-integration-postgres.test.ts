@@ -1,13 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
+import { request as httpRequest } from "node:http";
+import Fastify from "fastify";
 import type { SiteWebhookPayloadDTO } from "@sever/contracts/site-integration";
 import { pool } from "../src/core/db.js";
 import { runMigrations } from "../src/core/migrate.js";
+import { env } from "../src/env.js";
 import { siteIntegrationMigration } from "../src/modules/siteIntegration/migration.js";
+import { registerSiteIntegrationRoutes } from "../src/modules/siteIntegration/routes.js";
 import { createSiteIntegrationService } from "../src/modules/siteIntegration/service.js";
 
 async function migrated() {
   await runMigrations();
+}
+
+const webhookSecret = "r2-postgres-http-secret";
+env.siteWebhook.testSecret = webhookSecret;
+
+function webhookBody(id: string) {
+  return JSON.stringify({ id, event: "order.created", createdAt: "2026-11-08T12:00:00Z", source: "test", lang: "ru", items: [{ id: "x", name: { sr: "X", ru: "X", en: "X" }, qty: 1, pricePerDay: 1 }], rental: { start: "2026-11-20", end: "2026-11-22", pickupTime: "10:00", returnTime: "10:00", days: 2, discountPercent: 0 }, totals: { perDay: 1, total: 2, currency: "EUR" }, delivery: { type: "pickup", address: "" }, customer: { name: "I", telegram: "", phone: "+381601234567", instagram: "", other: "", preferred: ["whatsapp"] } });
+}
+
+async function httpWebhook(app: ReturnType<typeof Fastify>, raw: string): Promise<string> {
+  if (!app.server.listening) await app.listen({ host: "127.0.0.1", port: 0 });
+  const address = app.server.address();
+  if (!address || typeof address === "string") throw new Error("expected TCP listener");
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const hmac = `sha256=${createHmac("sha256", webhookSecret).update(`${timestamp}.`).update(raw).digest("hex")}`;
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({ host: "127.0.0.1", port: address.port, path: "/api/integrations/site/webhook", method: "POST", headers: { "content-type": "application/json", "x-sever-event": "order.created", "x-sever-delivery": "r2-pg-http", "x-sever-timestamp": timestamp, "x-sever-signature": hmac, "content-length": Buffer.byteLength(raw), connection: "close" } }, response => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", chunk => { body += chunk; });
+      response.on("end", () => resolve(`HTTP/${response.httpVersion} ${response.statusCode}\r\n${body}`));
+    });
+    request.on("error", reject);
+    request.end(raw);
+  });
 }
 
 describe.sequential("R1 PostgreSQL invariants", () => {
@@ -134,6 +163,76 @@ describe.sequential("R2 webhook PostgreSQL invariants", () => {
     expect(stored.rows[0]!.raw_body.equals(rawBody)).toBe(true);
     expect(stored.rows[0]!.payload_digest).toBe(createHash("sha256").update(rawBody).digest("hex"));
     expect(stored.rows[0]!.raw_payload).toMatchObject({ id, source: "test" });
+  });
+
+  it("TEST-3: returns non-2xx and rolls back when COMMIT fails on the HTTP persistence path", async () => {
+    await migrated();
+    const id = `r2-http-commit-failure-${randomUUID()}`;
+    const raw = webhookBody(id);
+    const failingPool = {
+      connect: async () => {
+        const client = await pool.connect();
+        return {
+          query: async (...args: Parameters<typeof client.query>) => {
+            if (args[0] === "COMMIT") throw new Error("controlled commit failure");
+            return client.query(...args);
+          },
+          release: () => client.release(),
+        };
+      },
+    };
+    const app = Fastify();
+    registerSiteIntegrationRoutes(app, createSiteIntegrationService(failingPool as never));
+    try {
+      expect(await httpWebhook(app, raw)).toMatch(/^HTTP\/1\.1 500/);
+      expect(Number((await pool.query("SELECT count(*) FROM site_integration.inbox WHERE source='sever-website' AND environment='test' AND external_order_id=$1", [id])).rows[0]!.count)).toBe(0);
+    } finally {
+      await app.close();
+    }
+    const recovered = Fastify();
+    registerSiteIntegrationRoutes(recovered, createSiteIntegrationService(pool));
+    try {
+      expect(await httpWebhook(recovered, raw)).toMatch(/^HTTP\/1\.1 200/);
+      expect(Number((await pool.query("SELECT count(*) FROM site_integration.inbox WHERE source='sever-website' AND environment='test' AND external_order_id=$1", [id])).rows[0]!.count)).toBe(1);
+    } finally {
+      await recovered.close();
+    }
+  });
+
+  it("TEST-4: leaves legacy raw bytes unknown while preserving R1 JSONB during upgrade", async () => {
+    const client = await pool.connect();
+    const legacyPayload = { id: `r1-legacy-${randomUUID()}`, source: "test", retained: { exact: true } };
+    try {
+      await client.query("BEGIN; DROP SCHEMA IF EXISTS site_integration CASCADE; CREATE SCHEMA site_integration;");
+      await client.query(`CREATE TABLE site_integration.inbox (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(), source text NOT NULL, environment text NOT NULL CHECK (environment IN ('test','live')),
+        external_order_id text NOT NULL, raw_payload jsonb NOT NULL, payload_digest text,
+        status text NOT NULL DEFAULT 'received' CHECK (status IN ('received','processing','needs_review','imported','failed')),
+        attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0), lease_token uuid, lease_expires_at timestamptz,
+        retry_after timestamptz, last_error text, review_reasons text[] NOT NULL DEFAULT '{}', import_id uuid, project_id uuid,
+        received_at timestamptz NOT NULL DEFAULT now(), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE(source, environment, external_order_id), CHECK ((status = 'processing') = (lease_token IS NOT NULL)), CHECK (lease_expires_at IS NULL OR lease_token IS NOT NULL)
+      )`);
+      await client.query("INSERT INTO site_integration.inbox(source, environment, external_order_id, raw_payload, payload_digest) VALUES ('legacy-r1', 'test', $1, $2::jsonb, 'legacy-digest')", [legacyPayload.id, JSON.stringify(legacyPayload)]);
+      await client.query(siteIntegrationMigration);
+      const legacy = await client.query<{ raw_body: Buffer | null; raw_payload: unknown; payload_digest: string }>("SELECT raw_body, raw_payload, payload_digest FROM site_integration.inbox WHERE external_order_id=$1", [legacyPayload.id]);
+      expect(legacy.rows[0]).toEqual({ raw_body: null, raw_payload: legacyPayload, payload_digest: "legacy-digest" });
+      await client.query(siteIntegrationMigration);
+      const service = createSiteIntegrationService({
+        connect: async () => ({
+          query: async (...args: Parameters<typeof client.query>) => args[0] === "COMMIT" ? { rowCount: 0, rows: [] } : client.query(...args),
+          release: () => undefined,
+        }),
+      } as never);
+      const payload = { ...JSON.parse(webhookBody(`r2-upgraded-${randomUUID()}`)) } as SiteWebhookPayloadDTO;
+      const rawBody = Buffer.from(JSON.stringify(payload));
+      await service.receiveWebhook({ deliveryId: "r2-upgrade-new", payload, rawBody });
+      const newer = await client.query<{ raw_body: Buffer }>("SELECT raw_body FROM site_integration.inbox WHERE external_order_id=$1", [payload.id]);
+      expect(newer.rows[0]!.raw_body.equals(rawBody)).toBe(true);
+    } finally {
+      await client.query("ROLLBACK").catch(() => undefined);
+      client.release();
+    }
   });
 
   it("serializes duplicate and conflicting concurrent deliveries without overwriting the original", async () => {
