@@ -75,7 +75,9 @@ export function createBillingService(deps: BillingDeps): BillingService {
         refId: it.id,
         section: it.kind === "delivery" ? "Delivery" : it.kind === "setup" ? "Setup" : "Equipment",
         label: it.name,
-        detail: it.note?.trim() ?? "",
+        // Contractor details are operational-only and must never appear in a
+        // client estimate, including for legacy rows that still have a note.
+        detail: "",
         qty: it.qty,
         unitEUR: it.priceEUR,
         periods,
@@ -117,6 +119,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
           }));
     const laborEUR = round2(laborLines.reduce((s, l) => s + l.amountEUR, 0));
     const estimateBySource = new Map(estimateLines.filter((line) => line.sourceRefId).map((line) => [line.sourceRefId!, line]));
+    const contractorItemIds = new Set(contractorItems.map((item) => item.id));
     const effectiveDerived = [...derivedRentalLines, ...laborLines].flatMap((derived) => {
       const saved = estimateBySource.get(derived.refId);
       if (saved?.hidden) return [];
@@ -124,7 +127,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
         refId: saved.id,
         section: saved.section,
         label: saved.name,
-        detail: saved.comment,
+        detail: contractorItemIds.has(derived.refId) ? "" : saved.comment,
         qty: saved.qty,
         unitEUR: saved.qty ? round2(amountAfterDiscountEUR(saved.priceEUR, saved.discountType, saved.discountValue, rsdRateToEUR) / saved.qty) : saved.priceEUR,
         periods: 1,

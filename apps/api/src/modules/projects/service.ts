@@ -2350,7 +2350,7 @@ export function createProjectsService(
           await query(client,`UPDATE projects.contractor_orders SET delivery_timing_id=$2,pickup_timing_id=$3 WHERE id=$1`,[row!.id,deliveryTimingId,pickupTimingId]);
         }
         const totalQty=input.lines.reduce((sum,line)=>sum+line.qty,0);
-        await query(client,`INSERT INTO projects.contractor_items (project_id,contractor_id,kind,pricing_mode,name,qty,price_eur,cost_eur,note,booked,order_id,paid_at) VALUES ($1,$2,'equipment','flat_total',$3,$4,$5,$6,$7,$8,$9,CASE WHEN $6::numeric=0 THEN now() ELSE NULL END)`,[input.projectId,input.contractorId,input.name.trim(),totalQty,input.clientPriceEUR/totalQty,input.supplierPriceEUR/totalQty,input.fulfillmentMode==='contractor_delivery'?'Цена подрядчика включает доставку':'Сухая аренда у подрядчика',input.booked??false,row!.id]);
+        await query(client,`INSERT INTO projects.contractor_items (project_id,contractor_id,kind,pricing_mode,name,qty,price_eur,cost_eur,note,booked,order_id,paid_at) VALUES ($1,$2,'equipment','flat_total',$3,$4,$5,$6,$7,$8,$9,CASE WHEN $6::numeric=0 THEN now() ELSE NULL END)`,[input.projectId,input.contractorId,input.name.trim(),totalQty,input.clientPriceEUR/totalQty,input.supplierPriceEUR/totalQty,null,input.booked??false,row!.id]);
         for (const line of input.lines) {
           const catalogItem=catalogItems.find(item=>item.id===line.catalogItemId)!;
           await query(client,`INSERT INTO projects.contractor_order_lines (order_id,catalog_item_id,name,note,qty) VALUES ($1,$2,$3,$4,$5)`,[row!.id,line.catalogItemId,line.name.trim(),catalogItem.note,line.qty]);
@@ -2395,7 +2395,7 @@ export function createProjectsService(
         }
         const row = await one<ContractorOrderRow>(client, `UPDATE projects.contractor_orders SET contractor_id=$2, warehouse_id=$3, name=$4, fulfillment_mode=$5, supplier_price_eur=$6, client_price_eur=$7, delivery_at=$8, pickup_at=$9, booked=$10, delivery_timing_id=$11, pickup_timing_id=$12 WHERE id=$1 RETURNING *`, [id, input.contractorId, input.warehouseId ?? null, input.name.trim(), input.fulfillmentMode, input.supplierPriceEUR, input.clientPriceEUR, input.deliveryAt ?? null, input.pickupAt ?? null, input.booked ?? false, deliveryTimingId, pickupTimingId]);
         const totalQty=input.lines.reduce((sum,line)=>sum+line.qty,0);
-        await query(client, `UPDATE projects.contractor_items SET contractor_id=$2, name=$3, qty=$4, price_eur=$5, cost_eur=$6, note=$7, booked=$8 WHERE order_id=$1`, [id, input.contractorId, input.name.trim(), totalQty, input.clientPriceEUR/totalQty, input.supplierPriceEUR/totalQty, input.fulfillmentMode === "contractor_delivery" ? "Цена подрядчика включает доставку" : "Сухая аренда у подрядчика", input.booked ?? false]);
+        await query(client, `UPDATE projects.contractor_items SET contractor_id=$2, name=$3, qty=$4, price_eur=$5, cost_eur=$6, note=$7, booked=$8 WHERE order_id=$1`, [id, input.contractorId, input.name.trim(), totalQty, input.clientPriceEUR/totalQty, input.supplierPriceEUR/totalQty, null, input.booked ?? false]);
         if (!order.receipt_completed_at) {
           await query(client, `DELETE FROM projects.contractor_order_lines WHERE order_id=$1`, [id]);
           for (const line of input.lines) {
