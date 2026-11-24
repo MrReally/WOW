@@ -181,6 +181,16 @@ export function useTransactionCashExport() {
   });
 }
 
+export function useSendTransactionCashExportToTelegram() {
+  return useMutation({
+    mutationFn: (filter: { from: string; to: string }) => {
+      const params = new URLSearchParams({ from: filter.from, to: filter.to });
+      return api.post<{ sent: true; filename: string }>(`/api/reports/transaction-export.csv/telegram?${params}`, {});
+    },
+    meta: { successMessage: "CSV-выписка отправлена в Telegram" },
+  });
+}
+
 export function useSendFullExportToTelegram() {
   return useMutation({
     mutationFn: () => api.post<{ sent: true; filename: string }>("/api/reports/full-export.csv/telegram", {}),

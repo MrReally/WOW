@@ -131,6 +131,23 @@ export function registerBillingRoutes(
       .header("Content-Disposition", `attachment; filename="${transactionExportFilename(filter.from, filter.to)}"`)
       .send(csv);
   });
+  app.post<{ Querystring: { from?: string; to?: string } }>("/api/reports/transaction-export.csv/telegram", async (req) => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.view", "finance.manage");
+    if (!auth.telegramId) throw BadRequest("К аккаунту не привязан Telegram");
+    const filter = transactionExportQuery.parse(req.query);
+    const csv = await service.transactionCashExportCsv(filter);
+    const filename = transactionExportFilename(filter.from, filter.to);
+    const sent = await sendTelegramDocument(
+      auth.telegramId,
+      Buffer.from(csv, "utf8"),
+      filename,
+      `Выписка по транзакциям SEVER за ${filter.from} — ${filter.to}`,
+      "text/csv; charset=utf-8",
+    );
+    if (!sent) throw new AppError("telegram_delivery_failed", "Не удалось отправить CSV в Telegram. Убедитесь, что бот запущен и может писать вам.", 502);
+    return { sent: true, filename };
+  });
   app.post("/api/reports/full-export.csv/telegram", async (req) => {
     const auth = await ctx.auth(req);
     requirePermission(auth, "finance.view", "finance.manage");

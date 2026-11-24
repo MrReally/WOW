@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Button, Card, Field, SectionTitle } from "../../../ui-kit/index.ts";
 import { ConfiguredDateInput } from "../../../app/ConfiguredDateTimeInput.tsx";
-import { useFullExport, useSendFullExportToTelegram, useTransactionCashExport } from "../hooks.ts";
+import { useFullExport, useSendFullExportToTelegram, useSendTransactionCashExportToTelegram, useTransactionCashExport } from "../hooks.ts";
 
 export function FullExport() {
   const exportData = useFullExport();
   const sendToTelegram = useSendFullExportToTelegram();
   const cashExport = useTransactionCashExport();
+  const sendCashExportToTelegram = useSendTransactionCashExportToTelegram();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
@@ -70,8 +71,16 @@ export function FullExport() {
           </p>
         </div>
         <div className="row"><Field label="С даты"><ConfiguredDateInput value={from} onChange={setFrom}/></Field><Field label="По дату"><ConfiguredDateInput value={to} onChange={setTo}/></Field></div>
-        <Button block disabled={!from || !to || from > to || cashExport.isPending} onClick={downloadCashExport}>
+        <Button block disabled={!from || !to || from > to || cashExport.isPending || sendCashExportToTelegram.isPending} onClick={downloadCashExport}>
           {cashExport.isPending ? "Готовим CSV…" : "Скачать выписку CSV"}
+        </Button>
+        <Button
+          block
+          variant="secondary"
+          disabled={!from || !to || from > to || cashExport.isPending || sendCashExportToTelegram.isPending}
+          onClick={() => sendCashExportToTelegram.mutate({ from, to })}
+        >
+          {sendCashExportToTelegram.isPending ? "Отправляем…" : "Отправить выписку в Telegram"}
         </Button>
       </div>
     </Card>
