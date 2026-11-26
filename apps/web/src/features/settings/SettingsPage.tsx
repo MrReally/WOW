@@ -12,8 +12,9 @@ import { BackupManager } from "./components/BackupManager.tsx";
 import { FleetManager } from "./components/FleetManager.tsx";
 import { FullExport } from "./components/FullExport.tsx";
 import { InvoiceCompanySettings } from "./components/InvoiceCompanySettings.tsx";
+import { TransactionCategories } from "./components/TransactionCategories.tsx";
 
-type SettingsTab = "fleet" | "roles" | "estimate" | "rates" | "telegram" | "cables" | "data" | "general";
+type SettingsTab = "categories" | "fleet" | "roles" | "estimate" | "rates" | "telegram" | "cables" | "data" | "general";
 
 const settingsTabGroups = [
   {
@@ -23,6 +24,7 @@ const settingsTabGroups = [
       { id: "roles" as const, label: "Права" },
       { id: "estimate" as const, label: "Смета", when: (can: ReturnType<typeof useSession>["can"]) => can("finance.manage") },
       { id: "rates" as const, label: "Курсы" },
+      { id: "categories" as const, label: "Категории транзакций", when: (can: ReturnType<typeof useSession>["can"]) => can("finance.manage") },
     ],
   },
   {
@@ -85,6 +87,7 @@ export function SettingsPage() {
           );
         })}
       </nav>
+      {tab === "categories" && can("finance.manage") && <TransactionCategories />}
       {tab === "general" && <>
       <SectionTitle>Оформление</SectionTitle>
       <Card>

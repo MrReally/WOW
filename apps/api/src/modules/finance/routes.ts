@@ -51,6 +51,7 @@ const txSchema = z.object({
     "adjustment",
     "other",
   ]),
+  categoryId: z.string().uuid().nullable().optional(),
   amount: z.number().positive(),
   currency: z.enum(CURRENCIES as [string, ...string[]]),
   note: z.string().nullable().optional(),
@@ -168,6 +169,24 @@ export function registerFinanceRoutes(
   });
 
   // ── Transactions ──
+  app.get("/api/finance/transaction-categories", async req => {
+    const auth = await ctx.auth(req);
+    requirePermission(auth, "finance.view", "finance.manage");
+    return service.listTransactionCategories();
+  });
+  app.post("/api/finance/transaction-categories", async req => {
+    const auth = await ctx.auth(req); requirePermission(auth, "finance.manage");
+    return service.createTransactionCategory(z.object({name:z.string().trim().min(1).max(120),kind:z.enum(["income","expense"])}).parse(req.body));
+  });
+  app.patch<{ Params: { id: string } }>("/api/finance/transaction-categories/:id", async req => {
+    const auth = await ctx.auth(req); requirePermission(auth, "finance.manage");
+    return service.updateTransactionCategory(z.string().uuid().parse(req.params.id),z.object({name:z.string().trim().min(1).max(120),active:z.boolean()}).parse(req.body));
+  });
+  app.post("/api/finance/transfers", async req => {
+    const auth = await ctx.auth(req); requirePermission(auth, "finance.manage");
+    const body = z.object({ requestKey:z.string().uuid(), fromAccountId:z.string().uuid(), toAccountId:z.string().uuid(), amount:z.number().positive(), receivedAmount:z.number().positive(), note:z.string().trim().max(500).nullable().optional() }).parse(req.body);
+    return service.createTransfer({...body,createdByUserId:auth.userId});
+  });
   app.get<{ Querystring: { projectId?: string; unitId?: string; includeVoided?: string } }>(
     "/api/finance/transactions",
     async (req) => {

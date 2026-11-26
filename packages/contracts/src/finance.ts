@@ -26,6 +26,8 @@ export interface UpdateAccountInput {
 // ── Transactions (FX snapshot frozen at creation) ────────────────────────────
 
 export type TxKind = "income" | "expense";
+export interface TransactionCategoryDTO { id: ID; name: string; kind: TxKind; semantic: TxCategory; active: boolean }
+export interface CreateTransferInput { requestKey: ID; fromAccountId: ID; toAccountId: ID; amount: number; receivedAmount: number; note?: string | null; createdByUserId?: ID | null }
 export type TxCategory =
   | "rental_revenue"
   | "prepayment"
@@ -50,6 +52,9 @@ export interface TransactionDTO {
   contractorId: ID | null;
   kind: TxKind;
   category: TxCategory;
+  categoryId?: ID | null;
+  categoryName?: string | null;
+  transferId?: ID | null;
   amount: number; // in `currency`
   currency: Currency;
   fxRateToEUR: number; // snapshot taken at creation
@@ -76,6 +81,7 @@ export interface CreateTransactionInput {
   contractorId?: ID | null;
   kind: TxKind;
   category: TxCategory;
+  categoryId?: ID | null;
   amount: number;
   currency: Currency;
   note?: string | null;
@@ -363,6 +369,10 @@ export interface FinanceService {
   adjustAccountBalance(input: AdjustAccountBalanceInput): Promise<TransactionDTO>;
 
   // Transactions
+  listTransactionCategories(): Promise<TransactionCategoryDTO[]>;
+  createTransactionCategory(input: { name: string; kind: TxKind }): Promise<TransactionCategoryDTO>;
+  updateTransactionCategory(id: ID, input: { name: string; active: boolean }): Promise<TransactionCategoryDTO>;
+  createTransfer(input: CreateTransferInput): Promise<TransactionDTO[]>;
   listTransactions(filter?: { projectId?: ID; unitId?: ID; includeVoided?: boolean }): Promise<TransactionDTO[]>;
   createTransaction(input: CreateTransactionInput): Promise<TransactionDTO>;
   updateTransaction(id: ID, input: UpdateTransactionInput, actorId: ID): Promise<TransactionDTO>;

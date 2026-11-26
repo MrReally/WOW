@@ -45,6 +45,31 @@ ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS voided_at timestamptz;
 ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS replaces_transaction_id uuid REFERENCES finance.transactions(id);
 ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS request_key uuid;
 ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS adjustment_balance_after numeric(14,2);
+CREATE TABLE IF NOT EXISTS finance.transaction_categories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  kind text NOT NULL CHECK (kind IN ('income','expense')),
+  semantic text NOT NULL DEFAULT 'other',
+  active boolean NOT NULL DEFAULT true,
+  seed_key text UNIQUE
+);
+INSERT INTO finance.transaction_categories (name,kind,semantic,seed_key) VALUES
+ ('Предоплата','income','prepayment','prepayment'),
+ ('Выручка с проекта','income','prepayment','project_income'),
+ ('Погашение долга','income','debt_settlement','debt_settlement'),
+ ('Прочее поступление','income','prepayment','other_income'),
+ ('Закупка','expense','purchase','purchase'),
+ ('Ремонт','expense','repair','repair'),
+ ('Зарплата','expense','salary','salary'),
+ ('Прочий расход','expense','other','other_expense')
+ ON CONFLICT (seed_key) DO NOTHING;
+ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS category_id uuid REFERENCES finance.transaction_categories(id);
+ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS transfer_id uuid;
+CREATE INDEX IF NOT EXISTS tx_transfer_idx ON finance.transactions(transfer_id) WHERE transfer_id IS NOT NULL;
+UPDATE finance.transactions t SET category_id=c.id
+FROM finance.transaction_categories c
+WHERE t.category_id IS NULL AND t.transfer_id IS NULL
+  AND c.seed_key=CASE WHEN t.category='other' THEN 'other_' || t.kind ELSE t.category END;
 CREATE UNIQUE INDEX IF NOT EXISTS tx_request_key_idx ON finance.transactions(request_key) WHERE request_key IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS tx_replacement_idx ON finance.transactions(replaces_transaction_id) WHERE replaces_transaction_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS tx_assignment_idx ON finance.transactions(assignment_id);

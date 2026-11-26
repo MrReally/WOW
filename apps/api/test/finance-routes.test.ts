@@ -14,14 +14,24 @@ async function request(permissions: Permission[], method: "GET" | "POST", url: s
   const listTransactions = vi.fn(async () => [{ id: "payroll", category: "salary" }, { id: "client", category: "prepayment" }]);
   const listAccounts = vi.fn(async () => [{ id: accountId, name: "Bank", currency: "EUR", balance: 500 }]);
   const adjustAccountBalance = vi.fn(async (input: unknown) => input);
+  const createTransfer = vi.fn(async (input: unknown) => input);
   app.setErrorHandler((error, _req, reply) => reply.code((error as { status?: number }).status ?? 400).send({ message: error.message }));
-  registerFinanceRoutes(app, { auth: async () => ({ permissions, userId: assignmentId } as AuthContext) }, { createTransaction, listTransactions, listAccounts, adjustAccountBalance } as unknown as Finance.FinanceService, authorizeProject);
+  registerFinanceRoutes(app, { auth: async () => ({ permissions, userId: assignmentId } as AuthContext) }, { createTransaction, listTransactions, listAccounts, adjustAccountBalance, createTransfer } as unknown as Finance.FinanceService, authorizeProject);
   const response = await app.inject({ method, url, ...(payload ? { payload } : {}) });
   await app.close();
-  return { response, createTransaction, listTransactions, adjustAccountBalance };
+  return { response, createTransaction, listTransactions, adjustAccountBalance, createTransfer };
 }
 
 describe("finance permission boundaries", () => {
+  it("permits transfers only to finance managers and takes the actor from the session", async () => {
+    const input = {requestKey:projectId,fromAccountId:accountId,toAccountId:assignmentId,amount:10,receivedAmount:1170,createdByUserId:accountId};
+    const denied = await request(["operations.finance.manage"], "POST", "/api/finance/transfers", input);
+    expect(denied.response.statusCode).toBe(403);
+    expect(denied.createTransfer).not.toHaveBeenCalled();
+    const allowed = await request(["finance.manage"], "POST", "/api/finance/transfers", input);
+    expect(allowed.response.statusCode).toBe(200);
+    expect(allowed.createTransfer).toHaveBeenCalledWith(expect.objectContaining({createdByUserId:assignmentId}));
+  });
   it("checks access to a project before returning or writing transactions", async () => {
     const deny = vi.fn(async () => { throw Object.assign(new Error("Нет доступа"), { status: 403 }); });
     const read = await request(["operations.finance.view"], "GET", `/api/finance/transactions?projectId=${projectId}`, undefined, deny);

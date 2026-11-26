@@ -1,119 +1,77 @@
 import { useEffect, useState } from "react";
 import type { Finance, Projects } from "@sever/contracts";
 import { Sheet, Field, Input, Textarea, Select, Button } from "../../../ui-kit/index.ts";
-import { useCreateTransaction } from "../hooks.ts";
+import { useCreateTransaction, useCreateTransfer, useFxRates, useTransactionCategories } from "../hooks.ts";
 import { ApiError } from "../../../lib/api.ts";
 
 interface Props {
-  open: boolean;
-  onClose: () => void;
-  accounts: Finance.AccountDTO[];
-  projects: Projects.ProjectDTO[];
-  currentUserId?: string | null;
-  canManage: boolean;
+  open: boolean; onClose: () => void; accounts: Finance.AccountDTO[]; projects: Projects.ProjectDTO[];
+  currentUserId?: string | null; canManage: boolean;
   paymentTarget?: { projectId: string; contractorId: string; name: string };
 }
 
-const CATEGORIES: { value: Finance.TxCategory; label: string; kind: Finance.TxKind }[] = [
-  { value: "rental_revenue", label: "Начисление аренды (без движения денег)", kind: "income" },
-  { value: "prepayment", label: "Предоплата", kind: "income" },
-  { value: "debt_settlement", label: "Погашение долга", kind: "income" },
-  { value: "purchase", label: "Закупка", kind: "expense" },
-  { value: "repair", label: "Ремонт", kind: "expense" },
-  { value: "salary", label: "Зарплата", kind: "expense" },
-  { value: "other", label: "Прочее", kind: "expense" },
-];
-
 function transactionErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 403) return "Недостаточно прав для создания транзакций.";
-    if (error.status === 400 || error.code === "validation_error") return `Проверьте данные транзакции: ${error.message}`;
-    if (error.status === 404) return "Не найден выбранный счёт или проект. Обновите страницу и попробуйте ещё раз.";
-    if (error.status >= 500) return "Сервер не смог создать транзакцию. Попробуйте ещё раз или напишите администратору.";
-    return error.message;
-  }
+  if (error instanceof ApiError && error.status === 403) return "Недостаточно прав для создания транзакций.";
   return error instanceof Error ? error.message : "Не удалось создать транзакцию.";
 }
 
 export function AddTransactionSheet({ open, onClose, accounts, projects, currentUserId, canManage, paymentTarget }: Props) {
-  const create = useCreateTransaction();
+  const create = useCreateTransaction(), transfer = useCreateTransfer();
+  const categories = useTransactionCategories(open && !paymentTarget), rates = useFxRates();
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
-  const [category, setCategory] = useState<Finance.TxCategory>("prepayment");
+  const [destinationId, setDestinationId] = useState("");
+  const [kind, setKind] = useState<Finance.TxKind | "transfer">("income");
+  const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
-  const currency = accounts.find(account => account.id === accountId)?.currency ?? "EUR";
+  const [received, setReceived] = useState("");
+  const [editedReceived, setEditedReceived] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
-
-  const kind = paymentTarget ? "expense" : CATEGORIES.find((c) => c.value === category)?.kind ?? "income";
+  const account = accounts.find(a => a.id === accountId), destination = accounts.find(a => a.id === destinationId);
+  const availableCategories = (categories.data ?? []).filter(c => c.active && c.kind === kind);
+  const selectedCategory = availableCategories.find(c => c.id === categoryId);
+  const currency = account?.currency ?? "EUR";
+  const rate = (c: string) => c === "EUR" ? 1 : rates.data?.find(r => r.currency === c)?.rateToEUR;
+  const fromRate = rate(currency), toRate = destination ? rate(destination.currency) : undefined;
+  useEffect(() => { if (!accountId && accounts[0]) setAccountId(accounts[0].id); }, [accountId, accounts]);
+  useEffect(() => { if (!availableCategories.some(c => c.id === categoryId)) setCategoryId(availableCategories[0]?.id ?? ""); }, [categories.data, kind, categoryId]);
   useEffect(() => {
-    if (!accountId && accounts[0]) setAccountId(accounts[0].id);
-  }, [accountId, accounts]);
-
+    if (!destination) return;
+    if (destination.currency === currency) { setReceived(amount); return; }
+    if (!editedReceived) setReceived(amount && fromRate && toRate ? String(Math.round(Number(amount) * fromRate / toRate * 100) / 100) : "");
+  }, [amount, currency, destinationId, destination?.currency, fromRate, toRate, editedReceived]);
   const submit = () => {
     setError("");
     const amountNum = Number(amount);
-    if (!canManage) {
-      setError("Недостаточно прав для создания транзакций.");
+    if (!canManage) return setError("Недостаточно прав для создания транзакций.");
+    if (!account || !Number.isFinite(amountNum) || amountNum <= 0) return setError("Выберите счёт и введите сумму больше нуля.");
+    const success = () => { setAmount(""); setReceived(""); setEditedReceived(false); setNote(""); setError(""); onClose(); };
+    const fail = (err: unknown) => setError(transactionErrorMessage(err));
+    if (!paymentTarget && kind === "transfer") {
+      if (!destination || destination.id === account.id) return setError("Выберите другой счёт для зачисления.");
+      const receivedAmount = Number(received);
+      if (!Number.isFinite(receivedAmount) || receivedAmount <= 0) return setError("Укажите сумму зачисления больше нуля.");
+      transfer.mutate({ fromAccountId: account.id, toAccountId: destination.id, amount: amountNum, receivedAmount, note: note.trim() || null }, { onSuccess: success, onError: fail });
       return;
     }
-    if (!accountId) {
-      setError("Сначала выберите счёт для транзакции.");
-      return;
-    }
-    if (!Number.isFinite(amountNum) || amountNum <= 0) {
-      setError("Введите сумму больше нуля.");
-      return;
-    }
-    create.mutate(
-      {
-        accountId,
-        projectId: paymentTarget?.projectId ?? (projectId || null),
-        contractorId: paymentTarget?.contractorId ?? null,
-        kind,
-        category: paymentTarget ? "other" : category,
-        amount: amountNum,
-        currency,
-        note: note.trim() || (paymentTarget ? `Оплата подрядчику ${paymentTarget.name}` : null),
-        createdByUserId: currentUserId ?? null,
-      },
-      {
-        onSuccess: () => { setAmount(""); setNote(""); setError(""); onClose(); },
-        onError: (err) => setError(transactionErrorMessage(err)),
-      }
-    );
+    if (!paymentTarget && !selectedCategory) return setError("Выберите доступную категорию.");
+    create.mutate({ accountId, projectId: paymentTarget?.projectId ?? (projectId || null), contractorId: paymentTarget?.contractorId ?? null,
+      kind: paymentTarget ? "expense" : kind as Finance.TxKind, category: paymentTarget ? "other" : selectedCategory!.semantic,
+      categoryId: paymentTarget ? null : selectedCategory!.id, amount: amountNum, currency,
+      note: note.trim() || (paymentTarget ? `Оплата подрядчику ${paymentTarget.name}` : null), createdByUserId: currentUserId ?? null }, { onSuccess: success, onError: fail });
   };
-
-  return (
-    <Sheet open={open} onClose={onClose} title={paymentTarget ? `Оплата: ${paymentTarget.name}` : "Новая транзакция"}>
-      <Field label="Счёт">
-        <Select value={accountId} onChange={(e) => setAccountId(e.target.value)} options={accounts.map((a) => ({ value: a.id, label: `${a.name} (${a.currency})` }))} />
-      </Field>
-      {!paymentTarget && <Field label="Категория">
-        <Select value={category} onChange={(e) => setCategory(e.target.value as Finance.TxCategory)} options={CATEGORIES.map((c) => ({ value: c.value, label: c.label }))} />
-      </Field>}
-      <div className="row">
-        <Field label="Сумма">
-          <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
-        </Field>
-        <Field label="Валюта">
-          <Input value={currency} readOnly />
-        </Field>
-      </div>
-      {!paymentTarget && <Field label="Проект (необязательно)">
-        <Select
-          value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
-          options={[{ value: "", label: "— без проекта —" }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
-        />
-      </Field>}
-      <Field label="Назначение / комментарий">
-        <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Напр. «3 кабеля DMX 10 м» — что именно" />
-      </Field>
-      {error && <p className="card__subtitle" style={{ color: "var(--danger)", marginTop: 4 }}>{error}</p>}
-      <Button block disabled={create.isPending} onClick={submit}>
-        Добавить · курс зафиксируется
-      </Button>
-    </Sheet>
-  );
+  return <Sheet open={open} onClose={onClose} title={paymentTarget ? `Оплата: ${paymentTarget.name}` : "Новая транзакция"}>
+    {!paymentTarget && <Field label="Тип операции"><Select value={kind} onChange={e => { setKind(e.target.value as Finance.TxKind | "transfer"); setCategoryId(""); }} options={[{value:"expense",label:"Списание"},{value:"income",label:"Начисление"},{value:"transfer",label:"Перевод между счетами"}]} /></Field>}
+    <Field label={kind === "transfer" && !paymentTarget ? "Со счёта" : "Счёт"}><Select value={accountId} onChange={e => { setAccountId(e.target.value); setEditedReceived(false); }} options={accounts.map(a => ({ value: a.id, label: `${a.name} (${a.currency})` }))} /></Field>
+    {!paymentTarget && kind === "transfer" && <Field label="На счёт"><Select value={destinationId} onChange={e => { setDestinationId(e.target.value); setEditedReceived(false); }} options={[{value:"",label:"Выберите счёт"}, ...accounts.filter(a => a.id !== accountId).map(a => ({value:a.id,label:`${a.name} (${a.currency})`}))]} /></Field>}
+    {!paymentTarget && kind !== "transfer" && <Field label="Категория"><Select value={categoryId} onChange={e => setCategoryId(e.target.value)} options={[{value:"",label:categories.isLoading ? "Загрузка…" : "Выберите категорию"},...availableCategories.map(c => ({value:c.id,label:c.name}))]} /></Field>}
+    <Field label={`${kind === "transfer" && !paymentTarget ? "Списать" : "Сумма"}, ${currency}`}><Input type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} /></Field>
+    {!paymentTarget && kind === "transfer" && destination && <Field label={`Зачислить, ${destination.currency}`}><Input type="number" min="0.01" step="0.01" value={received} readOnly={currency === destination.currency} onChange={e => { setEditedReceived(true); setReceived(e.target.value); }} /></Field>}
+    {!paymentTarget && kind === "transfer" && destination && currency !== destination.currency && <p className="card__subtitle">Сумму зачисления можно изменить вручную. Первоначальный расчёт использует курсы из настроек.</p>}
+    {!paymentTarget && kind !== "transfer" && <Field label="Проект (необязательно)"><Select value={projectId} onChange={e => setProjectId(e.target.value)} options={[{value:"",label:"— без проекта —"},...projects.map(p=>({value:p.id,label:p.name}))]} /></Field>}
+    <Field label="Назначение / комментарий"><Textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Что именно" /></Field>
+    {error && <p role="alert" style={{color:"var(--danger)"}}>{error}</p>}
+    <Button block disabled={create.isPending || transfer.isPending} onClick={submit}>Провести</Button>
+  </Sheet>;
 }

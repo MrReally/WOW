@@ -282,6 +282,44 @@ describe("Tech pickup/return → некомплект", () => {
     expect((await service.listAccounts()).find(row => row.id === account.id)?.balance).toBe(100);
   });
 
+  it("posts a currency transfer once and reverses both sides together", async () => {
+    const service = wiring.finance.service;
+    const actor = await makeTech("Transfer operator");
+    await service.setFxRate("RSD", 0.0085);
+    const from = await service.createAccount({ name: `Transfer EUR ${randomUUID()}`, currency: "EUR" });
+    const to = await service.createAccount({ name: `Transfer RSD ${randomUUID()}`, currency: "RSD" });
+    await service.createTransaction({ accountId: from.id, kind: "income", category: "prepayment", amount: 100, currency: "EUR" });
+    const input = { requestKey: randomUUID(), fromAccountId: from.id, toAccountId: to.id, amount: 20, receivedAmount: 2300, createdByUserId: actor.id };
+    const [first, retry] = await Promise.all([service.createTransfer(input), service.createTransfer(input)]);
+    expect(first.map(t => t.id).sort()).toEqual(retry.map(t => t.id).sort());
+    expect(first.every(t => t.transferId === input.requestKey)).toBe(true);
+    let accounts = await service.listAccounts();
+    expect(accounts.find(a => a.id === from.id)?.balance).toBe(80);
+    expect(accounts.find(a => a.id === to.id)?.balance).toBe(2300);
+    await expect(service.createTransfer({ ...input, receivedAmount: 2400 })).rejects.toThrow("другими данными");
+    await expect(service.updateTransaction(first[0]!.id, { accountId: from.id, amount: 10 }, actor.id)).rejects.toThrow("по частям");
+    await service.voidTransaction(first[0]!.id, actor.id);
+    await service.voidTransaction(first[1]!.id, actor.id);
+    accounts = await service.listAccounts();
+    expect(accounts.find(a => a.id === from.id)?.balance).toBe(100);
+    expect(accounts.find(a => a.id === to.id)?.balance).toBe(0);
+    expect((await service.listTransactions({ includeVoided: true })).filter(t => t.transferId === input.requestKey).every(t => t.voidedAt)).toBe(true);
+  });
+
+  it("keeps category identity through renaming, correction and archiving", async () => {
+    const service = wiring.finance.service;
+    const actor = await makeTech("Category operator");
+    const account = await service.createAccount({ name: `Category ${randomUUID()}`, currency: "EUR" });
+    const category = await service.createTransactionCategory({ name: "Аренда склада", kind: "expense" });
+    const input = { accountId: account.id, kind: "expense" as const, category: category.semantic, categoryId: category.id, amount: 10, currency: "EUR" as const };
+    const created = await service.createTransaction(input);
+    await service.updateTransactionCategory(category.id, { name: "Склад", active: false });
+    await expect(service.createTransaction(input)).rejects.toThrow("категория недоступна");
+    const replacement = await service.updateTransaction(created.id, { accountId: account.id, amount: 12 }, actor.id);
+    const listed = (await service.listTransactions()).find(t => t.id === replacement.id);
+    expect(listed).toMatchObject({ categoryId: category.id, categoryName: "Склад" });
+  });
+
   it("edits and voids payments while keeping account balances and audit data consistent", async () => {
     const { finance } = wiring;
     const actor = await makeTech("Payment Editor");

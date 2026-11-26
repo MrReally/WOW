@@ -52,8 +52,8 @@ export function FinancePage() {
   const totalDebt = (debts.data ?? []).reduce((a, d) => a + d.debtEUR, 0);
   const totalOwed = (contractorDebts.data ?? []).reduce((a, d) => a + d.debtEUR, 0);
   const activeTransactions = (transactions.data ?? []).filter((row) => !row.voidedAt);
-  const totalIncome = activeTransactions.filter((row) => row.kind === "income").reduce((sum, row) => sum + row.amountEUR, 0);
-  const totalExpense = activeTransactions.filter((row) => row.kind !== "income").reduce((sum, row) => sum + row.amountEUR, 0);
+  const totalIncome = activeTransactions.filter((row) => !row.transferId && row.kind === "income").reduce((sum, row) => sum + row.amountEUR, 0);
+  const totalExpense = activeTransactions.filter((row) => !row.transferId && row.kind !== "income").reduce((sum, row) => sum + row.amountEUR, 0);
   const profit = totalIncome - totalExpense;
   const eurAccounts = (accounts.data ?? []).filter((account) => account.currency === "EUR").reduce((sum, account) => sum + account.balance, 0);
   const projectName = (id: string) => (projects.data ?? []).find((p) => p.id === id)?.name ?? "—";
@@ -85,12 +85,13 @@ export function FinancePage() {
     if ((accounts.data ?? []).length === 0) return toast("error", "Сначала создайте счёт, куда будет записана транзакция.");
     setTxOpen(true);
   };
-  const transactionCards = (rows: Finance.TransactionDTO[]) => rows.map((row) => (
+  const transactionCards = (rows: Finance.TransactionDTO[]) => rows.filter(row => !row.transferId || row.kind === "expense" || !rows.some(other => other.transferId === row.transferId && other.kind === "expense")).map((row) => (
     <Card key={row.id} className="finance-transaction" style={row.voidedAt ? { opacity: 0.55 } : undefined}>
-      <div className="row row--between"><div style={{ minWidth: 0 }}><p className="card__title">{categoryLabel[row.category] ?? row.category}{row.note ? ` · ${row.note}` : ""}</p><p className="card__subtitle">{row.projectId ? projectName(row.projectId) : "без проекта"} · {dateTime(row.createdAt)} · {(accounts.data ?? []).find(account => account.id === row.accountId)?.name ?? "счёт удалён"} · {authorName(row.createdByUserId)}{row.voidedAt ? " · отменена" : row.updatedAt ? ` · изменена ${dateTime(row.updatedAt)}` : ""}</p></div><div className={`finance-transaction__amount ${row.kind === "income" ? "is-income" : "is-expense"}`}>{row.kind === "income" ? "+" : "−"}{money(row.amount, row.currency)}{row.currency !== "EUR" && <small>{eur(row.amountEUR)} @ {row.fxRateToEUR}</small>}</div></div>
+      <div className="row row--between"><div style={{ minWidth: 0 }}><p className="card__title">{row.transferId ? "Перевод между счетами" : row.categoryName ?? categoryLabel[row.category] ?? row.category}{row.note ? ` · ${row.note}` : ""}</p><p className="card__subtitle">{row.projectId ? projectName(row.projectId) : "без проекта"} · {dateTime(row.createdAt)} · {(accounts.data ?? []).find(account => account.id === row.accountId)?.name ?? "счёт удалён"} · {authorName(row.createdByUserId)}{row.voidedAt ? " · отменена" : row.updatedAt ? ` · изменена ${dateTime(row.updatedAt)}` : ""}</p></div><div className={`finance-transaction__amount ${row.kind === "income" ? "is-income" : "is-expense"}`}>{row.kind === "income" ? "+" : "−"}{money(row.amount, row.currency)}{row.currency !== "EUR" && <small>{eur(row.amountEUR)} @ {row.fxRateToEUR}</small>}</div></div>
+      {row.transferId && (() => { const other = (transactions.data ?? []).find(item => item.transferId === row.transferId && item.id !== row.id); if (!other) return <p className="card__subtitle">Вторая часть перевода не найдена</p>; const from = row.kind === "expense" ? row : other; const to = row.kind === "income" ? row : other; return <p className="card__subtitle">{(accounts.data ?? []).find(a => a.id === from.accountId)?.name ?? "Счёт"} → {(accounts.data ?? []).find(a => a.id === to.accountId)?.name ?? "Счёт"}: {money(from.amount, from.currency)} → {money(to.amount, to.currency)}</p>; })()}
       {row.replacesTransactionId && <p className="card__subtitle">Исправление операции {row.replacesTransactionId.slice(0, 8)}</p>}
       {row.adjustmentBalanceAfter != null && <p className="card__subtitle">Остаток после корректировки: {money(row.adjustmentBalanceAfter, row.currency)}</p>}
-      {(row.category === "adjustment" ? canAdjustAccounts : canManage) && <TransactionActions transaction={row} accounts={accounts.data ?? []} pending={updateTransaction.isPending || voidTransaction.isPending} canEdit={row.category !== "adjustment"} onSave={input => updateTransaction.mutateAsync({ id: row.id, input })} onVoid={() => voidTransaction.mutateAsync(row.id)} />}
+      {(row.category === "adjustment" ? canAdjustAccounts : canManage) && <TransactionActions transaction={row} accounts={accounts.data ?? []} pending={updateTransaction.isPending || voidTransaction.isPending} canEdit={row.category !== "adjustment" && !row.transferId} onSave={input => updateTransaction.mutateAsync({ id: row.id, input })} onVoid={() => voidTransaction.mutateAsync(row.id)} />}
     </Card>
   ));
 

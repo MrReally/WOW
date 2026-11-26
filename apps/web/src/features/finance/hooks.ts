@@ -18,7 +18,7 @@ export function useFinanceJournal(rows: Finance.TransactionDTO[]) {
       && (!search || `${row.note ?? ""} ${row.amount} ${row.currency} ${row.category}`.toLowerCase().includes(search.toLowerCase()));
   }), [rows, search, accountId, from, to, includeVoided]);
   const totals = filtered.reduce((sum, row) => {
-    if (!row.voidedAt && row.category !== "rental_revenue") sum[row.kind] += row.amountEUR;
+    if (!row.voidedAt && !row.transferId && row.category !== "rental_revenue") sum[row.kind] += row.amountEUR;
     return sum;
   }, { income: 0, expense: 0 });
   return { rows: filtered.slice(0, limit), count: filtered.length, totals, search, setSearch, accountId, setAccountId, from, setFrom, to, setTo, includeVoided, setIncludeVoided, showMore: () => setLimit(value => value + 30) };
@@ -42,6 +42,26 @@ export function usePeopleNames(enabled: boolean) {
 
 export function useFxRates() {
   return useQuery({ queryKey: ["finance", "fx"], queryFn: () => api.get<Finance.FxRateDTO[]>("/api/finance/fx") });
+}
+
+export function useTransactionCategories(enabled = true) {
+  return useQuery({ enabled, queryKey: ["finance", "categories"], queryFn: () => api.get<Finance.TransactionCategoryDTO[]>("/api/finance/transaction-categories") });
+}
+export function useSaveTransactionCategory() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (input: { id?: string; name: string; kind: Finance.TxKind; active: boolean }) => input.id
+    ? api.patch<Finance.TransactionCategoryDTO>(`/api/finance/transaction-categories/${input.id}`, { name: input.name, active: input.active })
+    : api.post<Finance.TransactionCategoryDTO>("/api/finance/transaction-categories", { name: input.name, kind: input.kind }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["finance"] }); } });
+}
+export function useCreateTransfer() {
+  const qc = useQueryClient();
+  const attempt = useRef<{ fingerprint: string; requestKey: string } | null>(null);
+  return useMutation({ mutationFn: (input: Omit<Finance.CreateTransferInput, "requestKey">) => {
+    const fingerprint = JSON.stringify(input);
+    if (attempt.current?.fingerprint !== fingerprint) attempt.current = { fingerprint, requestKey: crypto.randomUUID() };
+    return api.post<Finance.TransactionDTO[]>("/api/finance/transfers", { ...input, requestKey: attempt.current.requestKey });
+  }, onSuccess: () => { attempt.current = null; invalidate(qc); } });
 }
 
 export function useInvoiceCompanySettings() {

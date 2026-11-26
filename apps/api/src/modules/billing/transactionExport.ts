@@ -121,7 +121,7 @@ export async function createTransactionCashExportCsv(
         "FX Rate to EUR": transaction.fxRateToEUR,
         "Amount EUR": transaction.amountEUR,
         "Transaction Type": transaction.kind === "income" ? "Income" : "Expense",
-        Category: CATEGORY_LABEL[transaction.category],
+        Category: transaction.transferId ? "Transfer" : transaction.categoryName ?? CATEGORY_LABEL[transaction.category],
         "Category Code": transaction.category,
         Note: transaction.note,
         "Project ID": project?.id,

@@ -19,6 +19,9 @@ const CASH_CATEGORIES = new Set<Finance.TxCategory>([
   "other",
 ]);
 
+interface CategoryRow { id: string; name: string; kind: Finance.TxKind; semantic: Finance.TxCategory; active: boolean }
+const categoryDTO = (row: CategoryRow): Finance.TransactionCategoryDTO => ({ ...row });
+
 interface FxRow {
   currency: Currency;
   rate_to_eur: string;
@@ -41,6 +44,9 @@ interface TxRow {
   contractor_id: string | null;
   kind: Finance.TxKind;
   category: Finance.TxCategory;
+  category_id: string | null;
+  category_name?: string | null;
+  transfer_id: string | null;
   amount: string;
   currency: Currency;
   fx_rate_to_eur: string;
@@ -131,6 +137,9 @@ const txDTO = (r: TxRow): Finance.TransactionDTO => ({
   contractorId: r.contractor_id,
   kind: r.kind,
   category: r.category,
+  categoryId: r.category_id ?? null,
+  categoryName: r.category_name ?? null,
+  transferId: r.transfer_id ?? null,
   amount: Number(r.amount),
   currency: r.currency,
   fxRateToEUR: Number(r.fx_rate_to_eur),
@@ -210,6 +219,50 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
   }
 
   return {
+    async listTransactionCategories() {
+      return (await query<CategoryRow>(db, `SELECT id,name,kind,semantic,active FROM finance.transaction_categories ORDER BY kind,name`)).map(categoryDTO);
+    },
+    async createTransactionCategory(input) {
+      const name = input.name.trim();
+      if (!name || name.length > 120) throw BadRequest("укажите название категории");
+      const row = await one<CategoryRow>(db, `INSERT INTO finance.transaction_categories(name,kind,semantic) VALUES ($1,$2,$3) RETURNING id,name,kind,semantic,active`, [name, input.kind, input.kind === "income" ? "prepayment" : "other"]);
+      return categoryDTO(row!);
+    },
+    async updateTransactionCategory(id, input) {
+      const name = input.name.trim();
+      if (!name || name.length > 120) throw BadRequest("укажите название категории");
+      const row = await one<CategoryRow>(db, `UPDATE finance.transaction_categories SET name=$2,active=$3 WHERE id=$1 RETURNING id,name,kind,semantic,active`, [id,name,input.active]);
+      if (!row) throw NotFound("category", id);
+      return categoryDTO(row);
+    },
+    async createTransfer(input) {
+      const validAmount = (amount: number) => Number.isFinite(amount) && amount > 0 && amount < 1_000_000_000_000 && Math.abs(amount * 100 - Math.round(amount * 100)) < 0.000001;
+      if (!validAmount(input.amount) || !validAmount(input.receivedAmount)) throw BadRequest("суммы должны быть положительными и содержать не более двух знаков после запятой");
+      if (input.fromAccountId === input.toAccountId) throw BadRequest("выберите разные счета");
+      const rows = await tx(async client => {
+        await query(client, `SELECT pg_advisory_xact_lock(hashtextextended($1, 3))`, [input.requestKey]);
+        const existing = await query<TxRow>(client, `SELECT * FROM finance.transactions WHERE transfer_id=$1 ORDER BY kind`, [input.requestKey]);
+        if (existing.length) {
+          const source = existing.find(row => row.kind === "expense"), target = existing.find(row => row.kind === "income");
+          if (existing.length !== 2 || !source || !target || source.account_id !== input.fromAccountId || target.account_id !== input.toAccountId || Number(source.amount) !== input.amount || Number(target.amount) !== input.receivedAmount || source.note !== (input.note ?? null) || source.created_by !== (input.createdByUserId ?? null)) throw Conflict("ключ перевода уже использован с другими данными");
+          return existing;
+        }
+        const accounts = await query<AccountRow>(client, `SELECT * FROM finance.accounts WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE`, [[input.fromAccountId,input.toAccountId]]);
+        const from = accounts.find(a => a.id === input.fromAccountId), to = accounts.find(a => a.id === input.toAccountId);
+        if (!from || !to) throw BadRequest("счёт не найден");
+        if (from.currency === to.currency && input.amount !== input.receivedAmount) throw BadRequest("для одинаковых валют суммы должны совпадать");
+        const fromRate = await currentRate(from.currency), toRate = await currentRate(to.currency);
+        if (input.amount * fromRate >= 1_000_000_000_000 || input.receivedAmount * toRate >= 1_000_000_000_000) throw BadRequest("сумма в EUR превышает допустимый размер");
+        const result: TxRow[] = [];
+        for (const [account, kind, amount, rate] of [[from,"expense",input.amount,fromRate],[to,"income",input.receivedAmount,toRate]] as const) {
+          const row = await one<TxRow>(client, `INSERT INTO finance.transactions(account_id,kind,category,amount,currency,fx_rate_to_eur,amount_eur,note,created_by,transfer_id) VALUES ($1,$2,'other',$3,$4,$5,ROUND($3::numeric*$5::numeric,2),$6,$7,$8) RETURNING *`, [account.id,kind,amount,account.currency,rate,input.note ?? null,input.createdByUserId ?? null,input.requestKey]);
+          result.push(row!);
+          await query(client, `UPDATE finance.accounts SET balance=balance+$2 WHERE id=$1`, [account.id,kind === "income" ? amount : -amount]);
+        }
+        return result;
+      });
+      return rows.map(txDTO);
+    },
     // ── FX ──
     async listFxRates() {
       const rows = await query<FxRow>(db, `SELECT * FROM finance.fx_rates ORDER BY currency`);
@@ -302,7 +355,7 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
       const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
       const rows = await query<TxRow>(
         db,
-        `SELECT * FROM finance.transactions ${where} ORDER BY created_at DESC`,
+        `SELECT t.*, (SELECT c.name FROM finance.transaction_categories c WHERE c.id=t.category_id) AS category_name FROM finance.transactions t ${where} ORDER BY created_at DESC`,
         params
       );
       return rows.map(txDTO);
@@ -310,6 +363,10 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
     async createTransaction(input) {
       if (!Number.isFinite(input.amount) || input.amount <= 0 || input.amount >= 1_000_000_000_000 || Math.abs(input.amount * 100 - Math.round(input.amount * 100)) > 0.000001) throw BadRequest("сумма должна быть положительной, не более двух знаков после запятой");
       if (input.category === "adjustment") throw BadRequest("корректировка остатка проводится отдельной командой");
+      if (input.categoryId) {
+        const category = await one<CategoryRow>(db, `SELECT id,name,kind,semantic,active FROM finance.transaction_categories WHERE id=$1`, [input.categoryId]);
+        if (!category || !category.active || category.kind !== input.kind || category.semantic !== input.category) throw BadRequest("категория недоступна или не соответствует операции");
+      }
       const incomeCategories = ["rental_revenue", "prepayment", "debt_settlement"];
       if (input.category !== "other" && (incomeCategories.includes(input.category) ? input.kind !== "income" : input.kind !== "expense")) throw BadRequest("категория не соответствует направлению операции");
       if (input.assignmentId && (input.category !== "salary" || !input.projectId || input.contractorId)) throw BadRequest("выплата команде требует проекта и категории зарплата");
@@ -329,15 +386,15 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
           if (existing) {
             if (existing.account_id !== input.accountId || existing.kind !== input.kind || existing.category !== input.category || Number(existing.amount) !== input.amount || existing.currency !== input.currency
               || existing.project_id !== (input.projectId ?? null) || existing.assignment_id !== (input.assignmentId ?? null) || existing.contractor_id !== (input.contractorId ?? null)
-              || existing.unit_id !== (input.unitId ?? null) || existing.note !== (input.note ?? null) || existing.created_by !== (input.createdByUserId ?? null)) throw Conflict("ключ повторной операции уже использован с другими данными");
+              || existing.unit_id !== (input.unitId ?? null) || existing.category_id !== (input.categoryId ?? null) || existing.note !== (input.note ?? null) || existing.created_by !== (input.createdByUserId ?? null)) throw Conflict("ключ повторной операции уже использован с другими данными");
             return existing;
           }
         }
         const row = await one<TxRow>(
           client,
           `INSERT INTO finance.transactions
-             (account_id, project_id, unit_id, assignment_id, contractor_id, kind, category, amount, currency, fx_rate_to_eur, amount_eur, note, created_by, request_key)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,ROUND($8::numeric*$10::numeric,2),$11,$12,$13)
+             (account_id, project_id, unit_id, assignment_id, contractor_id, kind, category, amount, currency, fx_rate_to_eur, amount_eur, note, created_by, request_key,category_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,ROUND($8::numeric*$10::numeric,2),$11,$12,$13,$14)
            RETURNING *`,
           [
             input.accountId,
@@ -353,6 +410,7 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
             input.note ?? null,
             input.createdByUserId ?? null,
             input.requestKey ?? null,
+            input.categoryId ?? null,
           ]
         );
         if (CASH_CATEGORIES.has(input.category)) {
@@ -384,6 +442,7 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
         const previous = await one<TxRow>(client, `SELECT * FROM finance.transactions WHERE id=$1 FOR UPDATE`, [id]);
         if (!previous) throw NotFound("transaction", id);
         if (previous.voided_at) throw BadRequest("отменённую транзакцию нельзя редактировать");
+        if (previous.transfer_id) throw BadRequest("перевод нельзя исправить по частям; сторнируйте его и создайте новый");
         if (previous.category === "adjustment") throw BadRequest("корректировку остатка нельзя редактировать; сторнируйте её и создайте новую");
         const account = await one<AccountRow>(client, `SELECT * FROM finance.accounts WHERE id=$1`, [input.accountId]);
         if (!account) throw NotFound("account", input.accountId);
@@ -403,9 +462,9 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
         return one<TxRow>(client,
           `INSERT INTO finance.transactions
             (account_id, project_id, unit_id, assignment_id, contractor_id, kind, category, amount, currency,
-             fx_rate_to_eur, amount_eur, note, created_by, updated_by, updated_at, replaces_transaction_id)
+             fx_rate_to_eur, amount_eur, note, created_by, updated_by, updated_at, replaces_transaction_id,category_id)
            SELECT $2, project_id, unit_id, assignment_id, contractor_id, kind, category, $3, $6,
-             $7, ROUND($3::numeric*$7::numeric,2), $4, $5, $5, now(), id
+             $7, ROUND($3::numeric*$7::numeric,2), $4, $5, $5, now(), id,category_id
            FROM finance.transactions WHERE id=$1 RETURNING *`,
           [id, input.accountId, input.amount, input.note ?? null, actorId, account.currency, rate]
         );
@@ -416,6 +475,20 @@ export function createFinanceService(db: Sql, bus: EventBus, validateReferences?
     },
     async voidTransaction(id, actorId) {
       const voided = await tx(async (client) => {
+        const initial = await one<TxRow>(client, `SELECT * FROM finance.transactions WHERE id=$1`, [id]);
+        if (!initial) throw NotFound("transaction", id);
+        if (initial.transfer_id) {
+          await query(client, `SELECT pg_advisory_xact_lock(hashtextextended($1, 3))`, [initial.transfer_id]);
+          const legs = await query<TxRow>(client, `SELECT * FROM finance.transactions WHERE transfer_id=$1 ORDER BY id FOR UPDATE`, [initial.transfer_id]);
+          if (legs.length !== 2) throw Conflict("перевод повреждён: требуется проверка");
+          await query(client, `SELECT id FROM finance.accounts WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE`, [legs.map(leg => leg.account_id)]);
+          for (const leg of legs) if (!leg.voided_at) {
+            const delta = leg.kind === "income" ? Number(leg.amount) : -Number(leg.amount);
+            await query(client, `UPDATE finance.accounts SET balance=balance-$2 WHERE id=$1`, [leg.account_id,delta]);
+            await query(client, `UPDATE finance.transactions SET voided_by=$2,voided_at=now() WHERE id=$1`, [leg.id,actorId]);
+          }
+          return one<TxRow>(client, `SELECT * FROM finance.transactions WHERE id=$1`, [id]);
+        }
         const previous = await one<TxRow>(client, `SELECT * FROM finance.transactions WHERE id=$1 FOR UPDATE`, [id]);
         if (!previous) throw NotFound("transaction", id);
         if (previous.voided_at) return previous;
